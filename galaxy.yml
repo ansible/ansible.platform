@@ -1,0 +1,29 @@
+---
+namespace: ansible
+name: platform
+description: A collection of roles to manage Ansible automation platform gateway
+version: 2.5.0
+readme: README.md
+authors:
+  - automation platform gateway <aap-project@googlegroups.com>  # TBD
+  - Sean Sullivan <@sean-m-sullivan>
+license_file: COPYING
+tags:
+  - gateway
+  - gateway_platform
+  - automation_platform
+  - infrastructure
+dependencies: {}
+
+repository: https://github.com/ansible
+homepage: http://ansible.com/
+issues: https://access.redhat.com/support/
+
+build_ignore:
+  - galaxy.yml.j2
+  - release.yml
+  - .github
+  - .ansiblelint.yml
+  - .yamllint.yml
+  - "*.tar.gz"
+...
