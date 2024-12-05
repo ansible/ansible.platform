@@ -2,10 +2,10 @@
 namespace: ansible
 name: platform
 description: A collection of roles to manage Ansible automation platform gateway
-version: 2.5.0
+version: 2.5.20241218
 readme: README.md
 authors:
-  - automation platform gateway <aap-project@googlegroups.com>  # TBD
+  - automation platform gateway <aap-project@googlegroups.com> # TBD
   - Sean Sullivan <@sean-m-sullivan>
 license_file: COPYING
 tags:
@@ -14,7 +14,6 @@ tags:
   - automation_platform
   - infrastructure
 dependencies: {}
-
 repository: https://github.com/ansible
 homepage: http://ansible.com/
 issues: https://access.redhat.com/support/
