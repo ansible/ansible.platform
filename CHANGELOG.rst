@@ -29,6 +29,7 @@ Added the `secret` field to the output of `secret_key` module.
 Fixed the parameter `authenticator_uid` on the `user` module.
 Fixed a broken doc fragment in the `authenticator_user` module.
 
+<<<<<<< HEAD
 v2.5.20250212
 ======
 Added application and organization lookup for tokens.
@@ -44,3 +45,5 @@ Added support for setting URL for applications
 v2.5.20250507
 ======
 Added `lightspeed` as a valid `service_type` choice for the `service_cluster` module
+=======
+>>>>>>> 6e900be (AAP-35641 add service type (#654))
