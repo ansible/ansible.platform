@@ -44,3 +44,8 @@ Added support for setting URL for applications
 v2.5.20250507
 ======
 Added `lightspeed` as a valid `service_type` choice for the `service_cluster` module
+
+v2.5.20250521
+======
+Support for dynamic `service_type` added
+
