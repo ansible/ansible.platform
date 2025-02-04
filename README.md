@@ -1,5 +1,9 @@
 # Ansible Platform Collection
 
+## Changelog for v2.5.20250212
+
+* Added application and organization lookup for tokens.
+
 ## Description
 
 This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
