@@ -32,3 +32,8 @@ Fixed a broken doc fragment in the `authenticator_user` module.
 v2.5.20250212
 ======
 Added application and organization lookup for tokens.
+
+v2.5.20250312
+======
+Bug fix in AAP module that could cause a stack trace when using "present"
+

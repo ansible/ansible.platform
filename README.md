@@ -1,8 +1,8 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20250212
+## Changelog for v2.5.20250312
 
-* Added application and organization lookup for tokens.
+* Bug fix in AAP module that could cause a stack trace when using "present"
 
 ## Description
 
