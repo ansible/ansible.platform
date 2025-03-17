@@ -37,3 +37,6 @@ v2.5.20250312
 ======
 Bug fix in AAP module that could cause a stack trace when using "present"
 
+v2.5.20250326
+======
+Added support for setting URL for applications
