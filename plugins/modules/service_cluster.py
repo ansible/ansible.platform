@@ -28,7 +28,7 @@ options:
       description:
         - Type of the AAP service
         - Required when creating new Service Cluster
-      choices: ["hub", "controller", "eda", "gateway", "lightspeed"]
+      choices: ["hub", "controller", "eda", "gateway"]
       type: str
     outlier_detection_enabled:
       type: bool
@@ -95,7 +95,7 @@ def main():
     argument_spec = dict(
         name=dict(required=True, type='str'),
         new_name=dict(type='str'),
-        service_type=dict(type="str", choices=["hub", "controller", "eda", "gateway", "lightspeed"]),
+        service_type=dict(type="str", choices=["hub", "controller", "eda", "gateway"]),
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
         outlier_detection_enabled=dict(type='bool'),
         outlier_detection_consecutive_5xx=dict(type='int'),
