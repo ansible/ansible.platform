@@ -1,8 +1,8 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20250409
+## Changelog for v2.5.20250326
 
-* Added lightspeed as a valid `service_type` choice for the `service_cluster` module
+* Added support for setting URL for applications
 
 ## Description
 

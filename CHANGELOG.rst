@@ -40,7 +40,3 @@ Bug fix in AAP module that could cause a stack trace when using "present"
 v2.5.20250326
 ======
 Added support for setting URL for applications
-
-v2.5.20250409
-======
-Added `lightspeed` as a valid `service_type` choice for the `service_cluster` module
