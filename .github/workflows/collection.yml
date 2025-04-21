@@ -5,6 +5,52 @@ on:
   pull_request:
 
 jobs:
+  integration:
+    name: collection integration test
+    runs-on: ubuntu-latest
+    env:
+      HEADLESS: "yes"
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: NilashishC/aap-gateway
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
+
+      - name: Checkout DAB branch if needed
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/scripts/get_dab_for_pr.py
+
+      - name: Build the image
+        run: make docker-compose-build
+
+      - name: Spin up the dev env
+        run: |
+          ansible-playbook -v tools/ansible/smoke-test-no-services.yml \
+            -e repo_root=$(pwd) \
+            -e gateway_vars=$(readlink -f container-startup.yml)
+
+      - name: Cleanup services
+        run: make cleanup-services
+
+      - name: Extract gateway password and set it as an environment variable
+        run: |
+          ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
+            echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+
+      - name: Perform integration tests
+        run: cd ansible-platform && make collection-test
+
+      - name: Dump the container logs on failure
+        run: docker compose -f tools/generated/docker-compose.yml logs
+        if: failure()
+
   sanity:
     name: platform collection sanity
     runs-on: ubuntu-latest
