@@ -3,8 +3,13 @@ SHELL=/bin/bash
 # Prefer python 3.11 but take python3 if 3.11 is not installed
 PYTHON := $(notdir $(shell for i in python3.11 python3; do command -v $$i; done|sed 1q))
 RM ?= /bin/rm
+UID := $(shell id -u)
 ANSIBLE_CONFIG ?= tools/ansible/ansible.cfg
 export ANSIBLE_CONFIG
+
+## Get the version of python we are working with
+PYTHON_VERSION:
+	@echo "$(subst python,,$(PYTHON))"
 
 .PHONY: PYTHON_VERSION clean git_hooks_config \
 	collection-install collection-test collection-docs \
@@ -62,3 +67,11 @@ collection-docs: collection-install
 collection-lint: collection-install
 	# ansible-lint gets its settings from ansible_platform_collection/.ansible-lint
 	ansible-lint --profile=production
+
+## Run the collection tests
+## Requires the GATEWAY_PASSWORD env variable to be set
+collection-test: collection-install
+	echo 'gateway_password: $(GATEWAY_PASSWORD)' > /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
+	cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
+	cd /tmp/collections/ansible_collections/ansible/platform && \
+	  ansible-test integration --venv --requirements --coverage
