@@ -126,6 +126,16 @@ jobs:
 
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+      
+      - name: Check if Gateway is accessible
+        run: |
+          curl -k https://localhost:8000
+        continue-on-error: true
+      
+      - name: Check if Gateway is accessible (http)
+        run: |
+          curl http://localhost:8000
+        continue-on-error: true
 
       - uses: actions/checkout@v3
         with:
