@@ -75,3 +75,7 @@ collection-test: collection-install
 	cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	cd /tmp/collections/ansible_collections/ansible/platform && \
 	  ansible-test integration --venv --requirements --coverage
+
+## Run the collections test-integration check to see if all modules have integration tests
+collection-test-integration-check:
+	./tests/test_integration_check.py
