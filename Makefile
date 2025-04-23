@@ -80,7 +80,6 @@ collection-test: collection-install
 collection-test-integration-check:
 	./tests/test_integration_check.py
 
-
 ## Run the collections test-completness check
 collection-test-completeness:
 	./tests/test_completeness.py
