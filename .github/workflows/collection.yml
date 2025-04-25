@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          repository: NilashishC/aap-gateway
+          repository: ansible/aap-gateway
           token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
       - name: Checkout DAB branch if needed
@@ -104,7 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          repository: NilashishC/aap-gateway
+          repository: ansible/aap-gateway
           token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
       - name: Checkout DAB branch if needed
@@ -142,7 +142,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          repository: NilashishC/aap-gateway
+          repository: ansible/aap-gateway
           token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
       - name: Checkout DAB branch if needed
