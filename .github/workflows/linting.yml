@@ -16,11 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         tests:
-          - name: api-flake8
+          - name: flake8
             command: check_flake8
-          - name: api-black
+          - name: black
             command: check_black
-          - name: api-isort
+          - name: isort
             command: check_isort
     steps:
       - name: Install make
