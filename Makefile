@@ -65,7 +65,7 @@ collection-docs: collection-install
 
 ## Run the collection lint check
 collection-lint: collection-install
-	# ansible-lint gets its settings from ansible_platform_collection/.ansible-lint
+	# ansible-lint gets its settings from .ansible-lint
 	ansible-lint --profile=production
 
 ## Run the collection tests

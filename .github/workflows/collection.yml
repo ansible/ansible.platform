@@ -2,7 +2,7 @@
 name: platform collection tests
 on:
   push:
-  pull_request:
+  pull_request_target:
 
 jobs:
   integration:
@@ -217,4 +217,8 @@ jobs:
       - name: Get ansible-lint version
         run: ansible-lint --version
         if: failure()
+
+  build-import:
+    name: Build collection and run galaxy importer check
+    uses: ansible/ansible-content-actions/.github/workflows/build_import.yaml@main
 ...
