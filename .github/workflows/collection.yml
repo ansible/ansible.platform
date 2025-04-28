@@ -187,8 +187,6 @@ jobs:
         run: pip3.11 install --upgrade ansible
 
       - uses: actions/checkout@v3
-        with:
-          path: ansible-platform
 
       - name: Run ansible-doc
         run: make collection-docs
@@ -212,8 +210,6 @@ jobs:
         run: pip3.11 install --upgrade ansible-lint
 
       - uses: actions/checkout@v3
-        with:
-          path: ansible-platform
 
       - name: Run ansible-lint
         run: make collection-lint
