@@ -68,25 +68,25 @@ extends_documentation_fragment: ansible.platform.auth
 EXAMPLES = """
 - block:
     - name: Create a new token using an existing token
-      ansible.platform.aap_token:
+      ansible.platform.token:
         description: '{{ token_description }}'
         scope: "write"
         state: present
         aap_token: "{{ my_existing_token }}"
 
     - name: Delete this token
-      ansible.platform.aap_token:
+      ansible.platform.token:
         existing_token: "{{ aap_token }}"
         state: absent
 
     - name: Create a new token using username/password
-      ansible.platform.aap_token:
+      ansible.platform.token:
         description: '{{ token_description }}'
         scope: "write"
         state: present
-        aap_gateway: "{{ aap_gateway }}"
-        aap_username: "{{ my_username }}"
-        aap_password: "{{ my_password }}"
+        gateway_hostname: "{{ aap_gateway }}"
+        gateway_username: "{{ my_username }}"
+        gateway_password: "{{ my_password }}"
 
     - name: Use our new token to make another call
       namespace:
@@ -94,13 +94,13 @@ EXAMPLES = """
 
   always:
     - name: Delete our Token with the token we created
-      ansible.platform.aap_token:
+      ansible.platform.token:
         existing_token: "{{ aap_token }}"
         state: absent
       when: token is defined
 
 - name: Delete a token by its id
-  ansible.platform.aap_token:
+  ansible.platform.token:
     existing_token_id: 4
     state: absent
 ...
