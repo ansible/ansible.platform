@@ -195,6 +195,11 @@ jobs:
         run: pip3.11 install --upgrade ansible
 
       - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: 'ansible/ansible.platform'
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run ansible-doc
         run: make collection-docs
@@ -218,6 +223,11 @@ jobs:
         run: pip3.11 install --upgrade ansible-lint
 
       - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: 'ansible/ansible.platform'
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run ansible-lint
         run: make collection-lint
