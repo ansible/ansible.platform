@@ -2,7 +2,7 @@
 name: platform collection tests
 on:
   push:
-  pull_request:
+  pull_request_target:
 
 jobs:
   integration:
