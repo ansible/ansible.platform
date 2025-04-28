@@ -13,3 +13,4 @@ jobs:
       - uses: ansible/dvcs-action@devel
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+...
