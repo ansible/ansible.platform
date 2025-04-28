@@ -43,8 +43,8 @@ jobs:
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || 'ansible/ansible.platform' }}
 
       - name: Perform integration tests
         run: cd ansible-platform && make collection-test
@@ -132,8 +132,8 @@ jobs:
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || 'ansible/ansible.platform' }}
 
       - name: Perform completeness tests
         run: cd ansible-platform && make collection-test-integration-check
@@ -172,8 +172,8 @@ jobs:
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || 'ansible/ansible.platform' }}
 
       - name: Perform completeness tests
         run: cd ansible-platform && make collection-test-completeness
