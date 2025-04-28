@@ -2,6 +2,8 @@
 
 ## Changelog for v2.5.20250326
 
+
+
 * Added support for setting URL for applications
 
 ## Description
