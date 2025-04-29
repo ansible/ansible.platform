@@ -1,9 +1,15 @@
 ---
-name: platform collection tests
-on:
-  push:
-  pull_request:
+name: integration tests
 
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 jobs:
   integration:
     name: collection integration test
@@ -50,51 +56,6 @@ jobs:
       - name: Dump the container logs on failure
         run: docker compose -f tools/generated/docker-compose.yml logs
         if: failure()
-
-  sanity:
-    name: platform collection sanity
-    runs-on: ubuntu-latest
-    env:
-      HEADLESS: "yes"
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        ansible:
-          - stable-2.16
-          - stable-2.17
-          - stable-2.18
-          - stable-2.19
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Perform sanity testing
-        uses: ansible-community/ansible-test-gh-action@release/v1
-        with:
-          ansible-core-version: ${{ matrix.ansible }}
-          collection-root: .
-          testing-type: sanity
-          target-python-version: 3.11
-
-      - name: Upload gateway jUnit test reports to the unified dashboard
-        if: >-
-          !cancelled()
-          && steps.make-run.outputs.test-result-files != ''
-          && github.event_name == 'push'
-          && env.UPSTREAM_REPOSITORY_ID == github.repository_id
-          && github.ref_name == github.event.repository.default_branch
-        run: |
-          for junit_file in $(echo '${{ steps.make-run.outputs.test-result-files }}' | sed 's/,/ /')
-          do
-              curl \
-                -v \
-                --user "${{ vars.PDE_ORG_RESULTS_AGGREGATOR_UPLOAD_USER }}:${{ secrets.PDE_ORG_RESULTS_UPLOAD_PASSWORD }}" \
-                --form "xunit_xml=@${junit_file}" \
-                --form "component_name=gateway" \
-                --form "git_commit_sha=${{ github.sha }}" \
-                --form "git_repository_url=https://github.com/${{ github.repository }}" \
-                "${{ vars.PDE_ORG_RESULTS_AGGREGATOR_UPLOAD_URL }}/api/results/upload/"
-          done
 
   coverage_test:
     name: collection integration check
@@ -171,54 +132,4 @@ jobs:
 
       - name: Perform completeness tests
         run: cd ansible-platform && make collection-test-completeness
-
-  docs:
-    name: Check module doc strings
-    runs-on: ubuntu-latest
-    env:
-      HEADLESS: "yes"
-    steps:
-      - name: Install python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install requirements
-        run: pip3.11 install --upgrade ansible
-
-      - uses: actions/checkout@v3
-
-      - name: Run ansible-doc
-        run: make collection-docs
-
-      - name: Get ansible-doc version
-        run: ansible-doc --version
-        if: failure()
-
-  lint:
-    name: Lint module
-    runs-on: ubuntu-latest
-    env:
-      HEADLESS: "yes"
-    steps:
-      - name: Install python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install requirements
-        run: pip3.11 install --upgrade ansible-lint
-
-      - uses: actions/checkout@v3
-
-      - name: Run ansible-lint
-        run: make collection-lint
-
-      - name: Get ansible-lint version
-        run: ansible-lint --version
-        if: failure()
-
-  build-import:
-    name: Build collection and run galaxy importer check
-    uses: ansible/ansible-content-actions/.github/workflows/build_import.yaml@main
 ...

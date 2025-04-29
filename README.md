@@ -77,7 +77,7 @@ Please refer to Ansible Automation Platform Documentation for further documentat
 
 ## License Information
 
-[GPLv3](https://github.com/ansible/aap-gateway/ansible_platform_collection/COPYING)
+[GPLv3](https://github.com/ansible/ansible.platform/COPYING)
 
 ## Authors
 
