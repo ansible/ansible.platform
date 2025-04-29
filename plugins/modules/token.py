@@ -89,7 +89,7 @@ EXAMPLES = """
         aap_password: "{{ my_password }}"
 
     - name: Use our new token to make another call
-      namespace:
+      ansible.builtin.set_fact:
         aap_token: "{{ aap_token }}"
 
   always:
