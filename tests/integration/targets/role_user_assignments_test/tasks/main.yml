@@ -102,7 +102,7 @@
         t: "{{ query('ansible.platform.gateway_api', 'teams', query_params={'name': 'Team'},**connection_info)  }}"
 
     - name: Debug the fetched teams
-      debug:
+      ansible.builtin.debug:
         msg: "teams: {{ t[0].summary_fields.resource.ansible_id }}"
 
     - name: Assign Admins by Role User Assignments
@@ -111,7 +111,7 @@
         role_definition: Team Admin
         user: "{{ user2.id }}"
       register: team_admin_role_assignment
-    
+
     - name: Assert that adding user as team admin worked
       ansible.builtin.assert:
         that:
@@ -128,7 +128,7 @@
         state: absent
       register: delete
       ignore_errors: true
-    
+
     - name: Delete user
       ansible.platform.user:
         username: "{{ username }}--User-2"
