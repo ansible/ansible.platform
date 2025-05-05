@@ -28,7 +28,7 @@
       ansible.builtin.assert:
         that:
           - user is changed
-    
+
     - name: Create Users
       ansible.platform.user:
         username: "{{ username }}--User-2"
