@@ -72,6 +72,12 @@ extends_documentation_fragment:
 
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add user
   ansible.platform.user:
     username: jdoe
@@ -80,6 +86,9 @@ EXAMPLES = """
     first_name: John
     last_name: Doe
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Add user as a system administrator
   ansible.platform.user:
@@ -88,12 +97,18 @@ EXAMPLES = """
     email: jdoe@example.org
     superuser: true
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete user
   ansible.platform.user:
     username: jdoe
     email: jdoe@example.org
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

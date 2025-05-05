@@ -92,6 +92,12 @@ extends_documentation_fragment: ansible.platform.auth
 
 
 EXAMPLES = '''
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add Foo application
   ansible.platform.application:
     name: "Foo"
@@ -101,6 +107,9 @@ EXAMPLES = '''
     authorization_grant_type: password
     client_type: public
     app_url: http://example.com
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Add Foo application
   ansible.platform.application:
@@ -113,6 +122,9 @@ EXAMPLES = '''
     redirect_uris:
       - http://example.com/api/gateway/v1/
     app_url: http://example.com
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 '''
 

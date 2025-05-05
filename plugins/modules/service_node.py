@@ -47,22 +47,37 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Create service node
   ansible.platform.service_node:
     name: "Controller - Node 1"
     address: 10.0.0.1
     service_cluster: controller
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete service node
   ansible.platform.service_node:
     name: 3  # ID can be used
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Update service node's cluster
   ansible.platform.service_node:
     name: "Controller - Node 1"
     address: 10.0.0.1
     service_cluster: 2 # service cluster's name or ID
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

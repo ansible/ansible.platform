@@ -44,6 +44,12 @@ extends_documentation_fragment:
 
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add service type
   ansible.platform.service_type:
     name: eda
@@ -52,16 +58,25 @@ EXAMPLES = """
     logout_path: /v1/auth/session/logout/
     service_index_path: /service-index/
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete service cluster
   ansible.platform.service_type:
     name: eda
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Check if service type exists
   ansible.platform.service_type:
     name: eda
     state: exists
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

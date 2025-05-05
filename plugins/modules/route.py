@@ -77,6 +77,12 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Create route
   ansible.platform.route:
     name: Controller API
@@ -87,21 +93,33 @@ EXAMPLES = """
     is_service_https: true
     service_path: '/config/v1/'
     service_port: 3000
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Update route
   ansible.platform.route:
     name: 1                                     # ID of route
     gateway_path: '/controller-config/'
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Check route
   ansible.platform.route:
     name: Controller API
     state: exists
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete route
   ansible.platform.route:
     name: Controller API
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

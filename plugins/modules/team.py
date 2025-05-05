@@ -41,23 +41,38 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Create Team
   ansible.platform.team:
     name: Gateway Developers
     description: AAP Gateway Developers Team
     organization: Ansible Product Development
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Update Team
   ansible.platform.team:
     name: Gateway Developers
     organization: "1"
     new_organization: "Red Hat Ansible"
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete Team
   ansible.platform.team:
     name: Gateway Developers
     organization: "Red Hat Ansible"
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

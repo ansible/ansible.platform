@@ -79,6 +79,12 @@ extends_documentation_fragment:
 
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Move authenticator users to a new authenticator and merge with another user
   ansible.platform.authenticator_user:
     authenticator_user_id: 9
@@ -86,6 +92,9 @@ EXAMPLES = """
     new_uid: jdoe
     merge_with_user: 149
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Merge user with same uid, remove other authenticators and keep memberships
   ansible.platform.authenticator_user:
@@ -95,12 +104,18 @@ EXAMPLES = """
     keep_memberships: true
     remove_other_authenticators: true
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Check if authenticator user exists
   ansible.platform.authenticator_user:
     authenticator_user_id: 4
     authenticator: 1
     state: exists
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

@@ -81,6 +81,12 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Create service
   ansible.platform.service:
     name: Hub API
@@ -92,21 +98,33 @@ EXAMPLES = """
     service_path: '/api/v1/'
     service_port: 8000
     order: 100
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Update service
   ansible.platform.service:
     name: Hub API
     service_path: '/api/v2/'
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Check service
   ansible.platform.service:
     name: Gateway API
     state: exists
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete service
   ansible.platform.service:
     name: Gateway API
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

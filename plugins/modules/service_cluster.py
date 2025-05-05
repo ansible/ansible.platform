@@ -94,21 +94,36 @@ extends_documentation_fragment:
 
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add service cluster
   ansible.platform.service_cluster:
     name: Automation Controller
     service_type: controller
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Delete service cluster
   ansible.platform.service_cluster:
     name: Automation Controller
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Check if cluster exists
   ansible.platform.service_cluster:
     name: Automation Controller
     state: exists
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

@@ -57,12 +57,21 @@ extends_documentation_fragment:
 
 
 EXAMPLES = '''
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Give Bob organization admin role for org 1
   ansible.platform.role_user_assignment:
     role_definition: Organization Admin
     object_id: 1
     user: bob
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 '''
 

@@ -47,6 +47,12 @@ extends_documentation_fragment:
 
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add API http port
   ansible.platform.http_port:
     name: "Port for APIs"
@@ -54,17 +60,26 @@ EXAMPLES = """
     use_https: true
     is_api_port: true
     state: present
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Remove API http port
   ansible.platform.http_port:
     name: "Port for APIs"
     state: absent
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Update http port
   ansible.platform.http_port:
     name: "Port for APIs"
     number: 80
     use_https: false
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

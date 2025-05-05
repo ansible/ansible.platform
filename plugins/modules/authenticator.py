@@ -73,6 +73,12 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Create an authenticator
   ansible.platform.authenticator:
     name: "My GitHub Authenticator"
@@ -82,6 +88,9 @@ EXAMPLES = """
       CALLBACK_URL: "https://example.com"
       KEY: "github-oauth2-key"
       SECRET: "github-oauth2-secret"
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

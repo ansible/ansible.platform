@@ -74,6 +74,12 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add an authenticator map to an existing authenticator
   ansible.platform.authenticator_map:
     name: "Always add users to org 1"
@@ -86,6 +92,9 @@ EXAMPLES = """
       always: {}
       never: {}
     order: 10
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

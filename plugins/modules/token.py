@@ -67,17 +67,29 @@ extends_documentation_fragment: ansible.platform.auth
 
 EXAMPLES = """
 - block:
+    - name: Set Gateway authentication vars
+      ansible.builtin.set_fact:
+        hostname: https://your-aap-instance.com
+        username: admin
+        password: you-AAP-instance-password
+
     - name: Create a new token using an existing token
       ansible.platform.token:
         description: '{{ token_description }}'
         scope: "write"
         state: present
         aap_token: "{{ my_existing_token }}"
+        aap_hostname: "{{ hostname }}"
+        aap_username: "{{ username }}"
+        aap_password: "{{ password }}"
 
     - name: Delete this token
       ansible.platform.token:
         existing_token: "{{ aap_token }}"
         state: absent
+        aap_hostname: "{{ hostname }}"
+        aap_username: "{{ username }}"
+        aap_password: "{{ password }}"
 
     - name: Create a new token using username/password
       ansible.platform.token:
@@ -91,6 +103,9 @@ EXAMPLES = """
     - name: Use our new token to make another call
       ansible.builtin.set_fact:
         aap_token: "{{ aap_token }}"
+        aap_hostname: "{{ hostname }}"
+        aap_username: "{{ username }}"
+        aap_password: "{{ password }}"
 
   always:
     - name: Delete our Token with the token we created

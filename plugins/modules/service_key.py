@@ -57,6 +57,12 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Add service ckey
   ansible.platform.service_key:
     name: Automation Controller Service Key
@@ -65,6 +71,9 @@ EXAMPLES = """
     algorithm: HS256
     secret: mysecret
     secret_length: 32
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 
 - name: Add new controller service key
   ansible.platform.service_key:
@@ -76,6 +85,9 @@ EXAMPLES = """
     secret: mysecret1
     secret_length: 32
     mark_previous_inactive: true
+    aap_hostname: "{{ hostname }}"
+    aap_username: "{{ username }}"
+    aap_password: "{{ password }}"
 ...
 """
 

@@ -27,6 +27,12 @@ extends_documentation_fragment: ansible.platform.auth
 """
 
 EXAMPLES = """
+- name: Set Gateway authentication vars
+  ansible.builtin.set_fact:
+    hostname: https://your-aap-instance.com
+    username: admin
+    password: you-AAP-instance-password
+
 - name: Make changes to the settings in automation platform gateway
   ansible.platform.settings:
     settings:
@@ -40,6 +46,9 @@ EXAMPLES = """
       password_min_upper: 0
       password_min_special: 0
       allow_admins_to_set_insecure: false
+      aap_hostname: "{{ hostname }}"
+      aap_username: "{{ username }}"
+      aap_password: "{{ password }}"
 ...
 """
 
