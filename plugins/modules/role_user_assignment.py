@@ -57,17 +57,17 @@ extends_documentation_fragment:
 
 
 EXAMPLES = '''
-- name: Give Bob organization admin role for org 1
+- name: Give Bob organization admin role for org 1 using object_id
   ansible.platform.role_user_assignment:
     role_definition: Organization Admin
     object_id: 1
     user: bob
     state: present
 
-- name: Give Bob organization admin role for org 1
+- name: Give Bob team admin role for org 1 using object_ansible_id
   ansible.platform.role_user_assignment:
-    role_definition: Organization Admin
-    object_ansible_id: null
+    role_definition: Team Admin
+    object_ansible_id: ansible-id-of-the-team-object
     user: bob
     state: present
 
