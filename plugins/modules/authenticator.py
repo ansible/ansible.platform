@@ -82,6 +82,62 @@ EXAMPLES = """
       CALLBACK_URL: "https://example.com"
       KEY: "github-oauth2-key"
       SECRET: "github-oauth2-secret"
+
+- name: "Create OIDC authentication"
+  vars:
+    configuration: 
+    # https://<OIDC URL>/realms/aap/.well-known/openid-configuration. 
+      Note client need to provide only first part without / at the end. AAP oidc plugin appends "/.well-known/openid-configuration" automatically
+      OIDC_ENDPOINT: "https://<OIDC URL>/realms/aap" 
+      KEY: "<CLIENT_ID>" 
+      SECRET: "<SECRET>" 
+      JWT_ALGORITHMS:
+        - 'RS256'
+        - 'RS512'
+        - 'HS256'
+  ansible.platform.authenticator:
+    name: OIDCAuth
+    type: ansible_base.authentication.authenticator_plugins.oidc
+    configuration:  "{{ configuration }}"
+    order: 3
+    state: present
+    gateway_hostname: "{{ aap }}"
+    gateway_token: "{{ aap_token.token }}"
+    gateway_validate_certs: false
+
+- name: "Create LDAP authentication"
+  vars:
+    configuration:         
+      SERVER_URI:
+        - "ldap://ipaserver.exampel.com:389"
+      BIND_DN: "uid=binduser,cn=users,cn=accounts,dc=example,dc=com"
+      BIND_PASSWORD: "<BIND_USER_PWD>"
+      START_TLS: false
+      GROUP_TYPE: "MemberDNGroupType"
+      GROUP_TYPE_PARAMS:
+        name_attr: "cn"
+        member_attr: "member"
+      USER_SEARCH:
+        - 'cn=users,cn=accounts,dc=example,dc=com'
+        - 'SCOPE_SUBTREE'
+        - '(uid=%(user)s)'
+      GROUP_SEARCH:
+        - 'cn=groups,cn=accounts,dc=example,dc=com'
+        - 'SCOPE_SUBTREE'
+        - '(objectClass=posixgroup)'
+      USER_ATTR_MAP:
+        first_name: "givenName"
+        last_name: "sn"
+        email: "mail"
+  ansible.platform.authenticator:
+    name: LDAPAuth
+    type: ansible_base.authentication.authenticator_plugins.ldap
+    configuration:  "{{ configuration }}"
+    order: 4
+    state: present
+    gateway_hostname: "{{ aap }}"
+    gateway_token: "{{ aap_token.token }}"
+    gateway_validate_certs: false
 ...
 """
 
