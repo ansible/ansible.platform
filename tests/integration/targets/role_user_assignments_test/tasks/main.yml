@@ -99,7 +99,7 @@
 
     - name: Fetch all teams matching name team
       ansible.builtin.set_fact:
-        t: "{{ query('ansible.platform.gateway_api', 'teams', query_params={'name': 'Team'},**connection_info)  }}"
+        t: "{{ query('ansible.platform.gateway_api', 'teams', query_params={'name': 'Team'}, **connection_info)  }}"
 
     - name: Debug the fetched teams
       ansible.builtin.debug:
