@@ -85,12 +85,12 @@ EXAMPLES = """
 
 - name: "Create OIDC authentication"
   vars:
-    configuration: 
-    # https://<OIDC URL>/realms/aap/.well-known/openid-configuration. 
+    configuration:
+    # https://<OIDC URL>/realms/aap/.well-known/openid-configuration.
       Note client need to provide only first part without / at the end. AAP oidc plugin appends "/.well-known/openid-configuration" automatically
-      OIDC_ENDPOINT: "https://<OIDC URL>/realms/aap" 
-      KEY: "<CLIENT_ID>" 
-      SECRET: "<SECRET>" 
+      OIDC_ENDPOINT: "https://<OIDC URL>/realms/aap"
+      KEY: "<CLIENT_ID>"
+      SECRET: "<SECRET>"
       JWT_ALGORITHMS:
         - 'RS256'
         - 'RS512'
@@ -107,7 +107,7 @@ EXAMPLES = """
 
 - name: "Create LDAP authentication"
   vars:
-    configuration:         
+    configuration:
       SERVER_URI:
         - "ldap://ipaserver.exampel.com:389"
       BIND_DN: "uid=binduser,cn=users,cn=accounts,dc=example,dc=com"

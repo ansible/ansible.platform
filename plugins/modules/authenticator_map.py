@@ -182,7 +182,7 @@ EXAMPLES = """
               has_and:
                 - "cn=prod-it-users,cn=groups,cn=accounts,dc=example,dc=com"
           order: 2
-    ansible.platform.authenticator_map:       
+    ansible.platform.authenticator_map:
       name: "{{ __platform_authenticator_maps_item.name | mandatory }}"
       new_name: "{{ __platform_authenticator_maps_item.new_name | default(omit) }}"
       authenticator: "{{ __platform_authenticator_maps_item.authenticator | default(omit) }}"
