@@ -28,6 +28,16 @@
       ansible.builtin.assert:
         that:
           - user is changed
+
+    - name: Create Users
+      ansible.platform.user:
+        username: "{{ username }}--User-2"
+      register: user2
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - user2 is changed
     # </Users> -------------------
 
     # <Organizations> -------------------
@@ -41,6 +51,19 @@
         that:
           - org is changed
     # </Organizations> -------------------
+
+    # <Teams> --------------------
+    - name: Create teams
+      ansible.platform.team:
+        name: Team
+        organization: "{{ organization_name }}"
+      register: team
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - team is changed
+    # </Teams> -------------------
 
     # # <Role User Assignments> -------------------
     - name: Assign Admins by Role User Assignments
@@ -74,6 +97,26 @@
         that:
           - role_definition is not changed
 
+    - name: Fetch all teams matching name team
+      ansible.builtin.set_fact:
+        t: "{{ query('ansible.platform.gateway_api', 'teams', query_params={'name': 'Team'},**connection_info)  }}"
+
+    - name: Debug the fetched teams
+      ansible.builtin.debug:
+        msg: "teams: {{ t[0].summary_fields.resource.ansible_id }}"
+
+    - name: Assign Admins by Role User Assignments
+      ansible.platform.role_user_assignment:
+        object_ansible_id: "{{ t[0].summary_fields.resource.ansible_id }}"
+        role_definition: Team Admin
+        user: "{{ user2.id }}"
+      register: team_admin_role_assignment
+
+    - name: Assert that adding user as team admin worked
+      ansible.builtin.assert:
+        that:
+          - team_admin_role_assignment is changed
+
     # </Role User Assignments> ------------------
 
   # # <Cleanup>
@@ -81,7 +124,14 @@
   # Always Cleanup
     - name: Delete user
       ansible.platform.user:
-        username: "{{ username }}"
+        username: "{{ username }}--User-1"
+        state: absent
+      register: delete
+      ignore_errors: true
+
+    - name: Delete user
+      ansible.platform.user:
+        username: "{{ username }}--User-2"
         state: absent
       register: delete
       ignore_errors: true
@@ -93,4 +143,11 @@
       when: "item in vars and 'id' in vars[item]"
       loop:
         - "org"
+
+    - name: Delete Team1
+      ansible.platform.team:
+        state: absent
+        name: Team
+        organization: "{{ org.id }}"
+      when: team is defined and org is defined
 ...
