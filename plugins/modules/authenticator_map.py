@@ -71,7 +71,6 @@ options:
 extends_documentation_fragment:
 - ansible.platform.state
 - ansible.platform.auth
-...
 """
 
 EXAMPLES = EXAMPLES = """
@@ -207,6 +206,7 @@ EXAMPLES = EXAMPLES = """
   loop: "{{ platform_maps is mapping | ternary([platform_maps], platform_maps) }}"
   loop_control:
     loop_var: __platform_authenticator_maps_item
+...
 """
 
 from ..module_utils.aap_authenticator_map import AAPAuthenticatorMap  # noqa
