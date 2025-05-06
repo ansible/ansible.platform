@@ -27,7 +27,7 @@ options:
         type: str
     object_id:
         description:
-            - Primary key of the object this assignment applies to.
+            - Primary key of the object this assignment applies to. It is an integer, unique within the object type.
         required: False
         type: int
     user:
@@ -37,7 +37,7 @@ options:
         type: str
     object_ansible_id:
         description:
-            - Resource id of the object this role applies to. Alternative to the object_id field.
+            - The UUID of the object (team, organization) for which the role needs to be assigned to the user.
         required: False
         type: str
     user_ansible_id:
@@ -63,6 +63,14 @@ EXAMPLES = '''
     object_id: 1
     user: bob
     state: present
+
+- name: Give Bob organization admin role for org 1
+  ansible.platform.role_user_assignment:
+    role_definition: Organization Admin
+    object_ansible_id: null
+    user: bob
+    state: present
+
 ...
 '''
 
@@ -106,12 +114,12 @@ def main():
         kwargs['object_id'] = object_id
     if user is not None:
         kwargs['user'] = user['id']
-    if object_ansible_id is not None:
-        kwargs['object_ansible_id'] = object_ansible_id
     if user_ansible_id is not None:
         kwargs['user_ansible_id'] = user_ansible_id
 
     role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})
+    if object_ansible_id is not None:
+        kwargs['object_ansible_id'] = object_ansible_id
 
     if state == 'exists':
         if role_user_assignment is None:
