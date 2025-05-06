@@ -74,18 +74,139 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
-- name: Add an authenticator map to an existing authenticator
-  ansible.platform.authenticator_map:
-    name: "Always add users to org 1"
-    authenticator: "{{ some_authenticator.name }}"
-    revoke: false
-    map_type: organization
-    role: Organization Member
-    organization: "Organization 1"
-    triggers:
-      always: {}
-      never: {}
-    order: 10
+- name: "Create LDAP authentication map"
+    vars:
+      platform_maps:
+        - name: "Global Super Admins"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: is_superuser
+          triggers:
+            groups:
+              has_and:
+                - "cn=aap-admins,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 0
+        - name: "Prod-HR-CaaC-Admins-MAP-ORG"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: organization
+          role: Organization Admin
+          organization: "Prod-HR-CaaC"
+          team: prod-hr-team-admins
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-hr-admins,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 1
+        - name: "Prod-HR-CaaC-Users-MAP-ORG"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: organization
+          role: Organization Member
+          organization: "Prod-HR-CaaC"
+          team: prod-hr-team-users
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-hr-users,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 1
+        - name: "Prod-IT-CaaC-Admins-MAP-ORG"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: organization
+          role: Organization Admin
+          organization: "Prod-IT-CaaC"
+          team: prod-it-team-admins
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-it-admins,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 1
+        - name: "Prod-IT-CaaC-Users-MAP-ORG"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: organization
+          role: Organization Member
+          organization: "Prod-IT-CaaC"
+          team: prod-it-team-users
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-it-users,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 1
+        - name: "Prod-HR-CaaC-Admins-MAP-Team"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: team
+          role: Team Admin
+          organization: "Prod-HR-CaaC"
+          team: prod-hr-team-admins
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-hr-admins,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 2
+        - name: "Prod-HR-CaaC-Users-MAP-Team"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: team
+          role: Team Member
+          organization: "Prod-HR-CaaC"
+          team: prod-hr-team-users
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-hr-users,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 2
+        - name: "Prod-IT-CaaC-Admins-MAP-Team"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: team
+          role: Team Admin
+          organization: "Prod-IT-CaaC"
+          team: prod-it-team-admins
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-it-admins,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 2
+        - name: "Prod-IT-CaaC-Users-MAP-Team"
+          authenticator: "LDAPAuth"
+          revoke: true
+          map_type: team
+          role: Team Member
+          organization: "Prod-IT-CaaC"
+          team: prod-it-team-users
+          triggers:
+            groups:
+              has_and:
+                - "cn=prod-it-users,cn=groups,cn=accounts,dc=example,dc=com"
+          order: 2
+    ansible.platform.authenticator_map:
+      name: "{{ __platform_authenticator_maps_item.name | mandatory }}"
+      new_name: "{{ __platform_authenticator_maps_item.new_name | default(omit) }}"
+      authenticator: "{{ __platform_authenticator_maps_item.authenticator | default(omit) }}"
+      new_authenticator: "{{ __platform_authenticator_maps_item.new_authenticator | default(omit) }}"
+      revoke: "{{ __platform_authenticator_maps_item.revoke | default(omit) }}"
+      map_type: "{{ __platform_authenticator_maps_item.map_type | default(omit) }}"
+      team: "{{ __platform_authenticator_maps_item.team | default(omit) }}"
+      organization: "{{ __platform_authenticator_maps_item.organization | default(omit) }}"
+      role: "{{ __platform_authenticator_maps_item.role | default(omit) }}"
+      triggers: "{{ __platform_authenticator_maps_item.triggers | default(omit) }}"
+      order: "{{ __platform_authenticator_maps_item.order | default(omit) }}"
+      state: "{{ __platform_authenticator_maps_item.state | default(gateway_state | default(omit, true)) }}"
+      # Role Standard Options
+      gateway_config_file: "{{ gateway_config_file | default(omit, true) }}"
+      gateway_hostname: "{{ gateway_hostname | default(omit, true) }}"
+      gateway_password: "{{ gateway_password | default(omit, true) }}"
+      gateway_username: "{{ gateway_username | default(omit, true) }}"
+      gateway_token: "{{ gateway_token | default(omit, true) }}"
+      gateway_request_timeout: "{{ gateway_request_timeout | default(omit, true) }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(omit) }}"
+    # controller_settings must be either a dictionary/mapping or a list of dictionaries
+    loop: "{{ platform_authenticator_maps is mapping | ternary([platform_authenticator_maps], platform_authenticator_maps) }}"
+    loop_control:
+      loop_var: __platform_authenticator_maps_item
 ...
 """
 
