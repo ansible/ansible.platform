@@ -86,8 +86,8 @@ EXAMPLES = """
 - name: "Create OIDC authentication"
   vars:
     configuration:
-    # https://<OIDC URL>/realms/aap/.well-known/openid-configuration.
-      Note client need to provide only first part without / at the end. AAP oidc plugin appends "/.well-known/openid-configuration" automatically
+      # https://<OIDC URL>/realms/aap/.well-known/openid-configuration.
+      # Note client need to provide only first part without / at the end. AAP oidc plugin appends "/.well-known/openid-configuration" automatically
       OIDC_ENDPOINT: "https://<OIDC URL>/realms/aap"
       KEY: "<CLIENT_ID>"
       SECRET: "<SECRET>"
@@ -98,7 +98,7 @@ EXAMPLES = """
   ansible.platform.authenticator:
     name: OIDCAuth
     type: ansible_base.authentication.authenticator_plugins.oidc
-    configuration:  "{{ configuration }}"
+    configuration: "{{ configuration }}"
     order: 3
     state: present
     gateway_hostname: "{{ aap }}"
@@ -132,13 +132,12 @@ EXAMPLES = """
   ansible.platform.authenticator:
     name: LDAPAuth
     type: ansible_base.authentication.authenticator_plugins.ldap
-    configuration:  "{{ configuration }}"
+    configuration: "{{ configuration }}"
     order: 4
     state: present
     gateway_hostname: "{{ aap }}"
     gateway_token: "{{ aap_token.token }}"
     gateway_validate_certs: false
-...
 """
 
 
