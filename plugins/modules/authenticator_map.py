@@ -71,6 +71,7 @@ options:
 extends_documentation_fragment:
 - ansible.platform.state
 - ansible.platform.auth
+...
 """
 
 EXAMPLES = EXAMPLES = """

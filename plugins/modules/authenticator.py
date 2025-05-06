@@ -138,6 +138,7 @@ EXAMPLES = """
     gateway_hostname: "{{ aap }}"
     gateway_token: "{{ aap_token.token }}"
     gateway_validate_certs: false
+...
 """
 
 
