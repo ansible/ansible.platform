@@ -53,6 +53,21 @@ This collection can be used to automate to the creation of resources inside of t
 
 Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added. 
 
+## Authorization in playbook
+
+You can specify authentication by a combination of- aap_hostname, aap_username, aap_password
+
+```yaml
+- name: Manage AAP
+  hosts: localhost
+  tasks:
+    - name: Example for auth
+      ansible.platform.<module-name>:
+        your-module-parameters: parameter-values
+        aap_hostname: your-hostname
+        aap_username: your-username
+        aap_password: your-password
+```
 
 ## Testing
 
