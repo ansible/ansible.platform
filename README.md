@@ -55,7 +55,7 @@ Adding services (Controller, Event Driven Automation, Automation) can also be do
 
 ## Authenticating to AAP in a playbook
 
-Connecting to AAP requires specifying authentication variables (the ones prefixed by aap_ here) in the task. Alternatively, AAP_ environment variables can also be set. For a complete list of authentication variables that can be used, please refer to the module specific documentations.
+Connecting to AAP requires specifying authentication variables (the ones prefixed by `aap_` here) in the task. Alternatively, `AAP_` environment variables can also be set. For a complete list of authentication variables that can be used, please refer to the module specific documentations.
 
 ```yaml
 - name: Manage AAP
