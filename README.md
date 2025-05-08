@@ -55,7 +55,7 @@ Adding services (Controller, Event Driven Automation, Automation) can also be do
 
 ## Authorization in playbook
 
-You can specify authentication by a combination of- aap_hostname, aap_username, aap_password
+You can specify authentication by the below mentioned combination. It is recommended to refer module documentations for module-specific list of authentication options available.
 
 ```yaml
 - name: Manage AAP
