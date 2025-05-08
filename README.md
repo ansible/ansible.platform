@@ -53,6 +53,21 @@ This collection can be used to automate to the creation of resources inside of t
 
 Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added. 
 
+## Authenticating to AAP in a playbook
+
+Connecting to AAP requires specifying authentication variables (the ones prefixed by `aap_` here) in the task. Alternatively, `AAP_` environment variables can also be set. For a complete list of authentication variables that can be used, please refer to the module specific documentations.
+
+```yaml
+- name: Manage AAP
+  hosts: localhost
+  tasks:
+    - name: Example for auth
+      ansible.platform.<module-name>:
+        your-module-parameters: parameter-values
+        aap_hostname: your-hostname
+        aap_username: your-username
+        aap_password: your-password
+```
 
 ## Testing
 
