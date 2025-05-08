@@ -53,7 +53,7 @@ This collection can be used to automate to the creation of resources inside of t
 
 Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added. 
 
-## Authorization in playbook
+## Authenticating to AAP playbook
 
 You can specify authentication by the below mentioned combination. It is recommended to refer module documentations for module-specific list of authentication options available.
 
