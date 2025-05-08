@@ -1,0 +1,93 @@
+---
+name: integration tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+jobs:
+  integration:
+    name: collection integration test
+    runs-on: ubuntu-latest
+    env:
+      HEADLESS: "yes"
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: ansible/aap-gateway
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
+
+      - name: Checkout DAB branch if needed
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/scripts/get_dab_for_pr.py
+
+      - name: Build the image
+        run: make docker-compose-build
+
+      - name: Spin up the dev env
+        run: |
+          ansible-playbook -v tools/ansible/smoke-test-no-services.yml \
+            -e repo_root=$(pwd) \
+            -e gateway_vars=$(readlink -f container-startup.yml)
+
+      - name: Cleanup services
+        run: make cleanup-services
+
+      - name: Extract gateway password and set it as an environment variable
+        run: |
+          ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
+            echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+
+      - name: Perform integration tests
+        run: cd ansible-platform && make collection-test
+
+      - name: Dump the container logs on failure
+        run: docker compose -f tools/generated/docker-compose.yml logs
+        if: failure()
+
+  coverage_test:
+    name: collection integration check
+    runs-on: ubuntu-latest
+    env:
+      HEADLESS: "yes"
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: ansible/aap-gateway
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
+
+      - name: Checkout DAB branch if needed
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/scripts/get_dab_for_pr.py
+
+      - name: Start the dev environment
+        run: COMPOSE_UP_OPTS='-d' make docker-compose
+
+      - name: Install make
+        run: sudo apt install make
+
+      - name: Install python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install requirements
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+
+      - name: Perform completeness tests
+        run: cd ansible-platform && make collection-test-integration-check
+...
