@@ -48,5 +48,5 @@ Added `lightspeed` as a valid `service_type` choice for the `service_cluster` mo
 v2.5.20250528
 ======
 Support for dynamic `service_type` added.
-Internal route supported added (`service_cluster`).
-Control plane authentication configurability added (`service_cluster`).
+Internal route supported added (`service_cluster`) (development use only).
+Control plane authentication configurability added (`service_cluster`) (development use only).
