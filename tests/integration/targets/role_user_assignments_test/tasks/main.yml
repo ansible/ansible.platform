@@ -8,6 +8,7 @@
   ansible.builtin.set_fact:
     username: "GW-Collection-Test-RoleUserAssignments-{{ test_id }}"
     organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
+    name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
 
 - name: Run Tests
   module_defaults:
@@ -28,10 +29,30 @@
       ansible.builtin.assert:
         that:
           - user is changed
-    # </Users> -------------------
+
+    - name: Create User2
+      ansible.platform.user:
+        username: "{{ username }}--User-2"
+      register: user2
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - user2 is changed
+
+    - name: Create User3
+      ansible.platform.user:
+        username: "{{ username }}--User-3"
+      register: user3
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - user3 is changed
+
 
     # <Organizations> -------------------
-    - name: Create Organizations
+    - name: Create Organization 1
       ansible.platform.organization:
         name: "{{ organization_name }}"
       register: org
@@ -40,20 +61,155 @@
       ansible.builtin.assert:
         that:
           - org is changed
+
+    - name: Create Organization 2
+      ansible.platform.organization:
+        name: "{{ organization_name }}-2"
+      register: org2
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - org2 is changed
     # </Organizations> -------------------
+
+    # <Teams> -------------------
+    - name: Create Team 1
+      ansible.platform.team:
+        name: "{{ name_prefix }}-Team-1"
+        organization: "{{ org.name }}" # Org by name
+        description: Team 1
+      register: team1
+
+    - name: Assert that the creation changed the system
+      ansible.builtin.assert:
+        that:
+          - team1 is changed
+
+    - name: Create Team 2
+      ansible.platform.team:
+        name: "{{ name_prefix }}-Team-2"
+        organization: "{{ org2.name }}" # Org by name
+        description: Team 2
+      register: team2
+
+    - name: Assert that the creation changed the system
+      ansible.builtin.assert:
+        that:
+          - team2 is changed
+    # </Teams> -------------------
 
     # # <Role User Assignments> -------------------
     - name: Assign Admins by Role User Assignments
-      ansible.platform.role_user_assignment:
+      ansible.platform.role_user_assignment: &org_assignment
         object_id: "{{ org.id }}"
         role_definition: Organization Admin
-        user: "{{ user.id }}"
+        user: "{{ user2.id }}"
       register: org_admin_role_assignment
 
     - name: Assert that adding user as org admin worked
       ansible.builtin.assert:
         that:
           - org_admin_role_assignment is changed
+
+    # Multiple assignments
+    - name: Assign Admins by Role User Assignments (idempotent check)
+      ansible.platform.role_user_assignment: *org_assignment
+      register: org_admin_role_assignment_check
+
+    - name: Assert that org_admin_role_assignment_check is not changed
+      ansible.builtin.assert:
+        that:
+          - org_admin_role_assignment_check is not changed
+
+    - name: Assign Organization Admin by Role User Assignments
+      ansible.platform.role_user_assignment: &orgs_assignment
+        object_ids: ["{{ org.id }}", "{{ organization_name }}-2"]
+        role_definition: Organization Admin
+        user: "{{ user3.id }}"
+      register: org_admin_role_assignment2
+
+    - name: Assert that adding user as org admin worked
+      ansible.builtin.assert:
+        that:
+          - org_admin_role_assignment2 is changed
+
+    - name: Assign Organization Admin by Role User Assignments (idempotent check)
+      ansible.platform.role_user_assignment: *orgs_assignment
+      register: org_admin_role_assignment2_check
+
+    - name: Assert that org_admin_role_assignment2_check is not changed
+      ansible.builtin.assert:
+        that:
+          - org_admin_role_assignment2_check is not changed
+
+    - name: Assign Team Admin by Role User Assignments
+      ansible.platform.role_user_assignment: &team_assignment
+        object_ids: ["{{ team1.id }}", "{{ name_prefix }}-Team-2"]
+        role_definition: Team Admin
+        user: "{{ user2.id }}"
+      register: team_admin_role_assignment
+
+    - name: Assert that adding user as team admin worked
+      ansible.builtin.assert:
+        that:
+          - team_admin_role_assignment is changed
+
+    - name: Assign Team Admin by Role User Assignments (idempotent check)
+      ansible.platform.role_user_assignment: *team_assignment
+      register: team_admin_role_assignment_check
+
+    - name: Assert that team_admin_role_assignment_check is not changed
+      ansible.builtin.assert:
+        that:
+          - team_admin_role_assignment_check is not changed
+
+    - name: Assign Platform Auditor by Role User Assignments
+      ansible.platform.role_user_assignment: &platform_auditor_assignment
+        role_definition: Platform Auditor
+        user: "{{ user3.id }}"
+      register: platform_auditor_role_assignment
+
+    - name: Assert that adding user as team admin worked
+      ansible.builtin.assert:
+        that:
+          - platform_auditor_role_assignment is changed
+
+    - name: Assign Platform Auditor by Role User Assignments check
+      ansible.platform.role_user_assignment: *platform_auditor_assignment
+      register: platform_auditor_role_assignment_check
+
+    - name: Assert that platform_auditor_role_assignment_check is not changed
+      ansible.builtin.assert:
+        that:
+          - platform_auditor_role_assignment_check is not changed
+
+    - name: Delete Role User Assignments for Organization Admin
+      ansible.platform.role_user_assignment:
+        state: absent
+        object_ids: ["{{ org.id }}", "{{ organization_name }}-2"]
+        role_definition: Organization Admin
+        user: "{{ user3.id }}"
+      register: delete_role_user_assignment
+
+    - name: Check Existence of Role User Assignments for orgs
+      ansible.platform.role_user_assignment:
+        state: exists
+        object_ids: ["{{ org.id }}", "{{ organization_name }}-2"]
+        role_definition: Organization Admin
+        user: "{{ user3.id }}"
+      register: role_definition_exists_check
+      ignore_errors: true
+
+    - name: Assert that the role role_definition_exists_check is failed
+      ansible.builtin.assert:
+        that:
+          - role_definition_exists_check is failed
+
+    - name: Assert that removing user as org admin worked
+      ansible.builtin.assert:
+        that:
+          - delete_role_user_assignment is changed
 
     - name: Check Existence of Role User Assignments
       ansible.platform.role_user_assignment:
