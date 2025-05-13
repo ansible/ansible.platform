@@ -1,8 +1,10 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20250507
+## Changelog for v2.5.20250528
 
-* Added lightspeed as a valid `service_type` choice for the `service_cluster` module
+* Support for dynamic `service_type` added.
+* Internal route supported added (`service_cluster`).
+* Control plane authentication configurability added (`service_cluster`).
 
 ## Description
 

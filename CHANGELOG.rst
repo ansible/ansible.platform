@@ -45,7 +45,8 @@ v2.5.20250507
 ======
 Added `lightspeed` as a valid `service_type` choice for the `service_cluster` module
 
-v2.5.20250521
+v2.5.20250528
 ======
-Support for dynamic `service_type` added
-
+Support for dynamic `service_type` added.
+Internal route supported added (`service_cluster`).
+Control plane authentication configurability added (`service_cluster`).
