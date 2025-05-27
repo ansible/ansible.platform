@@ -50,3 +50,7 @@ v2.5.20250528
 Support for dynamic `service_type` added.
 Internal route supported added (`service_cluster`) (development use only).
 Control plane authentication configurability added (`service_cluster`) (development use only).
+
+v2.5.20250604
+======
+Add `healthy_panic_threshold` parameter to the `ansible.platform.service_cluster` module
