@@ -81,6 +81,6 @@ collection-test-integration-check:
 	./tests/test_integration_check.py
 
 ## Run the collections test-completness check
-collection-test-completeness:
+collection-test-completeness: collection-install
 	ansible-playbook /tmp/collections/ansible_collections/ansible/platform/tools/check_gateway_up.yaml && \
 	./tests/test_completeness.py
