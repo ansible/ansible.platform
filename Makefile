@@ -82,6 +82,7 @@ collection-test-integration-check:
 
 ## Run the collections test-completness check
 collection-test-completeness: collection-install
+	echo 'gateway_hostname: $(GATEWAY_HOST)' > /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	echo 'gateway_password: $(GATEWAY_PASSWORD)' > /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	ansible-playbook /tmp/collections/ansible_collections/ansible/platform/tools/check_gateway_up.yaml && \
