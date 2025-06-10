@@ -127,11 +127,6 @@ jobs:
           ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
             echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
 
-      - name: Extract gateway host and set it as an environment variable
-        run: |
-          GW_HOST=$(awk '/gateway_host/{print $2}' container-startup.yml | xargs echo) &&
-            echo "GATEWAY_HOST=$GW_HOST" >> $GITHUB_ENV
-
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
