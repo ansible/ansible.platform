@@ -122,6 +122,11 @@ jobs:
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
 
+      - name: Extract gateway password and set it as an environment variable
+        run: |
+          ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
+            echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
+
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
