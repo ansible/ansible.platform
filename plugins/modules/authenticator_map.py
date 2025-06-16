@@ -68,6 +68,7 @@ options:
       - Items with the same order will be executed in random order
       - Value must be greater or equal to 0
       - Defaults to 0 (by API)
+
 extends_documentation_fragment:
 - ansible.platform.state
 - ansible.platform.auth
