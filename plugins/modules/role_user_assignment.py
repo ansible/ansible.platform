@@ -47,7 +47,7 @@ options:
         type: str
     object_ansible_id:
         description:
-            - Resource id of the object this role applies to. Alternative to the object_id field.
+            - UUID of the object this role applies to. Alternative to the object_id/object_ids field.
         required: False
         type: str
     user_ansible_id:
@@ -80,6 +80,14 @@ EXAMPLES = '''
     object_ids: ['1', 'team2']
     user: bob
     state: present
+
+- name: Give Bob team admin role for org 1 using object_ansible_id
+  ansible.platform.role_user_assignment:
+    role_definition: Team Admin
+    object_ansible_id: ansible-id-of-the-team-object
+    user: bob
+    state: present
+
 ...
 '''
 
@@ -220,6 +228,8 @@ def main():
 
     elif object_ansible_id:
         kwargs["object_ansible_id"] = object_ansible_id
+        role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})
+        role_args['role_user_assignment'] = role_user_assignment
         assign_user_role(module, **role_args)
 
     module.exit_json(**module.json_output)
