@@ -45,6 +45,7 @@ options:
     user:
         description:
             - The name or id of the user to assign to the object.
+            - This option is mutually exclusive with I(user_ansible_id).
         required: False
         type: str
     object_ansible_id:
@@ -56,6 +57,7 @@ options:
     user_ansible_id:
         description:
             - Resource id of the user who will receive permissions from this assignment. Alternative to user field.
+            - This option is mutually exclusive with I(user).
         required: False
         type: str
     state:
