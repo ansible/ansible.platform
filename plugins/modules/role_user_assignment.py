@@ -32,11 +32,13 @@ options:
             - For associating a user to team(s)/organization(s), please use the object_ids param.
             - HORIZONTALLINE
             - Primary key/Name of the object this assignment applies to.
+            - This option is mutually exclusive with I(object_ids) and I(object_ansible_id).
         required: False
         type: int
     object_ids:
         description:
-            - List of object IDs or names this assignment applies to.
+            - List of object IDs(Primary Key ) or names this assignment applies to.
+            - This option is mutually exclusive with I(object_id) and I(object_ansible_id).
         required: False
         type: list
         elements: str
@@ -48,6 +50,7 @@ options:
     object_ansible_id:
         description:
             - UUID of the object(team/organization) this role applies to. Alternative to the object_id/object_ids field.
+            - This option is mutually exclusive with I(object_id) and I(object_ids)
         required: False
         type: str
     user_ansible_id:
@@ -84,7 +87,7 @@ EXAMPLES = '''
 - name: Give Bob team admin role for org 1 using object_ansible_id
   ansible.platform.role_user_assignment:
     role_definition: Team Admin
-    object_ansible_id: ansible-id-of-the-team-object
+    object_ansible_id: c891b9f7-cc08-4b62-9843-c9ebfda262a9
     user: bob
     state: present
 
