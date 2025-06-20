@@ -32,27 +32,32 @@ options:
             - For associating a user to team(s)/organization(s), please use the object_ids param.
             - HORIZONTALLINE
             - Primary key/Name of the object this assignment applies to.
+            - This option is mutually exclusive with I(object_ids) and I(object_ansible_id).
         required: False
         type: int
     object_ids:
         description:
-            - List of object IDs or names this assignment applies to.
+            - List of object IDs(Primary Key ) or names this assignment applies to.
+            - This option is mutually exclusive with I(object_id) and I(object_ansible_id).
         required: False
         type: list
         elements: str
     user:
         description:
             - The name or id of the user to assign to the object.
+            - This option is mutually exclusive with I(user_ansible_id).
         required: False
         type: str
     object_ansible_id:
         description:
-            - Resource id of the object this role applies to. Alternative to the object_id field.
+            - UUID of the object(team/organization) this role applies to. Alternative to the object_id/object_ids field.
+            - This option is mutually exclusive with I(object_id) and I(object_ids)
         required: False
         type: str
     user_ansible_id:
         description:
             - Resource id of the user who will receive permissions from this assignment. Alternative to user field.
+            - This option is mutually exclusive with I(user).
         required: False
         type: str
     state:
@@ -80,6 +85,14 @@ EXAMPLES = '''
     object_ids: ['1', 'team2']
     user: bob
     state: present
+
+- name: Give Bob team admin role for org 1 using object_ansible_id
+  ansible.platform.role_user_assignment:
+    role_definition: Team Admin
+    object_ansible_id: c891b9f7-cc08-4b62-9843-c9ebfda262a9
+    user: bob
+    state: present
+
 ...
 '''
 
@@ -220,6 +233,8 @@ def main():
 
     elif object_ansible_id:
         kwargs["object_ansible_id"] = object_ansible_id
+        role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})
+        role_args['role_user_assignment'] = role_user_assignment
         assign_user_role(module, **role_args)
 
     module.exit_json(**module.json_output)
