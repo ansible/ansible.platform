@@ -47,7 +47,7 @@ options:
         type: str
     object_ansible_id:
         description:
-            - UUID of the object this role applies to. Alternative to the object_id/object_ids field.
+            - UUID of the object(team/organization) this role applies to. Alternative to the object_id/object_ids field.
         required: False
         type: str
     user_ansible_id:
