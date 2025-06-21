@@ -1,0 +1,17 @@
+---
+- name: Ensure that AAP Gateway is up and running
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Validate server is up with a URI call
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | default('https://localhost:8000') }}/api/gateway/v1/settings/"
+        force_basic_auth: true
+        url_username: "{{ gateway_username | default('admin') }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | default(False) }}"
+      register: server_ping
+      until: server_ping is not failed
+      retries: 30
+      delay: 2
+...
