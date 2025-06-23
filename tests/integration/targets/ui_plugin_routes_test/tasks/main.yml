@@ -1,0 +1,371 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: UI Plugin Route Module Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname | default(omit, true) }}"
+      gateway_username: "{{ gateway_username | default(omit, true) }}"
+      gateway_password: "{{ gateway_password | default(omit, true) }}"
+      gateway_token: "{{ gateway_oauthtoken | default(omit, true) }}"
+      gateway_request_timeout: "{{ gateway_request_timeout | default(omit, 10) }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(omit) }}"
+
+  block:
+    ### Create Http Port ###
+    - name: Create Http Ports
+      ansible.platform.http_port:
+        name: "{{ item.name }}"
+        number: "{{ item.number }}"
+        state: present
+      loop: "{{ gateway_http_ports }}"
+      vars:
+        gateway_http_ports:
+          - name: "{{ test_id }}Port 9086"
+            number: 9086
+          - name: "{{ test_id }}Port 8055"
+            number: 8055
+      register: __http_port_create_result
+
+    - name: Assert Created Http Port
+      ansible.builtin.assert:
+        that:
+          - __http_port_create_result.results[0] is changed
+          - __http_port_create_result.results[1] is changed
+
+    - name: Create Service Types
+      ansible.platform.service_type:
+        name: "{{ item.name }}"
+        ping_url: "/api/ping/"
+        login_path: "/api/login/"
+        logout_path: "/api/logout/"
+        service_index_path: "/api/service-index/"
+      loop: "{{ gateway_service_types }}"
+      vars:
+        gateway_service_types:
+          - name: "{{ test_id }}hub"
+          - name: "{{ test_id }}controller"
+          - name: "{{ test_id }}eda"
+      register: __service_types_create_result
+
+    ### Create Service Clusters ###
+    - name: Create Service Clusters if necessary
+      ansible.platform.service_cluster:
+        name: "{{ item.name }}"
+        service_type: "{{ item.service_type }}"
+        state: present
+      loop: "{{ gateway_service_clusters }}"
+      vars:
+        gateway_service_clusters:
+          - name: "{{ test_id }}hub"
+            service_type: "{{ __service_types_create_result.results[0].id }}"
+          - name: "{{ test_id }}controller"
+            service_type: "{{ __service_types_create_result.results[1].id }}"
+          - name: "{{ test_id }}eda"
+            service_type: "{{ __service_types_create_result.results[2].id }}"
+
+    ### Create UI Plugin Routes ###
+    - name: Create UI Plugin Routes with check mode
+      ansible.platform.ui_plugin_route:
+        name: "{{ item.name | mandatory }}"
+        new_name: "{{ item.new_name | default(omit) }}"
+        description: "{{ item.description | default(omit) }}"
+        ui_plugin_path: "{{ item.ui_plugin_path | default(omit) }}"
+        http_port: "{{ item.http_port | default(omit) }}"
+        service_cluster: "{{ item.service_cluster | default(omit) }}"
+        is_service_https: "{{ item.is_service_https | default(omit) }}"
+        service_port: "{{ item.service_port | default(omit) }}"
+        node_tags: "{{ item.node_tags | default(omit) }}"
+        order: "{{ item.order | default(omit) }}"
+        state: present
+      loop: "{{ gateway_ui_plugin_routes }}"
+      vars:
+        gateway_ui_plugin_routes:
+          - name: "{{ test_id }}Hub Dashboard Plugin"
+            description: Hub Dashboard UI Plugin Route
+            ui_plugin_path: "dashboard"
+            http_port: "{{ test_id }}Port 9086"
+            service_cluster: "{{ test_id }}hub"
+            service_port: 8000
+            order: 50
+      check_mode: true
+
+    - name: Search for the UI plugin route and assert that it does not exist
+      ansible.builtin.set_fact:
+        item_that_should_not_exist:
+          "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes',
+          query_params={'name': '{{ test_id }}Hub Dashboard Plugin'}, **connection_info) }}"
+
+    - name: Assert that UI Plugin Route does not exist
+      ansible.builtin.assert:
+        that:
+          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+        fail_msg: "UI Plugin Route '{{ test_id }}Hub Dashboard Plugin' exists in the system!"
+
+    - name: Create UI Plugin Routes
+      ansible.platform.ui_plugin_route:
+        name: "{{ item.name | mandatory }}"
+        new_name: "{{ item.new_name | default(omit) }}"
+        description: "{{ item.description | default(omit) }}"
+        ui_plugin_path: "{{ item.ui_plugin_path | default(omit) }}"
+        http_port: "{{ item.http_port | default(omit) }}"
+        service_cluster: "{{ item.service_cluster | default(omit) }}"
+        is_service_https: "{{ item.is_service_https | default(omit) }}"
+        service_port: "{{ item.service_port | default(omit) }}"
+        node_tags: "{{ item.node_tags | default(omit) }}"
+        order: "{{ item.order | default(omit) }}"
+        state: present
+      loop: "{{ gateway_ui_plugin_routes }}"
+      vars:
+        gateway_ui_plugin_routes:
+          - name: "{{ test_id }}Hub Dashboard Plugin"
+            description: Hub Dashboard UI Plugin Route
+            ui_plugin_path: "dashboard"
+            http_port: "{{ test_id }}Port 9086"
+            service_cluster: "{{ test_id }}hub"
+            service_port: 1235
+            order: 50
+          - name: "{{ test_id }}Controller Plugin"
+            ui_plugin_path: "custom-plugin"
+            http_port: "{{ __http_port_create_result.results[0].id }}" # Port 9086
+            service_cluster: "{{ test_id }}controller"
+            is_service_https: true
+            service_port: 1236
+          - name: "{{ test_id }}EDA Plugin Route"
+            ui_plugin_path: "eda-dashboard"
+            http_port: "{{ test_id }}Port 8055"
+            service_cluster: "{{ test_id }}eda"
+            service_port: 1237
+            node_tags: "frontend,plugin"
+      register: __ui_plugin_routes_result
+
+    - name: Assert Create UI Plugin Routes tests passed
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_routes_result.results[0] is changed
+          - __ui_plugin_routes_result.results[1] is changed
+          - __ui_plugin_routes_result.results[2] is changed
+
+    ### Check that gateway_path was auto-generated ###
+    # - name: Get created UI Plugin Route details
+    #   ansible.builtin.set_fact:
+    #     hub_plugin_route:
+    #       "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes',
+    #       query_params={'name': '{{ test_id }}Hub Dashboard Plugin'}, **connection_info)[0] }}"
+
+    ### Debug: Check what was actually created ###
+    # - name: Debug - Get ALL UI Plugin Routes
+    #   ansible.builtin.set_fact:
+    #     all_ui_plugin_routes: "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes', **connection_info) }}"
+
+    # - name: Debug - Show all UI Plugin Routes
+    #   ansible.builtin.debug:
+    #     var: all_ui_plugin_routes
+
+    # - name: Debug - Show creation result details
+    #   ansible.builtin.debug:
+    #     var: __ui_plugin_routes_result
+
+    - name: Build expected route name
+      ansible.builtin.set_fact:
+        expected_route_name: "{{ test_id }}Hub Dashboard Plugin"
+
+    # - name: Get created UI Plugin Route details
+    #   ansible.builtin.set_fact:
+    #     hub_plugin_route_list:
+    #       "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes',
+    #       query_params={'name__icontains': '{{ test_id }}Hub'}, **connection_info) }}"
+
+    # - name: Debug UI Plugin Route lookup result
+    #   ansible.builtin.debug:
+    #     var: hub_plugin_route_list
+
+    # - name: Assert UI Plugin Route was found
+    #   ansible.builtin.assert:
+    #     that:
+    #       - hub_plugin_route_list is defined
+    #       - hub_plugin_route_list | length > 0
+    #     fail_msg: "UI Plugin Route '{{ expected_route_name }}' was not found. Found: {{ hub_plugin_route_list }}"
+
+    # - name: Set UI Plugin Route details
+    #   ansible.builtin.set_fact:
+    #     hub_plugin_route: "{{ hub_plugin_route_list[0] }}"
+
+    - name: Get created UI Plugin Route details
+      ansible.builtin.set_fact:
+        hub_plugin_route_result:
+          "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes',
+          query_params={'name': expected_route_name}, **connection_info) }}"
+
+    - name: Debug UI Plugin Route lookup result
+      ansible.builtin.debug:
+        var: hub_plugin_route_result
+
+    - name: Assert UI Plugin Route was found
+      ansible.builtin.assert:
+        that:
+          - hub_plugin_route_result is defined
+          - hub_plugin_route_result | length > 0
+        fail_msg: "UI Plugin Route '{{ expected_route_name }}' was not found. Found: {{ hub_plugin_route_result }}"
+
+    - name: Set UI Plugin Route details
+      ansible.builtin.set_fact:
+        hub_plugin_route: "{{ hub_plugin_route_result }}"
+
+    - name: Assert that gateway_path was auto-generated correctly
+      ansible.builtin.assert:
+        that:
+          - hub_plugin_route.gateway_path is defined
+          - hub_plugin_route.gateway_path is match("/plugin/.*/dashboard/")
+          - hub_plugin_route.ui_plugin_path == "dashboard"
+        fail_msg: "UI Plugin Route auto-generation failed: {{ hub_plugin_route }}"
+
+    ### 2nd run for UI Plugin Routes - Test Idempotency ###
+    - name: Check UI Plugin Routes Idempotency
+      ansible.platform.ui_plugin_route:
+        name: "{{ item.name | mandatory }}"
+        new_name: "{{ item.new_name | default(omit) }}"
+        description: "{{ item.description | default(omit) }}"
+        ui_plugin_path: "{{ item.ui_plugin_path | default(omit) }}"
+        http_port: "{{ item.http_port | default(omit) }}"
+        service_cluster: "{{ item.service_cluster | default(omit) }}"
+        is_service_https: "{{ item.is_service_https | default(omit) }}"
+        service_port: "{{ item.service_port | default(omit) }}"
+        node_tags: "{{ item.node_tags | default(omit) }}"
+        order: "{{ item.order | default(omit) }}"
+        state: "{{ item.state | default('present') }}"
+      loop: "{{ gateway_ui_plugin_routes }}"
+      vars:
+        gateway_ui_plugin_routes:
+          # No change - should be idempotent
+          - name: "{{ test_id }}Hub Dashboard Plugin"
+            description: Hub Dashboard UI Plugin Route
+            ui_plugin_path: "dashboard"
+            http_port: "{{ test_id }}Port 9086"
+            service_cluster: "{{ test_id }}hub"
+            service_port: 1235
+            order: 50
+          # Update - change service port
+          - name: "{{ test_id }}Controller Plugin"
+            ui_plugin_path: "custom-plugin"
+            http_port: "{{ test_id }}Port 9086"
+            service_cluster: "{{ test_id }}controller"
+            is_service_https: false # Changed
+            service_port: 1236
+          # Check for existence only
+          - name: "{{ test_id }}EDA Plugin Route"
+            state: exists
+          # Update different field
+          - name: "{{ test_id }}EDA Plugin Route"
+            ui_plugin_path: "eda-dashboard"
+            http_port: "{{ test_id }}Port 8055"
+            service_cluster: "{{ test_id }}eda"
+            service_port: 1238 # Changed
+            node_tags: "frontend,plugin"
+          # Non-existing route
+          - name: "{{ test_id }}Non-existing Plugin"
+            ui_plugin_path: "fake-plugin"
+            http_port: "{{ test_id }}Port 8055"
+            service_cluster: "{{ test_id }}eda"
+            state: absent
+      register: __ui_plugin_routes_result
+
+    - name: Assert Check UI Plugin Routes tests passed
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_routes_result.results[0] is not changed
+          - __ui_plugin_routes_result.results[1] is changed
+          - __ui_plugin_routes_result.results[2] is not changed
+          - __ui_plugin_routes_result.results[3] is changed
+          - __ui_plugin_routes_result.results[4] is not changed
+
+    ### Test Rename ###
+    - name: Rename UI Plugin Route
+      ansible.platform.ui_plugin_route:
+        name: "{{ test_id }}Hub Dashboard Plugin"
+        new_name: "{{ test_id }}Hub Admin Plugin"
+      register: __ui_plugin_route_rename_result
+
+    - name: Assert Rename UI Plugin Route tests passed
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_route_rename_result is changed
+
+    - name: Check Rename UI Plugin Routes
+      ansible.platform.ui_plugin_route:
+        name: "{{ item.name | mandatory }}"
+        state: "{{ item.state | default('present') }}"
+      loop: "{{ gateway_ui_plugin_routes }}"
+      vars:
+        gateway_ui_plugin_routes:
+          - name: "{{ test_id }}Hub Dashboard Plugin"
+            state: absent # Should not exist anymore
+          - name: "{{ test_id }}Hub Admin Plugin"
+            state: exists # Should exist now
+      register: __ui_plugin_route_rename_result
+
+    - name: Assert Check Rename UI Plugin Routes tests passed
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_route_rename_result.results[0] is not changed
+          - __ui_plugin_route_rename_result.results[1] is not changed
+
+  always:
+    ### Delete UI Plugin Routes ###
+    - name: Delete UI Plugin Routes
+      ansible.platform.ui_plugin_route:
+        name: "{{ item.name | mandatory }}"
+        state: absent
+      loop: "{{ gateway_ui_plugin_routes }}"
+      vars:
+        gateway_ui_plugin_routes:
+          # Does not exist (was renamed)
+          - name: "{{ test_id }}Hub Dashboard Plugin"
+          # Exists (renamed version)
+          - name: "{{ test_id }}Hub Admin Plugin"
+          # Exists
+          - name: "{{ test_id }}Controller Plugin"
+          # Exists
+          - name: "{{ test_id }}EDA Plugin Route"
+          # Does not exist
+          - name: "{{ test_id }}Non-existing Plugin"
+
+    ### Delete Clusters ###
+    - name: Delete Service Clusters
+      ansible.platform.service_cluster:
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ gateway_service_clusters }}"
+      vars:
+        gateway_service_clusters:
+          - name: "{{ test_id }}hub"
+          - name: "{{ test_id }}controller"
+          - name: "{{ test_id }}eda"
+
+    ### Delete Service Types ###
+    - name: Delete Service Types
+      ansible.platform.service_type:
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ gateway_service_types }}"
+      vars:
+        gateway_service_types:
+          - name: "{{ test_id }}hub"
+          - name: "{{ test_id }}controller"
+          - name: "{{ test_id }}eda"
+
+    ### Delete Ports ###
+    - name: Delete Http Ports
+      ansible.platform.http_port:
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ gateway_http_ports }}"
+      vars:
+        gateway_http_ports:
+          - name: "{{ test_id }}Port 9086"
+          - name: "{{ test_id }}Port 8055"
+      register: __http_port_create_result
+...
