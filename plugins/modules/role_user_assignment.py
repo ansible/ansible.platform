@@ -27,9 +27,19 @@ options:
         type: str
     object_id:
         description:
-            - Primary key of the object this assignment applies to.
+            - B(Deprecated)
+            - This option is deprecated and will be removed in a release after 2026-01-31.
+            - For associating a user to team(s)/organization(s), please use the object_ids param.
+            - HORIZONTALLINE
+            - Primary key/Name of the object this assignment applies to.
         required: False
         type: int
+    object_ids:
+        description:
+            - List of object IDs or names this assignment applies to.
+        required: False
+        type: list
+        elements: str
     user:
         description:
             - The name or id of the user to assign to the object.
@@ -63,17 +73,59 @@ EXAMPLES = '''
     object_id: 1
     user: bob
     state: present
+
+- name: Give Bob Team admin role for teams with id 1 and name "team2"
+  ansible.platform.role_user_assignment:
+    role_definition: Team Admin
+    object_ids: ['1', 'team2']
+    user: bob
+    state: present
 ...
 '''
 
 from ..module_utils.aap_module import AAPModule
 
 
+def assign_user_role(module, auto_exit=False, **role_args):
+    """
+    Assigns a user role to a specific object.
+    Args:
+        module:(AAPModule) Ansible module instance.
+        auto_exit:(bool) If True, the module will exit automatically after the operation.
+        role_args:(dict) role assignment parameters.
+    """
+    if role_args.get('state') == 'exists' and not role_args.get('role_user_assignment'):
+
+        module.fail_json(
+            msg=(
+                f"User role assignment does not exist: {role_args.get('role_definition_str')}, "
+                f"user: {role_args.get('user_param') or role_args.get('user_ansible_id')}, "
+                f"object: {role_args.get('object_id') or role_args.get('object_ansible_id')}"
+            )
+        )
+
+        module.exit_json(**module.json_output)
+
+    elif role_args.get('state') == 'absent':
+        module.delete_if_needed(role_args.get('role_user_assignment'))
+
+    elif role_args.get('state') == 'present':
+        module.create_if_needed(
+            role_args.get('role_user_assignment'),
+            role_args.get('kwargs'),
+            endpoint='role_user_assignments',
+            item_type='role_user_assignment',
+            auto_exit=auto_exit
+        )
+    return
+
+
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
         user=dict(required=False, type='str'),
-        object_id=dict(required=False, type='int'),
+        object_id=dict(required=False, type="int"),
+        object_ids=dict(required=False, type='list', elements='str'),
         role_definition=dict(required=True, type='str'),
         object_ansible_id=dict(required=False, type='str'),
         user_ansible_id=dict(required=False, type='str'),
@@ -84,12 +136,15 @@ def main():
         argument_spec=argument_spec,
         mutually_exclusive=[
             ('user', 'user_ansible_id'),
-            ('object_id', 'object_ansible_id'),
+            ('object_ids', 'object_ansible_id'),
+            ('object_ids', 'object_id'),
+            ('object_id', 'object_ansible_id')
         ],
     )
 
     user_param = module.params.get('user')
     object_id = module.params.get('object_id')
+    object_ids = module.params.get('object_ids')
     role_definition_str = module.params.get('role_definition')
     object_ansible_id = module.params.get('object_ansible_id')
     user_ansible_id = module.params.get('user_ansible_id')
@@ -102,35 +157,72 @@ def main():
         'role_definition': role_definition['id'],
     }
 
-    if object_id is not None:
-        kwargs['object_id'] = object_id
+    if object_id:
+        object_id = [object_id]
+        kwargs['object_id'] = [object_id]
+        module.deprecate(
+            msg="The usage of 'object_id' parameter in the 'role_user_assignment' module is not recommended. "
+            "For associating a user to team(s)/organization(s), please use the 'object_ids' parameter. ",
+            date="2026-01-31",
+            collection_name="ansible.platform",
+        )
+    if object_ids is not None:
+        kwargs['object_id'] = object_ids
     if user is not None:
         kwargs['user'] = user['id']
-    if object_ansible_id is not None:
-        kwargs['object_ansible_id'] = object_ansible_id
     if user_ansible_id is not None:
         kwargs['user_ansible_id'] = user_ansible_id
 
-    role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})
+    role_map = {
+        'Team': 'teams',
+        'Organization': 'organizations',
+    }
 
-    if state == 'exists':
-        if role_user_assignment is None:
-            module.fail_json(
-                msg=f'User role assignment does not exist: {role_definition_str}, '
-                f'user: {user_param or user_ansible_id}, object: {object_id or object_ansible_id}'
-            )
-        module.exit_json(**module.json_output)
+    entity_type = next((
+        mapped
+        for prefix, mapped in role_map.items()
+        if role_definition_str.startswith(prefix)
+    ), None)
+    object_param = object_ids or object_id
 
-    elif state == 'absent':
-        module.delete_if_needed(role_user_assignment)
+    role_args = {
+        'role_definition_str': role_definition_str,
+        'user_param': user_param,
+        'user_ansible_id': user_ansible_id,
+        'state': state,
+        'kwargs': kwargs,
+    }
 
-    elif state == 'present':
-        module.create_if_needed(
-            role_user_assignment,
-            kwargs,
-            endpoint='role_user_assignments',
-            item_type='role_user_assignment',
-        )
+    if role_definition_str.lower().startswith('platform') and role_definition["id"] == 1:
+        role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})
+        role_args['role_user_assignment'] = role_user_assignment
+        assign_user_role(module, **role_args)
+
+    elif entity_type and object_param:
+
+        for entity in object_param:
+
+            if not isinstance(entity, int):
+                response = module.get_one(entity_type, allow_none=True, name_or_id=entity)
+                if response is None:
+                    module.fail_json(
+                        msg=f"Unable to find {entity_type} with name or id: {entity}"
+                    )
+                entity = response.get('id')
+
+            if entity:
+                kwargs['object_id'] = entity
+
+            role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})
+            role_args['role_user_assignment'] = role_user_assignment
+
+            assign_user_role(module, **role_args)
+
+    elif object_ansible_id:
+        kwargs["object_ansible_id"] = object_ansible_id
+        assign_user_role(module, **role_args)
+
+    module.exit_json(**module.json_output)
 
 
 if __name__ == '__main__':
