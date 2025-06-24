@@ -74,18 +74,209 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
-- name: Add an authenticator map to an existing authenticator
+- name: Create LDAP authentication map - Global Super Admins
   ansible.platform.authenticator_map:
-    name: "Always add users to org 1"
-    authenticator: "{{ some_authenticator.name }}"
-    revoke: false
+    name: "Global Super Admins"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: is_superuser
+    triggers:
+      groups:
+        has_and:
+          - "cn=aap-admins,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 0
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_1
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-HR-CaaC-Admins-MAP-ORG
+  ansible.platform.authenticator_map:
+    name: "Prod-HR-CaaC-Admins-MAP-ORG"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: organization
+    role: Organization Admin
+    organization: "Prod-HR-CaaC"
+    team: prod-hr-team-admins
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-hr-admins,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 1
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_2
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-HR-CaaC-Users-MAP-ORG
+  ansible.platform.authenticator_map:
+    name: "Prod-HR-CaaC-Users-MAP-ORG"
+    authenticator: "LDAPAuth"
+    revoke: true
     map_type: organization
     role: Organization Member
-    organization: "Organization 1"
+    organization: "Prod-HR-CaaC"
+    team: prod-hr-team-users
     triggers:
-      always: {}
-      never: {}
-    order: 10
+      groups:
+        has_and:
+          - "cn=prod-hr-users,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 1
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_3
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-IT-CaaC-Admins-MAP-ORG
+  ansible.platform.authenticator_map:
+    name: "Prod-IT-CaaC-Admins-MAP-ORG"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: organization
+    role: Organization Admin
+    organization: "Prod-IT-CaaC"
+    team: prod-it-team-admins
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-it-admins,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 1
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_4
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-IT-CaaC-Users-MAP-ORG
+  ansible.platform.authenticator_map:
+    name: "Prod-IT-CaaC-Users-MAP-ORG"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: organization
+    role: Organization Member
+    organization: "Prod-IT-CaaC"
+    team: prod-it-team-users
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-it-users,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 1
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_5
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-HR-CaaC-Admins-MAP-Team
+  ansible.platform.authenticator_map:
+    name: "Prod-HR-CaaC-Admins-MAP-Team"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: team
+    role: Team Admin
+    organization: "Prod-HR-CaaC"
+    team: prod-hr-team-admins
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-hr-admins,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 2
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_6
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-HR-CaaC-Users-MAP-Team
+  ansible.platform.authenticator_map:
+    name: "Prod-HR-CaaC-Users-MAP-Team"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: team
+    role: Team Member
+    organization: "Prod-HR-CaaC"
+    team: prod-hr-team-users
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-hr-users,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 2
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_7
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-IT-CaaC-Admins-MAP-Team
+  ansible.platform.authenticator_map:
+    name: "Prod-IT-CaaC-Admins-MAP-Team"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: team
+    role: Team Admin
+    organization: "Prod-IT-CaaC"
+    team: prod-it-team-admins
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-it-admins,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 2
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_8
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
+
+- name: Create LDAP authentication map - Prod-IT-CaaC-Users-MAP-Team
+  ansible.platform.authenticator_map:
+    name: "Prod-IT-CaaC-Users-MAP-Team"
+    authenticator: "LDAPAuth"
+    revoke: true
+    map_type: team
+    role: Team Member
+    organization: "Prod-IT-CaaC"
+    team: prod-it-team-users
+    triggers:
+      groups:
+        has_and:
+          - "cn=prod-it-users,cn=groups,cn=accounts,dc=example,dc=com"
+    order: 2
+    # Role Standard Options
+    aap_hostname: hostname.example.com
+    aap_password: sample_password
+    aap_username: sample_username_9
+    aap_token: sample_token
+    aap_request_timeout: 0
+    aap_validate_certs: false
+    state: present
 ...
 """
 
