@@ -1,0 +1,10 @@
+{
+    "docs": "https://docs.ansible.com/ansible-core/2.18/dev_guide/testing/sanity/pep8.html", 
+    "results": [
+        {
+            "message": "The test `ansible-test sanity --test pep8` [[explain](https://docs.ansible.com/ansible-core/2.18/dev_guide/testing/sanity/pep8.html)] failed with 6 errors:", 
+            "output": "tools/scripts/get_aap_gateway_and_dab.py:32:68: W291: trailing whitespace\ntools/scripts/get_aap_gateway_and_dab.py:58:15: E222: multiple spaces after operator\ntools/scripts/get_aap_gateway_and_dab.py:76:14: E111: indentation is not a multiple of 4\ntools/scripts/get_aap_gateway_and_dab.py:76:14: E117: over-indented\ntools/scripts/get_aap_gateway_and_dab.py:102:14: E111: indentation is not a multiple of 4\ntools/scripts/get_aap_gateway_and_dab.py:102:14: E117: over-indented"
+        }
+    ], 
+    "verified": false
+}
