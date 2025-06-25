@@ -50,6 +50,9 @@ options:
     enable_gateway_auth:
       description: If false, the AAP gateway will not insert a gateway token into the proxied request
       type: bool
+    enable_mtls:
+      description: If false, the AAP gateway will not require mutual TLS authentication
+      type: bool
     is_internal_route:
       description:
         - Flag whether or not the route is an internal route.
@@ -120,6 +123,7 @@ def main():
         is_service_https=dict(type="bool", default=False),
         is_internal_route=dict(type="bool"),
         enable_gateway_auth=dict(type="bool"),
+        enable_mtls=dict(type="bool"),
         service_path=dict(type="str"),
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
