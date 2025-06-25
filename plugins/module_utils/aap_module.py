@@ -92,6 +92,7 @@ class AAPModule(AnsibleModule):
         "authenticators": "name",
         "authenticator_maps": ["name", "authenticator"],
         "authenticator_users": "authenticator_user_id",
+        "ca_certificates": "name",
         "http_ports": "name",
         "routes": "name",
         "services": "name",
