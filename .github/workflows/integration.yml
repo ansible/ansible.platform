@@ -104,20 +104,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          path: ansible-platform
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ansible/aap-gateway
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
-      - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
+      - name: Checkout DAB branch if needed
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-          GH_TOKEN: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
-          GH_WORKSPACE: ${{ github.workspace }}
-        run: tools/scripts/get_aap_gateway_and_dab.py
-        working-directory: ansible-platform
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/scripts/get_dab_for_pr.py
 
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
-        working-directory: aap-gateway
 
       - name: Install make
         run: sudo apt install make
@@ -127,17 +124,19 @@ jobs:
         with:
           python-version: 3.11
 
+      - name: Install requirements
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+
       - name: Extract gateway password and set it as an environment variable
         run: |
           ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
             echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
-        working-directory: aap-gateway
-      
-      - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
-        working-directory: ansible-platform
+
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Perform completeness tests
-        run: make collection-test-completeness
-        working-directory: ansible-platform
+        run: cd ansible-platform && make collection-test-completeness
 ...
