@@ -6,7 +6,27 @@
 
 - name: Set test variables
   ansible.builtin.set_fact:
+    # Plugin names
     hub_dashboard_plugin_name: "{{ test_id }}Hub Dashboard Plugin"
+    controller_plugin_name: "{{ test_id }}Controller Plugin"
+    eda_plugin_route_name: "{{ test_id }}EDA Plugin Route"
+    hub_admin_plugin_name: "{{ test_id }}Hub Admin Plugin"
+    non_existing_plugin_name: "{{ test_id }}Non-existing Plugin"
+    # HTTP port names and numbers
+    primary_http_port_number: 9089
+    primary_http_port_name: "{{ test_id }}Port 9089"
+    secondary_http_port_number: 8058
+    secondary_http_port_name: "{{ test_id }}Port 8058"
+    # Service cluster/type names
+    hub_service_name: "{{ test_id }}hub"
+    controller_service_name: "{{ test_id }}controller"
+    eda_service_name: "{{ test_id }}eda"
+    # Service ports
+    hub_service_port: 1235
+    controller_service_port: 1236
+    eda_service_port: 1237
+    eda_service_port_changed: 1238
+    hub_service_port_initial: 8000
 
 - name: UI Plugin Route Module Tests
   module_defaults:
@@ -28,10 +48,10 @@
       loop: "{{ gateway_http_ports }}"
       vars:
         gateway_http_ports:
-          - name: "{{ test_id }}Port 9086"
-            number: 9086
-          - name: "{{ test_id }}Port 8055"
-            number: 8055
+          - name: "{{ primary_http_port_name }}"
+            number: "{{ primary_http_port_number }}"
+          - name: "{{ secondary_http_port_name }}"
+            number: "{{ secondary_http_port_number }}"
       register: __http_port_create_result
 
     - name: Assert Created Http Port
@@ -50,9 +70,9 @@
       loop: "{{ gateway_service_types }}"
       vars:
         gateway_service_types:
-          - name: "{{ test_id }}hub"
-          - name: "{{ test_id }}controller"
-          - name: "{{ test_id }}eda"
+          - name: "{{ hub_service_name }}"
+          - name: "{{ controller_service_name }}"
+          - name: "{{ eda_service_name }}"
       register: __service_types_create_result
 
     ### Create Service Clusters ###
@@ -64,11 +84,11 @@
       loop: "{{ gateway_service_clusters }}"
       vars:
         gateway_service_clusters:
-          - name: "{{ test_id }}hub"
+          - name: "{{ hub_service_name }}"
             service_type: "{{ __service_types_create_result.results[0].id }}"
-          - name: "{{ test_id }}controller"
+          - name: "{{ controller_service_name }}"
             service_type: "{{ __service_types_create_result.results[1].id }}"
-          - name: "{{ test_id }}eda"
+          - name: "{{ eda_service_name }}"
             service_type: "{{ __service_types_create_result.results[2].id }}"
 
     ### Create UI Plugin Routes ###
@@ -91,9 +111,9 @@
           - name: "{{ hub_dashboard_plugin_name }}"
             description: Hub Dashboard UI Plugin Route
             ui_plugin_path: "dashboard"
-            http_port: "{{ test_id }}Port 9086"
-            service_cluster: "{{ test_id }}hub"
-            service_port: 8000
+            http_port: "{{ primary_http_port_name }}"
+            service_cluster: "{{ hub_service_name }}"
+            service_port: "{{ hub_service_port_initial }}"
             order: 50
       check_mode: true
 
@@ -128,21 +148,21 @@
           - name: "{{ hub_dashboard_plugin_name }}"
             description: Hub Dashboard UI Plugin Route
             ui_plugin_path: "dashboard"
-            http_port: "{{ test_id }}Port 9086"
-            service_cluster: "{{ test_id }}hub"
-            service_port: 1235
+            http_port: "{{ primary_http_port_name }}"
+            service_cluster: "{{ hub_service_name }}"
+            service_port: "{{ hub_service_port }}"
             order: 50
-          - name: "{{ test_id }}Controller Plugin"
+          - name: "{{ controller_plugin_name }}"
             ui_plugin_path: "custom-plugin"
             http_port: "{{ __http_port_create_result.results[0].id }}" # Port 9086
-            service_cluster: "{{ test_id }}controller"
+            service_cluster: "{{ controller_service_name }}"
             is_service_https: true
-            service_port: 1236
-          - name: "{{ test_id }}EDA Plugin Route"
+            service_port: "{{ controller_service_port }}"
+          - name: "{{ eda_plugin_route_name }}"
             ui_plugin_path: "eda-dashboard"
-            http_port: "{{ test_id }}Port 8055"
-            service_cluster: "{{ test_id }}eda"
-            service_port: 1237
+            http_port: "{{ secondary_http_port_name }}"
+            service_cluster: "{{ eda_service_name }}"
+            service_port: "{{ eda_service_port }}"
             node_tags: "frontend,plugin"
       register: __ui_plugin_routes_result
 
@@ -203,32 +223,32 @@
           - name: "{{ hub_dashboard_plugin_name }}"
             description: Hub Dashboard UI Plugin Route
             ui_plugin_path: "dashboard"
-            http_port: "{{ test_id }}Port 9086"
-            service_cluster: "{{ test_id }}hub"
-            service_port: 1235
+            http_port: "{{ primary_http_port_name }}"
+            service_cluster: "{{ hub_service_name }}"
+            service_port: "{{ hub_service_port }}"
             order: 50
           # Update - change service port
-          - name: "{{ test_id }}Controller Plugin"
+          - name: "{{ controller_plugin_name }}"
             ui_plugin_path: "custom-plugin"
-            http_port: "{{ test_id }}Port 9086"
-            service_cluster: "{{ test_id }}controller"
+            http_port: "{{ primary_http_port_name }}"
+            service_cluster: "{{ controller_service_name }}"
             is_service_https: false # Changed
-            service_port: 1236
+            service_port: "{{ controller_service_port }}"
           # Check for existence only
-          - name: "{{ test_id }}EDA Plugin Route"
+          - name: "{{ eda_plugin_route_name }}"
             state: exists
           # Update different field
-          - name: "{{ test_id }}EDA Plugin Route"
+          - name: "{{ eda_plugin_route_name }}"
             ui_plugin_path: "eda-dashboard"
-            http_port: "{{ test_id }}Port 8055"
-            service_cluster: "{{ test_id }}eda"
-            service_port: 1238 # Changed
+            http_port: "{{ secondary_http_port_name }}"
+            service_cluster: "{{ eda_service_name }}"
+            service_port: "{{ eda_service_port_changed }}" # Changed
             node_tags: "frontend,plugin"
           # Non-existing route
-          - name: "{{ test_id }}Non-existing Plugin"
+          - name: "{{ non_existing_plugin_name }}"
             ui_plugin_path: "fake-plugin"
-            http_port: "{{ test_id }}Port 8055"
-            service_cluster: "{{ test_id }}eda"
+            http_port: "{{ secondary_http_port_name }}"
+            service_cluster: "{{ eda_service_name }}"
             state: absent
       register: __ui_plugin_routes_result
 
@@ -245,7 +265,7 @@
     - name: Rename UI Plugin Route
       ansible.platform.ui_plugin_route:
         name: "{{ hub_dashboard_plugin_name }}"
-        new_name: "{{ test_id }}Hub Admin Plugin"
+        new_name: "{{ hub_admin_plugin_name }}"
       register: __ui_plugin_route_rename_result
 
     - name: Assert Rename UI Plugin Route tests passed
@@ -262,7 +282,7 @@
         gateway_ui_plugin_routes:
           - name: "{{ hub_dashboard_plugin_name }}"
             state: absent # Should not exist anymore
-          - name: "{{ test_id }}Hub Admin Plugin"
+          - name: "{{ hub_admin_plugin_name }}"
             state: exists # Should exist now
       register: __ui_plugin_route_rename_result
 
@@ -284,13 +304,13 @@
           # Does not exist (was renamed)
           - name: "{{ hub_dashboard_plugin_name }}"
           # Exists (renamed version)
-          - name: "{{ test_id }}Hub Admin Plugin"
+          - name: "{{ hub_admin_plugin_name }}"
           # Exists
-          - name: "{{ test_id }}Controller Plugin"
+          - name: "{{ controller_plugin_name }}"
           # Exists
-          - name: "{{ test_id }}EDA Plugin Route"
+          - name: "{{ eda_plugin_route_name }}"
           # Does not exist
-          - name: "{{ test_id }}Non-existing Plugin"
+          - name: "{{ non_existing_plugin_name }}"
 
     ### Delete Clusters ###
     - name: Delete Service Clusters
@@ -300,9 +320,9 @@
       loop: "{{ gateway_service_clusters }}"
       vars:
         gateway_service_clusters:
-          - name: "{{ test_id }}hub"
-          - name: "{{ test_id }}controller"
-          - name: "{{ test_id }}eda"
+          - name: "{{ hub_service_name }}"
+          - name: "{{ controller_service_name }}"
+          - name: "{{ eda_service_name }}"
 
     ### Delete Service Types ###
     - name: Delete Service Types
@@ -312,9 +332,9 @@
       loop: "{{ gateway_service_types }}"
       vars:
         gateway_service_types:
-          - name: "{{ test_id }}hub"
-          - name: "{{ test_id }}controller"
-          - name: "{{ test_id }}eda"
+          - name: "{{ hub_service_name }}"
+          - name: "{{ controller_service_name }}"
+          - name: "{{ eda_service_name }}"
 
     ### Delete Ports ###
     - name: Delete Http Ports
@@ -324,7 +344,7 @@
       loop: "{{ gateway_http_ports }}"
       vars:
         gateway_http_ports:
-          - name: "{{ test_id }}Port 9086"
-          - name: "{{ test_id }}Port 8055"
+          - name: "{{ primary_http_port_name }}"
+          - name: "{{ secondary_http_port_name }}"
       register: __http_port_create_result
 ...
