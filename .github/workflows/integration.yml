@@ -18,7 +18,7 @@ jobs:
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
-      
+
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -67,7 +67,7 @@ jobs:
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
-      
+
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -105,7 +105,7 @@ jobs:
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
-      
+
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
