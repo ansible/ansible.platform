@@ -73,6 +73,10 @@ class AAPService(AAPObject):
         if enable_gateway_auth is not None:
             self.new_fields['enable_gateway_auth'] = enable_gateway_auth
 
+        enable_mtls = self.params.get('enable_mtls')
+        if enable_mtls is not None:
+            self.new_fields['enable_mtls'] = enable_mtls
+
         is_service_https = self.params.get('is_service_https')
         if is_service_https is not None:
             self.new_fields['is_service_https'] = is_service_https

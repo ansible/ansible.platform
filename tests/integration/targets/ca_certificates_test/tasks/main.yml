@@ -1,0 +1,100 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "GW-Collection-Test-CA-Certs-{{ test_id }}"
+    test_cert_sha256: "59948d81ef0b67cc9cb3e41b082e41a2f7f23437b75a4af27d191cd2c9505e18"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create CA Certificate
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-Test-Cert"
+        pem_data: "{{ lookup('file', 'test_cert.pem') }}"
+        sha256: "{{ test_cert_sha256 }}"
+        state: present
+      register: create_result
+
+    - name: Create CA Certificate with EDA credential ID
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-EDA-Cert"
+        pem_data: "{{ lookup('file', 'test_cert.pem') }}"
+        sha256: "{{ test_cert_sha256 }}"
+        related_id_reference: "12345678-1234-1234-1234-123456789012"
+        state: present
+      register: create_eda_result
+
+    - name: Verify CA Certificate was created
+      ansible.builtin.assert:
+        that:
+          - create_result.changed
+          - create_result.id is defined
+
+    - name: Verify EDA CA Certificate was created
+      ansible.builtin.assert:
+        that:
+          - create_eda_result.changed
+          - create_eda_result.id is defined
+
+    - name: Get CA Certificate
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-Test-Cert"
+        state: exists
+      register: get_result
+
+    - name: Verify CA Certificate exists
+      ansible.builtin.assert:
+        that:
+          - not get_result.changed
+          - get_result.id == create_result.id
+
+    - name: Delete CA Certificate
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-Test-Cert"
+        state: absent
+      register: delete_result
+
+    - name: Delete EDA CA Certificate
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-EDA-Cert"
+        state: absent
+      register: delete_eda_result
+
+    - name: Verify CA Certificate was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result.changed
+          - delete_result.id is defined
+
+    - name: Verify EDA CA Certificate was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_eda_result.changed
+          - delete_eda_result.id is defined
+
+  always:
+    - name: Cleanup - Delete CA Certificate if still exists
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-Test-Cert"
+        state: absent
+      register: cleanup_result
+      failed_when: false
+
+    - name: Cleanup - Delete EDA CA Certificate if still exists
+      ansible.platform.ca_certificate:
+        name: "{{ name_prefix }}-EDA-Cert"
+        state: absent
+      register: cleanup_eda_result
+      failed_when: false
+...
