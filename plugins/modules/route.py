@@ -50,6 +50,9 @@ options:
     enable_gateway_auth:
       description: If false, the AAP gateway will not insert a gateway token into the proxied request
       type: bool
+    enable_mtls:
+      description: If false, the AAP gateway will not require mutual TLS authentication
+      type: bool
     is_internal_route:
       description:
         - Flag whether or not the route is an internal route.
@@ -88,6 +91,19 @@ EXAMPLES = """
     service_path: '/config/v1/'
     service_port: 3000
 
+- name: Create route with mTLS enabled
+  ansible.platform.route:
+    name: EDA Event Stream
+    description: EDA Event Stream with mTLS
+    http_port: 1
+    gateway_path: '/eda/events/'
+    service_cluster: "Event Driven Automation"
+    is_service_https: true
+    enable_gateway_auth: false                  # Required for mTLS
+    enable_mtls: true                           # Enable mutual TLS
+    service_path: '/events/'
+    service_port: 8080
+
 - name: Update route
   ansible.platform.route:
     name: 1                                     # ID of route
@@ -120,17 +136,29 @@ def main():
         is_service_https=dict(type="bool", default=False),
         is_internal_route=dict(type="bool"),
         enable_gateway_auth=dict(type="bool"),
+        enable_mtls=dict(type="bool"),
         service_path=dict(type="str"),
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
+        state=dict(
+            choices=["present", "absent", "exists", "enforced"], default="present"
+        ),
     )
 
     # Create a module with spec
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
+    # Validate that enable_mtls and enable_gateway_auth cannot both be true
+    enable_mtls = module.params.get("enable_mtls", False)
+    enable_gateway_auth = module.params.get("enable_gateway_auth", True)
+
+    if enable_mtls and enable_gateway_auth:
+        module.fail_json(
+            msg="Mutual TLS can only be enabled when gateway auth is disabled"
+        )
+
     AAPRoute(module).manage()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

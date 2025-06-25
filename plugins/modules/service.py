@@ -54,6 +54,9 @@ options:
     enable_gateway_auth:
       description: If false, the AAP gateway will not insert a gateway token into the proxied request
       type: bool
+    enable_mtls:
+      description: If true, this route will require mutual TLS authentication, and the client needs to provide a certificate. Default is false.
+      type: bool
     service_path:
       description:
       - URL path on the AAP Service cluster to route traffic to
@@ -125,18 +128,30 @@ def main():
         is_service_https=dict(type="bool", default=False),
         is_internal_route=dict(type="bool"),
         enable_gateway_auth=dict(type="bool"),
+        enable_mtls=dict(type="bool"),
         service_path=dict(type="str"),
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
         order=dict(type="int"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
+        state=dict(
+            choices=["present", "absent", "exists", "enforced"], default="present"
+        ),
     )
 
     # Create a module with spec
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
+    # Validate that enable_mtls and enable_gateway_auth cannot both be true
+    enable_mtls = module.params.get("enable_mtls", False)
+    enable_gateway_auth = module.params.get("enable_gateway_auth", True)
+
+    if enable_mtls and enable_gateway_auth:
+        module.fail_json(
+            msg="Mutual TLS can only be enabled when gateway auth is disabled"
+        )
+
     AAPService(module).manage()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
