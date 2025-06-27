@@ -102,6 +102,7 @@ class AAPModule(AnsibleModule):
         "service_types": "name",
         "organizations": "name",
         "teams": ["name", "organization"],
+        "ui_plugin_routes": "name",
         "users": "username",
     }
     host = "127.0.0.1"
