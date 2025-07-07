@@ -51,6 +51,47 @@
         that:
           - joe is changed
 
+    - name: Create test authenticator
+      ansible.platform.authenticator:
+        name: "{{ name_prefix }}-Authenticator-1"
+        slug: "{{ name_prefix }}-Authenticator-1"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        configuration: {}
+      register: test_authenticator
+
+    - name: Update Joe with associated_authenticators
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: "{{ { test_authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
+      register: joe_authenticators
+
+    - name: Assert the user changed in the system
+      ansible.builtin.assert:
+        that:
+          - joe_authenticators is changed
+
+    - name: Ensure Idempotency of Joe with associated_authenticators
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: "{{ { test_authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
+      register: joe_authenticators
+
+    - name: Assert the user is not changed the system
+      ansible.builtin.assert:
+        that:
+          - joe_authenticators is not changed
+
+    - name: Remove associated_authenticators from Joe
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: {}
+      register: joe_auth_removal
+
+    - name: Assert the user changed in the system
+      ansible.builtin.assert:
+        that:
+          - joe_auth_removal is changed
+
     - name: Create Timmy user
       ansible.platform.user:
         username: "timmy-{{ username }}"
@@ -263,4 +304,12 @@
         - "{{ username }}-multiorg"
       register: delete_results
       ignore_errors: true
+
+    - name: Delete Authenticators
+      ansible.platform.authenticator:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ name_prefix }}-Authenticator-1"
+      failed_when: false
 ...
