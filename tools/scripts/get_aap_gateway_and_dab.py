@@ -55,7 +55,7 @@ def _checkout_aap_gateway(pr_body):
        Return the body of the specified Pull Request, if any.
     :param pr_body: The ansible.platform PR body.
     """
-    repo_url = 'https://github.com/ansible-automation-platform/aap-gateway
+    repo_url = 'https://github.com/ansible-automation-platform/aap-gateway'
     branch = 'devel'
     aap_gateway_pr_body = ""
 
