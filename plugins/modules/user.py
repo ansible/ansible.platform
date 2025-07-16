@@ -80,6 +80,13 @@ options:
       description:
         - The UID to associate with this users authenticators
       type: str
+    associated_authenticators:
+      description:
+        - A dictionary of authenticators to associate with the given user.
+        - The dictionary keys are the ID of the authenticator.
+        - The dictionary values are an object containing the keys 'uid' and 'email', with values C(uid) and the email address for that user, respectively.
+        - This is the preferred method for associating authenticators.
+      type: dict
 
 extends_documentation_fragment:
 - ansible.platform.state
@@ -118,6 +125,17 @@ EXAMPLES = """
     username: jdoe
     email: jdoe@example.org
     state: absent
+
+- name: Add a user with associated authenticators
+  ansible.platform.user:
+    username: "jdoe"
+    associated_authenticators:
+      1:
+        "uid": "jdoe"
+        "email": "jdoe@example.com"
+      2:
+        "uid": "123456789"
+        "email": "jdoe@example.com"
 ...
 """
 
@@ -139,6 +157,7 @@ def main():
         update_secrets=dict(type="bool", default=True, no_log=False),
         authenticators=dict(type="list", elements='str'),
         authenticator_uid=dict(),
+        associated_authenticators=dict(type="dict"),
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )
 
