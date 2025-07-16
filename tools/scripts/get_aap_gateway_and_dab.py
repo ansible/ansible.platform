@@ -44,7 +44,7 @@ def _get_requires(pr_body, target):
     :param pr_body: The Pull Request body to parse.
     :param target: The repository name containing the Pull Request.
     """
-    requires_re = re.compile(f'requires.*ansible/{target}(?:#|/pull/)([0-9]+)', re.IGNORECASE)
+    requires_re = re.compile(f'requires.*ansible-automation-platform/{target}(?:#|/pull/)([0-9]+)', re.IGNORECASE)
     matches = requires_re.search(pr_body)
     if matches:
         return matches.group(1)
