@@ -44,7 +44,7 @@ def _get_requires(pr_body, target):
     :param pr_body: The Pull Request body to parse.
     :param target: The repository name containing the Pull Request.
     """
-    requires_re = re.compile(f'requires.*ansible/{target}(?:#|/pull/)([0-9]+)', re.IGNORECASE)
+    requires_re = re.compile(f'requires.*ansible-automation-platform/{target}(?:#|/pull/)([0-9]+)', re.IGNORECASE)
     matches = requires_re.search(pr_body)
     if matches:
         return matches.group(1)
@@ -55,14 +55,14 @@ def _checkout_aap_gateway(pr_body):
        Return the body of the specified Pull Request, if any.
     :param pr_body: The ansible.platform PR body.
     """
-    repo_url = 'https://github.com/ansible/aap-gateway'
+    repo_url = 'https://github.com/ansible-automation-platform/aap-gateway'
     branch = 'devel'
     aap_gateway_pr_body = ""
 
     required_pr = _get_requires(pr_body, target="aap-gateway")
     if required_pr:
         print(f"This ansible.platform PR requires aap-gateway PR {required_pr}")
-        url = f'https://api.github.com/repos/ansible/aap-gateway/pulls/{required_pr}'
+        url = f'https://api.github.com/repos/ansible-automation-platform/aap-gateway/pulls/{required_pr}'
         response = requests.get(url, headers=GH_API_HEADERS)
         pr_data = response.json()
         merged = pr_data['merged']
