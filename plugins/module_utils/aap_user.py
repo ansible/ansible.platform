@@ -48,3 +48,7 @@ class AAPUser(AAPObject):
         authenticator_uid = self.module.params.get('authenticator_uid')
         if authenticator_uid is not None:
             self.new_fields['authenticator_uid'] = authenticator_uid
+
+        associated_authenticators = self.module.params.get('associated_authenticators')
+        if associated_authenticators or associated_authenticators == {}:
+            self.new_fields['associated_authenticators'] = associated_authenticators
