@@ -74,7 +74,7 @@ collection-test: collection-install
 	echo 'gateway_password: $(GATEWAY_PASSWORD)' > /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	cd /tmp/collections/ansible_collections/ansible/platform && \
-	  ansible-test integration --venv --requirements --coverage
+	  ansible-test integration --color yes --venv --requirements --coverage
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:
