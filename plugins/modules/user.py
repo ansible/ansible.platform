@@ -73,13 +73,28 @@ options:
       default: true
     authenticators:
       description:
+        - B(Deprecated)
+        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - For associating a user with authenticators, please use the associated_authenticators option.
+        - HORIZONTALLINE
         - A list of authenticators to associate the user with
       type: list
       elements: str
     authenticator_uid:
       description:
+        - B(Deprecated)
+        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - For specifying UIDs per authenticator, please use the associated_authenticators option.
+        - HORIZONTALLINE
         - The UID to associate with this users authenticators
       type: str
+    associated_authenticators:
+      description:
+        - A dictionary of authenticators to associate with the given user.
+        - The dictionary keys are the ID of the authenticator.
+        - The dictionary values are an object containing the keys 'uid' and 'email', with values C(uid) and the email address for that user, respectively.
+        - This is the preferred method for associating authenticators.
+      type: dict
 
 extends_documentation_fragment:
 - ansible.platform.state
@@ -118,6 +133,17 @@ EXAMPLES = """
     username: jdoe
     email: jdoe@example.org
     state: absent
+
+- name: Add a user with associated authenticators
+  ansible.platform.user:
+    username: "jdoe"
+    associated_authenticators:
+      1:
+        "uid": "jdoe"
+        "email": "jdoe@example.com"
+      2:
+        "uid": "123456789"
+        "email": "jdoe@example.com"
 ...
 """
 
@@ -139,6 +165,7 @@ def main():
         update_secrets=dict(type="bool", default=True, no_log=False),
         authenticators=dict(type="list", elements='str'),
         authenticator_uid=dict(),
+        associated_authenticators=dict(type="dict"),
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )
 
@@ -157,6 +184,22 @@ def main():
         module.deprecate(
             msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
+            date="2026-01-31",
+            collection_name="ansible.platform",
+        )
+
+    if module.params["authenticator_uid"]:
+        module.deprecate(
+            msg="The 'authenticator_uid' parameter is deprecated and will be removed in a future version. "
+            "Please use 'associated_authenticators' instead to specify UIDs per authenticator.",
+            date="2026-01-31",
+            collection_name="ansible.platform",
+        )
+
+    if module.params["authenticators"]:
+        module.deprecate(
+            msg="The 'authenticators' parameter is deprecated and will be removed in a future version. "
+            "Please use 'associated_authenticators' instead to specify authenticator associations.",
             date="2026-01-31",
             collection_name="ansible.platform",
         )

@@ -51,6 +51,47 @@
         that:
           - joe is changed
 
+    - name: Create test authenticator
+      ansible.platform.authenticator:
+        name: "{{ name_prefix }}-Authenticator-1"
+        slug: "{{ name_prefix }}-Authenticator-1"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        configuration: {}
+      register: test_authenticator
+
+    - name: Update Joe with associated_authenticators
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: "{{ { test_authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
+      register: joe_authenticators
+
+    - name: Assert the user changed in the system
+      ansible.builtin.assert:
+        that:
+          - joe_authenticators is changed
+
+    - name: Ensure Idempotency of Joe with associated_authenticators
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: "{{ { test_authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
+      register: joe_authenticators
+
+    - name: Assert the user is not changed the system
+      ansible.builtin.assert:
+        that:
+          - joe_authenticators is not changed
+
+    - name: Remove associated_authenticators from Joe
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: {}
+      register: joe_auth_removal
+
+    - name: Assert the user changed in the system
+      ansible.builtin.assert:
+        that:
+          - joe_auth_removal is changed
+
     - name: Create Timmy user
       ansible.platform.user:
         username: "timmy-{{ username }}"
@@ -239,6 +280,54 @@
         that:
           - invalid_org_result is failed
 
+    # Test deprecation warnings for both fields
+    - name: Test deprecation warning for both authenticators and authenticator_uid fields
+      ansible.platform.user:
+        username: "{{ username }}-deprecation-test"
+        first_name: DeprecationTest
+        password: "{{ 65535 | random | to_uuid }}"
+        authenticators: [1]
+        authenticator_uid: "test_uid"
+      register: deprecation_both_result
+
+    - name: Assert that deprecation warnings were shown for both fields
+      ansible.builtin.assert:
+        that:
+          - deprecation_both_result.deprecations is defined
+          - deprecation_both_result.deprecations | length > 0
+          - "'deprecated' in deprecation_both_result.deprecations[0].msg"
+
+
+    # Test deprecation warnings for authenticator_uid field
+    - name: Test deprecation warning for authenticator_uid field
+      ansible.platform.user:
+        username: "{{ username }}-deprecation-test1"
+        first_name: DeprecationTest1
+        password: "{{ 65535 | random | to_uuid }}"
+        authenticator_uid: "test_uid"
+      register: deprecation_uid_result
+
+    - name: Assert that deprecation warning was shown for authenticator_uid
+      ansible.builtin.assert:
+        that:
+          - deprecation_uid_result.deprecations is defined
+          - deprecation_uid_result.deprecations | length > 0
+          - "'authenticator_uid' in deprecation_uid_result.deprecations[0].msg"
+          - "'deprecated' in deprecation_uid_result.deprecations[0].msg"
+
+    # Test no deprecation warning when deprecated fields are not used
+    - name: Test no deprecation warning when deprecated fields are not used
+      ansible.platform.user:
+        username: "{{ username }}-no-deprecation"
+        first_name: NoDeprecation
+        password: "{{ 65535 | random | to_uuid }}"
+      register: no_deprecation_result
+
+    - name: Assert that no deprecation warning was shown
+      ansible.builtin.assert:
+        that:
+          - no_deprecation_result.deprecations is not defined or no_deprecation_result.deprecations | length == 0
+
   always:
     # Always Cleanup
     - name: Delete organizations
@@ -261,6 +350,18 @@
         - "timmy-{{ username }}"
         - "{{ username }}-noorg"
         - "{{ username }}-multiorg"
+        - "{{ username }}-deprecation-test"
+        - "{{ username }}-deprecation-test2"
+        - "{{ username }}-deprecation-test3"
+        - "{{ username }}-no-deprecation"
       register: delete_results
       ignore_errors: true
+
+    - name: Delete Authenticators
+      ansible.platform.authenticator:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ name_prefix }}-Authenticator-1"
+      failed_when: false
 ...
