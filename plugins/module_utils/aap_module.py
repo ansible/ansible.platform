@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import base64
-import re
 
 # import os
 import time
@@ -201,14 +200,10 @@ class AAPModule(AnsibleModule):
 
     def validate_url(self, url):
         # Perform some basic validation
-        if re.match("^http{0,1}://", url):
-            validated_url = url
-        elif not re.match("^https{0,1}://", url):
-            validated_url = "https://{0}".format(url)
-        elif re.match("^https{0,1}://", url):
-            validated_url = url
+        if not url.startswith(("https://", "http://")):
+            validated_url = f"https://{url}"
         else:
-            self.fail_json(msg="Unable to parse host protocol as a URL: {0}".format(url))
+            validated_url = url
 
         # Try to parse the hostname as a url
         try:
