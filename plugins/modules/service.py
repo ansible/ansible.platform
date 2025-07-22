@@ -131,7 +131,7 @@ def main():
         order=dict(type="int"),
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )
-    test = test
+    test = 'test'
 
     # Create a module with spec
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
