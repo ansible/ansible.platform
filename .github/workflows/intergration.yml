@@ -1,0 +1,150 @@
+---
+name: integration tests
+
+on:
+  pull_request_target:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+env:
+  PY_COLORS: '1'
+  ANSIBLE_FORCE_COLOR: '1'
+jobs:
+  integration:
+    name: collection integration test
+    runs-on: ubuntu-latest
+    env:
+      HEADLESS: 'yes'
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
+          GH_WORKSPACE: ${{ github.workspace }}
+        run: tools/scripts/get_aap_gateway_and_dab.py
+        working-directory: ansible-platform
+
+      - name: Build the image
+        run: make docker-compose-build
+        working-directory: aap-gateway
+
+      - name: Spin up the dev env
+        run: |
+          ansible-playbook -v tools/ansible/smoke-test-no-services.yml \
+            -e repo_root=$(pwd) \
+            -e gateway_vars=$(readlink -f container-startup.yml)
+        working-directory: aap-gateway
+
+      - name: Cleanup services
+        run: make cleanup-services
+        working-directory: aap-gateway
+
+      - name: Extract gateway password and set it as an environment variable
+        run: |
+          ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
+            echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
+        working-directory: aap-gateway
+
+      - name: Perform integration tests
+        run: make collection-test
+        working-directory: ansible-platform
+
+      - name: Dump the container logs on failure
+        run: docker compose -f tools/generated/docker-compose.yml logs
+        working-directory: aap-gateway
+        if: failure()
+
+  coverage_test:
+    name: collection integration check
+    runs-on: ubuntu-latest
+    env:
+      HEADLESS: 'yes'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
+          GH_WORKSPACE: ${{ github.workspace }}
+        run: tools/scripts/get_aap_gateway_and_dab.py
+        working-directory: ansible-platform
+
+      - name: Start the dev environment
+        run: COMPOSE_UP_OPTS='-d' make docker-compose
+        working-directory: aap-gateway
+
+      - name: Install make
+        run: sudo apt install make
+
+      - name: Install python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install requirements
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        working-directory: ansible-platform
+
+      - name: Perform completeness tests
+        run: make collection-test-integration-check
+        working-directory: ansible-platform
+
+  completeness_test:
+    name: collection completeness test
+    runs-on: ubuntu-latest
+    env:
+      HEADLESS: 'yes'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: ansible-platform
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
+          GH_WORKSPACE: ${{ github.workspace }}
+        run: tools/scripts/get_aap_gateway_and_dab.py
+        working-directory: ansible-platform
+
+      - name: Start the dev environment
+        run: COMPOSE_UP_OPTS='-d' make docker-compose
+        working-directory: aap-gateway
+
+      - name: Install make
+        run: sudo apt install make
+
+      - name: Install python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Extract gateway password and set it as an environment variable
+        run: |
+          ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
+            echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
+        working-directory: aap-gateway
+
+      - name: Copy container-startup.yml to ../ansible-platform (required by the test script)
+        run: |
+          cp container-startup.yml $GITHUB_WORKSPACE
+        working-directory: aap-gateway
+
+      - name: Install requirements
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        working-directory: ansible-platform
+
+      - name: Perform completeness tests
+        run: make collection-test-completeness
+        working-directory: ansible-platform
