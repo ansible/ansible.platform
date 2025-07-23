@@ -120,7 +120,7 @@ def main():
         remove_other_authenticators=dict(type="bool", default=False),
         state=dict(default='present', choices=['present', 'exists']),
     )
-
+    testvar = 1
     # Create a module for ourselves
     module = AAPModule(
         argument_spec=argument_spec,
