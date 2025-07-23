@@ -1,5 +1,5 @@
 ---
-name: integration tests
+name: integration tests with stable-2.5 branches
 
 on:
   pull_request_target:
@@ -11,7 +11,7 @@ env:
   ANSIBLE_FORCE_COLOR: '1'
 jobs:
   integration:
-    name: collection integration test
+    name: collection integration test with stable-2.5 branches
     runs-on: ubuntu-latest
     env:
       HEADLESS: 'yes'
@@ -61,7 +61,7 @@ jobs:
         if: failure()
 
   coverage_test:
-    name: collection integration check
+    name: collection integration check with stable-2.5 branches
     runs-on: ubuntu-latest
     env:
       HEADLESS: 'yes'
@@ -100,7 +100,7 @@ jobs:
         working-directory: ansible-platform
 
   completeness_test:
-    name: collection completeness test
+    name: collection completeness test with stable-2.5 branches
     runs-on: ubuntu-latest
     env:
       HEADLESS: 'yes'
@@ -148,4 +148,3 @@ jobs:
       - name: Perform completeness tests
         run: make collection-test-completeness
         working-directory: ansible-platform
-...
