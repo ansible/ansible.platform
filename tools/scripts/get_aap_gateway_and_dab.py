@@ -58,12 +58,12 @@ def _get_requires(pr_body, target):
 
 
 def _checkout_aap_gateway(pr_body):
-    """Checkout aap-gateway, either from devel OR from a specified Pull Request.
+    """Checkout aap-gateway, either from stable-2.5 OR from a specified Pull Request.
        Return the body of the specified Pull Request, if any.
     :param pr_body: The ansible.platform PR body.
     """
     repo_url = "https://github.com/ansible-automation-platform/aap-gateway"
-    branch = "devel"
+    branch = "stable-2.5"
     aap_gateway_pr_body = ""
 
     required_pr = _get_requires(pr_body, target="aap-gateway")
