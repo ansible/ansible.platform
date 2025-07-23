@@ -148,3 +148,4 @@ jobs:
       - name: Perform completeness tests
         run: make collection-test-completeness
         working-directory: ansible-platform
+...
