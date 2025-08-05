@@ -1,0 +1,122 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=8') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: GW-Collection-Test-RoleAssign-{{ test_id }}
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+
+    - name: Generate unique IDs for test objects
+      ansible.builtin.set_fact:
+        test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=6') }}"
+        team_name: "Team-{{ lookup('password', '/dev/null chars=ascii_lowercase length=6') }}"
+        org_name: "Org-{{ lookup('password', '/dev/null chars=ascii_lowercase length=6') }}"
+
+    # Create org + team for testing
+    - name: Create test org
+      ansible.platform.organization:
+        name: "{{ org_name }}"
+      register: test_org
+
+    - name: Create test team
+      ansible.platform.team:
+        name: "{{ team_name }}"
+        organization: "{{ org_name }}"
+      register: test_team
+
+    #################################################################
+    # SCENARIO 1: Global role to team (Platform Auditor → Team)
+    #################################################################
+    - name: Try assigning global role (Platform Auditor) to team
+      ansible.platform.role_team_assignment:
+        role_definition: "Platform Auditor"
+        team: "{{ team_name }}"
+        state: present
+      register: global_role_result
+      ignore_errors: true
+
+    - name: Assert that global role assignment is rejected
+      ansible.builtin.assert:
+        that:
+          - global_role_result is failed
+        fail_msg: "Global role incorrectly assigned to a team!"
+
+    #################################################################
+    # SCENARIO 2: Team → Team assignment (Team Admin → Team)
+    #################################################################
+    - name: Try assigning Team Admin role of test_team to another team
+      ansible.platform.role_team_assignment:
+        role_definition: "Team Admin"
+        team: "{{ team_name }}"
+        object_id: "{{ test_team.id }}"
+        state: present
+      register: team_to_team_result
+      ignore_errors: true
+
+    - name: Assert this should fail (not silently succeed)
+      ansible.builtin.assert:
+        that:
+          - team_to_team_result is failed
+        fail_msg: "Team-to-Team assignment unexpectedly succeeded!"
+
+    #################################################################
+    # SCENARIO 3: Org role → Team (Org Inventory Admin → Team)
+    #################################################################
+    - name: Try assigning Organization Inventory Admin to team for org
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Inventory Admin"
+        object_id: "{{ test_org.id }}"
+        team: "{{ team_name }}"
+        state: present
+      register: org_role_result
+
+    - name: Assert org role assignment worked
+      ansible.builtin.assert:
+        that:
+          - org_role_result is changed or org_role_result is not failed
+
+    #################################################################
+    # SCENARIO 4: Invalid assignment (Organization Member → Team)
+    #################################################################
+    - name: Try assigning Organization Member role to team
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Member"
+        object_id: "{{ test_org.id }}"
+        team: "{{ team_name }}"
+        state: present
+      register: invalid_org_member_result
+      ignore_errors: true
+
+    - name: Assert this should be rejected
+      ansible.builtin.assert:
+        that:
+          - invalid_org_member_result is failed
+        fail_msg: "Organization Member incorrectly assigned to team!"
+
+  always:
+    # Cleanup
+    - name: Delete test team
+      ansible.platform.team:
+        name: "{{ team_name }}"
+        state: absent
+        organization: "{{ org_name }}"
+      ignore_errors: true
+
+    - name: Delete test org
+      ansible.platform.organization:
+        name: "{{ org_name }}"
+        state: absent
+      ignore_errors: true
+...

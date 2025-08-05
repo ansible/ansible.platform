@@ -9,6 +9,7 @@ action_groups:
     - http_port
     - organization
     - role_user_assignment
+    - role_team_assignment
     - route
     - service
     - service_cluster
