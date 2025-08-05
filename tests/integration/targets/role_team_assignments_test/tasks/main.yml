@@ -112,11 +112,9 @@
         name: "{{ team_name }}"
         state: absent
         organization: "{{ org_name }}"
-      ignore_errors: true
 
     - name: Delete test org
       ansible.platform.organization:
         name: "{{ org_name }}"
         state: absent
-      ignore_errors: true
 ...
