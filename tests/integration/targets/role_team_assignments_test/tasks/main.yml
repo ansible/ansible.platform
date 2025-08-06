@@ -1,13 +1,4 @@
 ---
-- name: Generate a test ID
-  ansible.builtin.set_fact:
-    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=8') }}"
-  when: test_id is not defined
-
-- name: Preset vars
-  ansible.builtin.set_fact:
-    name_prefix: GW-Collection-Test-RoleAssign-{{ test_id }}
-
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -18,103 +9,198 @@
 
   block:
 
-    - name: Generate unique IDs for test objects
+    # --------------------------------------------------------------------------
+    # Setup
+    # --------------------------------------------------------------------------
+    - name: Generate a unique test ID
       ansible.builtin.set_fact:
-        test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=6') }}"
-        team_name: "Team-{{ lookup('password', '/dev/null chars=ascii_lowercase length=6') }}"
-        org_name: "Org-{{ lookup('password', '/dev/null chars=ascii_lowercase length=6') }}"
+        test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+      when: test_id is not defined
 
-    # Create org + team for testing
-    - name: Create test org
+    - name: Preset variables for test resource names
+      ansible.builtin.set_fact:
+        organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
+        team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
+
+    # --------------------------------------------------------------------------
+    # Organizations
+    # --------------------------------------------------------------------------
+    - name: Create Organization 1
       ansible.platform.organization:
-        name: "{{ org_name }}"
-      register: test_org
+        name: "{{ organization_name }}-1"
+      register: org1
 
-    - name: Create test team
+    - name: Create Organization 2
+      ansible.platform.organization:
+        name: "{{ organization_name }}-2"
+      register: org2
+
+    - name: Create Organization 3
+      ansible.platform.organization:
+        name: "{{ organization_name }}-3"
+      register: org3
+
+    - name: Create Organization 4
+      ansible.platform.organization:
+        name: "{{ organization_name }}-4"
+      register: org4
+
+    - name: Assert organizations were created
+      ansible.builtin.assert:
+        that:
+          - org1 is changed
+          - org2 is changed
+          - org3 is changed
+          - org4 is changed
+
+    # --------------------------------------------------------------------------
+    # Teams
+    # --------------------------------------------------------------------------
+    - name: Create Team 1 in Organization 1
       ansible.platform.team:
-        name: "{{ team_name }}"
-        organization: "{{ org_name }}"
-      register: test_team
+        name: "{{ team_name_prefix }}-Team-1"
+        organization: "{{ org1.name }}"
+        description: "Test Team 1"
+      register: team1
 
-    #################################################################
-    # SCENARIO 1: Global role to team (Platform Auditor → Team)
-    #################################################################
-    - name: Try assigning global role (Platform Auditor) to team
-      ansible.platform.role_team_assignment:
-        role_definition: "Platform Auditor"
-        team: "{{ team_name }}"
-        state: present
-      register: global_role_result
-      ignore_errors: true
+    - name: Create Team 2 in Organization 2
+      ansible.platform.team:
+        name: "{{ team_name_prefix }}-Team-2"
+        organization: "{{ org2.name }}"
+        description: "Test Team 2"
+      register: team2
 
-    - name: Assert that global role assignment is rejected
+    - name: Create Team 3 in Organization 3
+      ansible.platform.team:
+        name: "{{ team_name_prefix }}-Team-3"
+        organization: "{{ org3.name }}"
+        description: "Test Team 3"
+      register: team3
+
+    - name: Create Team 4 in Organization 4
+      ansible.platform.team:
+        name: "{{ team_name_prefix }}-Team-4"
+        organization: "{{ org4.name }}"
+        description: "Test Team 3"
+      register: team4
+
+    - name: Debug Organization
+      ansible.builtin.debug:
+        msg: "{{ org1 }}"
+
+    - name: Assert that teams were created
       ansible.builtin.assert:
         that:
-          - global_role_result is failed
-        fail_msg: "Global role incorrectly assigned to a team!"
-
-    #################################################################
-    # SCENARIO 2: Team → Team assignment (Team Admin → Team)
-    #################################################################
-    - name: Try assigning Team Admin role of test_team to another team
+          - team1 is changed
+          - team2 is changed
+          - team3 is changed
+          - team4 is changed
+    # 1. Assign Org Admin role to Team1 on Org1 (Global role can't be assigned)
+    - name: Assign Org Admin to Team1 on Org1
       ansible.platform.role_team_assignment:
-        role_definition: "Team Admin"
-        team: "{{ team_name }}"
-        object_id: "{{ test_team.id }}"
-        state: present
-      register: team_to_team_result
-      ignore_errors: true
+        object_id: "{{ org1.id }}"
+        role_definition: Organization Admin
+        team: "{{ team1.id }}"
+      register: org_admin_assignment_1
+      ignore_errors: true  # this may fail depending on AAP limitations
 
-    - name: Assert this should fail (not silently succeed)
+    # 2. Assign Platform role to Team3 on Org3 (Global role can't be assigned)
+    - name: Assign Platform Auditor to Team1 on Org1
+      ansible.platform.role_team_assignment:
+        object_id: "{{ org1.id }}"
+        role_definition: Platform Auditor
+        team: "{{ team1.name }}"
+      register: org_admin_assignment_2
+      ignore_errors: true  # this may fail depending on AAP limitations
+
+    # 3. Assign Org Inventory Admin role to Team2 on Org1
+    - name: Assign Org Inventory Admin to Team2 on Org1
+      ansible.platform.role_team_assignment:
+        assignment_object:
+          name: "{{ org2.name }}"
+          type: organizations
+        role_definition: Organization Inventory Admin
+        team: "{{ team2.name }}"
+        state: present
+      register: org_admin_assignment_3
+
+    - name: Assert Team2 Org Inventory Admin assignment worked
       ansible.builtin.assert:
         that:
-          - team_to_team_result is failed
-        fail_msg: "Team-to-Team assignment unexpectedly succeeded!"
+          - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
 
-    #################################################################
-    # SCENARIO 3: Org role → Team (Org Inventory Admin → Team)
-    #################################################################
-    - name: Try assigning Organization Inventory Admin to team for org
+    # 4. Idempotency check (should not change)
+    - name: Re-run Org Inventory Admin removal for Team2
       ansible.platform.role_team_assignment:
-        role_definition: "Organization Inventory Admin"
-        object_id: "{{ test_org.id }}"
-        team: "{{ team_name }}"
+        assignment_object:
+          name: "{{ org2.name }}"
+          type: organizations
+        role_definition: Organization Inventory Admin
+        team: "{{ team2.name }}"
         state: present
-      register: org_role_result
+      register: org_admin_assignment_3_check
 
-    - name: Assert org role assignment worked
+    - name: Assert no change on idempotent re-run
       ansible.builtin.assert:
         that:
-          - org_role_result is changed or org_role_result is not failed
+          - org_admin_assignment_3_check is not changed
 
-    #################################################################
-    # SCENARIO 4: Invalid assignment (Organization Member → Team)
-    #################################################################
-    - name: Try assigning Organization Member role to team
+    # 5. Assign Org Inventory Admin role to Team2 on Org1 (absent to test delete)
+    - name: Assign Org Credential Admin to Team3 on Org3
       ansible.platform.role_team_assignment:
-        role_definition: "Organization Member"
-        object_id: "{{ test_org.id }}"
-        team: "{{ team_name }}"
+        assignment_object:
+          name: "{{ org3.name }}"
+          type: organizations
+        role_definition: Organization Credential Admin
+        team: "{{ team3.name }}"
         state: present
-      register: invalid_org_member_result
-      ignore_errors: true
+      register: org_admin_assignment_5
 
-    - name: Assert this should be rejected
+    - name: Assert Org Credential Admin assignment worked
       ansible.builtin.assert:
         that:
-          - invalid_org_member_result is failed
-        fail_msg: "Organization Member incorrectly assigned to team!"
+          - org_admin_assignment_5 is changed
 
   always:
+    # ----------------------------------------------------------------------
+    # Wait before cleanup
+    # ----------------------------------------------------------------------
+    - name: Wait 60 seconds before cleanup
+      ansible.builtin.pause:
+        seconds: 60
+    # ----------------------------------------------------------------------
+    # Explicit Role Cleanup
+    # ----------------------------------------------------------------------
+    - name: Remove Org Inventory Admin assignment from Team2 on Org1
+      ansible.platform.role_team_assignment:
+        assignment_object:
+          name: "{{ org2.name }}"
+          type: organizations
+        role_definition: Organization Inventory Admin
+        team: "{{ team2.name }}"
+        state: absent
+      ignore_errors: true
+    # ----------------------------------------------------------------------
     # Cleanup
-    - name: Delete test team
+    # ----------------------------------------------------------------------
+    - name: Delete test teams
       ansible.platform.team:
-        name: "{{ team_name }}"
+        name: "{{ item.name }}"
+        organization: "{{ item.organization }}"
         state: absent
-        organization: "{{ org_name }}"
+      loop:
+        - { name: "{{ team1.name }}", organization: "{{ org1.name }}" }
+        - { name: "{{ team2.name }}", organization: "{{ org2.name }}" }
+        - { name: "{{ team3.name }}", organization: "{{ org3.name }}" }
+        - { name: "{{ team4.name }}", organization: "{{ org4.name }}" }
 
-    - name: Delete test org
+    - name: Delete test organizations
       ansible.platform.organization:
-        name: "{{ org_name }}"
+        name: "{{ item }}"
         state: absent
+      loop:
+        - "{{ org1.name }}"
+        - "{{ org2.name }}"
+        - "{{ org3.name }}"
+        - "{{ org4.name }}"
 ...

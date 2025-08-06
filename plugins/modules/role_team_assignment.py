@@ -25,18 +25,21 @@ notes:
   - Only resource-scoped organization roles (e.g. "Organization Inventory Admin", "Organization Credential Admin") can be meaningfully assigned to teams.
   - Attempting unsupported role assignments will result in errors.
 options:
-    object_name:
-        description:
-            - The name of the object (e.g. organization name).
-            - Internally resolved into its ansible_id.
-        required: False
-        type: str
-    object_type:
-      description: >
-          Type of the resource (e.g. C(organizations)).
-          Required when using I(name).
-      required: False
-      type: str
+    assignment_object:
+      description:
+        - dicts mapping resource names to their types.
+        - Must include C(name) and C(type).
+        - Example: C({name: "Engineering", type: "organizations"})
+      type: dict
+      suboptions:
+        name:
+          description: The object name (e.g. organization/team name).
+          type: str
+          required: true
+        type:
+          description: The object type (e.g. C(organizations), C(teams)).
+          type: str
+          required: true
     role_definition:
         description:
             - The role definition which defines permissions conveyed by this assignment.
@@ -78,26 +81,19 @@ EXAMPLES = '''
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
      role_definition: "Organization Inventory Admin"
-     object_name: "Engineering"
-     object_type: "organizations"
+     assignment_object:
+        name: "Engineering"
+        type: "organizations"
      team: APAC-BLR
      state: present
-
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
      role_definition: "Organization Inventory Admin"
-     object_name: "Engineering"
-     object_type: "organizations"
+     assignment_object:
+        name: "Engineering"
+        type: "organizations"
      team: APAC-BLR
      state: absent
-
-- name: Role Team assignment
-  ansible.platform.role_team_assignment:
-     role_definition: "Organization Inventory Admin"
-     object_name: "Engineering"
-     object_type: "organizations"
-     team: APAC-BLR
-     state: exist
 ...
 '''
 
@@ -111,8 +107,14 @@ def main():
         object_id=dict(required=False, type='int'),
         object_ansible_id=dict(required=False, type='str'),
         team=dict(required=False, type='str'),
-        object_name=dict(required=False, type='str'),
-        object_type=dict(required=False, type='str'),
+        assignment_object=dict(
+        type="dict",
+        required=False,
+        options=dict(
+            name=dict(type="str", required=True),
+            type=dict(type="str", required=True),
+        ),
+    ),
         team_ansible_id=dict(required=False, type='str'),
         state=dict(default='present', choices=['present', 'absent', 'exists']),
     )
@@ -120,19 +122,18 @@ def main():
         argument_spec=argument_spec,
         mutually_exclusive=[
             ('team', 'team_ansible_id'),
-            ('object_id', 'object_ansible_id', 'object_name'),
+            ('object_id', 'object_ansible_id', 'assignment_object'),
         ],
         required_one_of=[
             ('team', 'team_ansible_id'),
-            ('object_id', 'object_ansible_id', 'object_name'),
+            ('object_id', 'object_ansible_id', 'assignment_object'),
         ],
     )
     team_param = module.params.get('team')
     object_id = module.params.get('object_id')
     role_definition_str = module.params.get('role_definition')
     object_ansible_id = module.params.get('object_ansible_id')
-    object_name = module.params.get('object_name')
-    object_type = module.params.get('object_type')
+    assignment_object = module.params.get("assignment_object")
     team_ansible_id = module.params.get('user_ansible_id')
     state = module.params.get('state')
 
@@ -151,15 +152,14 @@ def main():
         kwargs['object_ansible_id'] = object_ansible_id
     if team_ansible_id is not None:
         kwargs['team_ansible_id'] = team_ansible_id
-    if object_name:
-        if object_type:
-            obj = module.get_one(object_type, allow_none=False, name_or_id=object_name)
-            kwargs['object_id'] = obj['id']
-            obj = module.get_one(object_type, allow_none=True, name_or_id=object_name)
-            if obj is None:
-                module.fail_json(msg=f"Object with name '{object_name}' not found")
-        else:
-            module.fail_json(msg="object.type must be provided when using object.name")
+    if assignment_object:
+        type = assignment_object['type']
+        name = assignment_object['name']
+        obj = module.get_one(type, allow_none=False, name_or_id=name)
+        kwargs['object_id'] = obj['id']
+        obj = module.get_one(type, allow_none=True, name_or_id=name)
+        if obj is None:
+            module.fail_json(msg=f"Object with name '{name}' not found")
 
     role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
 
