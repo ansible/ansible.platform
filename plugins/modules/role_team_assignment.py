@@ -29,7 +29,6 @@ options:
       description:
         - dicts mapping resource names to their types.
         - Must include C(name) and C(type).
-        - Example: C({name: "Engineering", type: "organizations"})
       type: dict
       suboptions:
         name:
@@ -108,13 +107,13 @@ def main():
         object_ansible_id=dict(required=False, type='str'),
         team=dict(required=False, type='str'),
         assignment_object=dict(
-        type="dict",
-        required=False,
-        options=dict(
-            name=dict(type="str", required=True),
-            type=dict(type="str", required=True),
+            type="dict",
+            required=False,
+            options=dict(
+                name=dict(type="str", required=True),
+                type=dict(type="str", required=True),
+            ),
         ),
-    ),
         team_ansible_id=dict(required=False, type='str'),
         state=dict(default='present', choices=['present', 'absent', 'exists']),
     )
@@ -134,7 +133,7 @@ def main():
     role_definition_str = module.params.get('role_definition')
     object_ansible_id = module.params.get('object_ansible_id')
     assignment_object = module.params.get("assignment_object")
-    team_ansible_id = module.params.get('user_ansible_id')
+    team_ansible_id = module.params.get('team_ansible_id')
     state = module.params.get('state')
 
     role_definition = module.get_one('role_definitions', allow_none=False, name_or_id=role_definition_str)
@@ -155,11 +154,10 @@ def main():
     if assignment_object:
         type = assignment_object['type']
         name = assignment_object['name']
-        obj = module.get_one(type, allow_none=False, name_or_id=name)
-        kwargs['object_id'] = obj['id']
         obj = module.get_one(type, allow_none=True, name_or_id=name)
         if obj is None:
             module.fail_json(msg=f"Object with name '{name}' not found")
+        kwargs['object_id'] = obj['id']
 
     role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
 

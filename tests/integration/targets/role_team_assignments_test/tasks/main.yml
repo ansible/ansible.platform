@@ -84,10 +84,6 @@
         description: "Test Team 3"
       register: team4
 
-    - name: Debug Organization
-      ansible.builtin.debug:
-        msg: "{{ org1 }}"
-
     - name: Assert that teams were created
       ansible.builtin.assert:
         that:
@@ -113,8 +109,8 @@
       register: org_admin_assignment_2
       ignore_errors: true  # this may fail depending on AAP limitations
 
-    # 3. Assign Org Inventory Admin role to Team2 on Org1
-    - name: Assign Org Inventory Admin to Team2 on Org1
+    # 3. Assign Org Inventory Admin role to Team2 on Org2
+    - name: Assign Org Inventory Admin to Team2 on Org2
       ansible.platform.role_team_assignment:
         assignment_object:
           name: "{{ org2.name }}"
@@ -163,12 +159,6 @@
 
   always:
     # ----------------------------------------------------------------------
-    # Wait before cleanup
-    # ----------------------------------------------------------------------
-    - name: Wait 60 seconds before cleanup
-      ansible.builtin.pause:
-        seconds: 60
-    # ----------------------------------------------------------------------
     # Explicit Role Cleanup
     # ----------------------------------------------------------------------
     - name: Remove Org Inventory Admin assignment from Team2 on Org1
@@ -179,7 +169,6 @@
         role_definition: Organization Inventory Admin
         team: "{{ team2.name }}"
         state: absent
-      ignore_errors: true
     # ----------------------------------------------------------------------
     # Cleanup
     # ----------------------------------------------------------------------
