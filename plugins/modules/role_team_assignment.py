@@ -25,44 +25,47 @@ notes:
   - Only resource-scoped organization roles (e.g. "Organization Inventory Admin", "Organization Credential Admin") can be meaningfully assigned to teams.
   - Attempting unsupported role assignments will result in errors.
 options:
-    assignment_object:
-      description:
-        - dicts mapping resource names to their types.
-        - Must include C(name) and C(type).
-      type: dict
-      suboptions:
-        name:
-          description: The object name (e.g. organization/team name).
-          type: str
-          required: true
-        type:
-          description: The object type (e.g. C(organizations), C(teams)).
-          type: str
-          required: true
+    assignment_objects:
+        description:
+            - List of dicts mapping resource names to their types.
+            - When using name, each dict must include C(name) and C(type).
+        type: list
+        elements: dict
+        suboptions:
+            name:
+                description:
+                  - The object name (e.g. organization/team name).
+                  - Internally resolved into its ansible_id.
+                type: str
+                required: False
+            type:
+                description: The object type (e.g. C(organizations), C(teams)).
+                type: str
+                required: true
+            object_id:
+                description:
+                - The primary key of the object (team/organization) this assignment applies to.
+                - A null value indicates system-wide assignment.
+                required: False
+                type: int
+            object_ansible_id:
+                description:
+                    - Resource id of the object this role applies to. Alternative to the object_id field.
+                required: False
+                type: str
     role_definition:
         description:
             - The role definition which defines permissions conveyed by this assignment.
         required: True
         type: str
-    object_id:
-        description:
-          - The primary key of the object (team/organization) this assignment applies to.
-          - A null value indicates system-wide assignment.
-        required: False
-        type: int
-    object_ansible_id:
-        description:
-            - Resource id of the object this role applies to. Alternative to the object_id field.
-        required: False
-        type: str
     team:
         description:
-          - The name or id of the user to assign to the object.
+          - The name or id of the team to assign to the object.
         required: False
         type: str
     team_ansible_id:
         description:
-          - Resource id of the user who will receive permissions from this assignment. Alternative to I(team) field.
+          - Resource id of the team who will receive permissions from this assignment. Alternative to I(team) field.
         required: False
         type: str
     state:
@@ -79,41 +82,80 @@ extends_documentation_fragment:
 EXAMPLES = '''
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
-     role_definition: "Organization Inventory Admin"
-     assignment_object:
-        name: "Engineering"
-        type: "organizations"
-     team: APAC-BLR
-     state: present
+    team: "APAC-BLR"
+    assignment_objects:
+      - object_ansible_id: "Engineering"
+      role_definition: Organization Inventory Admin
+      state: present
+    register: result
+
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
-     role_definition: "Organization Inventory Admin"
-     assignment_object:
-        name: "Engineering"
-        type: "organizations"
-     team: APAC-BLR
-     state: absent
+    team: "APAC-BLR"
+    assignment_objects:
+      - object_ansible_id: "Engineering"
+      role_definition: Organization Inventory Admin
+      state: exist
+    register: result
+
+- name: Role Team assignment
+  ansible.platform.role_team_assignment:
+    team: "APAC-BLR"
+    assignment_objects:
+      - object_ansible_id: "Engineering"
+      role_definition: Organization Inventory Admin
+      state: absent
+    register: result
 ...
 '''
 
 from ..module_utils.aap_module import AAPModule
 
 
+def assign_team_role(module, auto_exit=False, **role_args):
+    """
+    Assigns a team role to a specific object.
+    Args:
+        module:(AAPModule) Ansible module instance.
+        auto_exit:(bool) If True, the module will exit automatically after the operation.
+        role_args:(dict) role assignment parameters.
+    """
+    if role_args.get('state') == 'exists' and not role_args.get('role_team_assignment'):
+
+        module.fail_json(
+            msg=(
+                f"Team role assignment does not exist: {role_args.get('role_definition_str')}, "
+                f"team: {role_args.get('team_param') or role_args.get('team_ansible_id')}, "
+                f"object: {role_args.get('object_id') or role_args.get('object_ansible_id')}"
+            )
+        )
+
+        module.exit_json(**module.json_output)
+
+    elif role_args.get('state') == 'absent':
+        module.delete_if_needed(role_args.get('role_team_assignment'))
+
+    elif role_args.get('state') == 'present':
+        module.create_if_needed(
+            role_args.get('role_team_assignment'),
+            role_args.get('kwargs'),
+            endpoint='role_team_assignments',
+            item_type='role_team_assignment',
+            auto_exit=auto_exit
+        )
+    return
+
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
         role_definition=dict(required=True, type='str'),
-        object_id=dict(required=False, type='int'),
-        object_ansible_id=dict(required=False, type='str'),
         team=dict(required=False, type='str'),
-        assignment_object=dict(
-            type="dict",
-            required=False,
-            options=dict(
-                name=dict(type="str", required=True),
-                type=dict(type="str", required=True),
-            ),
-        ),
+        assignment_objects=dict(required=False, type='list', elements='dict', options=dict(
+            name=dict(type='str', required=False),
+            type=dict(type='str', required=False),
+            object_id=dict(required=False, type='int'),
+            object_ansible_id=dict(required=False, type='str'),
+        )),
         team_ansible_id=dict(required=False, type='str'),
         state=dict(default='present', choices=['present', 'absent', 'exists']),
     )
@@ -121,64 +163,76 @@ def main():
         argument_spec=argument_spec,
         mutually_exclusive=[
             ('team', 'team_ansible_id'),
-            ('object_id', 'object_ansible_id', 'assignment_object'),
         ],
         required_one_of=[
             ('team', 'team_ansible_id'),
-            ('object_id', 'object_ansible_id', 'assignment_object'),
         ],
     )
     team_param = module.params.get('team')
-    object_id = module.params.get('object_id')
     role_definition_str = module.params.get('role_definition')
-    object_ansible_id = module.params.get('object_ansible_id')
-    assignment_object = module.params.get("assignment_object")
+    assignment_objects = module.params.get("assignment_objects")
     team_ansible_id = module.params.get('team_ansible_id')
     state = module.params.get('state')
 
     role_definition = module.get_one('role_definitions', allow_none=False, name_or_id=role_definition_str)
     team = module.get_one('teams', allow_none=True, name_or_id=team_param)
 
+
     kwargs = {
         'role_definition': role_definition['id'],
     }
-
-    if object_id is not None:
-        kwargs['object_id'] = object_id
-    if team is not None:
+    if team:
         kwargs['team'] = team['id']
-    if object_ansible_id is not None:
-        kwargs['object_ansible_id'] = object_ansible_id
     if team_ansible_id is not None:
         kwargs['team_ansible_id'] = team_ansible_id
-    if assignment_object:
-        type = assignment_object['type']
-        name = assignment_object['name']
-        obj = module.get_one(type, allow_none=True, name_or_id=name)
-        if obj is None:
-            module.fail_json(msg=f"Object with name '{name}' not found")
-        kwargs['object_id'] = obj['id']
 
-    role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
+    role_map = {
+        'Team': 'teams',
+        'Organization': 'organizations',
+    }
 
-    if state == 'exists':
-        if role_team_assignment is None:
-            module.fail_json(
-                msg=f'Team role assignment does not exist: {role_definition_str}, '
-                f'user: {team_param or team_ansible_id}, object: {object_id or object_ansible_id}'
-            )
-        module.exit_json(**module.json_output)
+    entity_type = next((
+        mapped
+        for prefix, mapped in role_map.items()
+        if role_definition_str.startswith(prefix)
+    ), None)
+    object_param = assignment_objects
 
-    elif state == 'absent':
-        module.delete_if_needed(role_team_assignment)
+    role_args = {
+        'role_definition_str': role_definition_str,
+        'team_param': team_param,
+        'team_ansible_id': team_ansible_id,
+        'state': state,
+        'kwargs': kwargs,
+    }
+    if role_definition_str.lower().startswith('platform') and role_definition["id"] == 1:
+        role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
+        role_args['role_team_assignment'] = role_team_assignment
+        assign_team_role(module, **role_args)
 
-    elif state == 'present':
-        module.create_if_needed(
-            role_team_assignment,
-            kwargs,
-            endpoint='role_team_assignments',
-            item_type='role_team_assignment',
-        )
+    elif entity_type and object_param:
+
+        for entity in object_param:
+            if entity['name'] and entity['type']:
+                obj = module.get_one(entity['type'], allow_none=False, name_or_id=entity['name'])
+            elif entity['object_id']:
+                obj = module.get_one(entity['object_id'], allow_none=False, name_or_id=entity['object_id'])
+            else:
+                obj = module.get_one(entity['object_ansible_id'], allow_none=False, name_or_id=entity['object_ansible_id'])
+
+            if obj is None:
+                module.fail_json(msg=f"Unable to find {entity['type']} with name {entity['name']}")
+            entity_id = obj['id']
+
+            if entity_id:
+                kwargs['object_id'] = entity_id
+
+            role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
+            role_args['role_team_assignment'] = role_team_assignment
+
+            assign_team_role(module, **role_args)
+
+    module.exit_json(**module.json_output)
 
 
 if __name__ == '__main__':
