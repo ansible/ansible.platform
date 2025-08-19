@@ -19,7 +19,7 @@
   block:
     # <roles> -------------------
     - name: Create an role with check mode
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ test_role_name }}"
         description: Grants full inventory access
         content_type: awx.inventory
@@ -40,7 +40,7 @@
         fail_msg: "role '{{ test_role_name }}' exists in the system!"
 
     - name: Create Roles
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ test_role_name }}"
         description: Grants full inventory access
         content_type: awx.inventory
@@ -55,7 +55,7 @@
           - role is changed
 
     - name: Recreate an role
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ test_role_name }}"
         state: exists
       register: recreate_role
@@ -66,7 +66,7 @@
           - recreate_role is not changed
 
     - name: Alter an existing role by ID
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ role.id }}"
         description: "Some updates in role"
       register: role_change
@@ -77,7 +77,7 @@
           - role_change is changed
 
     - name: Rename an role
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ test_role_name }}"
         new_name: "new-{{ test_role_name }}"
       register: rename_role
@@ -89,7 +89,7 @@
           - role.id == rename_role.id
 
     - name: Delete a non-existent role
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ test_role_name }}"
         state: absent
       register: role_delete
@@ -100,7 +100,7 @@
           role_delete is not changed
 
     - name: Delete an role
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ role.id }}"
         state: absent
       register: role_delete
@@ -115,7 +115,7 @@
   # <Cleanup>
   always:
     - name: Delete Roles
-      ansible.platform.role_definitions:
+      ansible.platform.role_definition:
         name: "{{ item }}"
         state: absent
       when: "item in vars and 'id' in vars[item]"
