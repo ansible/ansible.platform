@@ -6,7 +6,7 @@
 
 - name: Preset vars
   ansible.builtin.set_fact:
-    role_name: "GW-Collection-Test-Role-{{ test_id }}"
+    test_role_name: "GW-Collection-Test-Role-{{ test_id }}"
 
 - name: Run Tests
   module_defaults:
@@ -20,7 +20,7 @@
     # <roles> -------------------
     - name: Create an role with check mode
       ansible.platform.role_definitions:
-        name: "{{ role_name }}"
+        name: "{{ test_role_name }}"
         description: Grants full inventory access
         content_type: awx.inventory
         permissions:
@@ -31,17 +31,17 @@
     - name: Search for the role
       ansible.builtin.set_fact:
         item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'role_definitions',
-          query_params={'name': '{{ role_name }}'}, **connection_info) }}"
+          query_params={'name': '{{ test_role_name }}'}, **connection_info) }}"
 
     - name: Assert that role does not exist
       ansible.builtin.assert:
         that:
           - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
-        fail_msg: "role '{{ role_name }}' exists in the system!"
+        fail_msg: "role '{{ test_role_name }}' exists in the system!"
 
     - name: Create Roles
       ansible.platform.role_definitions:
-        name: "{{ role_name }}"
+        name: "{{ test_role_name }}"
         description: Grants full inventory access
         content_type: awx.inventory
         permissions:
@@ -56,7 +56,7 @@
 
     - name: Recreate an role
       ansible.platform.role_definitions:
-        name: "{{ role_name }}"
+        name: "{{ test_role_name }}"
         state: exists
       register: recreate_role
 
@@ -78,8 +78,8 @@
 
     - name: Rename an role
       ansible.platform.role_definitions:
-        name: "{{ role_name }}"
-        new_name: "new-{{ role_name }}"
+        name: "{{ test_role_name }}"
+        new_name: "new-{{ test_role_name }}"
       register: rename_role
 
     - name: Assert the rename of an role changes the existing item
@@ -90,7 +90,7 @@
 
     - name: Delete a non-existent role
       ansible.platform.role_definitions:
-        name: "{{ role_name }}"
+        name: "{{ test_role_name }}"
         state: absent
       register: role_delete
 

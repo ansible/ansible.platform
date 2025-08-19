@@ -62,6 +62,8 @@ EXAMPLES = """
   ansible.platform.role_definition:
     name: Organization Inventory Admin
     state: absent
+
+...
 """
 
 from ..module_utils.aap_module import AAPModule  # noqa
