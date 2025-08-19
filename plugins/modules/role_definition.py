@@ -67,6 +67,7 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_role_definition import AAPRoleDefinition  # noqa
 
+
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -79,6 +80,7 @@ def main():
 
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
     AAPRoleDefinition(module).manage()
+
 
 if __name__ == "__main__":
     main()

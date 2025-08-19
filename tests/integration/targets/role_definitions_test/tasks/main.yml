@@ -1,0 +1,124 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    role_name: "GW-Collection-Test-Role-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <roles> -------------------
+    - name: Create an role with check mode
+      ansible.platform.role_definitions:
+        name: "{{ role_name }}"
+        description: Grants full inventory access
+        content_type: awx.inventory
+        permissions:
+          - awx.view_inventory
+          - awx.change_inventory
+      check_mode: true
+
+    - name: Search for the role
+      ansible.builtin.set_fact:
+        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'role_definitions',
+          query_params={'name': '{{ role_name }}'}, **connection_info) }}"
+
+    - name: Assert that role does not exist
+      ansible.builtin.assert:
+        that:
+          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+        fail_msg: "role '{{ role_name }}' exists in the system!"
+
+    - name: Create Roles
+      ansible.platform.role_definitions:
+        name: "{{ role_name }}"
+        description: Grants full inventory access
+        content_type: awx.inventory
+        permissions:
+          - awx.view_inventory
+          - awx.change_inventory
+      register: role
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - role is changed
+
+    - name: Recreate an role
+      ansible.platform.role_definitions:
+        name: "{{ role_name }}"
+        state: exists
+      register: recreate_role
+
+    - name: Assert that a recreate does not change the system
+      ansible.builtin.assert:
+        that:
+          - recreate_role is not changed
+
+    - name: Alter an existing role by ID
+      ansible.platform.role_definitions:
+        name: "{{ role.id }}"
+        description: "Some updates in role"
+      register: role_change
+
+    - name: Assert that an role change changes the system
+      ansible.builtin.assert:
+        that:
+          - role_change is changed
+
+    - name: Rename an role
+      ansible.platform.role_definitions:
+        name: "{{ role_name }}"
+        new_name: "new-{{ role_name }}"
+      register: rename_role
+
+    - name: Assert the rename of an role changes the existing item
+      ansible.builtin.assert:
+        that:
+          - rename_role is changed
+          - role.id == rename_role.id
+
+    - name: Delete a non-existent role
+      ansible.platform.role_definitions:
+        name: "{{ role_name }}"
+        state: absent
+      register: role_delete
+
+    - name: Assert that the deletion of a non-existent role does not fail or change the system
+      ansible.builtin.assert:
+        that:
+          role_delete is not changed
+
+    - name: Delete an role
+      ansible.platform.role_definitions:
+        name: "{{ role.id }}"
+        state: absent
+      register: role_delete
+
+    - name: Assert that the deletion of a valid or changes the system
+      ansible.builtin.assert:
+        that:
+          - role_delete is changed
+
+    # </Roless> ------------------
+
+  # <Cleanup>
+  always:
+    - name: Delete Roles
+      ansible.platform.role_definitions:
+        name: "{{ item }}"
+        state: absent
+      when: "item in vars and 'id' in vars[item]"
+      loop:
+        - "role"
+...
