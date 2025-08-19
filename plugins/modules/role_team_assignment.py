@@ -41,7 +41,7 @@ options:
             type:
                 description: The object type (e.g. C(organizations), C(teams)).
                 type: str
-                required: true
+                required: False
             object_id:
                 description:
                 - The primary key of the object (team/organization) this assignment applies to.
@@ -80,31 +80,55 @@ extends_documentation_fragment:
 
 
 EXAMPLES = '''
-- name: Role Team assignment
+- name: Assign roles for multiple objects using names
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "{{ org1.name }}"
+        type: "organizations"
+      - name: "{{ org2.name }}"
+        type: "organizations"
+    role_definition: Organization Inventory Admin
+    team: "{{ team2.name }}"
+    state: present
+  register: result
+
+- name: Delete team role assignments for multiple objects using names
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "{{ org1.name }}"
+        type: "organizations"
+      - name: "{{ org2.name }}"
+        type: "organizations"
+    role_definition: Organization Inventory Admin
+    team: "{{ team2.name }}"
+    state: absent
+  register: result
+
+- name: Role Team assignment using object_ansible_id
   ansible.platform.role_team_assignment:
     team: "APAC-BLR"
     assignment_objects:
-      - object_ansible_id: "Engineering"
-      role_definition: Organization Inventory Admin
-      state: present
+      - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
+    role_definition: Organization Inventory Admin
+    state: present
+    register: result
+
+- name: Check Role Team assignment exists
+  ansible.platform.role_team_assignment:
+    team: "APAC-BLR"
+    assignment_objects:
+      - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
+    role_definition: Organization Inventory Admin
+    state: exist
     register: result
 
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
     team: "APAC-BLR"
     assignment_objects:
-      - object_ansible_id: "Engineering"
-      role_definition: Organization Inventory Admin
-      state: exist
-    register: result
-
-- name: Role Team assignment
-  ansible.platform.role_team_assignment:
-    team: "APAC-BLR"
-    assignment_objects:
-      - object_ansible_id: "Engineering"
-      role_definition: Organization Inventory Admin
-      state: absent
+      - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
+    role_definition: Organization Inventory Admin
+    state: absent
     register: result
 ...
 '''
@@ -145,6 +169,41 @@ def assign_team_role(module, auto_exit=False, **role_args):
         )
     return
 
+
+def _validate_selector(entry, module):
+    """
+    Enforce exactly one selector per item:
+      EITHER (name AND type) OR object_id OR object_ansible_id.
+    If 'name' is used, 'type' is required.
+    """
+    has_name = bool(entry.get('name'))
+    has_type = bool(entry.get('type'))
+    has_pk = entry.get('object_id') is not None
+    has_uuid = bool(entry.get('object_ansible_id'))
+
+    # If name is present, type must be present (and vice versa)
+    if has_name ^ has_type:
+        module.fail_json(msg="When using 'name', you must also provide 'type' in each assignment_objects item.")
+
+    count = (1 if (has_name and has_type) else 0) + (1 if has_pk else 0) + (1 if has_uuid else 0)
+    if count == 0:
+        module.fail_json(
+            msg="Each assignment_objects item must include exactly one of: "
+                "(name & type) OR object_id OR object_ansible_id."
+        )
+    if count > 1:
+        module.fail_json(
+            msg="Each assignment_objects item must not include more than one of: "
+                "(name & type), object_id, object_ansible_id."
+        )
+
+    # Optional: constrain allowed types for name-based lookup
+    if has_name and has_type:
+        allowed = ("organizations", "teams")  # extend if/when we support more
+        if entry["type"] not in allowed:
+            module.fail_json(msg=f"Unsupported type '{entry['type']}'. Valid types: {', '.join(allowed)}")
+
+
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -176,7 +235,6 @@ def main():
 
     role_definition = module.get_one('role_definitions', allow_none=False, name_or_id=role_definition_str)
     team = module.get_one('teams', allow_none=True, name_or_id=team_param)
-
 
     kwargs = {
         'role_definition': role_definition['id'],
@@ -213,6 +271,8 @@ def main():
     elif entity_type and object_param:
 
         for entity in object_param:
+            _validate_selector(entity, module)
+
             if entity['name'] and entity['type']:
                 obj = module.get_one(entity['type'], allow_none=False, name_or_id=entity['name'])
             elif entity['object_id']:

@@ -31,10 +31,11 @@ no_endpoint_for_module = ['token']
 extra_endpoints = {}
 
 # Global module parameters we can ignore
-ignore_module_parameters = ['state', 'new_name', 'new_organization', 'new_authenticator', 'update_secrets', 'copy_from', 'assignment_object']
+ignore_module_parameters = ['state', 'new_name', 'new_organization', 'new_authenticator', 'update_secrets', 'copy_from', 'assignment_objects']
 ignore_api_parameters = {
     'team': ['users', 'admins'],  # TODO: remove when removed from API
     'organization': ['users', 'admins'],  # TODO: remove when removed from API
+    'role_team_assignment': ['object_ansible_id', 'object_id'],  # TODO: remove when removed from API
 }
 
 # Some modules take additional parameters that do not appear in the API
