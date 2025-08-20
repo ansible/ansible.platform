@@ -42,11 +42,10 @@
     - name: Create Roles
       ansible.platform.role_definition:
         name: "{{ test_role_name }}"
-        description: Grants full inventory access
-        content_type: awx.inventory
+        description: "Has member permission to a single organization"
+        content_type: shared.organization
         permissions:
-          - awx.view_inventory
-          - awx.change_inventory
+          - shared.view_organization
       register: role
 
     - name: Assert a creation changes the system
@@ -57,7 +56,10 @@
     - name: Recreate an role
       ansible.platform.role_definition:
         name: "{{ test_role_name }}"
-        state: exists
+        description: "Has member permission to a single organization"
+        content_type: shared.organization
+        permissions:
+          - shared.view_organization
       register: recreate_role
 
     - name: Assert that a recreate does not change the system
@@ -69,6 +71,9 @@
       ansible.platform.role_definition:
         name: "{{ role.id }}"
         description: "Some updates in role"
+        content_type: shared.organization
+        permissions:
+          - shared.view_organization
       register: role_change
 
     - name: Assert that an role change changes the system
@@ -80,6 +85,9 @@
       ansible.platform.role_definition:
         name: "{{ test_role_name }}"
         new_name: "new-{{ test_role_name }}"
+        content_type: shared.organization
+        permissions:
+          - shared.view_organization
       register: rename_role
 
     - name: Assert the rename of an role changes the existing item
@@ -91,6 +99,9 @@
     - name: Delete a non-existent role
       ansible.platform.role_definition:
         name: "{{ test_role_name }}"
+        content_type: shared.organization
+        permissions:
+          - shared.view_organization
         state: absent
       register: role_delete
 
@@ -102,6 +113,9 @@
     - name: Delete an role
       ansible.platform.role_definition:
         name: "{{ role.id }}"
+        content_type: shared.organization
+        permissions:
+          - shared.view_organization
         state: absent
       register: role_delete
 
@@ -117,6 +131,9 @@
     - name: Delete Roles
       ansible.platform.role_definition:
         name: "{{ item }}"
+        content_type: shared.organization
+        permissions:
+          - shared.view_organization
         state: absent
       when: "item in vars and 'id' in vars[item]"
       loop:
