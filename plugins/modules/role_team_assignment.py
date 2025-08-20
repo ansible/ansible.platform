@@ -119,7 +119,7 @@ EXAMPLES = '''
     assignment_objects:
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     role_definition: Organization Inventory Admin
-    state: exist
+    state: exists
     register: result
 
 - name: Role Team assignment
@@ -136,33 +136,26 @@ EXAMPLES = '''
 from ..module_utils.aap_module import AAPModule
 
 
-def assign_team_role(module, auto_exit=False, **role_args):
+def assign_team_role(module, state, role_team_assignment, kwargs,
+                     role_definition_str, team_param, team_ansible_id, auto_exit=False):
     """
-    Assigns a team role to a specific object.
-    Args:
-        module:(AAPModule) Ansible module instance.
-        auto_exit:(bool) If True, the module will exit automatically after the operation.
-        role_args:(dict) role assignment parameters.
+    Create/delete/assert a team role assignment.s.
     """
-    if role_args.get('state') == 'exists' and not role_args.get('role_team_assignment'):
-
-        module.fail_json(
-            msg=(
-                f"Team role assignment does not exist: {role_args.get('role_definition_str')}, "
-                f"team: {role_args.get('team_param') or role_args.get('team_ansible_id')}, "
-                f"object: {role_args.get('object_id') or role_args.get('object_ansible_id')}"
+    if state == 'exists':
+        if not role_team_assignment:
+            module.fail_json(
+                msg=(
+                    "Team role assignment does not exist: %s, team: %s"
+                    % (role_definition_str, team_param or team_ansible_id)
+                )
             )
-        )
+    elif state == 'absent':
+        module.delete_if_needed(role_team_assignment)
 
-        module.exit_json(**module.json_output)
-
-    elif role_args.get('state') == 'absent':
-        module.delete_if_needed(role_args.get('role_team_assignment'))
-
-    elif role_args.get('state') == 'present':
+    elif state == 'present':
         module.create_if_needed(
-            role_args.get('role_team_assignment'),
-            role_args.get('kwargs'),
+            role_team_assignment,
+            kwargs,
             endpoint='role_team_assignments',
             item_type='role_team_assignment',
             auto_exit=auto_exit
@@ -256,17 +249,10 @@ def main():
     ), None)
     object_param = assignment_objects
 
-    role_args = {
-        'role_definition_str': role_definition_str,
-        'team_param': team_param,
-        'team_ansible_id': team_ansible_id,
-        'state': state,
-        'kwargs': kwargs,
-    }
     if role_definition_str.lower().startswith('platform') and role_definition["id"] == 1:
         role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
-        role_args['role_team_assignment'] = role_team_assignment
-        assign_team_role(module, **role_args)
+        assign_team_role(module, state, role_team_assignment, kwargs,
+                         role_definition_str, team_param, team_ansible_id)
 
     elif entity_type and object_param:
 
@@ -288,9 +274,8 @@ def main():
                 kwargs['object_id'] = entity_id
 
             role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
-            role_args['role_team_assignment'] = role_team_assignment
-
-            assign_team_role(module, **role_args)
+            assign_team_role(module, state, role_team_assignment, kwargs,
+                             role_definition_str, team_param, team_ansible_id)
 
     module.exit_json(**module.json_output)
 
