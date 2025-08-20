@@ -31,10 +31,11 @@ no_endpoint_for_module = ['token']
 extra_endpoints = {}
 
 # Global module parameters we can ignore
-ignore_module_parameters = ['state', 'new_name', 'new_organization', 'new_authenticator', 'update_secrets', 'copy_from']
+ignore_module_parameters = ['state', 'new_name', 'new_organization', 'new_authenticator', 'update_secrets', 'copy_from', 'assignment_objects']
 ignore_api_parameters = {
     'team': ['users', 'admins'],  # TODO: remove when removed from API
     'organization': ['users', 'admins'],  # TODO: remove when removed from API
+    'role_team_assignment': ['object_ansible_id', 'object_id'],  # TODO: remove when removed from API
 }
 
 # Some modules take additional parameters that do not appear in the API
@@ -49,7 +50,8 @@ no_api_parameter_ok = {
 # work is being done and will bypass this check. At some point this module should be removed from this list.
 # https://issues.redhat.com/browse/AAP-23122 for DAB RBAC endpoints
 # https://issues.redhat.com/browse/AAP-24613 for service_key
-needs_development = ['role_team_assignment', 'ui_plugin_route']  # i.e. 'team', 'organization'
+
+needs_development = ['ui_plugin_route']  # i.e. 'team', 'organization'
 needs_param_development = {}
 # -----------------------------------------------------------------------------------------------------------
 
