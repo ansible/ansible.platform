@@ -103,6 +103,7 @@ class AAPModule(AnsibleModule):
         "teams": ["name", "organization"],
         "ui_plugin_routes": "name",
         "users": "username",
+        "role_definitions": "name",
     }
     host = "127.0.0.1"
     username = None
