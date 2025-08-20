@@ -10,6 +10,7 @@ action_groups:
     - organization
     - role_user_assignment
     - role_team_assignment
+    - role_definition
     - route
     - service
     - service_cluster
