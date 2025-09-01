@@ -473,6 +473,11 @@ class AAPModule(AnsibleModule):
                     if key in response["json"]:
                         self.json_output["name"] = response["json"][key]
                         self.json_output[key] = response["json"][key]
+                # # Special case: objects without a natural "name" (e.g., role_team_assignments)
+                sf = response["json"].get("summary_fields") or {}
+                if self.json_output["name"] == "unknown" and sf:
+                    self.json_output["summary_fields"] = response["json"]["summary_fields"]
+
                 if item_type != "token":
                     self.json_output["id"] = response["json"]["id"]
                 self.json_output["changed"] = True

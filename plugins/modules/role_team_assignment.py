@@ -150,7 +150,7 @@ def assign_team_role(module, state, role_team_assignment, kwargs,
                 )
             )
     elif state == 'absent':
-        module.delete_if_needed(role_team_assignment)
+        module.delete_if_needed(role_team_assignment,auto_exit=auto_exit)
 
     elif state == 'present':
         module.create_if_needed(
@@ -248,6 +248,7 @@ def main():
         if role_definition_str.startswith(prefix)
     ), None)
     object_param = assignment_objects
+    results = []
 
     if role_definition_str.lower().startswith('platform') and role_definition["id"] == 1:
         role_team_assignment = module.get_one('role_team_assignments', **{'data': kwargs})
@@ -255,7 +256,6 @@ def main():
                          role_definition_str, team_param, team_ansible_id)
 
     elif entity_type and object_param:
-
         for entity in object_param:
             _validate_selector(entity, module)
 
@@ -277,7 +277,14 @@ def main():
             assign_team_role(module, state, role_team_assignment, kwargs,
                              role_definition_str, team_param, team_ansible_id)
 
-    module.exit_json(**module.json_output)
+            # copy current state before it gets overwritten
+            results.append(module.json_output.copy())
+
+        # At the end, return *all* results
+    module.exit_json(
+    changed=any(r.get("changed") for r in results),
+    assignments=results
+    )
 
 
 if __name__ == '__main__':
