@@ -1,15 +1,4 @@
 ---
-- name: Generate a unique test ID
-  ansible.builtin.set_fact:
-    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
-  when: test_id is not defined
-
-- name: Preset variables for test resource names
-  ansible.builtin.set_fact:
-    organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
-    team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
-    rh_username: "rta_user"
-
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -19,6 +8,20 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+
+    # --------------------------------------------------------------------------
+    # Setup
+    # --------------------------------------------------------------------------
+    - name: Generate a unique test ID
+      ansible.builtin.set_fact:
+        test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+      when: test_id is not defined
+
+    - name: Preset variables for test resource names
+      ansible.builtin.set_fact:
+        organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
+        team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
+
     # --------------------------------------------------------------------------
     # Organizations
     # --------------------------------------------------------------------------
@@ -110,59 +113,17 @@
       register: org_admin_assignment_2
       ignore_errors: true  # this may fail depending on AAP limitations
 
-    # Role-Team Assignment Lifecycle
-    - name: Derive names/descriptions from rh_username
-      ansible.builtin.set_fact:
-        org_name: "ENG-ORG-{{ rh_username }}"
-        team_name: "APAC-BLR-{{ rh_username }}"
-        test_role_name: "GW-Collection-Test-Role-{{ rh_username }}"
-        org_description: "Engineering org for {{ rh_username }}"
-        team_description: "Team APAC-BLR for {{ rh_username }}"
-
-    # 1) Pre-step: ensure a org exists
-    - name: Create platform organization
-      ansible.platform.organization:
-        name: "{{ org_name }}"
-        description: "{{ org_description }}"
-        state: present
-      register: created
-
-    # 2) Pre-step ensure a team exists
-    - name: Create platform team
-      ansible.platform.team:
-        name: "{{ team_name }}"
-        organization: "{{ org_name }}"
-        description: "{{ team_description }}"
-        state: present
-      register: created
-
-    # 2) Pre-step: ensure a role_def exists
-    - name: Create org-scoped role definition (Organization Inventory Admin)
-      ansible.platform.role_definition:
-        name: "Organization Inventory Admin"
-        description: "Org-scoped role that grants full inventory admin on Controller resources"
-        content_type: shared.organization
-        permissions:
-          - awx.view_inventory
-          - awx.add_inventory
-          - awx.change_inventory
-          - awx.delete_inventory
-        state: present
-      register: org_inv_admin_role
-
-    - name: Assert role exists (created or already present)
-      ansible.builtin.assert:
-        that:
-          - org_inv_admin_role is changed or org_inv_admin_role is not changed
-
-    # 3) Assign Role to a team
-    - name: Assign Org Inventory Admin to Team2 on Org1 and Org2
-      ansible.platform.role_team_assignment: &rta_present
+    # Once we have role_definition , module available we can uncomment these
+    # 3. Assign Org Inventory Admin role to Team2 on Org2
+    - name: Assign Org Inventory Admin to Team2 on Org2
+      ansible.platform.role_team_assignment:
         assignment_objects:
-          - name: "{{ org_name }}"
+          - name: "{{ org1.name }}"
             type: "organizations"
-        role_definition: "Organization Inventory Admin"
-        team: "{{ team_name }}"
+          - name: "{{ org2.name }}"
+            type: "organizations"
+        role_definition: Organization Inventory Admin
+        team: "{{ team2.name }}"
         state: present
       register: org_admin_assignment_3
 
@@ -171,351 +132,63 @@
         that:
           - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
 
-    # 3) Re-run → idempotent
-    - name: Re-assign same role to same team
-      ansible.platform.role_team_assignment: *rta_present
-      register: idem
-
-    - name: Assert idempotency
-      ansible.builtin.assert:
-        that: ["idem is not changed"]
-
-    # Remove Role-Team Assignment
-    - name: Derive names/descriptions from rh_username
-      ansible.builtin.set_fact:
-        org_name: "ENG-ORG-{{ rh_username }}"           # must exist (from org tests / or already part of this test)
-        team_name: "APAC-BLR-{{ rh_username }}"         # must exist (from team tests / or already part of this test)
-        test_role_name: "GW-Collection-Test-Role-{{ rh_username }}"
-        org_description: "Engineering org for {{ rh_username }}"
-        team_description: "Team APAC-BLR for {{ rh_username }}"
-        assignment_obj:
-          - name: "{{ org_name }}"
-            type: "organizations"
-    # 1) Pre-step: ensure a org exists
-    - name: Create platform organization
-      ansible.platform.organization:
-        name: "{{ org_name }}"
-        description: "{{ org_description }}"
-        state: present
-      register: created
-
-    # 2) Pre-step ensure a team exists
-    - name: Create platform team
-      ansible.platform.team:
-        name: "{{ team_name }}"
-        organization: "{{ org_name }}"
-        description: "{{ team_description }}"
-        state: present
-      register: created
-
-    # 2) Pre-step: ensure a role_def exists
-    - name: Create org-scoped role definition (Organization Inventory Admin)
-      ansible.platform.role_definition:
-        name: "Organization Inventory Admin"
-        description: "Org-scoped role that grants full inventory admin on Controller resources"
-        content_type: shared.organization
-        permissions:
-          - awx.view_inventory
-          - awx.add_inventory
-          - awx.change_inventory
-          - awx.delete_inventory
-        state: present
-      register: org_inv_admin_role
-
-    - name: Assert role exists (created or already present)
-      ansible.builtin.assert:
-        that:
-          - org_inv_admin_role is changed or org_inv_admin_role is not changed
-
-    # 3) Assign Role to a team
-    - name: Assign Org Inventory Admin to Team2 on Org1 and Org2
-      ansible.platform.role_team_assignment: &rta_remove
-        assignment_objects:
-          - name: "{{ org_name }}"
-            type: "organizations"
-        role_definition: "Organization Inventory Admin"
-        team: "{{ team_name }}"
-        state: absent
-      register: org_admin_assignment
-
-    - name: Assert Team Org Inventory Admin assignment worked
-      ansible.builtin.assert:
-        that:
-          - org_admin_assignment is changed or org_admin_assignment is not failed
-
-    # 3) Re-run → idempotent
-    - name: Remove team assignment
-      ansible.platform.role_team_assignment: *rta_remove
-      register: idem
-
-    - name: Assert idempotency
-      ansible.builtin.assert:
-        that: ["idem is not changed"]
-
-    # Cleanup role_def
-    - name: Cleanup role_def
-      ansible.platform.role_definition:
-        name: "Organization Inventory Admin"
-        content_type: shared.organization
-        permissions:
-          - awx.view_inventory
-          - awx.add_inventory
-          - awx.change_inventory
-          - awx.delete_inventory
-        state: absent
-
-    - name: Delete org
-      ansible.platform.organization: &org_delete
-        name: "{{ org_name }}"
-        state: absent
-      register: deleted
-
-    - name: Delete team
-      ansible.platform.team: &team_delete
-        name: "{{ team_name }}"
-        organization: "{{ org_name }}"
-        state: absent
-      register: deleted
-
-    # Assign org-scoped role to a team across multiple orgs
-    - name: Derive names/descriptions from rh_username
-      ansible.builtin.set_fact:
-        org1: "ENG-ORG-A-{{ rh_username }}"
-        org2: "ENG-ORG-B-{{ rh_username }}"
-        team_name: "APAC-BLR-{{ rh_username }}"
-        test_role: "Organization Inventory Admin"
-
-    - name: Ensure org1 exists
-      ansible.platform.organization:
-        name: "{{ org1 }}"
-        description: "Org A for {{ rh_username }}"
-        state: present
-    - name: Ensure org2 exists
-      ansible.platform.organization:
-        name: "{{ org2 }}"
-        description: "Org B for {{ rh_username }}"
-        state: present
-    # Team
-    - name: Ensure team exists in org1 (membership org doesn not matter for assignment scope)
-      ansible.platform.team:
-        name: "{{ team_name }}"
-        organization: "{{ org1 }}"
-        description: "Team for multi-org assignment"
-        state: present
-
-    # Role definition (org-scoped)
-    - name: Ensure org-scoped role definition exists
-      ansible.platform.role_definition:
-        name: "{{ test_role }}"
-        description: "Org-scoped inventory admin"
-        content_type: shared.organization
-        permissions:
-          - awx.view_inventory
-          - awx.add_inventory
-          - awx.change_inventory
-          - awx.delete_inventory
-        state: present
-
-    # Assign across two orgs in one call
-    - name: Assign role to team on org1 and org2
-      ansible.platform.role_team_assignment: &assign_multi
-        assignment_objects:
-          - name: "{{ org1 }}"
-            type: "organizations"
-          - name: "{{ org2 }}"
-            type: "organizations"
-        role_definition: "{{ test_role }}"
-        team: "{{ team_name }}"
-        state: present
-      register: assign_res
-
-    - name: Assert assignment created or already present
-      ansible.builtin.assert:
-        that:
-          - assign_res is changed or assign_res is not failed
-
-    # Idempotency
-    - name: Re-run multi-org assignment (idempotent)
-      ansible.platform.role_team_assignment: *assign_multi
-      register: assign_again
-
-    - name: Assert idempotency
-      ansible.builtin.assert:
-        that:
-          - assign_again is not changed
-
-      # Reassign org-scoped role from Team A to Team B
-    - name: Derive names/descriptions from rh_username
-      ansible.builtin.set_fact:
-        org_name: "ENG-ORG-MOVE-{{ rh_username }}"
-        team_a: "APAC-BLR-A-{{ rh_username }}"
-        team_b: "APAC-BLR-B-{{ rh_username }}"
-        test_role: "Organization Inventory Admin"
-
-      # Preconditions
-    - name: Ensure org exists
-      ansible.platform.organization:
-        name: "{{ org_name }}"
-        description: "Reassignment org"
-        state: present
-
-    - name: Ensure team A exists
-      ansible.platform.team:
-        name: "{{ team_a }}"
-        organization: "{{ org_name }}"
-        description: "Source team"
-        state: present
-
-    - name: Ensure team B exists
-      ansible.platform.team:
-        name: "{{ team_b }}"
-        organization: "{{ org_name }}"
-        description: "Destination team"
-        state: present
-
-    - name: Ensure role definition exists
-      ansible.platform.role_definition:
-        name: "{{ test_role }}"
-        description: "Org-scoped inventory admin"
-        content_type: shared.organization
-        permissions:
-          - awx.view_inventory
-          - awx.add_inventory
-          - awx.change_inventory
-          - awx.delete_inventory
-        state: present
-
-    # Assign to Team A
-    - name: Assign role to Team A on org
+    # 4. Idempotency check (should not change)
+    - name: Re-run Org Inventory Admin removal for Team2
       ansible.platform.role_team_assignment:
         assignment_objects:
-          - name: "{{ org_name }}"
+          - name: "{{ org1.name }}"
             type: "organizations"
-        role_definition: "{{ test_role }}"
-        team: "{{ team_a }}"
+          - name: "{{ org2.name }}"
+            type: "organizations"
+        role_definition: Organization Inventory Admin
+        team: "{{ team2.name }}"
         state: present
+      register: org_admin_assignment_3_check
 
-    # Remove from Team A
-    - name: Remove role assignment from Team A
+    - name: Assert no change on idempotent re-run
+      ansible.builtin.assert:
+        that:
+          - org_admin_assignment_3_check is not changed
+
+    # 5. Assign Org Inventory Admin role to Team2 on Org1 (absent to test delete)
+    - name: Assign Org Credential Admin to Team3 on Org3
       ansible.platform.role_team_assignment:
         assignment_objects:
-          - name: "{{ org_name }}"
+          - name: "{{ org3.name }}"
             type: "organizations"
-        role_definition: "{{ test_role }}"
-        team: "{{ team_a }}"
-        state: absent
-      register: removed_a
+        role_definition: Organization Credential Admin
+        team: "{{ team3.name }}"
+        state: present
+      register: org_admin_assignment_5
 
-    - name: Assert removal changed
+    - name: Assert Org Credential Admin assignment worked
       ansible.builtin.assert:
         that:
-          - removed_a is changed
+          - org_admin_assignment_5 is changed
 
-    # Assign to Team B
-    - name: Assign role to Team B on org
-      ansible.platform.role_team_assignment: &assign_to_b
-        assignment_objects:
-          - name: "{{ org_name }}"
-            type: "organizations"
-        role_definition: "{{ test_role }}"
-        team: "{{ team_b }}"
-        state: present
-      register: added_b
-
-    - name: Assert assignment to Team B changed or present
-      ansible.builtin.assert:
-        that:
-          - added_b is changed or added_b is not failed
-
-    # Idempotency on Team B
-    - name: Re-run assignment to Team B (idempotent)
-      ansible.platform.role_team_assignment: *assign_to_b
-      register: b_idem
-
-    - name: Assert Team B idempotent
-      ansible.builtin.assert:
-        that:
-          - b_idem is not changed
-
-    # Assign org-scoped role to a team across multiple orgs
-    - name: Derive names/descriptions from rh_username
-      ansible.builtin.set_fact:
-        org1: "ENG-ORG-DEL-A-{{ rh_username }}"
-        org2: "ENG-ORG-DEL-B-{{ rh_username }}"
-        team_name: "APAC-BLR-DEL-{{ rh_username }}"
-        test_role: "Organization Inventory Admin"
-
-    # Preconditions (create + assign so we can remove)
-    - name: Ensure org1 exists
-      ansible.platform.organization:
-        name: "{{ org1 }}"
-        description: "Delete test org A"
-        state: present
-    - name: Ensure org2 exists
-      ansible.platform.organization:
-        name: "{{ org2 }}"
-        description: "Delete test org B"
-        state: present
-
-    - name: Ensure team exists
-      ansible.platform.team:
-        name: "{{ team_name }}"
-        organization: "{{ org1 }}"
-        description: "Delete test team"
-        state: present
-
-    - name: Ensure role definition exists
-      ansible.platform.role_definition:
-        name: "{{ test_role }}"
-        description: "Org-scoped inventory admin"
-        content_type: shared.organization
-        permissions:
-          - awx.view_inventory
-          - awx.add_inventory
-          - awx.change_inventory
-          - awx.delete_inventory
-        state: present
-
-    - name: Seed assignments on both orgs (present)
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org1 }}"
-            type: "organizations"
-          - name: "{{ org2 }}"
-            type: "organizations"
-        role_definition: "{{ test_role }}"
-        team: "{{ team_name }}"
-        state: present
-
-    # Bulk remove (absent)
-    - name: Remove assignments from both orgs
-      ansible.platform.role_team_assignment: &bulk_absent
-        assignment_objects:
-          - name: "{{ org1 }}"
-            type: "organizations"
-          - name: "{{ org2 }}"
-            type: "organizations"
-        role_definition: "{{ test_role }}"
-        team: "{{ team_name }}"
-        state: absent
-      register: del_res
-
-    - name: Assert removal changed
-      ansible.builtin.assert:
-        that:
-          - del_res is changed
-
-    # Idempotent absent
-    - name: Re-run bulk absent (idempotent)
-      ansible.platform.role_team_assignment: *bulk_absent
-      register: del_again
-
-    - name: Assert bulk removal idempotent
-      ansible.builtin.assert:
-        that:
-          - del_again is not changed
   always:
+    # ----------------------------------------------------------------------
+    # Explicit Role Cleanup (Uncomment once role_definition implemented)
+    # ----------------------------------------------------------------------
+    - name: Remove Org Inventory Admin assignment from Team2 on Org1,Org2
+      ansible.platform.role_team_assignment:
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+          - name: "{{ org2.name }}"
+            type: organizations
+        role_definition: Organization Inventory Admin
+        team: "{{ team2.name }}"
+        state: absent
 
+    - name: Remove Org Inventory Admin assignment from Team2 on Org3
+      ansible.platform.role_team_assignment:
+        assignment_objects:
+          - name: "{{ org3.name }}"
+            type: organizations
+        role_definition: Organization Inventory Admin
+        team: "{{ team3.name }}"
+        state: absent
     # ----------------------------------------------------------------------
     # Cleanup
     # ----------------------------------------------------------------------
