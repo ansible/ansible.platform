@@ -115,80 +115,80 @@
 
     # Once we have role_definition , module available we can uncomment these
     # 3. Assign Org Inventory Admin role to Team2 on Org2
-    - name: Assign Org Inventory Admin to Team2 on Org2
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org1.name }}"
-            type: "organizations"
-          - name: "{{ org2.name }}"
-            type: "organizations"
-        role_definition: Organization Inventory Admin
-        team: "{{ team2.name }}"
-        state: present
-      register: org_admin_assignment_3
+    # - name: Assign Org Inventory Admin to Team2 on Org2
+    #   ansible.platform.role_team_assignment:
+    #     assignment_objects:
+    #       - name: "{{ org1.name }}"
+    #         type: "organizations"
+    #       - name: "{{ org2.name }}"
+    #         type: "organizations"
+    #     role_definition: Organization Inventory Admin
+    #     team: "{{ team2.name }}"
+    #     state: present
+    #   register: org_admin_assignment_3
 
-    - name: Assert Team2 Org Inventory Admin assignment worked
-      ansible.builtin.assert:
-        that:
-          - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
+    # - name: Assert Team2 Org Inventory Admin assignment worked
+    #   ansible.builtin.assert:
+    #     that:
+    #       - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
 
     # 4. Idempotency check (should not change)
-    - name: Re-run Org Inventory Admin removal for Team2
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org1.name }}"
-            type: "organizations"
-          - name: "{{ org2.name }}"
-            type: "organizations"
-        role_definition: Organization Inventory Admin
-        team: "{{ team2.name }}"
-        state: present
-      register: org_admin_assignment_3_check
+    # - name: Re-run Org Inventory Admin removal for Team2
+    #   ansible.platform.role_team_assignment:
+    #     assignment_objects:
+    #       - name: "{{ org1.name }}"
+    #         type: "organizations"
+    #       - name: "{{ org2.name }}"
+    #         type: "organizations"
+    #     role_definition: Organization Inventory Admin
+    #     team: "{{ team2.name }}"
+    #     state: present
+    #   register: org_admin_assignment_3_check
 
-    - name: Assert no change on idempotent re-run
-      ansible.builtin.assert:
-        that:
-          - org_admin_assignment_3_check is not changed
+    # - name: Assert no change on idempotent re-run
+    #   ansible.builtin.assert:
+    #     that:
+    #       - org_admin_assignment_3_check is not changed
 
     # 5. Assign Org Inventory Admin role to Team2 on Org1 (absent to test delete)
-    - name: Assign Org Credential Admin to Team3 on Org3
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org3.name }}"
-            type: "organizations"
-        role_definition: Organization Credential Admin
-        team: "{{ team3.name }}"
-        state: present
-      register: org_admin_assignment_5
+    # - name: Assign Org Credential Admin to Team3 on Org3
+    #   ansible.platform.role_team_assignment:
+    #     assignment_objects:
+    #       - name: "{{ org3.name }}"
+    #         type: "organizations"
+    #     role_definition: Organization Credential Admin
+    #     team: "{{ team3.name }}"
+    #     state: present
+    #   register: org_admin_assignment_5
 
-    - name: Assert Org Credential Admin assignment worked
-      ansible.builtin.assert:
-        that:
-          - org_admin_assignment_5 is changed
+    # - name: Assert Org Credential Admin assignment worked
+    #   ansible.builtin.assert:
+    #     that:
+    #       - org_admin_assignment_5 is changed
 
   always:
     # ----------------------------------------------------------------------
     # Explicit Role Cleanup (Uncomment once role_definition implemented)
     # ----------------------------------------------------------------------
-    - name: Remove Org Inventory Admin assignment from Team2 on Org1,Org2
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org1.name }}"
-            type: organizations
-          - name: "{{ org2.name }}"
-            type: organizations
-        role_definition: Organization Inventory Admin
-        team: "{{ team2.name }}"
-        state: absent
+    # - name: Remove Org Inventory Admin assignment from Team2 on Org1,Org2
+    #   ansible.platform.role_team_assignment:
+    #     assignment_objects:
+    #       - name: "{{ org1.name }}"
+    #         type: organizations
+    #       - name: "{{ org2.name }}"
+    #         type: organizations
+    #     role_definition: Organization Inventory Admin
+    #     team: "{{ team2.name }}"
+    #     state: absent
 
-    - name: Remove Org Inventory Admin assignment from Team2 on Org3
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org3.name }}"
-            type: organizations
-        role_definition: Organization Inventory Admin
-        team: "{{ team3.name }}"
-        state: absent
+    # - name: Remove Org Inventory Admin assignment from Team2 on Org3
+    #   ansible.platform.role_team_assignment:
+    #     assignment_objects:
+    #       - name: "{{ org3.name }}"
+    #         type: organizations
+    #     role_definition: Organization Inventory Admin
+    #     team: "{{ team3.name }}"
+    #     state: absent
     # ----------------------------------------------------------------------
     # Cleanup
     # ----------------------------------------------------------------------
