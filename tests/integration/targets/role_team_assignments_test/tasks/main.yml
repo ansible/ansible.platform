@@ -4,6 +4,12 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
+- name: Preset variables for test resource names
+  ansible.builtin.set_fact:
+    organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
+    team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
+    rh_username: "rta_user"
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -11,12 +17,6 @@
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
-
-- name: Preset variables for test resource names
-  ansible.builtin.set_fact:
-    organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
-    team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
-    rh_username: "rta_user"
 
   block:
     # --------------------------------------------------------------------------
@@ -283,7 +283,7 @@
         org1: "ENG-ORG-A-{{ rh_username }}"
         org2: "ENG-ORG-B-{{ rh_username }}"
         team_name: "APAC-BLR-{{ rh_username }}"
-        role_name: "Organization Inventory Admin"
+        test_role: "Organization Inventory Admin"
 
     - name: Ensure org1 exists
       ansible.platform.organization:
@@ -306,7 +306,7 @@
     # Role definition (org-scoped)
     - name: Ensure org-scoped role definition exists
       ansible.platform.role_definition:
-        name: "{{ role_name }}"
+        name: "{{ test_role }}"
         description: "Org-scoped inventory admin"
         content_type: shared.organization
         permissions:
@@ -324,7 +324,7 @@
             type: "organizations"
           - name: "{{ org2 }}"
             type: "organizations"
-        role_definition: "{{ role_name }}"
+        role_definition: "{{ test_role }}"
         team: "{{ team_name }}"
         state: present
       register: assign_res
@@ -350,7 +350,7 @@
         org_name: "ENG-ORG-MOVE-{{ rh_username }}"
         team_a: "APAC-BLR-A-{{ rh_username }}"
         team_b: "APAC-BLR-B-{{ rh_username }}"
-        role_name: "Organization Inventory Admin"
+        test_role: "Organization Inventory Admin"
 
       # Preconditions
     - name: Ensure org exists
@@ -375,7 +375,7 @@
 
     - name: Ensure role definition exists
       ansible.platform.role_definition:
-        name: "{{ role_name }}"
+        name: "{{ test_role }}"
         description: "Org-scoped inventory admin"
         content_type: shared.organization
         permissions:
@@ -391,7 +391,7 @@
         assignment_objects:
           - name: "{{ org_name }}"
             type: "organizations"
-        role_definition: "{{ role_name }}"
+        role_definition: "{{ test_role }}"
         team: "{{ team_a }}"
         state: present
 
@@ -401,7 +401,7 @@
         assignment_objects:
           - name: "{{ org_name }}"
             type: "organizations"
-        role_definition: "{{ role_name }}"
+        role_definition: "{{ test_role }}"
         team: "{{ team_a }}"
         state: absent
       register: removed_a
@@ -417,7 +417,7 @@
         assignment_objects:
           - name: "{{ org_name }}"
             type: "organizations"
-        role_definition: "{{ role_name }}"
+        role_definition: "{{ test_role }}"
         team: "{{ team_b }}"
         state: present
       register: added_b
@@ -443,7 +443,7 @@
         org1: "ENG-ORG-DEL-A-{{ rh_username }}"
         org2: "ENG-ORG-DEL-B-{{ rh_username }}"
         team_name: "APAC-BLR-DEL-{{ rh_username }}"
-        role_name: "Organization Inventory Admin"
+        test_role: "Organization Inventory Admin"
 
     # Preconditions (create + assign so we can remove)
     - name: Ensure org1 exists
@@ -466,7 +466,7 @@
 
     - name: Ensure role definition exists
       ansible.platform.role_definition:
-        name: "{{ role_name }}"
+        name: "{{ test_role }}"
         description: "Org-scoped inventory admin"
         content_type: shared.organization
         permissions:
@@ -483,7 +483,7 @@
             type: "organizations"
           - name: "{{ org2 }}"
             type: "organizations"
-        role_definition: "{{ role_name }}"
+        role_definition: "{{ test_role }}"
         team: "{{ team_name }}"
         state: present
 
@@ -495,7 +495,7 @@
             type: "organizations"
           - name: "{{ org2 }}"
             type: "organizations"
-        role_definition: "{{ role_name }}"
+        role_definition: "{{ test_role }}"
         team: "{{ team_name }}"
         state: absent
       register: del_res
