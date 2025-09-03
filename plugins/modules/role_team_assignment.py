@@ -50,12 +50,12 @@ options:
                 type: int
             object_ansible_id:
                 description:
-                    - Resource id of the object this role applies to. Alternative to the object_id field.
+                  - Resource id of the object this role applies to. Alternative to the object_id field.
                 required: False
                 type: str
     role_definition:
         description:
-            - The role definition which defines permissions conveyed by this assignment.
+          - The role definition which defines permissions conveyed by this assignment.
         required: True
         type: str
     team:
@@ -150,7 +150,7 @@ def assign_team_role(module, state, role_team_assignment, kwargs,
                 )
             )
     elif state == 'absent':
-        module.delete_if_needed(role_team_assignment,auto_exit=auto_exit)
+        module.delete_if_needed(role_team_assignment, auto_exit=auto_exit)
 
     elif state == 'present':
         module.create_if_needed(
@@ -280,11 +280,8 @@ def main():
             # copy current state before it gets overwritten
             results.append(module.json_output.copy())
 
-        # At the end, return *all* results
-    module.exit_json(
-    changed=any(r.get("changed") for r in results),
-    assignments=results
-    )
+    # At the end, return *all* results
+    module.exit_json(changed=any(r.get("changed", False) for r in results), assignments=results)
 
 
 if __name__ == '__main__':

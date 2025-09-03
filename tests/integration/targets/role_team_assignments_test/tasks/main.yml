@@ -1,4 +1,9 @@
 ---
+- name: Generate a unique test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -7,23 +12,13 @@
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
+- name: Preset variables for test resource names
+  ansible.builtin.set_fact:
+    organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
+    team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
+    rh_username: "rta_user"
+
   block:
-
-    # --------------------------------------------------------------------------
-    # Setup
-    # --------------------------------------------------------------------------
-    - name: Generate a unique test ID
-      ansible.builtin.set_fact:
-        test_id: "rta_itest"
-        rh_username: "rta_user"
-        #test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
-      when: test_id is not defined
-
-    - name: Preset variables for test resource names
-      ansible.builtin.set_fact:
-        organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
-        team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
-
     # --------------------------------------------------------------------------
     # Organizations
     # --------------------------------------------------------------------------
@@ -126,7 +121,7 @@
 
     # 1) Pre-step: ensure a org exists
     - name: Create platform organization
-      ansible.platform.organization: &org_create
+      ansible.platform.organization:
         name: "{{ org_name }}"
         description: "{{ org_description }}"
         state: present
@@ -134,7 +129,7 @@
 
     # 2) Pre-step ensure a team exists
     - name: Create platform team
-      ansible.platform.team: &team_create
+      ansible.platform.team:
         name: "{{ team_name }}"
         organization: "{{ org_name }}"
         description: "{{ team_description }}"
@@ -174,7 +169,7 @@
     - name: Assert Team2 Org Inventory Admin assignment worked
       ansible.builtin.assert:
         that:
-        - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
+          - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
 
     # 3) Re-run → idempotent
     - name: Re-assign same role to same team
@@ -183,7 +178,7 @@
 
     - name: Assert idempotency
       ansible.builtin.assert:
-        that: [ "idem is not changed" ]
+        that: ["idem is not changed"]
 
     # Remove Role-Team Assignment
     - name: Derive names/descriptions from rh_username
@@ -198,7 +193,7 @@
             type: "organizations"
     # 1) Pre-step: ensure a org exists
     - name: Create platform organization
-      ansible.platform.organization: &org_create
+      ansible.platform.organization:
         name: "{{ org_name }}"
         description: "{{ org_description }}"
         state: present
@@ -206,15 +201,11 @@
 
     # 2) Pre-step ensure a team exists
     - name: Create platform team
-      ansible.platform.team: &team_create
+      ansible.platform.team:
         name: "{{ team_name }}"
         organization: "{{ org_name }}"
         description: "{{ team_description }}"
         state: present
-        aap_hostname: "{{ aap_hostname }}"
-        aap_username: "{{ aap_username }}"
-        aap_password: "{{ aap_password }}"
-        aap_validate_certs: "{{ aap_validate_certs }}"
       register: created
 
     # 2) Pre-step: ensure a role_def exists
@@ -250,7 +241,7 @@
     - name: Assert Team Org Inventory Admin assignment worked
       ansible.builtin.assert:
         that:
-        - org_admin_assignment is changed or org_admin_assignment is not failed
+          - org_admin_assignment is changed or org_admin_assignment is not failed
 
     # 3) Re-run → idempotent
     - name: Remove team assignment
@@ -259,7 +250,7 @@
 
     - name: Assert idempotency
       ansible.builtin.assert:
-        that: [ "idem is not changed" ]
+        that: ["idem is not changed"]
 
     # Cleanup role_def
     - name: Cleanup role_def
@@ -305,7 +296,7 @@
         description: "Org B for {{ rh_username }}"
         state: present
     # Team
-    - name: Ensure team exists in org1 (membership org doesn’t matter for assignment scope)
+    - name: Ensure team exists in org1 (membership org doesn not matter for assignment scope)
       ansible.platform.team:
         name: "{{ team_name }}"
         organization: "{{ org1 }}"
@@ -429,10 +420,6 @@
         role_definition: "{{ role_name }}"
         team: "{{ team_b }}"
         state: present
-        aap_hostname: "{{ aap_hostname }}"
-        aap_username: "{{ aap_username }}"
-        aap_password: "{{ aap_password }}"
-        aap_validate_certs: "{{ aap_validate_certs }}"
       register: added_b
 
     - name: Assert assignment to Team B changed or present
