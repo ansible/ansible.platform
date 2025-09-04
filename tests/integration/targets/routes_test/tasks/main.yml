@@ -79,6 +79,7 @@
         service_cluster: "{{ item.service_cluster | default(omit) }}"
         is_service_https: "{{ item.is_service_https | default(omit) }}"
         enable_gateway_auth: "{{ item.enable_gateway_auth | default(omit) }}"
+        enable_mtls: "{{ item.enable_mtls | default(omit) }}"
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
@@ -91,6 +92,7 @@
             gateway_path: '/gw-svc-1/v1/'
             http_port: "{{ test_id }}Port 9082"
             enable_gateway_auth: false
+            enable_mtls: false
             service_cluster: "{{ test_id }}gateway"
             service_path: '/aaa/v1/'
             service_port: 1234
@@ -117,6 +119,7 @@
         service_cluster: "{{ item.service_cluster | default(omit) }}"
         is_service_https: "{{ item.is_service_https | default(omit) }}"
         enable_gateway_auth: "{{ item.enable_gateway_auth | default(omit) }}"
+        enable_mtls: "{{ item.enable_mtls | default(omit) }}"
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
@@ -129,6 +132,7 @@
             gateway_path: '/gw-svc-1/v1/'
             http_port: "{{ test_id }}Port 9082"
             enable_gateway_auth: false
+            enable_mtls: false
             service_cluster: "{{ test_id }}gateway"
             service_path: '/aaa/v1/'
             service_port: 1234
@@ -165,6 +169,7 @@
         service_cluster: "{{ item.service_cluster | default(omit) }}"
         is_service_https: "{{ item.is_service_https | default(omit) }}"
         enable_gateway_auth: "{{ item.enable_gateway_auth | default(omit) }}"
+        enable_mtls: "{{ item.enable_mtls | default(omit) }}"
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
@@ -265,6 +270,7 @@
         service_cluster: "{{ item.service_cluster | default(omit) }}"
         is_service_https: "{{ item.is_service_https | default(omit) }}"
         enable_gateway_auth: "{{ item.enable_gateway_auth | default(omit) }}"
+        enable_mtls: "{{ item.enable_mtls | default(omit) }}"
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
@@ -295,6 +301,7 @@
         service_cluster: "{{ item.service_cluster | default(omit) }}"
         is_service_https: "{{ item.is_service_https | default(omit) }}"
         enable_gateway_auth: "{{ item.enable_gateway_auth | default(omit) }}"
+        enable_mtls: "{{ item.enable_mtls | default(omit) }}"
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
