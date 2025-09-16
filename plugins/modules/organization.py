@@ -28,6 +28,15 @@ options:
     description:
       description: The description of the Organization
       type: str
+    galaxy_credentials:
+      description:
+        - list of Ansible Galaxy credential names, IDs, or named URLs to associate to the organization
+      type: list
+      elements: str
+    default_environment:
+      description:
+        - Default Execution Environment name, ID, or named URL to use for jobs owned by the Organization.
+      type: str
 extends_documentation_fragment:
 - ansible.platform.state
 - ansible.platform.auth
@@ -59,6 +68,8 @@ def main():
         name=dict(type="str", required=True),
         new_name=dict(type="str"),
         description=dict(type="str"),
+        default_environment=dict(type="str"),
+        galaxy_credentials=dict(type="list", elements="str"),
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )
 
