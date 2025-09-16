@@ -23,6 +23,8 @@ class AAPObject:
         self.new_fields = dict()
         self.params = params if params else module.params
         self.state = self.params.get('state', self.STATE_PRESENT)
+        self.item_id = None
+        self.client = getattr(module, "client", None)
 
     @abstractmethod
     def unique_field(self):
@@ -31,6 +33,12 @@ class AAPObject:
     @abstractmethod
     def set_new_fields(self):
         pass
+
+    # Optional hook; subclasses can override (e.g. AAPOrganization)
+    def post_ensure(self):
+        """Run after create/update to reconcile non-gateway relations.
+        Must return True if it changed anything; False otherwise."""
+        return False
 
     @classmethod
     def init_tmp_file(cls):
@@ -48,13 +56,17 @@ class AAPObject:
                 else:
                     return
 
-            self.module.json_output["id"] = self.data['id']
+            # record id for downstream use (even if we exit now)
+            self.item_id = self.data.get('id')
+            self.module.json_output["id"] = self.item_id
             if auto_exit:
                 self.module.exit_json(**self.module.json_output)
+            return
 
         # Delete
         elif self.absent():
             self.module.delete_if_needed(self.data, auto_exit=auto_exit)
+            return
 
         # Create/Update
         elif self.present() or self.enforced():
@@ -63,20 +75,42 @@ class AAPObject:
 
             self.set_new_fields()
 
+            # ensure/create/update via gateway
             self.data = self.module.create_or_update_if_needed(
                 self.data, self.new_fields, endpoint=self.api_endpoint, item_type=self.ITEM_TYPE, auto_exit=False
             )
+
+            # capture the id for follow-up controller calls
+            self.item_id = (self.data or {}).get('id')
+            if self.item_id:
+                self.module.json_output["id"] = self.item_id
+
+            # allow subclasses to copy fields to output
             for output_field in kwargs.get('json_output_fields', []):
-                if output_field in self.data:
+                if output_field in (self.data or {}):
                     self.module.json_output[output_field] = self.data[output_field]
+
+            # ----- post-ensure hook -----
+            # Only try when we actually have an id and state is present/enforced.
+            extra_changed = False
+            try:
+                if self.item_id and (self.present() or self.enforced()):
+                    extra_changed = bool(self.post_ensure())
+            except Exception as e:
+                # Fail loudly so you can see the reason in playbook output
+                self.module.fail_json(msg=f"post_ensure failed: {e}")
+
+            # If the hook changed anything, reflect that in the module result
+            if extra_changed:
+                self.module.json_output["changed"] = True
 
             if auto_exit:
                 self.module.exit_json(**self.module.json_output)
+            return
 
     def get_existing_item(self):
         if self.data is None:
             self.data = self.module.get_one(self.api_endpoint, name_or_id=self.unique_value())
-
         return self.data
 
     def set_name_field(self):
@@ -111,13 +145,9 @@ class AAPObject:
     def debug(self, msg):
         if not msg:
             return
-
         self.init_tmp_file()
-
         if isinstance(msg, dict):
             msg = json.dumps(msg)
-
         if msg[-1] != '\n':
             msg += '\n'
-
         self.tmp_file.write(msg)

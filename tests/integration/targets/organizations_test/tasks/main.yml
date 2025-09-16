@@ -59,6 +59,9 @@
       ansible.platform.organization:
         name: "{{ org.id }}"
         description: "Some Organization"
+        galaxy_credentials:
+          - Ansible Galaxy
+        default_environment: Default Execution Environment Registry Credential
       register: org_change
 
     - name: Assert that an org change changes the system
