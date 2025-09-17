@@ -1,17 +1,5 @@
 objects:
-  role:
-    dispatch:
-      description: An Ansible Role to call other roles to create objects on automation platform gateway.
-      name: dispatch
-      version_added: null
-    settings:
-      description: An Ansible Role to create settings on automation platform gateway.
-      name: settings
-      version_added: null
-    users:
-      description: An Ansible Role to create users on automation platform gateway.
-      name: users
-      version_added: null
+  role: {}
 plugins:
   become: {}
   cache: {}
@@ -21,16 +9,105 @@ plugins:
   filter: {}
   httpapi: {}
   inventory: {}
-  lookup: {}
+  lookup:
+    gateway_api:
+      description: Search the API for objects
+      name: gateway_api
+      version_added: null
   module:
+    application:
+      description: create, update, or destroy Automation Platform gateway applications
+      name: application
+      namespace: ''
+      version_added: null
+    authenticator:
+      description: Configure a gateway authenticator.
+      name: authenticator
+      namespace: ''
+      version_added: null
+    authenticator_map:
+      description: Configure a gateway authenticator maps.
+      name: authenticator_map
+      namespace: ''
+      version_added: null
+    authenticator_user:
+      description: Manage user authenticators.
+      name: authenticator_user
+      namespace: ''
+      version_added: null
+    http_port:
+      description: Configure a gateway http port.
+      name: http_port
+      namespace: ''
+      version_added: null
+    organization:
+      description: Configure a gateway organization.
+      name: organization
+      namespace: ''
+      version_added: null
+    role_definition:
+      description: Configure a gateway role definition.
+      name: role_definition
+      namespace: ''
+      version_added: null
+    role_team_assignment:
+      description: Gives a team permission to a resource or an organization.
+      name: role_team_assignment
+      namespace: ''
+      version_added: null
+    role_user_assignment:
+      description: Gives a user permission to a resource or an organization.
+      name: role_user_assignment
+      namespace: ''
+      version_added: null
+    route:
+      description: Configure a gateway custom (non-api) route.
+      name: route
+      namespace: ''
+      version_added: null
+    service:
+      description: Configure a gateway service.
+      name: service
+      namespace: ''
+      version_added: null
+    service_cluster:
+      description: Configure a gateway service cluster.
+      name: service_cluster
+      namespace: ''
+      version_added: null
+    service_key:
+      description: Configure a gateway service key.
+      name: service_key
+      namespace: ''
+      version_added: null
+    service_node:
+      description: Configure a gateway service node.
+      name: service_node
+      namespace: ''
+      version_added: null
+    service_type:
+      description: Configure a gateway service type.
+      name: service_type
+      namespace: ''
+      version_added: null
     settings:
       description: Modify automation platform gateway settings.
       name: settings
       namespace: ''
       version_added: null
+    team:
+      description: Configure a gateway team.
+      name: team
+      namespace: ''
+      version_added: null
     token:
       description: create, update, or destroy automation platform gateway tokens.
       name: token
+      namespace: ''
+      version_added: null
+    ui_plugin_route:
+      description: Configure a gateway UI plugin route.
+      name: ui_plugin_route
       namespace: ''
       version_added: null
     user:
@@ -43,4 +120,4 @@ plugins:
   strategy: {}
   test: {}
   vars: {}
-version: 1.0.0
+version: 2.6.20250924

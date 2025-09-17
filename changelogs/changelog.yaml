@@ -2,3 +2,8 @@ ancestor: null
 releases:
   1.0.0:
     release_date: '2024-05-06'
+  2.6.20250924:
+    changes: {}
+    fragments:
+    - create_if_needed.yaml
+    release_date: '2025-09-24'

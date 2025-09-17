@@ -1,8 +1,14 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20250326
+## Changelog for v2.6.20250924
 
-* Added support for setting URL for applications
+The ansible.platform collection now provides unified, platform-wide Role-Based Access Control (RBAC) management across Ansible Automation Platform components. New or enhanced modules include Organization, Team, User, Role definition, and Role assignment (team/user).
+
+Additional changes:
+
+* You can declare the RBAC state as code and apply it idempotently across services.
+* Ansible collections now use a standard global environment variable prefix across components. Automation Controller, Automation Hub, and Event-Driven Ansible all use the new standard ``AAP_`` instead of ``COMPONENT_``. For example, ``aap_hostname``. See the Automation Hub documentation for more information.
+
 
 ## Description
 
@@ -71,9 +77,12 @@ Connecting to AAP requires specifying authentication variables (the ones prefixe
 
 ## Testing
 
-This collection is tested using integration tests which can be called via `ansible-test integration`. If you wish to run the tests manually, we recommend using the parent Makefile via `make collection-test`. It will require a running version of Ansible Automation Platform.
+The ansible.platform collection now provides unified, platform-wide Role-Based Access Control (RBAC) management across Ansible Automation Platform components. New or enhanced modules include Organization, Team, User, Role definition, and Role assignment (team/user).
 
-The collection is tested against current version of Ansible Automation Platform.
+Additional changes:
+
+* You can declare the RBAC state as code and apply it idempotently across services.
+* Ansible collections now use a standard global environment variable prefix across components. Automation Controller, Automation Hub, and Event-Driven Ansible all use the new standard ``AAP_`` instead of ``COMPONENT_``. For example, ``aap_hostname``. See the [Automation Hub](https://console.redhat.com/ansible/automation-hub/repo/published/ansible/platform/docs/) documentation for more information.
 
 
 ## Support
@@ -92,7 +101,9 @@ Please refer to Ansible Automation Platform Documentation for further documentat
 
 ## License Information
 
-[GPLv3](https://github.com/ansible/ansible.platform/COPYING)
+GNU General Public License v3.0 or later.
+
+See [LICENSE](https://www.gnu.org/licenses/gpl-3.0.txt) to see the full text.
 
 ## Authors
 

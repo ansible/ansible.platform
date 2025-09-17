@@ -1,42 +1,14 @@
-=========================================
+==============================
 ansible.platform Release Notes
-=========================================
+==============================
 
 .. contents:: Topics
 
+v2.6.20250924
+=============
+The ansible.platform collection now provides unified, platform-wide Role-Based Access Control (RBAC) management across Ansible Automation Platform components. New or enhanced modules include Organization, Team, User, Role definition, and Role assignment (team/user).
 
-v2.5.0
-======
-Initial Release
+Additional changes:
 
-v2.5.1
-======
-No Change
-
-v2.5.2
-======
-No Change
-
-v2.5.3
-======
-Added authenticator_user module
-
-v2.5.20241218
-======
-Removed the default `map_type` of `team` from `authenticator_map` module.
-Removed the `required_if` condition from `authenticator_map` module.
-Added the `secret` field to the output of `secret_key` module.
-Fixed the parameter `authenticator_uid` on the `user` module.
-Fixed a broken doc fragment in the `authenticator_user` module.
-
-v2.5.20250212
-======
-Added application and organization lookup for tokens.
-
-v2.5.20250312
-======
-Bug fix in AAP module that could cause a stack trace when using "present"
-
-v2.5.20250326
-======
-Added support for setting URL for applications
+* You can declare the RBAC state as code and apply it idempotently across services.
+* Ansible collections now use a standard global environment variable prefix across components. Automation Controller, Automation Hub, and Event-Driven Ansible all use the new standard ``AAP_`` instead of ``COMPONENT_``. For example, ``aap_hostname``. See the Automation Hub documentation for more information.
