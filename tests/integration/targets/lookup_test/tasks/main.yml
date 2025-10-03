@@ -73,6 +73,10 @@
           username__startswith: "{{ name_prefix }}"
           order_by: 'username'
 
+    - name: Dump admin response
+      ansible.builtin.debug:
+        var: "{{ _admins | from_json() }}"
+
     - name: Check Org 2
       ansible.builtin.assert:
         that:
