@@ -92,7 +92,7 @@ jobs:
           python-version: 3.11
 
       - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core==2.17
         working-directory: ansible-platform
 
       - name: Perform completeness tests
@@ -142,7 +142,7 @@ jobs:
         working-directory: aap-gateway
 
       - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core==2.17
         working-directory: ansible-platform
 
       - name: Perform completeness tests
