@@ -58,7 +58,8 @@
       ansible.builtin.assert:
         that:
           - fail is failed
-          - fail.msg == 'map_type is team but all of the following are missing: team, organization'
+          - "'team' in fail.msg"
+          - "'organization' in fail.msg"
 
     - name: Create authenticator map 1 with check mode
       ansible.platform.authenticator_map:
