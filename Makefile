@@ -13,6 +13,24 @@ export ANSIBLE_CONFIG
 	collection-test-integration-check gateway-build gateway-install \
 	collection collection-build setup-for-gateway
 
+# add near your other .PHONY line
+.PHONY: collection-build collection setup-for-gateway
+
+# build tarball to dist/
+collection-build:
+	ansible-galaxy collection build . --force -o dist
+
+# install latest build (used by external consumers)
+collection: collection-build
+	@tarball=$$(ls -1t dist/ansible-platform-*.tar.gz | head -1); \
+	echo "Installing $$tarball"; \
+	ansible-galaxy collection install "$$tarball" --force
+
+# one-shot alias for CI
+setup-for-gateway: collection
+	@echo "ansible.platform built & installed for gateway"
+
+
 ## Get the version of python we are working with
 PYTHON_VERSION:
 	@echo "$(subst python,,$(PYTHON))"
