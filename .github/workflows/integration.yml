@@ -42,7 +42,7 @@ jobs:
         working-directory: aap-gateway
 
       - name: Cleanup services
-        run: make cleanup-services
+        run: make collection cleanup-services
         working-directory: aap-gateway
 
       - name: Extract gateway password and set it as an environment variable
