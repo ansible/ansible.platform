@@ -31,9 +31,21 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      # 🧩 Build & install collection (from ansible.platform)
       - name: Build & install ansible.platform collection for gateway
         run: make setup-for-gateway
         working-directory: ansible-platform
+
+      # 🧩 Shim missing target 'collection-install' inside aap-gateway
+      - name: Shim missing collection-install in aap-gateway
+        run: |
+          cat > compat.mk <<'EOF'
+          .PHONY: collection-install
+          collection-install:
+          	@echo "shim: collection-install satisfied"
+          EOF
+          echo "MAKEFLAGS=-f compat.mk -f Makefile" >> $GITHUB_ENV
+        working-directory: aap-gateway
 
       - name: Build gateway image
         run: make docker-compose-build
@@ -89,6 +101,16 @@ jobs:
         run: make setup-for-gateway
         working-directory: ansible-platform
 
+      - name: Shim missing collection-install in aap-gateway
+        run: |
+          cat > compat.mk <<'EOF'
+          .PHONY: collection-install
+          collection-install:
+          	@echo "shim: collection-install satisfied"
+          EOF
+          echo "MAKEFLAGS=-f compat.mk -f Makefile" >> $GITHUB_ENV
+        working-directory: aap-gateway
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
@@ -128,6 +150,16 @@ jobs:
         run: make setup-for-gateway
         working-directory: ansible-platform
 
+      - name: Shim missing collection-install in aap-gateway
+        run: |
+          cat > compat.mk <<'EOF'
+          .PHONY: collection-install
+          collection-install:
+          	@echo "shim: collection-install satisfied"
+          EOF
+          echo "MAKEFLAGS=-f compat.mk -f Makefile" >> $GITHUB_ENV
+        working-directory: aap-gateway
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
@@ -152,5 +184,3 @@ jobs:
       - name: Run collection completeness tests
         run: make collection-test-completeness
         working-directory: ansible-platform
-
-...
