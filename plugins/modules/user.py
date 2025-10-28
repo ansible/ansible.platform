@@ -1,329 +1,260 @@
-#!/usr/bin/python
-# coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-3.0-or-later
 
-# (c) 2020, John Westcott IV <john.westcott.iv@redhat.com>
-# (c) 2023, Sean Sullivan <@sean-m-sullivan>
-# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
-
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
-
-
-DOCUMENTATION = """
----
+DOCUMENTATION = r"""
 module: user
-author: Sean Sullivan (@sean-m-sullivan)
-short_description: Configure a gateway user.
+short_description: Manage Ansible Automation Platform users
 description:
-    - Configure an automation platform gateway user.
+  - Ensure a user is present or absent in AAP (via Gateway API) using the internal Platform SDK layer.
+  - Supports authentication via environment variables or explicit module parameters.
 options:
-    organizations:
-      description:
-        - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
-        - For associating a user to an organization, please use the ansible.platform.role_user_assignment module.
-        - HORIZONTALLINE
-        - List of organization names or IDs to associate with the user.
-        - Organizations must already exist - the module will not create missing organizations.
-        - If any specified organization doesn't exist, the operation will fail.
-        - If a user was created as part of this operation and an organization association fails, the newly created user will be removed.
-      type: list
-      elements: str
-    is_platform_auditor:
-      description:
-        - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
-        - For designating a user as an auditor, please use the ansible.platform.role_user_assignment module.
-        - HORIZONTALLINE
-        - Designates that this user is a platform auditor.
-      type: bool
-      aliases: ['auditor']
-    username:
-      description:
-        - Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.
-      required: True
-      type: str
-    first_name:
-      description:
-        - First name of the user.
-      type: str
-    last_name:
-      description:
-        - Last name of the user.
-      type: str
-    email:
-      description:
-        - Email address of the user.
-      type: str
-    is_superuser:
-      description:
-        - Designates that this user has all permissions without explicitly assigning them.
-      type: bool
-      aliases: ['superuser']
-    password:
-      description:
-        - Write-only field used to change the password.
-      type: str
-    update_secrets:
-      description:
-        - C(true) will always change password if user specifies password, even if API gives $encrypted$ for password.
-        - C(false) will only set the password if other values change too.
-      type: bool
-      default: true
-    authenticators:
-      description:
-        - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
-        - For associating a user with authenticators, please use the associated_authenticators option.
-        - HORIZONTALLINE
-        - A list of authenticators to associate the user with
-      type: list
-      elements: str
-    authenticator_uid:
-      description:
-        - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
-        - For specifying UIDs per authenticator, please use the associated_authenticators option.
-        - HORIZONTALLINE
-        - The UID to associate with this users authenticators
-      type: str
-    associated_authenticators:
-      description:
-        - A dictionary of authenticators to associate with the given user.
-        - The dictionary keys are the ID of the authenticator.
-        - The dictionary values are an object containing the keys 'uid' and 'email', with values C(uid) and the email address for that user, respectively.
-        - This is the preferred method for associating authenticators.
-      type: dict
+  username:
+    description: User's login name.
+    type: str
+    required: true
+  email:
+    description: Email address for the user.
+    type: str
+  first_name:
+    description: First name.
+    type: str
+  last_name:
+    description: Last name.
+    type: str
+  is_superuser:
+    description: Whether the user is a superuser.
+    type: bool
+    default: false
+  state:
+    description: Desired state of the user.
+    type: str
+    choices: [present, absent]
+    default: present
 
-extends_documentation_fragment:
-- ansible.platform.state
-- ansible.platform.auth
+  # Optional explicit connection params (fallback to env if omitted)
+  base:
+    description:
+      - AAP base URL (e.g. C(https://aap.example.com)).
+      - If omitted, the module will read from C(AAP_BASE) environment variable.
+    type: str
+  token:
+    description:
+      - Bearer token used to authenticate to the AAP Gateway.
+      - If omitted, the module will read from C(AAP_TOKEN) environment variable.
+    type: str
+    no_log: true
+  verify:
+    description:
+      - TLS verification setting.
+      - Accepts true/false or a filesystem path to a CA bundle (PEM).
+      - If omitted, the module reads AAP_VERIFY from the environment.
+    type: raw
+
+
+author:
+  - Ansible Platform Team
 """
 
-
-EXAMPLES = """
-- name: Add user
+EXAMPLES = r"""
+- name: Ensure a user exists (env-based auth)
   ansible.platform.user:
-    username: jdoe
-    password: foobarbaz
-    email: jdoe@example.org
-    first_name: John
-    last_name: Doe
+    username: demo
+    email: demo@example.com
     state: present
 
-- name: Add user as a system administrator
+- name: Ensure a user exists (explicit auth)
   ansible.platform.user:
-    username: jdoe
-    password: foobarbaz
-    email: jdoe@example.org
-    superuser: true
+    username: demo
+    email: demo@example.com
+    base: "https://aap.example.com"
+    token: "{{ lookup('env','AAP_TOKEN') }}"
+    verify: false
     state: present
 
-- name: Add user as a system auditor
+- name: Ensure a user is absent
   ansible.platform.user:
-    username: jdoe
-    password: foobarbaz
-    email: jdoe@example.org
-    auditor: true
-    state: present
-
-- name: Delete user
-  ansible.platform.user:
-    username: jdoe
-    email: jdoe@example.org
+    username: demo
     state: absent
 
-- name: Add a user with associated authenticators
-  ansible.platform.user:
-    username: "jdoe"
-    associated_authenticators:
-      1:
-        "uid": "jdoe"
-        "email": "jdoe@example.com"
-      2:
-        "uid": "123456789"
-        "email": "jdoe@example.com"
-...
+RETURN = r"""
+user:
+  description: User object after operation (if present).
+  returned: always
+  type: dict
+changed:
+  description: Whether any change was made.
+  type: bool
+  returned: always
 """
 
-from ..module_utils.aap_module import AAPModule  # noqa
-from ..module_utils.aap_user import AAPUser  # noqa
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.ansible.platform.plugins.module_utils.platform_sdk import PlatformClient, UsersRepo, User
+"""_summary_
+
+  AnsibleModule: helper to parse args, support check_mode, and return exit_json/fail_json.
+  SDK imports:
+    - PlatformClient: the HTTP client; can run in direct mode or agent proxy mode (persistent).
+    - UsersRepo: the repository abstraction that wraps endpoint calls (clean, typed methods).
+    - User: the dataclass model for a user (typed object instead of ad-hoc dicts).
+"""
+
+import os
+import time
+import q
 
 
-def main():
-    # Any additional arguments that are not fields of the item can be added here
-    argument_spec = dict(
-        username=dict(required=True),
-        first_name=dict(),
-        last_name=dict(),
-        email=dict(),
-        is_superuser=dict(type="bool", aliases=["superuser"]),
-        is_platform_auditor=dict(type="bool", aliases=["auditor"]),
-        password=dict(no_log=True),
-        organizations=dict(type="list", elements='str'),
-        update_secrets=dict(type="bool", default=True, no_log=False),
-        authenticators=dict(type="list", elements='str'),
-        authenticator_uid=dict(),
-        associated_authenticators=dict(type="dict"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
+def _client_from_params_or_env(module: AnsibleModule) -> PlatformClient:
+    """
+    Build a PlatformClient from either explicit params (base/token/verify) or AAP_* environment variables.
+    Read base, token, verify from module.params. If missing, fall back to os.environ.
+
+    Validate: if base or token is still missing -> module.fail_json(...).
+    Normalize verify:
+    If it’s a boolean ->  set os.environ['AAP_VERIFY'] to "true" or "false".
+    Otherwise, treat it as a path/string ->  set os.environ['AAP_VERIFY'] = <string>.
+    Why? Your PlatformClient already reads TLS verify from AAP_VERIFY. Keeping that behavior central avoids drift.
+    Define a simple token_provider() that returns (token_value, expiry) with a fixed 1-hour expiry. (Easy to swap later for a real provider from the agent/state-bus.)
+    Return PlatformClient(base, token_provider).
+    If AAP_AGENT_ADDR is present in the environment (set by your pre_task action), PlatformClient will automatically use agent proxy mode, so all HTTP goes through the persistent agent.
+    
+    """
+    base = module.params.get("base") or os.environ.get("AAP_BASE")
+    token_value = module.params.get("token") or os.environ.get("AAP_TOKEN")
+    verify = module.params.get("verify")
+    if verify is None:
+        verify = os.environ.get("AAP_VERIFY", "")
+
+    if not base or not token_value:
+        module.fail_json(msg="Missing AAP connection: provide 'base' and 'token' params or set AAP_BASE/AAP_TOKEN environment variables.")
+
+    # PlatformClient reads verify from env var AAP_VERIFY; keep behavior consistent:
+    if isinstance(verify, bool):
+        os.environ["AAP_VERIFY"] = "true" if verify else "false"
+    else:
+        # Could be "", or a filesystem path to a PEM file
+        os.environ["AAP_VERIFY"] = str(verify)
+
+    def token_provider():
+        # simple fixed-expiry (1h); swap with state-bus provider when wiring runtime
+        return token_value, time.time() + 3600
+
+    return PlatformClient(base, token_provider)
+
+
+def run_module():
+    q("run user module")
+    """
+    argument_spec defines the contract the task must satisfy.
+    supports_check_mode=True enables --check dry runs, which is crucial for safe CaC.
+    no_log: true on token ensures secrets are redacted from logs.
+    """ 
+    args = dict(
+        username=dict(type="str", required=True),
+        email=dict(type="str", required=False),
+        first_name=dict(type="str", required=False, default=""),
+        last_name=dict(type="str", required=False, default=""),
+        is_superuser=dict(type="bool", required=False, default=False),
+        state=dict(type="str", required=False, default="present", choices=["present", "absent"]),
+
+        # Optional connection parameters (override env if provided)
+        base=dict(type="str", required=False),
+        token=dict(type="str", required=False, no_log=True),
+        verify=dict(type="raw", required=False),
     )
 
-    # Create a module for ourselves
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
+    module = AnsibleModule(argument_spec=args, supports_check_mode=True)
 
-    if module.params["organizations"]:
-        module.deprecate(
-            msg="Configuring organizations via `ansible.platform.user` is not the recommended approach. "
-            "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
-            collection_name="ansible.platform",
-        )
-
-    if module.params["is_platform_auditor"]:
-        module.deprecate(
-            msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
-            "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
-            collection_name="ansible.platform",
-        )
-
-    if module.params["authenticator_uid"]:
-        module.deprecate(
-            msg="The 'authenticator_uid' parameter is deprecated and will be removed in a future version. "
-            "Please use 'associated_authenticators' instead to specify UIDs per authenticator.",
-            date="2026-01-31",
-            collection_name="ansible.platform",
-        )
-
-    if module.params["authenticators"]:
-        module.deprecate(
-            msg="The 'authenticators' parameter is deprecated and will be removed in a future version. "
-            "Please use 'associated_authenticators' instead to specify authenticator associations.",
-            date="2026-01-31",
-            collection_name="ansible.platform",
-        )
-
-    user_existed_before = True
-    try:
-        existing_user = module.get_one('users', module.params.get('username'), allow_none=True)
-        user_existed_before = existing_user is not None
-    except (ConnectionError, TimeoutError) as e:
-        module.fail_json(msg=f"Connection error while checking if user exists: {str(e)}")
-
-    AAPUser(module).manage(auto_exit=False)
-
-    if module.params.get('state') in ['present', 'enforced']:
-        process_organizations(module, user_existed_before)
-        audit_user(module)
-
-    module.exit_json(**module.json_output)
-
-
-def process_organizations(module, user_existed_before):
-    changed = module.json_output.get('changed', False)
-    organizations = module.params.get('organizations')
-    error_msg = []
-    user_id = None
-
-    if not organizations:
-        return
+    # "Resolve desired state and build SDK client"
+    username = module.params["username"]
+    desired_state = module.params["state"]
 
     try:
-        if not module.json_output.get('id'):
-            user_data = module.get_one('users', module.params.get('username'), allow_none=False)
-            user_id = user_data['id']
-            module.json_output['id'] = user_id
-        else:
-            user_id = module.json_output['id']
-    except (ConnectionError, TimeoutError) as e:
-        error_msg.append(f"Connection error while retrieving user information: {str(e)}")
-    except ValueError as e:
-        error_msg.append(f"Invalid value or parameter: {str(e)}")
+        q("get client")
+        # build a client
+        # UsersRepo.get_by_name() wraps a GET with query params on the AAP API and returns a User model or None.
+        client = _client_from_params_or_env(module)
+        repo = UsersRepo(client)
 
-    try:
-        role_definition = module.get_one('role_definitions', "Organization Member", allow_none=False)
-        role_definition_id = role_definition['id']
-    except ConnectionError as e:
-        error_msg.append(f"Failed to fetch role definition: {str(e)}")
+        current = repo.get_by_name(username)
 
-    for organization in organizations:
-        try:
-            org = module.get_one('organizations', organization, allow_none=True)
-            if not org:
-                error_msg.append(f"Organization '{organization}' not found. Please ensure it exists and is accessible.")
-                continue
+        # Absent path
+        if desired_state == "absent":
+            if module.check_mode:
+                module.exit_json(changed=bool(current), user=None)
+            if current:
+                repo.delete(current)
+                module.exit_json(changed=True, user=None)
+            module.exit_json(changed=False, user=None)
 
-            org_id = org['id']
-            url = module.build_url("role_user_assignments")
-            payload = {"object_id": org_id, "user": user_id, "role_definition": role_definition_id}
-            associate_result = module.make_request("POST", url, data=payload)
-            if associate_result.get('status_code') not in [200, 201]:
-                error_msg.append(f"Failed to associate user with organization {organization}. API response: {associate_result}")
-                continue
+        # Present path
+        # build a desired model
+        # Using data class keeps types clean and mirrors the API schema.
+        
+        desired = User(
+            id=current.id if current else None,
+            username=username,
+            email=module.params.get("email"),
+            first_name=module.params.get("first_name") or "",
+            last_name=module.params.get("last_name") or "",
+            is_superuser=bool(module.params.get("is_superuser")),
+        )
+
+        # Create if missing
+        if not current:
+            if module.check_mode:
+                module.exit_json(changed=True, user=desired.__dict__)
+            created = repo.create(desired)
+            module.exit_json(changed=True, user=created.__dict__)
+
+        # Update (minimal comparison; expand as schema evolves)
+        # update if drift exists
+        changed = False
+        if desired.email and desired.email != current.email:
             changed = True
-        except (ConnectionError, TimeoutError) as e:
-            error_msg.append(f"Connection error while processing organization '{organization}': {str(e)}")
-            continue
+            current.email = desired.email
 
-        module.json_output['changed'] = changed
+        if (
+            desired.first_name != current.first_name
+            or desired.last_name != current.last_name
+            or bool(desired.is_superuser) != bool(current.is_superuser)
+        ):
+            changed = True
+            current.first_name = desired.first_name
+            current.last_name = desired.last_name
+            current.is_superuser = bool(desired.is_superuser)
 
-    if error_msg and not user_existed_before and user_id:
-        if cleanup_user(module, user_id):
-            error_msg.append(f"\nNewly created user '{module.params.get('username')}' was removed.")
+        if module.check_mode:
+            module.exit_json(changed=changed, user=(current.__dict__ if current else desired.__dict__))
+
+        if changed:
+            updated = repo.update(current)
+            module.exit_json(changed=True, user=updated.__dict__)
         else:
-            error_msg.append("\nFailed to clean up newly created user. Manual cleanup may be required.")
+            module.exit_json(changed=False, user=current.__dict__)
 
-    if error_msg:
-        module.fail_json(msg=error_msg)
-
-
-def cleanup_user(module, user_id):
-
-    try:
-        delete_url = module.build_url(f'users/{user_id}/')
-        delete_result = module.make_request('DELETE', delete_url)
-        return delete_result.get('status_code') == 204
-    except (ConnectionError, TimeoutError):
-        return False
-
-
-def audit_user(module):
-    try:
-        user_data = module.get_one('users', module.params.get('username'), allow_none=False)
-        user_id = user_data['id']
     except Exception as e:
-        module.fail_json(msg=f"Failed to fetch user data: {str(e)}")
-    try:
-        role_definition = module.get_one('role_definitions', "Platform Auditor", allow_none=False)
-        role_definition_id = role_definition['id']
-    except Exception as e:
-        module.fail_json(msg=f"Failed to fetch role definition: {str(e)}")
-    if module.params.get('is_platform_auditor') and not user_data['is_platform_auditor']:
-        payload = {
-            "role_definition": role_definition_id,
-            "user": user_id,
-        }
-        url = module.build_url("role_user_assignments/")
-        try:
-            module.make_request("POST", url, data=payload)
-            module.json_output["changed"] = True
-        except Exception as e:
-            module.fail_json(msg=f"Failed to assign platform auditor role: {str(e)}")
+        module.fail_json(msg=str(e))
+        
+        
+#  What makes this “the new approach” (vs older modules)
+# Typed models (dataclasses): User is a real model, not an untyped dict. This matches the OpenAPI schema and avoids key typos/shape drift.
+# Repositories: UsersRepo hides HTTP details, so module code reads like intent:
+# get_by_name, create, update, delete.
+# SDK client abstraction: PlatformClient decides transport:
+# direct requests.Session() or agent proxy (persistent).
+# Idempotency + check mode: explicit change detection, safe dry runs.
+# Connection params are normalized: verify is fed back into AAP_VERIFY so the client/agent layer uses a single source of truth.
 
-    if module.params.get('is_platform_auditor') is False and user_data['is_platform_auditor']:
-        kwargs = {'role_definition': role_definition_id, 'user': user_id}
-        try:
-            role_user_assignment = module.get_one('role_user_assignments', **{'data': kwargs})['id']
-        except Exception as e:
-            module.fail_json(msg=f"Failed to fetch role user assignment: {str(e)}")
-        user_data['is_platform_auditor'] = False
-        url = module.build_url(f"role_user_assignments/{role_user_assignment}")
-        try:
-            module.make_request("DELETE", url)
-            module.json_output["changed"] = True
-        except Exception as e:
-            module.fail_json(msg=f"Failed to remove platform auditor role: {str(e)}")
+
+# How it behaves with your agent
+# If your pre_task action started the agent and exported AAP_AGENT_ADDR, then:
+# _client_from_params_or_env sets AAP_VERIFY in env,
+# PlatformClient.from_env() (or your constructor) sees AAP_AGENT_ADDR,
+# All repo calls go through POST /request to the agent,
+# The agent uses a single persistent requests.Session with shared token/TLS → fewer handshakes, faster RBAC bulk ops, and central place for locks/caches.
+
+def main():
+    run_module()
 
 
 if __name__ == "__main__":
