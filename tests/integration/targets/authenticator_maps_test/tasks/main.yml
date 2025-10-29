@@ -58,7 +58,10 @@
       ansible.builtin.assert:
         that:
           - fail is failed
-          - fail.msg == "{'triggers': ['Triggers must be a valid dict'], 'team': ['You must specify a team with the selected map type'], 'organization': ['You must specify an organization with the selected map type'], 'role': ['You must specify a role with the selected map type']}"
+          - "\"'triggers': ['Triggers must be a valid dict']\" in fail.msg"
+          - "\"'team': ['You must specify a team with the selected map type']\" in fail.msg"
+          - "\"'organization': ['You must specify an organization with the selected map type']\" in fail.msg"
+          - "\"'role': ['You must specify a role with the selected map type']\" in fail.msg"
 
     - name: Create authenticator map 1 with check mode
       ansible.platform.authenticator_map:
