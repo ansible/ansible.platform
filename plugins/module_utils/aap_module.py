@@ -268,7 +268,7 @@ class AAPModule(AnsibleModule):
         try:
             response_body = response.read()
         except Exception as e:
-            self.fail_json(msg="c{error}".format(error=(response["json"])))
+            self.fail_json(msg="{error}".format(error=(response["json"])))
             if response["json"]["non_field_errors"]:
                 raise AAPModuleError("Errors occurred with request (HTTP 400). Errors: {errors}".format(errors=response["json"]["non_field_errors"]))
             elif response["json"]["errors"]:
