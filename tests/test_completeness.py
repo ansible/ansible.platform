@@ -51,8 +51,11 @@ no_api_parameter_ok = {
 # https://issues.redhat.com/browse/AAP-23122 for DAB RBAC endpoints
 # https://issues.redhat.com/browse/AAP-24613 for service_key
 
-needs_development = ['ui_plugin_route']  # i.e. 'team', 'organization'
-needs_param_development = {}
+needs_development = ['ui_plugin_route', 'ca_certificate']  # i.e. 'team', 'organization'
+needs_param_development = {
+    'route': ['enable_mtls'],
+    'service': ['enable_mtls'],
+}
 # -----------------------------------------------------------------------------------------------------------
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
