@@ -74,8 +74,9 @@
           order_by: 'username'
 
     - name: Dump admin response
+      ignore_errors: true
       ansible.builtin.debug:
-        var: "{{ _admins | from_json() }}"
+        var: "_admins"
 
     - name: Check Org 2
       ansible.builtin.assert:
