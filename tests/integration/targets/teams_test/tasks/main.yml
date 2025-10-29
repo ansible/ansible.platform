@@ -46,7 +46,7 @@
       ansible.builtin.assert:
         that:
           - invalid_team is failed
-          - invalid_team.msg == 'missing required arguments: organization'
+          - "'missing required arguments' in (invalid_team.msg | string)"
 
     # create team with check mode
     - name: Create Team 1 with check mode

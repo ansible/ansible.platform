@@ -11,7 +11,7 @@
       gateway_username: "{{ gateway_username | default(omit, true) }}"
       gateway_password: "{{ gateway_password | default(omit, true) }}"
       gateway_token: "{{ gateway_oauthtoken | default(omit, true) }}"
-      gateway_request_timeout: "{{ gateway_request_timeout | default(omit, 10) }}"
+      gateway_request_timeout: "{{ (gateway_request_timeout | default(10)) | int }}"
       gateway_validate_certs: "{{ gateway_validate_certs | default(omit) }}"
 
   block:
