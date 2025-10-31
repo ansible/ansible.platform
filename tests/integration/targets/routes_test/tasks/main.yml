@@ -177,6 +177,7 @@
             description: Gateway Service Route
             gateway_path: '/gw-svc-1/v1/'
             http_port: "{{ test_id }}Port 9082"
+            enable_gateway_auth: false
             service_cluster: "{{ test_id }}gateway"
             service_path: '/aaa/v1/'
             service_port: 1234
@@ -330,6 +331,26 @@
           - name: "{{ test_id }}gateway"
           - name: "{{ test_id }}controller"
           - name: "{{ test_id }}hub"
+
+    ### Test mTLS validation ###
+    - name: Test mTLS validation - should fail when both mTLS and gateway auth are enabled
+      ansible.platform.route:
+        name: "{{ test_id }}mTLS-validation-test"
+        gateway_path: "/test-mtls/"
+        http_port: "{{ test_id }}Port 9082"
+        service_cluster: "{{ test_id }}gateway-service-cluster"
+        service_path: "/api/"
+        service_port: 8000
+        enable_gateway_auth: true
+        enable_mtls: true
+        state: present
+      register: mtls_validation_result
+      failed_when: false
+
+    - name: Verify mTLS validation error occurred
+      ansible.builtin.assert:
+        that:
+          - "'Mutual TLS can only be enabled when gateway auth is disabled' in mtls_validation_result.msg"
 
     ### Delete Service Types ###
     - name: Delete Service Types
