@@ -71,7 +71,7 @@ class UsersRepo(Repository[User]):
             "is_superuser": obj.is_superuser,
         }
         t0 = time.monotonic()
-        trace(f"create('{obj.username}') → POST /api/gateway/v1/users/ body={{{k:v for k,v in payload.items() if k!='email'}}}")
+        trace(f"create('{obj.username}') → POST /api/gateway/v1/users/ body={{...}}")
         u = self.client.request("POST", "/api/gateway/v1/users/", json_body=payload)
         dt = (time.monotonic() - t0) * 1000.0
         trace(f"create('{obj.username}') ← id={u.get('id')} dt_ms={dt:.1f}")
@@ -93,7 +93,7 @@ class UsersRepo(Repository[User]):
             "is_superuser": obj.is_superuser,
         }
         t0 = time.monotonic()
-        trace(f"update(id={obj.id}) → PATCH /api/gateway/v1/users/{obj.id}/ body={{k:v for k in ['first_name','last_name','is_superuser']}}")
+        trace(f"update(id={obj.id}) → PATCH /api/gateway/v1/users/{obj.id}/ body={{...}}")
         u = self.client.request("PATCH", f"/api/gateway/v1/users/{obj.id}/", json_body=payload)
         dt = (time.monotonic() - t0) * 1000.0
         trace(f"update(id={obj.id}) ← OK dt_ms={dt:.1f}")

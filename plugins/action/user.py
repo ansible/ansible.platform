@@ -37,16 +37,21 @@ class ActionModule(ActionBase):
         # ensure (and reuse) the same agent across tasks
         addr = ensure_agent(py, agent_path, base.rstrip("/"), token, verify)
         trace(f"Agent ready at {addr}")
-        os.environ["AAP_AGENT_ADDR"] = addr  # helps downstream client in direct env read
+        # Export for any child processes (modules) that inherit env
+        os.environ["AAP_AGENT_ADDR"] = addr
+        # ensure_agent also sets this env, but make it explicit
+        agent_authkey = os.environ.get("AAP_AGENT_AUTHKEY", "")
 
-        # pass agent_addr to the module explicitly
+        # pass agent details to the module explicitly (not relying on env inheritance)
         args.pop("token", None)  # avoid re-sending secrets
         args["agent_addr"] = addr
+        if agent_authkey:
+            args["agent_authkey"] = agent_authkey
 
         # build a redacted copy for logging (never log secrets)
         safe_args = {}
         for key, val in args.items():
-            if key in ("token", "password", "api_key", "secret"):
+            if key in ("token", "password", "api_key", "secret", "agent_authkey"):
                 safe_args[key] = "***"
             else:
                 safe_args[key] = val

@@ -1,11 +1,13 @@
 # plugins/action/_ensure_agent.py
 from __future__ import annotations
-import os, sys, json, time, subprocess, urllib.request, tempfile
+import os, sys, json, time, subprocess, tempfile, datetime
 from contextlib import contextmanager
-import datetime
 
 DEBUG_TRACE = os.environ.get("AAP_AGENT_TRACE", "0") == "1"
-WARMUP_SECS = float(os.environ.get("AAP_AGENT_WARMUP_SECS", "3.0"))  # grace window for brand-new agent
+WARMUP_SECS = float(os.environ.get("AAP_AGENT_WARMUP_SECS", "3.0"))
+
+ADDRFILE = "/tmp/aap_agent.addr"   # now stores {"addr","port","authkey"}
+LOCKFILE = "/tmp/aap_agent.lock"
 
 def trace(msg: str):
     if not DEBUG_TRACE:
@@ -19,37 +21,13 @@ def trace(msg: str):
     except Exception:
         pass
 
-ADDRFILE = "/tmp/aap_agent.addr"
-LOCKFILE = "/tmp/aap_agent.lock"
-
-def _alive(addr: str, tries: int = 3, delay: float = 0.15) -> bool:
-    url = f"http://{addr}/healthz"
-    for _ in range(max(1, tries)):
-        try:
-            with urllib.request.urlopen(url, timeout=0.8) as r:
-                if r.status == 200:
-                    return True
-        except Exception:
-            pass
-        time.sleep(delay)
-    return False
-
-def _wait_healthy(addr: str, seconds: float) -> bool:
-    deadline = time.time() + max(0.0, seconds)
-    while time.time() < deadline:
-        if _alive(addr, tries=1, delay=0.10):
-            return True
-    return False
-
-def _read_addrfile() -> str | None:
+def _read_addrfile() -> dict | None:
     try:
         with open(ADDRFILE, "r") as f:
             info = json.load(f)
-        host = info.get("addr")
-        port = info.get("port")
-        if not host or not port:
+        if not info.get("addr") or "port" not in info or not info.get("authkey"):
             return None
-        return f"{host}:{port}"
+        return info
     except Exception as e:
         trace(f"_read_addrfile: failed: {e}")
         return None
@@ -78,110 +56,121 @@ def _lock():
         finally:
             os.close(fd)
 
-def _bootstrap(addr: str, base: str, token: str | None, verify):
-    payload = {
-        "base": (base or "").rstrip("/"),
-        "token": token or "",
-        "verify": verify,
-        "expiry": time.time() + 3600,
-    }
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url=f"http://{addr}/bootstrap",
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    trace(f"_bootstrap: POST /bootstrap base={payload['base']} verify={verify}")
-    with urllib.request.urlopen(req, timeout=5) as r:
-        if r.status != 200:
-            raise RuntimeError(f"bootstrap failed: {r.status}")
+# ---- BaseManager client helpers ----
+def _connect(info: dict):
+    from multiprocessing.managers import BaseManager
+    class AgentManager(BaseManager): ...
+    AgentManager.register("Agent")
+    addr = (info["addr"], int(info["port"]))
+    authkey = bytes.fromhex(info["authkey"].strip())   # <— trim
+    mgr = AgentManager(address=addr, authkey=authkey)
+    mgr.connect()
+    return mgr, mgr.Agent()
+
+def _alive(info: dict, tries: int = 3, delay: float = 0.15) -> bool:
+    for _ in range(max(1, tries)):
+        try:
+            _mgr, agent = _connect(info)
+            pong = agent.ping()
+            if isinstance(pong, dict) and pong.get("ok"):
+                return True
+        except Exception:
+            pass
+        time.sleep(delay)
+    return False
+
+def _wait_ready(info: dict, seconds: float) -> bool:
+    deadline = time.time() + max(0.0, seconds)
+    while time.time() < deadline:
+        if _alive(info, tries=1, delay=0.10):
+            return True
+    return False
+
+def _bootstrap(info: dict, base: str, token: str | None, verify):
+    """Initialize per-base settings on the shared Agent via proxy calls."""
+    _mgr, agent = _connect(info)
+    base = (base or "").rstrip("/")
+    if verify is not None:
+        agent.set_verify(base, verify)
+    if token:
+        # give a simple 1h lease like before; agent can refresh in future
+        agent.set_token(base, token, float(time.time() + 3600.0))
+    # optional warm path so first request is fast (creates session/cache)
+    agent.ensure_base(base)
 
 def ensure_agent(py_exe: str, agent_path: str, base: str, token: str | None, verify) -> str:
     """
-    Ensure a single persistent local agent (ephemeral port) is running and bootstrapped.
-    Port-agnostic and race-tolerant. Keeps agent alive across tasks by redirecting stderr to DEVNULL.
+    Ensure a single persistent local Agent Manager is running and bootstrapped.
+    Returns "addr:port" (and exports AAP_AGENT_AUTHKEY in the environment).
     """
-    trace("ensure_agent: start (port-agnostic)")
+    trace("ensure_agent: start (BaseManager)")
 
-    # Fast path: if addrfile exists, give it a short warm-up to become healthy, then reuse.
-    addr = _read_addrfile()
-    if addr:
-        ok = _alive(addr)
-        trace(f"ensure_agent: addrfile -> {addr}, healthz={ok}")
-        if not ok and _wait_healthy(addr, WARMUP_SECS):
+    # Fast path: use existing manager if healthy
+    info = _read_addrfile()
+    if info:
+        ok = _alive(info)
+        trace(f"addrfile -> {info}, alive={ok}")
+        if not ok and _wait_ready(info, WARMUP_SECS):
             ok = True
         if ok:
-            _bootstrap(addr, base, token, verify)
-            return addr
+            _bootstrap(info, base, token, verify)
+            os.environ["AAP_AGENT_ADDR"] = f"{info['addr']}:{info['port']}"
+            os.environ["AAP_AGENT_AUTHKEY"] = info["authkey"]
+            return f"{info['addr']}:{info['port']}"
 
-    # Slow path with lock (avoid double-spawn)
+    # Slow path with lock: spawn manager once
     with _lock():
-        # Re-check within the lock
-        addr = _read_addrfile()
-        if addr:
-            ok = _alive(addr)
-            trace(f"ensure_agent: inside lock recheck -> {addr}, healthz={ok}")
-            if not ok and _wait_healthy(addr, WARMUP_SECS):
+        info = _read_addrfile()
+        if info:
+            ok = _alive(info)
+            trace(f"inside lock recheck -> alive={ok}")
+            if not ok and _wait_ready(info, WARMUP_SECS):
                 ok = True
             if ok:
-                _bootstrap(addr, base, token, verify)
-                return addr
+                _bootstrap(info, base, token, verify)
+                os.environ["AAP_AGENT_ADDR"] = f"{info['addr']}:{info['port']}"
+                os.environ["AAP_AGENT_AUTHKEY"] = info["authkey"]
+                return f"{info['addr']}:{info['port']}"
 
-        # Spawn a new agent on an ephemeral port
+        # spawn the manager server (prints banner JSON on stdout)
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-
-        def _spawn() -> tuple[str, dict]:
-            cmd = [py_exe, agent_path]  # no fixed port
-            trace(f"ensure_agent: spawning agent: {' '.join(cmd)}")
-            # IMPORTANT: stderr -> DEVNULL so agent logs don't kill it after parent exits.
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,               # read banner once
-                stderr=subprocess.DEVNULL,            # detach logging sink
-                text=True,
-                env=env,
-                close_fds=True,
-                start_new_session=True,
-            )
-            first = (proc.stdout.readline() or "").strip()
-            # We don't need the pipe anymore; avoid holding fds
-            try:
-                proc.stdout.close()
-            except Exception:
-                pass
-
-            if not first:
-                return "", {"err": "no banner from agent"}
-            try:
-                info = json.loads(first)
-                return f"{info['addr']}:{info['port']}", {"info": info}
-            except Exception as e:
-                return "", {"err": f"invalid banner: {first}; {e}"}
-
-        addr, meta = _spawn()
-        if not addr:
-            # If we lost a race, reuse the addrfile winner (if healthy)
+        cmd = [py_exe, agent_path]
+        trace(f"spawning manager: {' '.join(cmd)}")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=env,
+            close_fds=True,
+            start_new_session=True,
+        )
+        first = (proc.stdout.readline() or "").strip()
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+        if not first:
+            # race? maybe someone else started it
             probe = _read_addrfile()
-            if probe and (_alive(probe) or _wait_healthy(probe, WARMUP_SECS)):
-                trace("ensure_agent: spawn race → reusing newly alive agent")
-                _bootstrap(probe, base, token, verify)
-                return probe
-            raise RuntimeError(f"Failed to start agent: {meta.get('err','unknown error')}")
-
-        # Wait until /healthz OK (combine quick probes + warmup)
-        if not _alive(addr, tries=10, delay=0.2) and not _wait_healthy(addr, WARMUP_SECS):
-            raise RuntimeError("Agent failed health check after start")
-
-        # Publish addrfile with banner info
-        info = meta.get("info")
-        if info:
-            _write_addrfile_atomically(info)
+            if probe and (_alive(probe) or _wait_ready(probe, WARMUP_SECS)):
+                info = probe
+            else:
+                raise RuntimeError("Failed to start Agent manager: no banner")
         else:
-            host, port = addr.split(":")
-            _write_addrfile_atomically({"addr": host, "port": int(port)})
+            try:
+                banner = json.loads(first)
+                info = {"addr": banner["addr"], "port": int(banner["port"]), "authkey": banner["authkey"]}
+                _write_addrfile_atomically(info)
+            except Exception as e:
+                raise RuntimeError(f"Invalid manager banner: {first}; {e}")
 
-    # Final bootstrap (idempotent)
-    _bootstrap(addr, base, token, verify)
-    return addr
+    # Finalize bootstrap & export env
+    if not _alive(info) and not _wait_ready(info, WARMUP_SECS):
+        raise RuntimeError("Agent manager failed readiness after start")
+
+    _bootstrap(info, base, token, verify)
+    os.environ["AAP_AGENT_ADDR"] = f"{info['addr']}:{info['port']}"
+    os.environ["AAP_AGENT_AUTHKEY"] = info["authkey"]
+    return f"{info['addr']}:{info['port']}"
