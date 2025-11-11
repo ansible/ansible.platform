@@ -76,16 +76,17 @@ EXAMPLES = r"""
     username: demo
     state: absent
 
-RETURN = r"""
-user:
-  description: User object after operation (if present).
-  returned: always
-  type: dict
-changed:
-  description: Whether any change was made.
-  type: bool
-  returned: always
-"""
+RETURN =
+r"""
+# user:
+#   description: User object after operation (if present).
+#   returned: always
+#   type: dict
+# changed:
+#   description: Whether any change was made.
+#   type: bool
+#   returned: always
+# """
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.ansible.platform.plugins.module_utils.platform_sdk import PlatformClient, UsersRepo, User
@@ -101,53 +102,54 @@ from ansible_collections.ansible.platform.plugins.module_utils.platform_sdk impo
 import os
 import time
 import q
+import os, sys, datetime
 
+DEBUG_TRACE = os.environ.get("AAP_AGENT_TRACE", "0") == "1"
+def trace(msg: str):
+    """Uniform trace writer for debugging."""
+    if not DEBUG_TRACE:
+        return
+    ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    line = f"[TRACE {ts}] module/user.py: {msg}"
+    print(line, file=sys.stderr, flush=True)
+    try:
+        with open("/tmp/aap_agent_debug.log", "a") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+# -------------------------------------------------------------------
 
 def _client_from_params_or_env(module: AnsibleModule) -> PlatformClient:
-    """
-    Build a PlatformClient from either explicit params (base/token/verify) or AAP_* environment variables.
-    Read base, token, verify from module.params. If missing, fall back to os.environ.
-
-    Validate: if base or token is still missing -> module.fail_json(...).
-    Normalize verify:
-    If it’s a boolean ->  set os.environ['AAP_VERIFY'] to "true" or "false".
-    Otherwise, treat it as a path/string ->  set os.environ['AAP_VERIFY'] = <string>.
-    Why? Your PlatformClient already reads TLS verify from AAP_VERIFY. Keeping that behavior central avoids drift.
-    Define a simple token_provider() that returns (token_value, expiry) with a fixed 1-hour expiry. (Easy to swap later for a real provider from the agent/state-bus.)
-    Return PlatformClient(base, token_provider).
-    If AAP_AGENT_ADDR is present in the environment (set by your pre_task action), PlatformClient will automatically use agent proxy mode, so all HTTP goes through the persistent agent.
-    
-    """
+    """Build PlatformClient from module params or environment."""
     base = module.params.get("base") or os.environ.get("AAP_BASE")
     token_value = module.params.get("token") or os.environ.get("AAP_TOKEN")
     verify = module.params.get("verify")
     if verify is None:
         verify = os.environ.get("AAP_VERIFY", "")
 
-    if not base or not token_value:
-        module.fail_json(msg="Missing AAP connection: provide 'base' and 'token' params or set AAP_BASE/AAP_TOKEN environment variables.")
+    # NEW: allow action plugin to pass the agent address explicitly
+    agent_addr = module.params.get("agent_addr") or os.environ.get("AAP_AGENT_ADDR")
+    if agent_addr:
+        os.environ["AAP_AGENT_ADDR"] = agent_addr
+        trace(f"using agent_addr={agent_addr}")
 
-    # PlatformClient reads verify from env var AAP_VERIFY; keep behavior consistent:
+    if not base or not token_value:
+        module.fail_json(msg="Missing AAP connection: provide 'base' and 'token' or set AAP_BASE/AAP_TOKEN.")
+
+    # normalize verify into env for lower layers
     if isinstance(verify, bool):
         os.environ["AAP_VERIFY"] = "true" if verify else "false"
     else:
-        # Could be "", or a filesystem path to a PEM file
         os.environ["AAP_VERIFY"] = str(verify)
 
     def token_provider():
-        # simple fixed-expiry (1h); swap with state-bus provider when wiring runtime
         return token_value, time.time() + 3600
 
+    trace(f"creating PlatformClient(base={base}, verify={verify})")
     return PlatformClient(base, token_provider)
 
-
 def run_module():
-    q("run user module")
-    """
-    argument_spec defines the contract the task must satisfy.
-    supports_check_mode=True enables --check dry runs, which is crucial for safe CaC.
-    no_log: true on token ensures secrets are redacted from logs.
-    """ 
+    trace("==> Enter run_module()")
     args = dict(
         username=dict(type="str", required=True),
         email=dict(type="str", required=False),
@@ -156,10 +158,13 @@ def run_module():
         is_superuser=dict(type="bool", required=False, default=False),
         state=dict(type="str", required=False, default="present", choices=["present", "absent"]),
 
-        # Optional connection parameters (override env if provided)
+        # connection parameters
         base=dict(type="str", required=False),
         token=dict(type="str", required=False, no_log=True),
         verify=dict(type="raw", required=False),
+
+        # NEW: agent address passed by action plugin
+        agent_addr=dict(type="str", required=False),
     )
 
     module = AnsibleModule(argument_spec=args, supports_check_mode=True)
@@ -169,27 +174,29 @@ def run_module():
     desired_state = module.params["state"]
 
     try:
-        q("get client")
-        # build a client
-        # UsersRepo.get_by_name() wraps a GET with query params on the AAP API and returns a User model or None.
+        trace(f"username={username} desired_state={desired_state}")
         client = _client_from_params_or_env(module)
         repo = UsersRepo(client)
+        trace("UsersRepo initialized")
 
         current = repo.get_by_name(username)
 
         # Absent path
         if desired_state == "absent":
+        # --- Absent Path ---
+            trace("state=absent path entered")
             if module.check_mode:
+                trace("check_mode=True -> exiting early")
                 module.exit_json(changed=bool(current), user=None)
             if current:
+                trace(f"deleting existing user id={current.id}")
                 repo.delete(current)
                 module.exit_json(changed=True, user=None)
+            trace("no user found; nothing to delete")
             module.exit_json(changed=False, user=None)
 
-        # Present path
-        # build a desired model
-        # Using data class keeps types clean and mirrors the API schema.
-        
+        # --- Present Path ---
+        trace("state=present path entered")
         desired = User(
             id=current.id if current else None,
             username=username,
@@ -201,15 +208,19 @@ def run_module():
 
         # Create if missing
         if not current:
+            trace("user not found -> creating new user")
             if module.check_mode:
+                trace("check_mode=True -> simulate create")
                 module.exit_json(changed=True, user=desired.__dict__)
             created = repo.create(desired)
+            trace(f"user created id={created.id}")
             module.exit_json(changed=True, user=created.__dict__)
 
-        # Update (minimal comparison; expand as schema evolves)
-        # update if drift exists
+        # Update path
+        trace("user exists -> checking drift")
         changed = False
         if desired.email and desired.email != current.email:
+            trace(f"email drift: current={current.email} desired={desired.email}")
             changed = True
             current.email = desired.email
 
@@ -218,6 +229,7 @@ def run_module():
             or desired.last_name != current.last_name
             or bool(desired.is_superuser) != bool(current.is_superuser)
         ):
+            trace("name or superuser drift detected")
             changed = True
             current.first_name = desired.first_name
             current.last_name = desired.last_name
@@ -227,31 +239,19 @@ def run_module():
             module.exit_json(changed=changed, user=(current.__dict__ if current else desired.__dict__))
 
         if changed:
+            trace("applying update to repo")
             updated = repo.update(current)
+            trace(f"user updated id={updated.id}")
             module.exit_json(changed=True, user=updated.__dict__)
         else:
+            trace("no changes detected -> exit clean")
             module.exit_json(changed=False, user=current.__dict__)
 
     except Exception as e:
+        trace(f"EXCEPTION: {e}")
         module.fail_json(msg=str(e))
-        
-        
-#  What makes this “the new approach” (vs older modules)
-# Typed models (dataclasses): User is a real model, not an untyped dict. This matches the OpenAPI schema and avoids key typos/shape drift.
-# Repositories: UsersRepo hides HTTP details, so module code reads like intent:
-# get_by_name, create, update, delete.
-# SDK client abstraction: PlatformClient decides transport:
-# direct requests.Session() or agent proxy (persistent).
-# Idempotency + check mode: explicit change detection, safe dry runs.
-# Connection params are normalized: verify is fed back into AAP_VERIFY so the client/agent layer uses a single source of truth.
-
-
-# How it behaves with your agent
-# If your pre_task action started the agent and exported AAP_AGENT_ADDR, then:
-# _client_from_params_or_env sets AAP_VERIFY in env,
-# PlatformClient.from_env() (or your constructor) sees AAP_AGENT_ADDR,
-# All repo calls go through POST /request to the agent,
-# The agent uses a single persistent requests.Session with shared token/TLS → fewer handshakes, faster RBAC bulk ops, and central place for locks/caches.
+    finally:
+        trace("<== Exit run_module()")
 
 def main():
     run_module()
@@ -259,3 +259,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
