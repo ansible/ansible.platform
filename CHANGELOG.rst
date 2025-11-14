@@ -1,9 +1,8 @@
-=========================================
+==============================
 ansible.platform Release Notes
-=========================================
+==============================
 
 .. contents:: Topics
-
 
 v2.5.0
 ======
@@ -69,3 +68,11 @@ v2.5.20250702
 * Improve documentation and examples for `ansible.platform.authenticator` and `ansible.platform.authenticator_map` modules.
 * Allows role assignments using `object_ansible_id` in the `role_user_assignment` module.
 * Improve documentation and examples related to `object_id` and `object_ansible_id` parameters in `role_user_assignment` module.
+
+v2.5.20251114
+=============
+* Ensure idempotent cases are correctly handled in AAPModule create_if_needed() method when auto_exit is disabled.
+* Fix CI issues.
+* fixes to rely on field-specific error messages from the Django REST Framework serializer.
+* updated repository location.
+
