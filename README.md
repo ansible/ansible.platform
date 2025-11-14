@@ -85,13 +85,11 @@ As a Red Hat Ansible [Certified Content](https://catalog.redhat.com/software/sea
 
 ## Release Notes and Roadmap
 
-Changelogs can be found in the changelogs directory. 
-
+Detailed **release notes** are available in the main [CHANGELOG.rst file](https://github.com/ansible/ansible.platform/blob/stable-2.5/CHANGELOG.rst) within the repository, and a comprehensive changelogs archive can also be found in the `changelogs/` directory.
 
 ## Related Information
 
 Please refer to Ansible Automation Platform Documentation for further documentation needs: https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5
-
 
 ## License Information
 
