@@ -89,7 +89,7 @@ The collection is tested against current version of Ansible Automation Platform.
 
 ## Support
 
-This collection is supported by RedHat Engineering. Support cases can be opened at: https://access.redhat.com/support/
+As a Red Hat Ansible [Certified Content](https://catalog.redhat.com/software/search?target_platforms=Red%20Hat%20Ansible%20Automation%20Platform), this collection is entitled to [support](https://access.redhat.com/support/) through [Ansible Automation Platform](https://www.redhat.com/en/technologies/management/ansible) (AAP).
 
 ## Release Notes and Roadmap
 
