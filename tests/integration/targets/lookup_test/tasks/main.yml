@@ -65,9 +65,17 @@
 
     - name: Use lookup plugin to query created objects
       ansible.builtin.set_fact:
-        _org2: "{{ lookup(plugin_name, 'organizations', query_params={'description': org2_description}, **connection_info) }}"
-        _users: "{{ query(plugin_name, 'users', query_params={'username__startswith': name_prefix, 'order_by': 'username'}, **connection_info) }}"
-        _admins: "{{ query(plugin_name, 'organizations/' + (org1.id | string) + '/admins/', query_params=admins_query, **connection_info) }} "
+        _org2: >-
+          {{ lookup(plugin_name, 'organizations',
+                query_params={'description': org2_description},
+                **connection_info) }}
+        _users: >-
+          {{ query(plugin_name, 'users',
+               query_params={'username__startswith': name_prefix, 'order_by': 'username'},
+               **connection_info) | list }}
+        _admins: >-
+          {{ query(plugin_name, 'organizations/' ~ (org1.id | string) ~ '/admins/',
+               query_params=admins_query, **connection_info) | list }}
       vars:
         admins_query:
           username__startswith: "{{ name_prefix }}"
