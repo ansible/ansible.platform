@@ -85,8 +85,7 @@ As a Red Hat Ansible [Certified Content](https://catalog.redhat.com/software/sea
 
 ## Release Notes and Roadmap
 
-Release notes are available [here](https://github.com/ansible/ansible.platform/blob/stable-2.5/CHANGELOG.rst), can also be found in the changelogs directory.
-
+Detailed **release notes** are available in the main [CHANGELOG.rst file](https://github.com/ansible/ansible.platform/blob/stable-2.5/CHANGELOG.rst) within the repository, and a comprehensive changelogs archive can also be found in the `changelogs/` directory.
 
 ## Related Information
 
