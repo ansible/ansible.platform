@@ -357,6 +357,9 @@ Registry discovers:
    │   └─> AnsibleUser, APIUser_v1, UserTransformMixin_v1
    │
    ├─> 8. Reconstruct AnsibleUser from dict
+   │   └─> Why? RPC serializes dataclasses as dicts, but transformation
+   │       methods (to_api()) require dataclass instances. Reconstruction
+   │       also validates types and runs __post_init__().
    │
    ├─> 9. FORWARD TRANSFORM (Ansible → API)
    │   └─> UserTransformMixin_v1.to_api(context)
@@ -455,6 +458,36 @@ created: '2025-01-15T10:30:00Z'
 - Client doesn't need API knowledge
 - Version changes don't affect client code
 - Transformations have full context (session, cache, version)
+
+### 1.5. Dataclass Reconstruction at Manager Boundary
+
+**Decision**: Manager reconstructs Ansible dataclass instances from dicts received via RPC.
+
+**Rationale**:
+- **RPC Serialization Limitation**: Python's multiprocessing RPC can only serialize simple types (dicts, lists, primitives), not dataclass instances. The action plugin must convert the dataclass to a dict before sending: `asdict(ansible_user)`.
+- **Transformation Requires Instances**: The transformation methods (`to_api()`, `to_ansible()`) are instance methods that need the dataclass instance to:
+  - Access fields via `getattr(self, field)`
+  - Call `__post_init__()` for validation/normalization
+  - Maintain type safety throughout the transformation pipeline
+- **Type Safety**: Reconstructing ensures data types are validated and normalized (e.g., `organizations` list normalization in `__post_init__()`)
+
+**Why Not Work with Dicts Directly?**:
+- Would lose type safety and validation
+- Would need to duplicate `__post_init__()` logic
+- Would make transformation code more error-prone
+- Would break the clean separation between data models and transformations
+
+**Flow**:
+1. Action plugin: `AnsibleUser(...)` → `asdict()` → dict
+2. RPC: dict crosses process boundary
+3. Manager: `AnsibleUser(**dict)` → reconstructs instance
+4. Manager: `ansible_instance.to_api(context)` → transformation works
+
+**Benefits**:
+- Maintains type safety across process boundaries
+- Validates and normalizes data at manager entry point
+- Keeps transformation code clean and type-safe
+- Single source of truth for data structure (dataclass definition)
 
 ### 2. Round-Trip Data Contract
 
