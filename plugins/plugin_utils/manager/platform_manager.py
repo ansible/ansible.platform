@@ -76,12 +76,21 @@ class PlatformService:
             'Content-Type': 'application/json'
         })
         
-        # Authenticate
-        self._authenticate()
+        # Authenticate (with error handling)
+        try:
+            self._authenticate()
+            logger.info("Authentication successful")
+        except Exception as e:
+            logger.error(f"Authentication failed: {e}")
+            # Continue anyway - some operations might work without auth
         
         # Detect API version (cached for lifetime)
-        self.api_version = self._detect_version()
-        logger.info(f"PlatformService initialized with API v{self.api_version}")
+        try:
+            self.api_version = self._detect_version()
+            logger.info(f"PlatformService initialized with API v{self.api_version}")
+        except Exception as e:
+            logger.warning(f"Version detection failed: {e}, defaulting to v1")
+            self.api_version = '1'
         
         # Initialize registry and loader
         self.registry = APIVersionRegistry()
@@ -92,7 +101,8 @@ class PlatformService:
     
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
-        url = self._build_url("")
+        # Use simple URL for auth - we don't know the API version yet
+        url = self.base_url
         
         if self.oauth_token:
             # OAuth token authentication
@@ -277,7 +287,7 @@ class PlatformService:
             context: Transformation context
         
         Returns:
-            Created resource as dict (Ansible format)
+            Created resource as dict (Ansible format) with 'changed': True
         """
         # FORWARD TRANSFORM: Ansible → API
         api_data = ansible_data.to_api(context)
@@ -292,11 +302,14 @@ class PlatformService:
         
         # REVERSE TRANSFORM: API → Ansible
         if api_result:
-            api_result_instance = type(api_data)(**api_result)
-            ansible_result = api_result_instance.to_ansible(context)
-            return asdict(ansible_result)
+            # Use mixin's from_api method which handles field filtering
+            # from_api always returns a dict
+            ansible_result = mixin_class.from_api(api_result, context)
+            # Creating a resource always results in a change
+            ansible_result['changed'] = True
+            return ansible_result
         
-        return {}
+        return {'changed': True}
     
     def _update_resource(
         self,
@@ -313,8 +326,20 @@ class PlatformService:
             context: Transformation context
         
         Returns:
-            Updated resource as dict (Ansible format)
+            Updated resource as dict (Ansible format) with 'changed': True/False
         """
+        # Get the resource ID
+        resource_id = getattr(ansible_data, 'id', None)
+        if not resource_id:
+            raise ValueError("Resource ID required for update operation")
+        
+        # Fetch current state for comparison
+        try:
+            current_data = self._find_resource(ansible_data, mixin_class, context)
+        except Exception:
+            # If we can't fetch current state, assume change
+            current_data = {}
+        
         # FORWARD TRANSFORM: Ansible → API
         api_data = ansible_data.to_api(context)
         
@@ -328,11 +353,26 @@ class PlatformService:
         
         # REVERSE TRANSFORM: API → Ansible
         if api_result:
-            api_result_instance = type(api_data)(**api_result)
-            ansible_result = api_result_instance.to_ansible(context)
-            return asdict(ansible_result)
+            # Use mixin's from_api method which handles field filtering
+            ansible_result = mixin_class.from_api(api_result, context)
+            
+            # Compare current vs new to determine if changed
+            # from_api always returns a dict, and current_data from _find_resource is also a dict
+            new_dict = ansible_result
+            current_dict = current_data if isinstance(current_data, dict) else {}
+            
+            # Compare relevant fields (exclude read-only fields like created, modified, url)
+            read_only_fields = {'id', 'created', 'modified', 'url'}
+            new_comparable = {k: v for k, v in new_dict.items() if k not in read_only_fields}
+            current_comparable = {k: v for k, v in current_dict.items() if k not in read_only_fields}
+            
+            changed = new_comparable != current_comparable
+            
+            # from_api always returns a dict, so we can directly add changed
+            ansible_result['changed'] = changed
+            return ansible_result
         
-        return {}
+        return {'changed': False}
     
     def _delete_resource(
         self,
@@ -387,7 +427,8 @@ class PlatformService:
         )
         response.raise_for_status()
         
-        return {}
+        # Deleting a resource always results in a change
+        return {'changed': True}
     
     def _find_resource(
         self,
@@ -409,40 +450,55 @@ class PlatformService:
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
         
-        # Find get/list operation
-        get_op = None
-        for op_name, op in operations.items():
-            if op.method == 'GET':
-                get_op = op
-                break
+        # Find list operation (for querying) or get operation (for ID lookup)
+        list_op = operations.get('list')
+        get_op = operations.get('get')
         
-        if not get_op:
-            raise ValueError("No GET operation defined for this resource")
+        # Get lookup field name (e.g., 'username', 'name')
+        lookup_field = mixin_class.get_lookup_field()
+        unique_value = getattr(ansible_data, lookup_field, None) or getattr(ansible_data, 'id', None)
         
-        # Build URL - use unique field from ansible_data
-        # For now, assume we can query by name or ID
-        unique_field = getattr(ansible_data, 'username', None) or getattr(ansible_data, 'name', None) or getattr(ansible_data, 'id', None)
+        if not unique_value:
+            raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
         
-        if unique_field:
-            url = self._build_url(f"{get_op.path.rstrip('/')}/{unique_field}/")
+        # If we have an ID, use get endpoint
+        if hasattr(ansible_data, 'id') and ansible_data.id:
+            if not get_op:
+                raise ValueError("No GET operation defined for this resource")
+            url = self._build_url(get_op.path.replace('{id}', str(ansible_data.id)))
+            response = self.session.get(
+                url,
+                timeout=self.request_timeout,
+                verify=self.verify_ssl
+            )
+            response.raise_for_status()
+            api_result = response.json()
         else:
-            url = self._build_url(get_op.path)
-        
-        # Make GET request
-        logger.debug(f"Calling GET {url}")
-        response = self.session.get(
-            url,
-            timeout=self.request_timeout,
-            verify=self.verify_ssl
-        )
-        response.raise_for_status()
-        
-        api_result = response.json()
+            # Use list endpoint and filter by lookup field
+            if not list_op:
+                raise ValueError("No LIST operation defined for this resource")
+            url = self._build_url(list_op.path, query_params={lookup_field: unique_value})
+            logger.debug(f"Calling GET {url} to find {lookup_field}={unique_value}")
+            response = self.session.get(
+                url,
+                timeout=self.request_timeout,
+                verify=self.verify_ssl
+            )
+            response.raise_for_status()
+            list_result = response.json()
+            
+            # Find matching item in results
+            results = list_result.get('results', [])
+            if not results:
+                raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
+            
+            # Return first match
+            api_result = results[0]
         
         # REVERSE TRANSFORM: API → Ansible
-        api_result_instance = type(ansible_data).__class__(**api_result)
-        ansible_result = api_result_instance.to_ansible(context)
-        return asdict(ansible_result)
+        # from_api expects a dict and handles field filtering/mapping
+        ansible_result = mixin_class.from_api(api_result, context)
+        return ansible_result
     
     def _execute_operations(
         self,
@@ -502,14 +558,23 @@ class PlatformService:
             
             # Make API call
             logger.debug(f"Calling {endpoint_op.method} {url}")
-            response = self.session.request(
-                endpoint_op.method,
-                url,
-                json=request_data,
-                timeout=self.request_timeout,
-                verify=self.verify_ssl
-            )
-            response.raise_for_status()
+            logger.debug(f"Request data: {request_data}")
+            logger.debug(f"Request data keys: {list(request_data.keys())}")
+            try:
+                response = self.session.request(
+                    endpoint_op.method,
+                    url,
+                    json=request_data,
+                    timeout=self.request_timeout,
+                    verify=self.verify_ssl
+                )
+                response.raise_for_status()
+            except Exception as e:
+                logger.error(f"API call failed: {e}")
+                if hasattr(e, 'response') and e.response is not None:
+                    logger.error(f"Response status: {e.response.status_code}")
+                    logger.error(f"Response body: {e.response.text}")
+                raise
             
             # Store result
             result_data = response.json() if response.content else {}
@@ -631,6 +696,15 @@ class PlatformService:
             names.append(name)
         
         return names
+    
+    # Aliases for consistency with transform mixins
+    def lookup_organization_ids(self, org_names: list) -> list:
+        """Alias for lookup_org_ids."""
+        return self.lookup_org_ids(org_names)
+    
+    def lookup_organization_names(self, org_ids: list) -> list:
+        """Alias for lookup_org_names."""
+        return self.lookup_org_names(org_ids)
 
 
 class PlatformManager(ThreadingMixIn, BaseManager):

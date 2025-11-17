@@ -100,7 +100,7 @@ class DynamicClassLoader:
             ValueError: If class cannot be found
         """
         # Import from ansible_models/<module_name>.py
-        module_path = f'ansible.platform.plugins.plugin_utils.ansible_models.{module_name}'
+        module_path = f'ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_name}'
         
         try:
             module = importlib.import_module(module_path)
@@ -150,7 +150,7 @@ class DynamicClassLoader:
         # Import from api/v<version>/<module_name>.py
         version_normalized = api_version.replace('.', '_')
         module_path = (
-            f'ansible.platform.plugins.plugin_utils.api.'
+            f'ansible_collections.ansible.platform.plugins.plugin_utils.api.'
             f'v{version_normalized}.{module_name}'
         )
         

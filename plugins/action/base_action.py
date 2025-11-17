@@ -13,10 +13,120 @@ import logging
 import tempfile
 import secrets
 import base64
-from multiprocessing import Process
 import time
 
 logger = logging.getLogger(__name__)
+
+
+def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_url, 
+                           gateway_username, gateway_password, gateway_token,
+                           gateway_validate_certs, gateway_request_timeout, authkey_b64, sys_path):
+    """
+    Entry point for the manager process.
+    
+    This is a module-level function so it can be pickled for multiprocessing.spawn.
+    """
+    import sys
+    import traceback
+    import base64
+    from pathlib import Path
+    
+    # Redirect stderr to a file for debugging
+    error_log_path = Path(socket_dir) / f'manager_error_{inventory_hostname}.log'
+    stderr_log = Path(socket_dir) / f'manager_stderr_{inventory_hostname}.log'
+    
+    try:
+        sys.stderr = open(stderr_log, 'w', buffering=1)
+        sys.stdout = open(stderr_log, 'a', buffering=1)
+    except Exception as e:
+        pass  # Continue without redirecting
+    
+    try:
+        # Restore parent's sys.path in child process
+        sys.path = sys_path
+        
+        # Decode authkey from base64
+        authkey = base64.b64decode(authkey_b64)
+        
+        # Write to log immediately to capture any early failures
+        with open(error_log_path, 'w') as f:
+            f.write(f"Process started, socket_path={socket_path}\n")
+            f.write(f"sys.path has {len(sys_path)} entries\n")
+            f.write(f"Manager starting at {socket_path}\n")
+            f.write(f"About to create service with base_url={gateway_url}\n")
+            f.flush()
+    except Exception as e:
+        # Can't even write to log, print to stderr
+        print(f"ERROR in early startup: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    
+    try:
+        
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import (
+            PlatformManager,
+            PlatformService
+        )
+        
+        with open(error_log_path, 'a') as f:
+            f.write("Imports successful\n")
+            f.flush()
+        
+        # Create service
+        try:
+            service = PlatformService(
+                base_url=gateway_url,
+                username=gateway_username,
+                password=gateway_password,
+                oauth_token=gateway_token,
+                verify_ssl=gateway_validate_certs,
+                request_timeout=gateway_request_timeout
+            )
+            with open(error_log_path, 'a') as f:
+                f.write("Service created successfully\n")
+                f.flush()
+        except Exception as service_err:
+            with open(error_log_path, 'a') as f:
+                f.write(f"Service creation failed: {service_err}\n")
+                f.write(traceback.format_exc())
+                f.flush()
+            raise
+        
+        with open(error_log_path, 'a') as f:
+            f.write("Service created\n")
+            f.flush()
+        
+        # Register with manager
+        PlatformManager.register(
+            'get_platform_service',
+            callable=lambda: service
+        )
+        
+        with open(error_log_path, 'a') as f:
+            f.write("Service registered\n")
+            f.flush()
+        
+        # Start manager server
+        manager = PlatformManager(address=socket_path, authkey=authkey)
+        
+        with open(error_log_path, 'a') as f:
+            f.write("Manager instance created\n")
+            f.flush()
+        
+        server = manager.get_server()
+        
+        with open(error_log_path, 'a') as f:
+            f.write("Server obtained, starting serve_forever()\n")
+            f.flush()
+        
+        server.serve_forever()
+        
+    except Exception as e:
+        # Log to a temp file for debugging
+        with open(error_log_path, 'a') as f:
+            f.write(f"\n\nManager startup failed: {e}\n")
+            f.write(traceback.format_exc())
+        sys.exit(1)
 
 
 class BaseResourceActionPlugin(ActionBase):
@@ -61,8 +171,11 @@ class BaseResourceActionPlugin(ActionBase):
         Raises:
             RuntimeError: If manager fails to start
         """
+        import sys
+        from multiprocessing import Process
+        
         # Import here to avoid circular imports
-        from ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
         
         # Check if manager info in hostvars
         hostvars = task_vars.get('hostvars', {})
@@ -71,18 +184,48 @@ class BaseResourceActionPlugin(ActionBase):
         
         socket_path = host_vars.get('platform_manager_socket')
         authkey_b64 = host_vars.get('platform_manager_authkey')
-        gateway_url = host_vars.get('gateway_url') or host_vars.get('gateway_hostname')
         
-        # Get auth parameters
-        gateway_username = host_vars.get('gateway_username') or host_vars.get('aap_username')
-        gateway_password = host_vars.get('gateway_password') or host_vars.get('aap_password')
-        gateway_token = host_vars.get('gateway_token') or host_vars.get('aap_token')
-        gateway_validate_certs = host_vars.get('gateway_validate_certs', True)
-        gateway_request_timeout = host_vars.get('gateway_request_timeout', 10.0)
+        # Get task arguments (user can pass these per-task or in inventory)
+        task_args = self._task.args
+        
+        # Get gateway URL from task args first, then host_vars
+        gateway_url = (
+            task_args.get('gateway_url') or 
+            task_args.get('gateway_hostname') or
+            host_vars.get('gateway_url') or 
+            host_vars.get('gateway_hostname')
+        )
+        
+        # Get auth parameters from task args first, then host_vars
+        gateway_username = (
+            task_args.get('gateway_username') or 
+            host_vars.get('gateway_username') or 
+            host_vars.get('aap_username')
+        )
+        gateway_password = (
+            task_args.get('gateway_password') or 
+            host_vars.get('gateway_password') or 
+            host_vars.get('aap_password')
+        )
+        gateway_token = (
+            task_args.get('gateway_token') or 
+            host_vars.get('gateway_token') or 
+            host_vars.get('aap_token')
+        )
+        gateway_validate_certs = (
+            task_args.get('gateway_validate_certs') 
+            if 'gateway_validate_certs' in task_args 
+            else host_vars.get('gateway_validate_certs', True)
+        )
+        gateway_request_timeout = (
+            task_args.get('gateway_request_timeout') or 
+            host_vars.get('gateway_request_timeout') or 
+            10.0
+        )
         
         if not gateway_url:
             raise AnsibleError(
-                "gateway_url or gateway_hostname must be defined in inventory or host_vars"
+                "gateway_url or gateway_hostname must be provided as task parameter or defined in inventory"
             )
         
         # Normalize URL
@@ -119,41 +262,56 @@ class BaseResourceActionPlugin(ActionBase):
             except Exception as e:
                 logger.warning(f"Failed to remove old socket: {e}")
         
-        # Start manager process
-        def start_manager():
-            """Manager process entry point."""
-            from ansible.platform.plugins.plugin_utils.manager.platform_manager import (
-                PlatformManager,
-                PlatformService
-            )
-            
-            # Create service
-            service = PlatformService(
-                base_url=gateway_url,
-                username=gateway_username,
-                password=gateway_password,
-                oauth_token=gateway_token,
-                verify_ssl=gateway_validate_certs,
-                request_timeout=gateway_request_timeout
-            )
-            
-            # Register with manager
-            PlatformManager.register(
-                'get_platform_service',
-                callable=lambda: service
-            )
-            
-            # Start manager server
-            manager = PlatformManager(address=socket_path, authkey=authkey)
-            manager.start()
-            
-            # Keep running
-            import signal
-            signal.pause()
+        # Capture sys.path from parent to ensure child has same imports
+        parent_sys_path = list(sys.path)
+        logger.debug(f"Parent sys.path has {len(parent_sys_path)} entries")
+        logger.debug(f"First few entries: {parent_sys_path[:3]}")
         
-        # Spawn process
-        process = Process(target=start_manager, daemon=True)
-        process.start()
+        # Encode authkey and sys.path for passing as arguments
+        authkey_b64 = base64.b64encode(authkey).decode('utf-8')
+        import json
+        sys_path_json = json.dumps(parent_sys_path)
+        logger.debug(f"sys.path JSON length: {len(sys_path_json)}")
+        sys_path_b64 = base64.b64encode(sys_path_json.encode('utf-8')).decode('utf-8')
+        logger.debug(f"sys.path base64 length: {len(sys_path_b64)}")
+        
+        # Get path to manager process script
+        script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
+        
+        # Spawn process using subprocess (avoids multiprocessing import issues)
+        import subprocess
+        import os
+        try:
+            # Pass sys.path and authkey via environment to avoid arg length limits
+            env = os.environ.copy()
+            env['ANSIBLE_PLATFORM_SYS_PATH'] = sys_path_b64
+            env['ANSIBLE_PLATFORM_AUTHKEY'] = authkey_b64
+            
+            process = subprocess.Popen(
+                [
+                    sys.executable,  # Use same Python interpreter
+                    str(script_path),
+                    socket_path,
+                    str(socket_dir),
+                    inventory_hostname,
+                    gateway_url,
+                    gateway_username or '',
+                    gateway_password or '',
+                    gateway_token or '',
+                    str(gateway_validate_certs),
+                    str(gateway_request_timeout)
+                ],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True  # Detach from parent
+            )
+            logger.debug(f"Manager process started with PID: {process.pid}")
+        except Exception as e:
+            logger.error(f"Failed to start manager process: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise RuntimeError(f"Failed to start manager process: {e}") from e
         
         # Wait for socket to be created
         max_wait = 50  # 5 seconds
@@ -162,9 +320,20 @@ class BaseResourceActionPlugin(ActionBase):
                 break
             time.sleep(0.1)
         else:
-            raise RuntimeError(
-                f"Manager failed to start within {max_wait * 0.1} seconds"
-            )
+            # Check if there's an error log
+            error_log = socket_dir / f'manager_error_{inventory_hostname}.log'
+            error_msg = f"Manager failed to start within {max_wait * 0.1} seconds"
+            if error_log.exists():
+                error_content = error_log.read_text()
+                error_msg += f"\n\nManager error log:\n{error_content}"
+                error_log.unlink()  # Clean up
+            
+            # Check if process is still alive (Popen uses poll())
+            returncode = process.poll()
+            if returncode is not None:
+                error_msg += f"\n\nManager process died (exitcode: {returncode})"
+            
+            raise RuntimeError(error_msg)
         
         # Store info in facts for future tasks
         authkey_b64 = base64.b64encode(authkey).decode('utf-8')
@@ -214,8 +383,9 @@ class BaseResourceActionPlugin(ActionBase):
         options = doc_data.get('options', {})
         
         # Build argspec in Ansible format
+        # ArgumentSpecValidator expects 'argument_spec' key, not 'options'
         argspec = {
-            'options': options,
+            'argument_spec': options,
             'mutually_exclusive': doc_data.get('mutually_exclusive', []),
             'required_together': doc_data.get('required_together', []),
             'required_one_of': doc_data.get('required_one_of', []),
@@ -247,21 +417,38 @@ class BaseResourceActionPlugin(ActionBase):
         Raises:
             AnsibleError: If validation fails
         """
-        # Create validator
-        validator = ArgumentSpecValidator(argspec)
-        
-        # Validate
-        result = validator.validate(data)
-        
-        # Check for errors
-        if result.error_messages:
-            error_msg = (
-                f"{direction.title()} validation failed: " +
-                ", ".join(result.error_messages)
+        try:
+            logger.debug(f"Creating ArgumentSpecValidator with argspec keys: {list(argspec.keys())}")
+            
+            # Create validator - pass all parameters as kwargs
+            validator = ArgumentSpecValidator(
+                argument_spec=argspec.get('argument_spec', {}),
+                mutually_exclusive=argspec.get('mutually_exclusive'),
+                required_together=argspec.get('required_together'),
+                required_one_of=argspec.get('required_one_of'),
+                required_if=argspec.get('required_if'),
+                required_by=argspec.get('required_by')
             )
-            raise AnsibleError(error_msg)
-        
-        return result.validated_parameters
+            
+            logger.debug(f"Validating {direction} data with keys: {list(data.keys())}")
+            
+            # Validate
+            result = validator.validate(data)
+            
+            # Check for errors
+            if result.error_messages:
+                error_msg = (
+                    f"{direction.title()} validation failed: " +
+                    ", ".join(result.error_messages)
+                )
+                raise AnsibleError(error_msg)
+            
+            logger.debug(f"Validation successful for {direction}")
+            return result.validated_parameters
+            
+        except Exception as e:
+            logger.error(f"Validation error: {e}", exc_info=True)
+            raise
     
     def _detect_operation(self, args: dict) -> str:
         """
