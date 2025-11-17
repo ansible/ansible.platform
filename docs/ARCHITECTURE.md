@@ -592,9 +592,10 @@ plugins/
 
 ## Related Documentation
 
+- `FLOW_EXPLANATION.md` - High-level flow explanation
+- `CODE_WALKTHROUGH.md` - Detailed step-by-step code walkthrough with line numbers
 - `IMPLEMENTATION_GUIDE.md` - Step-by-step implementation guide
 - `DEVELOPER_GUIDE.md` - How to add new resources
 - `API_REFERENCE.md` - API documentation for components
-- `MIGRATION_GUIDE.md` - Migrating from legacy architecture
 
 

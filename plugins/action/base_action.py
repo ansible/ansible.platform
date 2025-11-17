@@ -25,6 +25,7 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
     Entry point for the manager process.
     
     This is a module-level function so it can be pickled for multiprocessing.spawn.
+    Uses the same pattern as python-multiproc repository.
     """
     import sys
     import traceback
@@ -42,11 +43,11 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
         pass  # Continue without redirecting
     
     try:
-        # Restore parent's sys.path in child process
+        # Restore parent's sys.path in child process (spawn starts fresh)
         sys.path = sys_path
         
-        # Decode authkey from base64
-        authkey = base64.b64decode(authkey_b64)
+        # Decode authkey from base64 string
+        authkey = base64.b64decode(authkey_b64.encode('utf-8'))
         
         # Write to log immediately to capture any early failures
         with open(error_log_path, 'w') as f:
@@ -96,23 +97,33 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
             f.write("Service created\n")
             f.flush()
         
-        # Register with manager
+        # Register with manager (must happen before creating manager instance)
+        # Store service in a closure to avoid pickling issues
+        _service_ref = [service]
+        
+        def _get_service():
+            return _service_ref[0]
+        
         PlatformManager.register(
             'get_platform_service',
-            callable=lambda: service
+            callable=_get_service
         )
         
         with open(error_log_path, 'a') as f:
             f.write("Service registered\n")
             f.flush()
         
-        # Start manager server
+        # Create manager instance (like python-multiproc pattern)
         manager = PlatformManager(address=socket_path, authkey=authkey)
         
         with open(error_log_path, 'a') as f:
             f.write("Manager instance created\n")
             f.flush()
         
+        # Start manager server
+        # Note: We use get_server().serve_forever() instead of manager.start()
+        # because manager.start() internally uses multiprocessing which causes issues
+        # when we're already in a subprocess
         server = manager.get_server()
         
         with open(error_log_path, 'a') as f:
@@ -271,14 +282,20 @@ class BaseResourceActionPlugin(ActionBase):
         authkey_b64 = base64.b64encode(authkey).decode('utf-8')
         import json
         sys_path_json = json.dumps(parent_sys_path)
-        logger.debug(f"sys.path JSON length: {len(sys_path_json)}")
         sys_path_b64 = base64.b64encode(sys_path_json.encode('utf-8')).decode('utf-8')
-        logger.debug(f"sys.path base64 length: {len(sys_path_b64)}")
         
         # Get path to manager process script
         script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
         
-        # Spawn process using subprocess (avoids multiprocessing import issues)
+        # Spawn process using subprocess.Popen (REQUIRED for Ansible plugins on macOS)
+        # 
+        # Why not multiprocessing.Process?
+        # - multiprocessing.Process with spawn imports the entire module (base_action.py)
+        # - This includes all Ansible imports which cause crashes on macOS
+        # - subprocess.Popen runs a fresh Python interpreter, avoiding import issues
+        # - This is the same approach Ansible core uses for similar scenarios
+        #
+        # Note: We still use BaseManager for RPC communication (that part works fine)
         import subprocess
         import os
         try:

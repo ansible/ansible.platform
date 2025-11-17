@@ -575,6 +575,8 @@ def test_forward_transform():
 ## Related Documentation
 
 - `ARCHITECTURE.md` - System architecture overview
+- `FLOW_EXPLANATION.md` - High-level flow explanation
+- `CODE_WALKTHROUGH.md` - Detailed step-by-step code walkthrough with line numbers
 - `DEVELOPER_GUIDE.md` - Developer workflow
 - `API_REFERENCE.md` - Component API reference
 

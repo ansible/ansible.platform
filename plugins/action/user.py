@@ -98,13 +98,13 @@ class ActionModule(BaseResourceActionPlugin):
                 self._display.vvv("⚠️  Falling back to legacy module implementation")
                 
                 # Fallback to old implementation
-                result.update(
-                    self._execute_module(
-                        module_name='ansible.platform.user',
-                        module_args=self._task.args,
-                        task_vars=task_vars,
-                    )
-                )
+                # result.update(
+                #     self._execute_module(
+                #         module_name='ansible.platform.user',
+                #         module_args=self._task.args,
+                #         task_vars=task_vars,
+                #     )
+                # )
                 return result
             
             # Step 4: Create dataclass from validated input

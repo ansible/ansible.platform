@@ -103,6 +103,8 @@ ansible.platform/
 
 **Read First**:
 - `docs/ARCHITECTURE.md` - System architecture
+- `docs/FLOW_EXPLANATION.md` - High-level flow explanation
+- `docs/CODE_WALKTHROUGH.md` - Detailed step-by-step code walkthrough
 - `docs/IMPLEMENTATION_GUIDE.md` - Implementation details
 
 **Key Concepts**:
@@ -546,6 +548,8 @@ changelog:
 ## Resources
 
 - **Architecture**: `docs/ARCHITECTURE.md`
+- **Flow Explanation**: `docs/FLOW_EXPLANATION.md`
+- **Code Walkthrough**: `docs/CODE_WALKTHROUGH.md`
 - **Implementation**: `docs/IMPLEMENTATION_GUIDE.md`
 - **API Reference**: `docs/API_REFERENCE.md`
 - **Ansible Docs**: https://docs.ansible.com/

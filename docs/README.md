@@ -37,19 +37,29 @@ This directory contains comprehensive documentation for the Ansible Platform Col
    - Code standards
    - Testing and debugging
 
+5. **[CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)** - Detailed code walkthrough
+   - Step-by-step execution flow with code snippets
+   - Line-by-line explanation of user module execution
+   - File locations and key functions
+   - Debugging tips and code examples
+
 ## Quick Start
 
 ### For New Developers
 
 1. **Start Here**: Read [ARCHITECTURE.md](ARCHITECTURE.md) to understand the system
-2. **Implementation**: Read [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for details
-3. **Development**: Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for workflow
-4. **Reference**: Use [API_REFERENCE.md](API_REFERENCE.md) as needed
+2. **Flow Overview**: Read [FLOW_EXPLANATION.md](FLOW_EXPLANATION.md) for high-level flow
+3. **Code Details**: Read [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md) for detailed step-by-step execution
+4. **Implementation**: Read [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for details
+5. **Development**: Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for workflow
+6. **Reference**: Use [API_REFERENCE.md](API_REFERENCE.md) as needed
 
 ### For AI Agents
 
 1. **Context Loading**: Read all documentation files in order:
    - ARCHITECTURE.md (system overview)
+   - FLOW_EXPLANATION.md (high-level flow)
+   - CODE_WALKTHROUGH.md (detailed step-by-step execution with code)
    - IMPLEMENTATION_GUIDE.md (implementation details)
    - API_REFERENCE.md (component APIs)
    - DEVELOPER_GUIDE.md (workflow patterns)
@@ -73,9 +83,12 @@ This directory contains comprehensive documentation for the Ansible Platform Col
 docs/
 ├── README.md                 # This file
 ├── ARCHITECTURE.md           # System architecture
+├── FLOW_EXPLANATION.md       # High-level flow explanation
+├── CODE_WALKTHROUGH.md       # Detailed step-by-step code walkthrough
 ├── IMPLEMENTATION_GUIDE.md   # Implementation details
 ├── API_REFERENCE.md          # API documentation
-└── DEVELOPER_GUIDE.md        # Developer workflow
+├── DEVELOPER_GUIDE.md        # Developer workflow
+└── QUICK_REFERENCE.md        # Quick reference for AI agents
 ```
 
 ## Key Architecture Principles
@@ -113,6 +126,7 @@ When adding new features or components:
 ## Questions?
 
 - **Architecture Questions**: See [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Flow Questions**: See [FLOW_EXPLANATION.md](FLOW_EXPLANATION.md) or [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)
 - **Implementation Questions**: See [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)
 - **API Questions**: See [API_REFERENCE.md](API_REFERENCE.md)
 - **Development Questions**: See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)

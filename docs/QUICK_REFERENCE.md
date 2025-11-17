@@ -194,10 +194,12 @@ Playbook → Action Plugin → Manager (RPC) → Platform API
 ## Documentation Files
 
 1. **ARCHITECTURE.md** - Complete system architecture
-2. **IMPLEMENTATION_GUIDE.md** - Step-by-step implementation
-3. **API_REFERENCE.md** - Component API reference
-4. **DEVELOPER_GUIDE.md** - Developer workflow
-5. **QUICK_REFERENCE.md** - This file
+2. **FLOW_EXPLANATION.md** - High-level flow explanation
+3. **CODE_WALKTHROUGH.md** - Detailed step-by-step code walkthrough with line numbers
+4. **IMPLEMENTATION_GUIDE.md** - Step-by-step implementation
+5. **API_REFERENCE.md** - Component API reference
+6. **DEVELOPER_GUIDE.md** - Developer workflow
+7. **QUICK_REFERENCE.md** - This file
 
 ## When Helping Developers
 
