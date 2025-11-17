@@ -43,21 +43,30 @@ This directory contains comprehensive documentation for the Ansible Platform Col
    - File locations and key functions
    - Debugging tips and code examples
 
+6. **[PROCESS_ARCHITECTURE.md](PROCESS_ARCHITECTURE.md)** - Process, thread, and service architecture
+   - Process overview (2 processes)
+   - Thread architecture (main + worker threads)
+   - Service sharing mechanism
+   - Communication channels
+   - Diagram specifications (Mermaid, PlantUML, Graphviz)
+
 ## Quick Start
 
 ### For New Developers
 
 1. **Start Here**: Read [ARCHITECTURE.md](ARCHITECTURE.md) to understand the system
-2. **Flow Overview**: Read [FLOW_EXPLANATION.md](FLOW_EXPLANATION.md) for high-level flow
-3. **Code Details**: Read [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md) for detailed step-by-step execution
-4. **Implementation**: Read [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for details
-5. **Development**: Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for workflow
-6. **Reference**: Use [API_REFERENCE.md](API_REFERENCE.md) as needed
+2. **Process Architecture**: Read [PROCESS_ARCHITECTURE.md](PROCESS_ARCHITECTURE.md) for process/thread/service details
+3. **Flow Overview**: Read [FLOW_EXPLANATION.md](FLOW_EXPLANATION.md) for high-level flow
+4. **Code Details**: Read [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md) for detailed step-by-step execution
+5. **Implementation**: Read [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for details
+6. **Development**: Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for workflow
+7. **Reference**: Use [API_REFERENCE.md](API_REFERENCE.md) as needed
 
 ### For AI Agents
 
 1. **Context Loading**: Read all documentation files in order:
    - ARCHITECTURE.md (system overview)
+   - PROCESS_ARCHITECTURE.md (process/thread/service architecture)
    - FLOW_EXPLANATION.md (high-level flow)
    - CODE_WALKTHROUGH.md (detailed step-by-step execution with code)
    - IMPLEMENTATION_GUIDE.md (implementation details)
@@ -85,10 +94,16 @@ docs/
 ├── ARCHITECTURE.md           # System architecture
 ├── FLOW_EXPLANATION.md       # High-level flow explanation
 ├── CODE_WALKTHROUGH.md       # Detailed step-by-step code walkthrough
+├── PROCESS_ARCHITECTURE.md   # Process, thread, and service architecture
 ├── IMPLEMENTATION_GUIDE.md   # Implementation details
 ├── API_REFERENCE.md          # API documentation
 ├── DEVELOPER_GUIDE.md        # Developer workflow
-└── QUICK_REFERENCE.md        # Quick reference for AI agents
+├── QUICK_REFERENCE.md        # Quick reference for AI agents
+└── diagrams/                 # Diagram specifications
+    ├── README.md             # How to generate diagrams
+    ├── process_architecture.mmd  # Mermaid diagram
+    ├── process_architecture.puml # PlantUML diagram
+    └── process_architecture.dot  # Graphviz DOT diagram
 ```
 
 ## Key Architecture Principles

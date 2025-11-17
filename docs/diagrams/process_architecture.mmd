@@ -1,0 +1,51 @@
+graph TB
+    subgraph "Process 1: Ansible Playbook Process"
+        direction TB
+        AP1["Action Plugin 1<br/>(user.py)"]
+        AP2["Action Plugin 2<br/>(user.py)"]
+        APN["Action Plugin N<br/>(user.py)"]
+        RPC1["ManagerRPCClient 1"]
+        RPC2["ManagerRPCClient 2"]
+        RPCN["ManagerRPCClient N"]
+        
+        AP1 --> RPC1
+        AP2 --> RPC2
+        APN --> RPCN
+    end
+    
+    subgraph "Process 2: Manager Process<br/>(manager_process.py)"
+        direction TB
+        PM["PlatformManager<br/>Main Thread<br/>(server.serve_forever())"]
+        WT1["Worker Thread 1<br/>(handles RPC call)"]
+        WT2["Worker Thread 2<br/>(handles RPC call)"]
+        WTN["Worker Thread N<br/>(handles RPC call)"]
+        PS["PlatformService<br/>SHARED INSTANCE<br/>- requests.Session<br/>- API version cache<br/>- Lookup cache"]
+        
+        PM -->|"spawns worker"| WT1
+        PM -->|"spawns worker"| WT2
+        PM -->|"spawns worker"| WTN
+        WT1 -->|"direct call"| PS
+        WT2 -->|"direct call"| PS
+        WTN -->|"direct call"| PS
+    end
+    
+    API["Platform API<br/>(AAP Gateway)"]
+    
+    RPC1 -->|"Unix Socket<br/>/tmp/ansible_platform/<br/>manager_*.sock<br/>(RPC via BaseManager)"| PM
+    RPC2 -->|"Unix Socket<br/>(RPC via BaseManager)"| PM
+    RPCN -->|"Unix Socket<br/>(RPC via BaseManager)"| PM
+    
+    PS -->|"HTTP/HTTPS<br/>Persistent Session"| API
+    
+    style AP1 fill:#e1f5ff
+    style AP2 fill:#e1f5ff
+    style APN fill:#e1f5ff
+    style RPC1 fill:#b3e5fc
+    style RPC2 fill:#b3e5fc
+    style RPCN fill:#b3e5fc
+    style PM fill:#fff9c4
+    style WT1 fill:#fff9c4
+    style WT2 fill:#fff9c4
+    style WTN fill:#fff9c4
+    style PS fill:#c8e6c9
+    style API fill:#ffccbc

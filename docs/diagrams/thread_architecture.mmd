@@ -1,0 +1,29 @@
+graph TB
+    subgraph "Manager Process - Thread Architecture"
+        MT[Main Thread<br/>server.serve_forever<br/>Listens on Unix Socket]
+        
+        MT -->|"Accepts Connection 1"| WT1[Worker Thread 1<br/>Handles Task 1 RPC]
+        MT -->|"Accepts Connection 2"| WT2[Worker Thread 2<br/>Handles Task 2 RPC]
+        MT -->|"Accepts Connection N"| WT3[Worker Thread N<br/>Handles Task N RPC]
+        
+        WT1 -->|"Calls"| PS[PlatformService<br/>SHARED RESOURCE<br/>Thread-Safe]
+        WT2 -->|"Calls"| PS
+        WT3 -->|"Calls"| PS
+        
+        PS -->|"Uses"| SESSION[requests.Session<br/>Persistent HTTP Connection]
+        PS -->|"Uses"| CACHE[Lookup Cache<br/>org names ↔ IDs]
+        PS -->|"Uses"| VERSION[API Version Cache]
+        
+        SESSION -->|"HTTP/HTTPS"| API[AAP Gateway API]
+    end
+    
+    style MT fill:#ffe1f5
+    style WT1 fill:#e1ffe1
+    style WT2 fill:#e1ffe1
+    style WT3 fill:#e1ffe1
+    style PS fill:#fff4e1
+    style SESSION fill:#e1f5ff
+    style CACHE fill:#e1f5ff
+    style VERSION fill:#e1f5ff
+    style API fill:#ffe1e1
+
