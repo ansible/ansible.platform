@@ -231,11 +231,16 @@ class BaseResourceActionPlugin(ActionBase):
 ```
 
 **Manager Lifecycle Management**:
-- First task in playbook spawns manager
-- Manager info stored in Ansible facts (hostvars)
-- Subsequent tasks reuse same manager
+- First task in playbook spawns manager (via Platform SDK ProcessManager)
+- Manager info stored in Ansible facts (set directly in result dict)
+- Subsequent tasks reuse same manager from hostvars
 - Manager persists for entire playbook duration
 - Cleanup on playbook completion
+
+**Separation of Concerns**:
+- **Ansible-specific**: task_vars, AnsibleError, result dict formatting
+- **Platform SDK**: Gateway config extraction (`config.py`), process management (`process_manager.py`)
+- Platform SDK modules are generic and reusable for CLI, MCP, or other entry points
 
 ### 2. Manager Layer (`plugins/plugin_utils/manager/`)
 
@@ -307,11 +312,37 @@ class PlatformService:
 - Serializes dataclasses to dicts for RPC
 - Returns result dicts
 
-### 3. Platform Framework (`plugins/plugin_utils/platform/`)
+### 3. Platform Framework (Platform SDK) (`plugins/plugin_utils/platform/`)
 
-**Purpose**: Core transformation and version management framework.
+**Purpose**: Core transformation, version management, and generic platform SDK.
 
 **Key Components**:
+
+#### GatewayConfig (`config.py`) - Platform SDK
+
+**Purpose**: Generic gateway configuration extraction (not Ansible-specific).
+
+**Key Components**:
+- `GatewayConfig` dataclass - Type-safe configuration
+- `extract_gateway_config()` - Extract from generic dict structures
+
+**Characteristics**:
+- Not Ansible-specific (can be used by CLI, MCP, etc.)
+- URL normalization
+- Auth parameter extraction
+- Type-safe with dataclass
+
+#### TransformContext (`types.py`)
+
+**Purpose**: Type-safe context for transformations (replaces Dict[str, Any]).
+
+**Key Components**:
+- `TransformContext` dataclass with `manager`, `session`, `cache`, `api_version`
+
+**Benefits**:
+- Better mypy type checking
+- IDE autocomplete support
+- Clear structure instead of dict keys
 
 #### BaseTransformMixin (`base_transform.py`)
 
@@ -322,7 +353,7 @@ class PlatformService:
 2. Subclasses define `_transform_registry` dict
 3. BaseTransformMixin applies mappings and transformations generically
 4. Supports nested fields (dot notation)
-5. Context-aware (can access manager for lookups)
+5. Context-aware (uses TransformContext dataclass for type safety)
 
 **Example**:
 

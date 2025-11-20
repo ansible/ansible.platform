@@ -4,10 +4,14 @@ This module provides the core transformation logic used by all Ansible
 and API dataclasses.
 """
 
+import logging
 from abc import ABC
 from dataclasses import asdict
-from typing import TypeVar, Type, Optional, Dict, Any
+from typing import TypeVar, Type, Optional, Dict, Any, Union
 
+from .types import TransformContext
+
+logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
 
@@ -28,13 +32,13 @@ class BaseTransformMixin(ABC):
     _field_mapping: Optional[Dict] = None
     _transform_registry: Optional[Dict] = None
     
-    def to_api(self, context: Optional[Dict] = None) -> Any:
+    def to_api(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:
         """
         Transform from Ansible format to API format.
         
         Args:
-            context: Optional context dict containing:
-                - manager: PlatformManager instance for lookups
+            context: Optional TransformContext or dict containing:
+                - manager: PlatformService instance for lookups
                 - session: HTTP session
                 - cache: Lookup cache
                 - api_version: Current API version
@@ -42,33 +46,69 @@ class BaseTransformMixin(ABC):
         Returns:
             API dataclass instance
         """
-        return self._transform(
+        logger.debug(f"Transforming {self.__class__.__name__} to API format")
+        ctx = self._normalize_context(context)
+        result = self._transform(
             target_class=self._get_api_class(),
             direction='forward',
-            context=context or {}
+            context=ctx
         )
+        logger.debug(f"Transformation to API format completed: {result.__class__.__name__}")
+        return result
     
-    def to_ansible(self, context: Optional[Dict] = None) -> Any:
+    def to_ansible(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:
         """
         Transform from API format to Ansible format.
         
         Args:
-            context: Optional context dict (same as to_api)
+            context: Optional TransformContext or dict (same as to_api)
         
         Returns:
             Ansible dataclass instance
         """
-        return self._transform(
+        logger.debug(f"Transforming {self.__class__.__name__} to Ansible format")
+        ctx = self._normalize_context(context)
+        result = self._transform(
             target_class=self._get_ansible_class(),
             direction='reverse',
-            context=context or {}
+            context=ctx
         )
+        logger.debug(f"Transformation to Ansible format completed: {result.__class__.__name__}")
+        return result
+    
+    @staticmethod
+    def _normalize_context(context: Optional[Union[TransformContext, Dict[str, Any]]]) -> TransformContext:
+        """
+        Normalize context to TransformContext dataclass.
+        
+        Args:
+            context: TransformContext or dict
+            
+        Returns:
+            TransformContext instance
+        """
+        if context is None:
+            raise ValueError("Context is required for transformation")
+        
+        if isinstance(context, TransformContext):
+            return context
+        
+        if isinstance(context, dict):
+            # Convert dict to TransformContext for backward compatibility
+            return TransformContext(
+                manager=context['manager'],
+                session=context['session'],
+                cache=context.get('cache', {}),
+                api_version=context.get('api_version', '1')
+            )
+        
+        raise TypeError(f"Context must be TransformContext or dict, got {type(context)}")
     
     def _transform(
         self,
         target_class: Type[T],
         direction: str,
-        context: Dict
+        context: TransformContext
     ) -> T:
         """
         Generic bidirectional transformation logic.
@@ -81,12 +121,17 @@ class BaseTransformMixin(ABC):
         Returns:
             Instance of target_class with transformed data
         """
+        logger.debug(f"Starting {direction} transformation: {self.__class__.__name__} -> {target_class.__name__}")
+        
         # Convert self to dict
         source_data = asdict(self)
+        logger.debug(f"Source data keys: {list(source_data.keys())}")
+        
         transformed_data = {}
         
         # Get field mapping from subclass
         mapping = self._field_mapping or {}
+        logger.debug(f"Field mapping contains {len(mapping)} fields")
         
         # Apply mapping based on direction
         if direction == 'forward':
@@ -100,19 +145,23 @@ class BaseTransformMixin(ABC):
         else:
             raise ValueError(f"Invalid direction: {direction}")
         
+        logger.debug(f"Transformed data keys: {list(transformed_data.keys())}")
+        
         # Allow subclass post-processing hook
         transformed_data = self._post_transform_hook(
             transformed_data, direction, context
         )
         
         # Create and return target class instance
-        return target_class(**transformed_data)
+        result = target_class(**transformed_data)
+        logger.debug(f"Created {target_class.__name__} instance successfully")
+        return result
     
     def _apply_forward_mapping(
         self,
         source_data: dict,
         mapping: dict,
-        context: dict
+        context: TransformContext
     ) -> dict:
         """
         Apply forward mapping (Ansible → API).
@@ -156,7 +205,7 @@ class BaseTransformMixin(ABC):
         self,
         source_data: dict,
         mapping: dict,
-        context: dict
+        context: TransformContext
     ) -> dict:
         """
         Apply reverse mapping (API → Ansible).
@@ -200,7 +249,7 @@ class BaseTransformMixin(ABC):
         self,
         value: Any,
         transform_name: str,
-        context: Dict
+        context: TransformContext
     ) -> Any:
         """
         Apply a named transformation function.
@@ -214,8 +263,12 @@ class BaseTransformMixin(ABC):
             Transformed value
         """
         if self._transform_registry and transform_name in self._transform_registry:
+            logger.debug(f"Applying transform '{transform_name}' to value: {type(value).__name__}")
             transform_func = self._transform_registry[transform_name]
-            return transform_func(value, context)
+            result = transform_func(value, context)
+            logger.debug(f"Transform '{transform_name}' completed: {type(result).__name__}")
+            return result
+        logger.warning(f"Transform '{transform_name}' not found in registry, returning value unchanged")
         return value
     
     def _get_nested(self, data: dict, path: str) -> Any:
@@ -267,7 +320,7 @@ class BaseTransformMixin(ABC):
         self,
         data: dict,
         direction: str,
-        context: dict
+        context: TransformContext
     ) -> dict:
         """
         Hook for module-specific post-processing after transformation.

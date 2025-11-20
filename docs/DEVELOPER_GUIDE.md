@@ -63,14 +63,16 @@ ansible.platform/
 │   │   └── user.py                # Legacy user module
 │   │
 │   └── plugin_utils/              # Shared utilities
-│       ├── platform/              # Core platform components
+│       ├── platform/              # Core platform components (Platform SDK)
 │       │   ├── base_transform.py  # Universal transformation logic
-│       │   ├── types.py           # Shared types
+│       │   ├── types.py           # Shared types (EndpointOperation, TransformContext)
+│       │   ├── config.py          # GatewayConfig and config extraction (Platform SDK)
 │       │   ├── registry.py        # Version registry
 │       │   └── loader.py          # Dynamic class loader
 │       │
 │       ├── manager/               # Manager service
 │       │   ├── platform_manager.py # Persistent service
+│       │   ├── process_manager.py  # Process management (Platform SDK)
 │       │   └── rpc_client.py      # RPC client
 │       │
 │       ├── ansible_models/        # Ansible dataclasses (stable)

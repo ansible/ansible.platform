@@ -91,12 +91,14 @@ class UserTransformMixin_v1(BaseTransformMixin):
     def from_ansible_data(cls, ansible_instance, context):
         # Convert AnsibleUser → APIUser_v1
         # Handles: organizations=['Engineering'] → organization_ids=[1]
+        # context is TransformContext dataclass (type-safe, not dict)
 ```
 
 **Key Characteristics**:
 - ✅ **Version-specific**: `UserTransformMixin_v1` for v1, `UserTransformMixin_v2` for v2
 - ✅ **Transformation logic**: Knows how to convert formats
 - ✅ **Context-aware**: Can access manager for lookups (names ↔ IDs)
+- ✅ **Type-safe context**: Uses `TransformContext` dataclass (not dict) for better mypy support
 - ❌ **NOT a dataclass**: It's a mixin class with methods
 
 **Where it's used**:

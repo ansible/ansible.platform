@@ -173,83 +173,84 @@ class BaseResourceActionPlugin(ActionBase):
         Checks if a manager is already running (stored in hostvars).
         If found, connects to it. If not, spawns a new manager process.
         
+        This method is Ansible-specific and handles Ansible constructs like
+        task_vars, AnsibleError. The actual gateway config extraction and 
+        process management are delegated to platform SDK modules.
+        
         Args:
             task_vars: Task variables from Ansible
         
         Returns:
-            ManagerRPCClient instance
+            Tuple of (ManagerRPCClient, facts_dict):
+            - ManagerRPCClient: The manager client instance
+            - facts_dict: Dict with facts to set (socket, authkey, gateway_url) 
+              if new manager was spawned, or None if reusing existing manager.
+              The caller should set these facts in the result dict with 
+              'ansible_facts' key and '_ansible_facts_cacheable': True.
         
         Raises:
+            AnsibleError: If gateway URL is missing
             RuntimeError: If manager fails to start
         """
         import sys
-        from multiprocessing import Process
         
-        # Import here to avoid circular imports
+        # Import platform SDK modules (generic, not Ansible-specific)
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import (
+            extract_gateway_config
+        )
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
+            ProcessManager
+        )
+        
+        # Import Ansible-specific modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
         
-        # Check if manager info in hostvars
+        # Check if manager info in hostvars (Ansible-specific)
         hostvars = task_vars.get('hostvars', {})
         inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
         host_vars = hostvars.get(inventory_hostname, {})
         
-        socket_path = host_vars.get('platform_manager_socket')
-        authkey_b64 = host_vars.get('platform_manager_authkey')
+        logger.info(f"Getting or spawning manager for host: {inventory_hostname}")
+        logger.debug(f"Host vars keys: {list(host_vars.keys())}")
+        logger.debug(f"All task_vars keys: {list(task_vars.keys())}")
         
-        # Get task arguments (user can pass these per-task or in inventory)
-        task_args = self._task.args
-        
-        # Get gateway URL from task args first, then host_vars
-        gateway_url = (
-            task_args.get('gateway_url') or 
-            task_args.get('gateway_hostname') or
-            host_vars.get('gateway_url') or 
-            host_vars.get('gateway_hostname')
+        # Check both hostvars and top-level task_vars (facts might be in either location)
+        socket_path = (
+            host_vars.get('platform_manager_socket') or 
+            task_vars.get('platform_manager_socket')
         )
-        
-        # Get auth parameters from task args first, then host_vars
-        gateway_username = (
-            task_args.get('gateway_username') or 
-            host_vars.get('gateway_username') or 
-            host_vars.get('aap_username')
-        )
-        gateway_password = (
-            task_args.get('gateway_password') or 
-            host_vars.get('gateway_password') or 
-            host_vars.get('aap_password')
-        )
-        gateway_token = (
-            task_args.get('gateway_token') or 
-            host_vars.get('gateway_token') or 
-            host_vars.get('aap_token')
-        )
-        gateway_validate_certs = (
-            task_args.get('gateway_validate_certs') 
-            if 'gateway_validate_certs' in task_args 
-            else host_vars.get('gateway_validate_certs', True)
-        )
-        gateway_request_timeout = (
-            task_args.get('gateway_request_timeout') or 
-            host_vars.get('gateway_request_timeout') or 
-            10.0
+        authkey_b64 = (
+            host_vars.get('platform_manager_authkey') or 
+            task_vars.get('platform_manager_authkey')
         )
         
-        if not gateway_url:
-            raise AnsibleError(
-                "gateway_url or gateway_hostname must be provided as task parameter or defined in inventory"
+        if socket_path:
+            logger.info(f"Found existing manager socket: {socket_path}")
+            logger.debug(f"Authkey present: {bool(authkey_b64)}")
+        else:
+            logger.info("No existing manager socket found - will spawn new manager")
+        
+        # Extract gateway configuration using platform SDK (generic)
+        try:
+            logger.debug("Extracting gateway configuration from task_args and host_vars")
+            gateway_config = extract_gateway_config(
+                task_args=self._task.args,
+                host_vars=host_vars,
+                required=True
             )
-        
-        # Normalize URL
-        if not gateway_url.startswith(('https://', 'http://')):
-            gateway_url = f"https://{gateway_url}"
+            logger.info(f"Gateway configuration extracted successfully: {gateway_config.base_url}")
+        except ValueError as e:
+            logger.error(f"Failed to extract gateway configuration: {e}")
+            raise AnsibleError(str(e)) from e
         
         # If manager already running, try to connect
         if socket_path and authkey_b64 and Path(socket_path).exists():
             try:
                 authkey = base64.b64decode(authkey_b64)
-                client = ManagerRPCClient(gateway_url, socket_path, authkey)
+                client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
                 logger.info("Connected to existing manager")
-                return client
+                # Return client and None for facts (no new facts to set when reusing)
+                return client, None
             except Exception as e:
                 logger.warning(
                     f"Failed to connect to existing manager: {e}. "
@@ -257,124 +258,69 @@ class BaseResourceActionPlugin(ActionBase):
                 )
                 # Fall through to spawn new one
         
-        # Spawn new manager
+        # Spawn new manager using platform SDK (generic process management)
         logger.info("Spawning new Platform Manager")
         
-        # Generate socket path and authkey
+        # Generate connection info using platform SDK
+        import tempfile
         socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
-        socket_dir.mkdir(exist_ok=True)
-        socket_path = str(socket_dir / f'manager_{inventory_hostname}.sock')
-        authkey = secrets.token_bytes(32)
+        logger.debug(f"Generating connection info for identifier: {inventory_hostname}, socket_dir: {socket_dir}")
+        
+        conn_info = ProcessManager.generate_connection_info(
+            identifier=inventory_hostname,
+            socket_dir=socket_dir
+        )
+        socket_path = conn_info.socket_path
+        authkey = conn_info.authkey
+        authkey_b64 = conn_info.authkey_b64
+        
+        logger.info(f"Connection info generated: socket_path={socket_path}")
         
         # Clean up old socket if exists
-        if Path(socket_path).exists():
-            try:
-                Path(socket_path).unlink()
-            except Exception as e:
-                logger.warning(f"Failed to remove old socket: {e}")
+        logger.debug(f"Checking for old socket at: {socket_path}")
+        ProcessManager.cleanup_old_socket(socket_path)
         
         # Capture sys.path from parent to ensure child has same imports
         parent_sys_path = list(sys.path)
         logger.debug(f"Parent sys.path has {len(parent_sys_path)} entries")
         logger.debug(f"First few entries: {parent_sys_path[:3]}")
         
-        # Encode authkey and sys.path for passing as arguments
-        authkey_b64 = base64.b64encode(authkey).decode('utf-8')
-        import json
-        sys_path_json = json.dumps(parent_sys_path)
-        sys_path_b64 = base64.b64encode(sys_path_json.encode('utf-8')).decode('utf-8')
-        
         # Get path to manager process script
         script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
+        logger.debug(f"Manager process script path: {script_path}")
         
-        # Spawn process using subprocess.Popen (REQUIRED for Ansible plugins on macOS)
-        # 
-        # Why not multiprocessing.Process?
-        # - multiprocessing.Process with spawn imports the entire module (base_action.py)
-        # - This includes all Ansible imports which cause crashes on macOS
-        # - subprocess.Popen runs a fresh Python interpreter, avoiding import issues
-        # - This is the same approach Ansible core uses for similar scenarios
-        #
-        # Note: We still use BaseManager for RPC communication (that part works fine)
-        import subprocess
-        import os
-        try:
-            # Pass sys.path and authkey via environment to avoid arg length limits
-            env = os.environ.copy()
-            env['ANSIBLE_PLATFORM_SYS_PATH'] = sys_path_b64
-            env['ANSIBLE_PLATFORM_AUTHKEY'] = authkey_b64
-            
-            process = subprocess.Popen(
-                [
-                    sys.executable,  # Use same Python interpreter
-                    str(script_path),
-                    socket_path,
-                    str(socket_dir),
-                    inventory_hostname,
-                    gateway_url,
-                    gateway_username or '',
-                    gateway_password or '',
-                    gateway_token or '',
-                    str(gateway_validate_certs),
-                    str(gateway_request_timeout)
-                ],
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True  # Detach from parent
-            )
-            logger.debug(f"Manager process started with PID: {process.pid}")
-        except Exception as e:
-            logger.error(f"Failed to start manager process: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise RuntimeError(f"Failed to start manager process: {e}") from e
+        # Spawn process using platform SDK (generic)
+        logger.info("Spawning manager process...")
+        process = ProcessManager.spawn_manager_process(
+            script_path=script_path,
+            socket_path=socket_path,
+            socket_dir=str(socket_dir),
+            identifier=inventory_hostname,
+            gateway_config=gateway_config,
+            authkey_b64=authkey_b64,
+            sys_path=parent_sys_path
+        )
         
-        # Wait for socket to be created
-        max_wait = 50  # 5 seconds
-        for _ in range(max_wait):
-            if Path(socket_path).exists():
-                break
-            time.sleep(0.1)
-        else:
-            # Check if there's an error log
-            error_log = socket_dir / f'manager_error_{inventory_hostname}.log'
-            error_msg = f"Manager failed to start within {max_wait * 0.1} seconds"
-            if error_log.exists():
-                error_content = error_log.read_text()
-                error_msg += f"\n\nManager error log:\n{error_content}"
-                error_log.unlink()  # Clean up
-            
-            # Check if process is still alive (Popen uses poll())
-            returncode = process.poll()
-            if returncode is not None:
-                error_msg += f"\n\nManager process died (exitcode: {returncode})"
-            
-            raise RuntimeError(error_msg)
-        
-        # Store info in facts for future tasks
-        authkey_b64 = base64.b64encode(authkey).decode('utf-8')
-        
-        # Set facts so subsequent tasks can reuse this manager
-        try:
-            self._execute_module(
-                module_name='ansible.builtin.set_fact',
-                module_args={
-                    'platform_manager_socket': socket_path,
-                    'platform_manager_authkey': authkey_b64,
-                    'gateway_url': gateway_url,
-                    'cacheable': True  # Persist across plays
-                },
-                task_vars=task_vars
-            )
-        except Exception as e:
-            logger.warning(f"Failed to set facts: {e}")
+        # Wait for process startup using platform SDK (generic)
+        logger.info("Waiting for manager process to start...")
+        ProcessManager.wait_for_process_startup(
+            socket_path=socket_path,
+            socket_dir=socket_dir,
+            identifier=inventory_hostname,
+            process=process
+        )
+        logger.info("Manager process started successfully")
         
         # Connect to newly spawned manager
-        client = ManagerRPCClient(gateway_url, socket_path, authkey)
+        client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
         logger.info(f"Spawned and connected to new manager at {socket_path}")
         
-        return client
+        # Return client and facts to be set (facts will be set in run() method's result)
+        return client, {
+            'platform_manager_socket': socket_path,
+            'platform_manager_authkey': authkey_b64,
+            'gateway_url': gateway_config.base_url
+        }
     
     def _build_argspec_from_docs(self, documentation: str) -> dict:
         """

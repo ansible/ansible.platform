@@ -5,7 +5,11 @@ the framework.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from requests import Session
+    from ..manager.platform_manager import PlatformService
 
 
 @dataclass
@@ -53,5 +57,25 @@ class EndpointOperation:
     required_for: Optional[str] = None
     depends_on: Optional[str] = None
     order: int = 0
+
+
+@dataclass
+class TransformContext:
+    """
+    Context for data transformations between Ansible and API formats.
+    
+    This dataclass provides type-safe access to transformation context
+    instead of using Dict[str, Any], which improves mypy type checking.
+    
+    Attributes:
+        manager: PlatformService instance for lookups and API operations
+        session: HTTP session for making requests
+        cache: Lookup cache (e.g., org names ↔ IDs)
+        api_version: Current API version string
+    """
+    manager: 'PlatformService'
+    session: 'Session'
+    cache: Dict[str, Any]
+    api_version: str
 
 

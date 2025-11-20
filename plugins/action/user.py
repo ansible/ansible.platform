@@ -11,10 +11,14 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import logging
+
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.docs.user import DOCUMENTATION
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
+
+logger = logging.getLogger(__name__)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -91,8 +95,18 @@ class ActionModule(BaseResourceActionPlugin):
             # Step 3: Get or spawn manager
             self._display.vvv("🔌 Getting or spawning manager...")
             try:
-                manager = self._get_or_spawn_manager(task_vars)
+                manager, facts_to_set = self._get_or_spawn_manager(task_vars)
                 self._display.vvv("✅ Connected to manager")
+                
+                # Set facts in result if a new manager was spawned
+                if facts_to_set:
+                    logger.info(f"Setting facts for manager reuse: socket={facts_to_set.get('platform_manager_socket')}, gateway_url={facts_to_set.get('gateway_url')}")
+                    logger.debug(f"Full facts dict: {facts_to_set}")
+                    result['ansible_facts'] = facts_to_set
+                    result['_ansible_facts_cacheable'] = True
+                    logger.info("Facts set successfully in result (will be available for next task via hostvars)")
+                else:
+                    logger.info("Reusing existing manager - no new facts to set")
             except Exception as e:
                 self._display.vvv(f"❌ Manager connection failed: {e}")
                 self._display.vvv("⚠️  Falling back to legacy module implementation")

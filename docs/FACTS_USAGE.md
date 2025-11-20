@@ -45,33 +45,31 @@ def _get_or_spawn_manager(self, task_vars: dict):
 
 ### 2. Writing Facts (Storing Manager Info)
 
-**Location**: `plugins/action/base_action.py:355-371`
+**Location**: `plugins/action/base_action.py:298-318` and `plugins/action/user.py:101-106`
 
 **Code**:
 ```python
-# Store info in facts for future tasks
-authkey_b64 = base64.b64encode(authkey).decode('utf-8')
+# In base_action.py: _get_or_spawn_manager() returns tuple
+return client, {
+    'platform_manager_socket': socket_path,
+    'platform_manager_authkey': authkey_b64,
+    'gateway_url': gateway_config.base_url
+}
 
-# Set facts so subsequent tasks can reuse this manager
-try:
-    self._execute_module(
-        module_name='ansible.builtin.set_fact',
-        module_args={
-            'platform_manager_socket': socket_path,
-            'platform_manager_authkey': authkey_b64,
-            'gateway_url': gateway_url,
-            'cacheable': True  # Persist across plays
-        },
-        task_vars=task_vars
-    )
-except Exception as e:
-    logger.warning(f"Failed to set facts: {e}")
+# In user.py: Set facts directly in result dict
+manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+
+if facts_to_set:
+    logger.info(f"Setting facts for manager reuse: socket={facts_to_set.get('platform_manager_socket')}")
+    result['ansible_facts'] = facts_to_set
+    result['_ansible_facts_cacheable'] = True
+    logger.info("Facts set successfully in result (will be available for next task via hostvars)")
 ```
 
 **What it does**:
 - After spawning a new manager process, stores connection info in Ansible facts
-- Uses `ansible.builtin.set_fact` module to set facts
-- Sets `cacheable: True` so facts persist across multiple plays in a playbook
+- Sets facts **directly in the result dict** (not via `set_fact` module)
+- Sets `_ansible_facts_cacheable: True` so facts persist across multiple plays in a playbook
 - Stores:
   - `platform_manager_socket`: Path to Unix socket for RPC communication
   - `platform_manager_authkey`: Base64-encoded authentication key
@@ -80,7 +78,7 @@ except Exception as e:
 **When it happens**:
 - Only when spawning a **new** manager (not when reusing existing one)
 - After manager process is successfully started and socket is created
-- Before connecting to the manager
+- Facts are set in the result dict, which Ansible's TaskExecutor processes automatically
 
 ## Facts Stored
 
@@ -158,25 +156,20 @@ Task 2 (Subsequent Task):
 
 ### How Facts Are Populated in Ansible (Complete Flow)
 
-Here's the exact flow of how facts get from `set_fact` to `hostvars`:
+Here's the exact flow of how facts get from the result dict to `hostvars`:
 
-#### Step 1: Action Plugin Returns Facts
-**Location**: `plugins/action/base_action.py:360-369`
+#### Step 1: Action Plugin Sets Facts in Result
+**Location**: `plugins/action/user.py:101-106`
 
 ```python
-self._execute_module(
-    module_name='ansible.builtin.set_fact',
-    module_args={
-        'platform_manager_socket': socket_path,
-        'platform_manager_authkey': authkey_b64,
-        'gateway_url': gateway_url,
-        'cacheable': True
-    },
-    task_vars=task_vars
-)
+manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+
+if facts_to_set:
+    result['ansible_facts'] = facts_to_set
+    result['_ansible_facts_cacheable'] = True
 ```
 
-This calls the `set_fact` action plugin which returns:
+The action plugin returns a result dict with:
 ```python
 {
     'ansible_facts': {
@@ -184,7 +177,9 @@ This calls the `set_fact` action plugin which returns:
         'platform_manager_authkey': 'abc...',
         'gateway_url': 'https://...'
     },
-    '_ansible_facts_cacheable': True
+    '_ansible_facts_cacheable': True,
+    'changed': True,
+    'user': {...}
 }
 ```
 
@@ -300,9 +295,9 @@ These facts are then available in `task_vars['hostvars'][hostname]` for subseque
 
 ### Error Handling
 
-- If `set_fact` fails, a warning is logged but execution continues
-- Manager connection still works (facts are just for reuse)
-- Next task will spawn a new manager if facts are missing
+- Facts are set directly in the result dict, so there's no risk of module execution failure
+- If facts aren't set (e.g., if `_get_or_spawn_manager` returns `None` for facts), manager connection still works
+- Next task will spawn a new manager if facts are missing from hostvars
 
 ### Security Considerations
 
@@ -313,10 +308,12 @@ These facts are then available in `task_vars['hostvars'][hostname]` for subseque
 
 ## Related Code Locations
 
-- **Reading facts**: `plugins/action/base_action.py:191-235`
-- **Writing facts**: `plugins/action/base_action.py:355-371`
-- **Using facts**: `plugins/action/base_action.py:247-252` (reuse logic)
+- **Reading facts**: `plugins/action/base_action.py:208-222`
+- **Writing facts**: `plugins/action/base_action.py:298-318` (returns facts dict) and `plugins/action/user.py:101-106` (sets in result)
+- **Using facts**: `plugins/action/base_action.py:221-233` (reuse logic)
 - **Manager connection**: `plugins/plugin_utils/manager/rpc_client.py`
+- **Platform SDK config**: `plugins/plugin_utils/platform/config.py` (GatewayConfig extraction)
+- **Process management**: `plugins/plugin_utils/manager/process_manager.py` (ProcessManager)
 
 ## See Also
 

@@ -200,37 +200,81 @@ validated_input = self._validate_data(
 manager = self._get_or_spawn_manager(task_vars)
 ```
 
-**What `_get_or_spawn_manager()` does** (`base_action.py:169-370`):
+**What `_get_or_spawn_manager()` does** (`base_action.py:169-318`):
 
-**5a. Check for Existing Manager**:
+**5a. Extract Gateway Config (Platform SDK)**:
 ```python
-# Check hostvars for existing manager
-socket_path = host_vars.get('platform_manager_socket')
-authkey_b64 = host_vars.get('platform_manager_authkey')
+# Uses Platform SDK for generic config extraction
+from ...platform.config import extract_gateway_config
 
-if socket_path and Path(socket_path).exists():
-    # Connect to existing manager
-    client = ManagerRPCClient(gateway_url, socket_path, authkey)
-    return client
+gateway_config = extract_gateway_config(
+    task_args=self._task.args,
+    host_vars=host_vars,
+    required=True
+)
+# Returns GatewayConfig dataclass
 ```
 
-**5b. Spawn New Manager** (if not found):
+**5b. Check for Existing Manager**:
 ```python
-# Generate socket path and authkey
-socket_path = '/tmp/ansible_platform/manager_localhost.sock'
-authkey = secrets.token_bytes(32)
+# Check hostvars and task_vars for existing manager
+socket_path = (
+    host_vars.get('platform_manager_socket') or 
+    task_vars.get('platform_manager_socket')
+)
+authkey_b64 = (
+    host_vars.get('platform_manager_authkey') or 
+    task_vars.get('platform_manager_authkey')
+)
+
+if socket_path and authkey_b64 and Path(socket_path).exists():
+    # Connect to existing manager
+    authkey = base64.b64decode(authkey_b64)
+    client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
+    return client, None  # Returns tuple: (client, facts_dict)
+```
+
+**5c. Spawn New Manager** (if not found, uses Platform SDK):
+```python
+# Uses Platform SDK ProcessManager for generic process management
+from ...manager.process_manager import ProcessManager
+
+# Generate connection info
+conn_info = ProcessManager.generate_connection_info(
+    identifier=inventory_hostname,
+    socket_dir=socket_dir
+)
 
 # Spawn manager process
-process = subprocess.Popen([
-    sys.executable,
-    'manager_process.py',
-    socket_path,
-    # ... args ...
-])
+process = ProcessManager.spawn_manager_process(
+    script_path=script_path,
+    socket_path=conn_info.socket_path,
+    socket_dir=str(socket_dir),
+    identifier=inventory_hostname,
+    gateway_config=gateway_config,
+    authkey_b64=conn_info.authkey_b64,
+    sys_path=parent_sys_path
+)
 
-# Wait for socket to be created
-# Store in facts for reuse
-# Return ManagerRPCClient
+# Wait for process startup
+ProcessManager.wait_for_process_startup(...)
+
+# Return tuple: (client, facts_dict)
+return client, {
+    'platform_manager_socket': socket_path,
+    'platform_manager_authkey': authkey_b64,
+    'gateway_url': gateway_config.base_url
+}
+```
+
+**5d. Set Facts in Result** (`user.py:101-106`):
+```python
+manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+
+if facts_to_set:
+    result['ansible_facts'] = facts_to_set
+    result['_ansible_facts_cacheable'] = True
+    # Facts will be available in hostvars for next task
 ```
 
 **Manager Process Startup** (`manager_process.py:16-195`):
@@ -781,25 +825,43 @@ def _validate_data(self, data: dict, argspec: dict, direction: str) -> dict:
     return result.validated_parameters
 ```
 
-### Step 3: Get/Spawn Manager (`base_action.py:169-377`)
+### Step 3: Get/Spawn Manager (`base_action.py:169-318`)
 
 ```python
 def _get_or_spawn_manager(self, task_vars: dict):
+    # Extract gateway config using Platform SDK
+    from ...platform.config import extract_gateway_config
+    gateway_config = extract_gateway_config(
+        task_args=self._task.args,
+        host_vars=host_vars,
+        required=True
+    )
+    
     # Check for existing manager
-    socket_path = host_vars.get('platform_manager_socket')
+    socket_path = host_vars.get('platform_manager_socket') or task_vars.get('platform_manager_socket')
     if socket_path and Path(socket_path).exists():
-        return ManagerRPCClient(gateway_url, socket_path, authkey)
+        return ManagerRPCClient(...), None  # Returns tuple
     
-    # Spawn new manager
-    process = subprocess.Popen([
-        sys.executable,
-        str(script_path),  # manager_process.py
-        socket_path,
-        # ... args ...
-    ])
+    # Spawn new manager using Platform SDK
+    from ...manager.process_manager import ProcessManager
+    conn_info = ProcessManager.generate_connection_info(...)
+    process = ProcessManager.spawn_manager_process(...)
+    ProcessManager.wait_for_process_startup(...)
     
-    # Wait for socket, store in facts, return client
-    return ManagerRPCClient(gateway_url, socket_path, authkey)
+    # Return tuple: (client, facts_dict)
+    return ManagerRPCClient(...), {
+        'platform_manager_socket': socket_path,
+        'platform_manager_authkey': authkey_b64,
+        'gateway_url': gateway_config.base_url
+    }
+```
+
+**Facts are set in result** (`user.py:101-106`):
+```python
+manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+if facts_to_set:
+    result['ansible_facts'] = facts_to_set
+    result['_ansible_facts_cacheable'] = True
 ```
 
 ### Step 4: Create Dataclass (`user.py:110-117`)
@@ -851,6 +913,15 @@ def execute(self, operation: str, module_name: str, ansible_data_dict: dict):
     # Reconstruct dataclass
     ansible_instance = AnsibleClass(**ansible_data_dict)
     
+    # Build TransformContext (type-safe, not dict)
+    from ...platform.types import TransformContext
+    context = TransformContext(
+        manager=self,
+        session=self.session,
+        cache=self.cache,
+        api_version=self.api_version
+    )
+    
     # Execute operation
     if operation == 'create':
         result = self._create_resource(ansible_instance, MixinClass, context)
@@ -865,6 +936,7 @@ def execute(self, operation: str, module_name: str, ansible_data_dict: dict):
 # In _create_resource()
 api_data = ansible_data.to_api(context)
 # → Calls UserTransformMixin_v1.from_ansible_data()
+# → context is TransformContext dataclass (type-safe)
 # → Returns APIUser_v1 instance
 ```
 

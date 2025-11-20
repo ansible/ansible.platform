@@ -120,24 +120,28 @@ Strong typing throughout with validation at multiple layers (input, transformati
 - **Key Files**:
   - `platform_manager.py` - PlatformService and PlatformManager
   - `rpc_client.py` - Client-side RPC communication
+  - `process_manager.py` - Generic process management (Platform SDK)
 - **Characteristics**:
   - Stateful (persistent session)
   - Resource-agnostic
   - All transformations
   - Version-aware
+  - Uses Platform SDK for generic process management
 
-#### Layer 3: Platform Framework
+#### Layer 3: Platform Framework (Platform SDK)
 - **Location**: `plugins/plugin_utils/platform/`
-- **Responsibility**: Core transformation and version management
+- **Responsibility**: Core transformation, version management, and generic platform SDK
 - **Key Files**:
   - `base_transform.py` - BaseTransformMixin (universal transformation)
-  - `types.py` - Shared types (EndpointOperation)
+  - `types.py` - Shared types (EndpointOperation, TransformContext)
+  - `config.py` - GatewayConfig and gateway configuration extraction (Platform SDK)
   - `registry.py` - APIVersionRegistry (version discovery)
   - `loader.py` - DynamicClassLoader (runtime class loading)
 - **Characteristics**:
-  - Generic, reusable
+  - Generic, reusable (Platform SDK - not Ansible-specific)
   - No resource-specific code
   - Filesystem-based discovery
+  - Can be used by CLI, MCP, or other entry points
 
 #### Layer 4: Data Models
 - **Location**: `plugins/plugin_utils/ansible_models/` and `plugins/plugin_utils/api/`
@@ -186,10 +190,12 @@ class UserTransformMixin_v1(BaseTransformMixin):
         }
     }
     _transform_registry = {
-        'names_to_ids': lambda names, ctx: ctx['manager'].lookup_org_ids(names),
-        'ids_to_names': lambda ids, ctx: ctx['manager'].lookup_org_names(ids),
+        'names_to_ids': lambda names, ctx: ctx.manager.lookup_org_ids(names),
+        'ids_to_names': lambda ids, ctx: ctx.manager.lookup_org_names(ids),
     }
 ```
+
+**Note**: Context is now a `TransformContext` dataclass (not a dict) for better type safety and mypy support. The context provides type-safe access to `manager`, `session`, `cache`, and `api_version`.
 
 ### 2. APIVersionRegistry
 
@@ -301,32 +307,90 @@ Registry discovers:
 4. Calls manager method via proxy
 5. Returns result dict
 
-### 7. BaseResourceActionPlugin
+### 7. Platform SDK Components
+
+**Purpose**: Generic platform SDK modules that are not Ansible-specific and can be reused by CLI, MCP, or other entry points.
+
+#### 7a. GatewayConfig (`platform/config.py`)
+
+**Purpose**: Gateway connection configuration extraction and normalization.
+
+**Location**: `plugins/plugin_utils/platform/config.py`
+
+**Key Components**:
+- `GatewayConfig` dataclass - Type-safe configuration object
+- `extract_gateway_config()` - Extract config from task_args and host_vars
+
+**Characteristics**:
+- Not Ansible-specific (generic dict input)
+- URL normalization
+- Auth parameter extraction
+- Type-safe with dataclass
+
+#### 7b. ProcessManager (`manager/process_manager.py`)
+
+**Purpose**: Generic process management utilities for spawning and connecting to manager processes.
+
+**Location**: `plugins/plugin_utils/manager/process_manager.py`
+
+**Key Methods**:
+- `generate_connection_info()` - Generate socket path and authkey
+- `spawn_manager_process()` - Spawn manager process
+- `wait_for_process_startup()` - Wait for process to be ready
+- `cleanup_old_socket()` - Clean up old socket files
+
+**Characteristics**:
+- Not Ansible-specific (generic process management)
+- Reusable for CLI, MCP, or other entry points
+- Type-safe with dataclasses
+
+#### 7c. TransformContext (`platform/types.py`)
+
+**Purpose**: Type-safe context for data transformations (replaces Dict[str, Any]).
+
+**Location**: `plugins/plugin_utils/platform/types.py`
+
+**Key Components**:
+- `TransformContext` dataclass - Type-safe context with manager, session, cache, api_version
+
+**Benefits**:
+- Better mypy type checking
+- IDE autocomplete support
+- Clear structure instead of dict keys
+
+### 8. BaseResourceActionPlugin
 
 **Purpose**: Base class for all resource action plugins.
 
 **Location**: `plugins/action/base_action.py`
 
 **Key Methods**:
-- `_get_or_spawn_manager(task_vars)` - Get or spawn manager
+- `_get_or_spawn_manager(task_vars)` - Get or spawn manager (returns tuple: client, facts_dict)
 - `_build_argspec_from_docs(documentation)` - Parse DOCUMENTATION
 - `_validate_data(data, argspec, direction)` - Validate input/output
 - `_detect_operation(args)` - Detect create/update/delete/find
 
 **How It Works**:
-1. Checks hostvars for existing manager
-2. If found, connects to existing manager
-3. If not found, spawns new manager process
-4. Stores manager info in facts for reuse
-5. Validates input before sending to manager
-6. Validates output after receiving from manager
-7. Formats return dict for Ansible
+1. Uses Platform SDK (`extract_gateway_config`) to get gateway configuration
+2. Checks hostvars for existing manager
+3. If found, connects to existing manager
+4. If not found, uses Platform SDK (`ProcessManager`) to spawn new manager process
+5. Returns tuple: (ManagerRPCClient, facts_dict) where facts_dict contains connection info
+6. Action plugin sets facts in result dict for reuse
+7. Validates input before sending to manager
+8. Validates output after receiving from manager
+9. Formats return dict for Ansible
 
 **Manager Lifecycle**:
-- First task spawns manager
-- Subsequent tasks reuse same manager
+- First task spawns manager (via Platform SDK ProcessManager)
+- Facts stored in result dict (not via set_fact module)
+- Subsequent tasks reuse same manager from hostvars
 - Manager persists for playbook duration
 - Cleanup on playbook completion
+
+**Separation of Concerns**:
+- Ansible-specific: task_vars, AnsibleError, result dict formatting
+- Platform SDK: Gateway config extraction, process management
 
 ---
 

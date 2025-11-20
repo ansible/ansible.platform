@@ -1,20 +1,21 @@
 # Ansible Facts Population Flow - Exact Locations
 
-This document shows the **exact code locations** where Ansible facts are populated from `set_fact` to `hostvars`.
+This document shows the **exact code locations** where Ansible facts are populated from the action plugin result dict to `hostvars`.
 
 ## Complete Flow Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ 1. Action Plugin Calls set_fact                                │
-│    Location: base_action.py:360-369                            │
-│    Method: _execute_module('ansible.builtin.set_fact', ...)    │
+│ 1. Action Plugin Sets Facts in Result Dict                     │
+│    Location: user.py:101-106                                    │
+│    Method: result['ansible_facts'] = facts_to_set              │
+│            result['_ansible_facts_cacheable'] = True            │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 2. set_fact Action Plugin Returns Result                        │
-│    Location: ansible/plugins/action/set_fact.py:51-54           │
+│ 2. Action Plugin Returns Result with Facts                     │
+│    Location: user.py:199 (return result)                        │
 │    Returns: {'ansible_facts': {...}, '_ansible_facts_cacheable': True} │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
@@ -52,38 +53,32 @@ This document shows the **exact code locations** where Ansible facts are populat
 
 ## Exact Code Locations
 
-### 1. Where We Call set_fact
+### 1. Where We Set Facts in Result
 
 **File**: `plugins/action/base_action.py`  
-**Lines**: 359-369
+**Lines**: 298-318
 
 ```python
-# Set facts so subsequent tasks can reuse this manager
-try:
-    self._execute_module(
-        module_name='ansible.builtin.set_fact',
-        module_args={
-            'platform_manager_socket': socket_path,
-            'platform_manager_authkey': authkey_b64,
-            'gateway_url': gateway_url,
-            'cacheable': True  # Persist across plays
-        },
-        task_vars=task_vars
-    )
-except Exception as e:
-    logger.warning(f"Failed to set facts: {e}")
+# _get_or_spawn_manager() returns tuple: (client, facts_dict)
+return client, {
+    'platform_manager_socket': socket_path,
+    'platform_manager_authkey': authkey_b64,
+    'gateway_url': gateway_config.base_url
+}
 ```
 
-### 2. set_fact Action Plugin Returns Result
-
-**File**: `ansible/lib/ansible/plugins/action/set_fact.py`  
-**Lines**: 51-54
+**File**: `plugins/action/user.py`  
+**Lines**: 101-106
 
 ```python
-if facts:
-    # just as _facts actions, we don't set changed=true as we are not modifying the actual host
-    result['ansible_facts'] = facts
-    result['_ansible_facts_cacheable'] = cacheable
+manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+
+# Set facts in result if a new manager was spawned
+if facts_to_set:
+    logger.info(f"Setting facts for manager reuse: socket={facts_to_set.get('platform_manager_socket')}")
+    result['ansible_facts'] = facts_to_set
+    result['_ansible_facts_cacheable'] = True
+    logger.info("Facts set successfully in result (will be available for next task via hostvars)")
 ```
 
 **Returns**:
@@ -94,9 +89,15 @@ if facts:
         'platform_manager_authkey': 'dGhpc2lzYXNlY3JldGtleQ==',
         'gateway_url': 'https://platform.example.com'
     },
-    '_ansible_facts_cacheable': True
+    '_ansible_facts_cacheable': True,
+    'changed': True,
+    'user': {...}
 }
 ```
+
+### 2. Action Plugin Returns Result with Facts
+
+The action plugin's `run()` method returns the result dict directly. Ansible's TaskExecutor automatically processes any `ansible_facts` in the result.
 
 ### 3. TaskExecutor Processes ansible_facts
 
@@ -221,12 +222,14 @@ except KeyError:
 
 **Where facts are populated**:
 
-1. **Action plugin calls set_fact**: `base_action.py:360`
-2. **set_fact returns result**: `plugins/action/set_fact.py:53`
-3. **TaskExecutor processes**: `executor/task_executor.py:775`
-4. **Strategy plugin stores** (KEY STEP): `plugins/strategy/__init__.py:718`
-5. **VariableManager saves to cache**: `vars/manager.py:587`
-6. **Facts retrieved for next task**: `vars/manager.py:292`
+1. **Action plugin sets facts in result**: `user.py:104` (sets `result['ansible_facts']`)
+2. **Action plugin returns result**: `user.py:199` (returns result dict)
+3. **TaskExecutor processes**: `executor/task_executor.py:775` (extracts `ansible_facts` from result)
+4. **Strategy plugin stores** (KEY STEP): `plugins/strategy/__init__.py:718` (calls `VariableManager.set_host_facts()`)
+5. **VariableManager saves to cache**: `vars/manager.py:587` (stores in fact cache)
+6. **Facts retrieved for next task**: `vars/manager.py:292` (available in `hostvars`)
 
 **The critical step is #4** - the strategy plugin calls `VariableManager.set_host_facts()`, which stores facts in the fact cache. These facts are then available in `hostvars` for all subsequent tasks.
+
+**Key Change**: Facts are now set directly in the result dict (not via `set_fact` module), which is more reliable and avoids module execution issues.
 

@@ -16,7 +16,7 @@ import requests
 
 from ..platform.registry import APIVersionRegistry
 from ..platform.loader import DynamicClassLoader
-from ..platform.types import EndpointOperation
+from ..platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -229,13 +229,13 @@ class PlatformService:
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
         
-        # Build transformation context
-        context = {
-            'manager': self,
-            'session': self.session,
-            'cache': self.cache,
-            'api_version': self.api_version
-        }
+        # Build transformation context (using dataclass for type safety)
+        context = TransformContext(
+            manager=self,
+            session=self.session,
+            cache=self.cache,
+            api_version=self.api_version
+        )
         
         # Execute operation
         try:

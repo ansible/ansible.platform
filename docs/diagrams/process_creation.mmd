@@ -9,10 +9,12 @@ sequenceDiagram
     Note over AP: First Task Execution
     
     AP->>AP: _get_or_spawn_manager()
+    AP->>AP: Extract gateway config (Platform SDK)
     AP->>AP: Check hostvars for existing manager
     AP->>AP: Not found - spawn new manager
     
-    AP->>SP: subprocess.Popen(<br/>manager_process.py,<br/>socket_path, authkey, ...)
+    AP->>AP: Generate connection info (Platform SDK)
+    AP->>SP: ProcessManager.spawn_manager_process(<br/>manager_process.py,<br/>socket_path, gateway_config, ...)
     
     Note over SP: Spawns new process
     
@@ -38,7 +40,7 @@ sequenceDiagram
     
     MP-->>AP: Socket file created
     
-    AP->>AP: Store manager info in facts
+    AP->>AP: Set facts in result dict<br/>(ansible_facts, _ansible_facts_cacheable)
     AP->>AP: Create ManagerRPCClient
     AP->>PM: Connect via Unix socket
     PM-->>AP: Connection established

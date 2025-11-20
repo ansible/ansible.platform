@@ -45,14 +45,20 @@ graph TB
         PM --> |Manages| PS
     end
     
-    subgraph "Layer 4: Platform Framework"
+    subgraph "Layer 4: Platform Framework (Platform SDK)"
         BT[BaseTransformMixin<br/>Universal Transform Logic]
         VR[APIVersionRegistry<br/>Version Discovery]
         DL[DynamicClassLoader<br/>Runtime Class Loading]
+        GC[GatewayConfig<br/>Config Extraction]
+        PM[ProcessManager<br/>Process Management]
+        TC[TransformContext<br/>Type-Safe Context]
         FT --> BT
         RT --> BT
         CL --> VR
         CL --> DL
+        AP --> |Uses| GC
+        AP --> |Uses| PM
+        BT --> |Uses| TC
     end
     
     subgraph "Layer 5: AAP Gateway API"
@@ -179,18 +185,18 @@ stateDiagram-v2
     CheckManager --> SpawnManager: Manager Not Found
     CheckManager --> ConnectManager: Manager Found
     
-    SpawnManager --> CreateSocket: Generate Socket Path
-    CreateSocket --> GenerateAuth: Generate Auth Key
-    GenerateAuth --> StartProcess: Spawn Manager Process
+    SpawnManager --> ExtractConfig: Extract Gateway Config<br/>(Platform SDK)
+    ExtractConfig --> GenerateConnInfo: Generate Connection Info<br/>(Platform SDK ProcessManager)
+    GenerateConnInfo --> StartProcess: Spawn Manager Process<br/>(Platform SDK)
     StartProcess --> InitService: Initialize PlatformService
     InitService --> CreateSession: Create HTTP Session
     CreateSession --> Authenticate: Authenticate with AAP
     Authenticate --> DetectVersion: Detect API Version
     DetectVersion --> InitRegistry: Initialize Registry
     InitRegistry --> StartServer: Start Manager Server
-    StartServer --> WaitSocket: Wait for Socket
-    WaitSocket --> StoreFacts: Store in Ansible Facts
-    StoreFacts --> ConnectManager: Connect to Manager
+    StartServer --> WaitSocket: Wait for Socket<br/>(Platform SDK)
+    WaitSocket --> SetFactsInResult: Set Facts in Result Dict<br/>(ansible_facts, _ansible_facts_cacheable)
+    SetFactsInResult --> ConnectManager: Connect to Manager
     
     ConnectManager --> Ready: Manager Ready
     
@@ -222,11 +228,12 @@ sequenceDiagram
     participant API as AAP Gateway
 
     PB->>AP: Execute Task
+    AP->>AP: Extract gateway config (Platform SDK)
     AP->>HV: Check for existing manager
     HV-->>AP: No manager found
     
-    AP->>AP: Generate socket path & authkey
-    AP->>PM: Spawn manager process (daemon)
+    AP->>AP: Generate connection info (Platform SDK ProcessManager)
+    AP->>PM: Spawn manager process (Platform SDK)
     
     PM->>PS: Create PlatformService
     PS->>PS: Create requests.Session
@@ -239,9 +246,9 @@ sequenceDiagram
     PM->>PM: Start Unix socket server
     
     PM-->>AP: Socket ready
-    AP->>HV: Store manager info in facts
+    AP->>AP: Set facts in result dict<br/>(ansible_facts, _ansible_facts_cacheable)
     AP->>AP: Connect via ManagerRPCClient
-    AP-->>PB: Manager ready
+    AP-->>PB: Manager ready (result includes facts)
 ```
 
 ### Subsequent Task: Reusing Manager
@@ -301,7 +308,9 @@ sequenceDiagram
     
     PS->>PS: Reconstruct AnsibleUser from dict
     
+    PS->>PS: Create TransformContext dataclass<br/>(manager, session, cache, api_version)
     PS->>BT: Forward Transform: to_api(context)
+    Note over BT: context is TransformContext<br/>(type-safe, not dict)
     BT->>PS: lookup_org_ids(['Engineering', 'DevOps'])
     PS->>API: GET /organizations/?name=Engineering
     API-->>PS: {id: 1, name: 'Engineering'}
@@ -322,6 +331,7 @@ sequenceDiagram
     API-->>PS: {success: true}
     
     PS->>BT: Reverse Transform: to_ansible(context)
+    Note over BT: context is TransformContext<br/>(type-safe, not dict)
     BT->>PS: lookup_org_names([1, 2])
     PS->>API: GET /organizations/1/
     API-->>PS: {id: 1, name: 'Engineering'}
@@ -354,6 +364,7 @@ sequenceDiagram
     Note over AD: User Input<br/>organizations: ['Engineering']
     
     AD->>BT: to_api(context)
+    Note over BT: context is TransformContext<br/>(type-safe dataclass, not dict)
     BT->>TM: _apply_forward_mapping()
     TM->>TM: Check _field_mapping
     Note over TM: organizations → organization_ids<br/>forward_transform: names_to_ids
@@ -372,6 +383,7 @@ sequenceDiagram
     API-->>APD: Response: {id: 123, organization_ids: [1]}
     
     APD->>BT: to_ansible(context)
+    Note over BT: context is TransformContext<br/>(type-safe dataclass, not dict)
     BT->>TM: _apply_reverse_mapping()
     TM->>TM: Check _field_mapping
     Note over TM: organization_ids → organizations<br/>reverse_transform: ids_to_names

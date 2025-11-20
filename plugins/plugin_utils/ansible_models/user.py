@@ -6,7 +6,9 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
+
+from ..platform.types import TransformContext
 
 
 @dataclass
@@ -46,12 +48,15 @@ class AnsibleUser:
         elif not isinstance(self.organizations, list):
             self.organizations = [self.organizations]
     
-    def to_api(self, context: dict):
+    def to_api(self, context: Union[TransformContext, Dict[str, Any]]):
         """
         Transform to API format using version-specific mixin.
         
         The actual transformation is done by the mixin class loaded
         by the manager based on the detected API version.
+        
+        Args:
+            context: TransformContext or dict with manager and other runtime info
         """
         # Import at runtime to avoid circular dependencies
         from ..api.v1.user import UserTransformMixin_v1

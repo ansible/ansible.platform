@@ -18,16 +18,18 @@ This guide provides step-by-step instructions for implementing the new architect
 
 ### Component Overview
 
-The foundation consists of 8 core components:
+The foundation consists of 10 core components:
 
-1. **Shared Types** (`platform/types.py`) - EndpointOperation dataclass
+1. **Shared Types** (`platform/types.py`) - EndpointOperation and TransformContext dataclasses
 2. **BaseTransformMixin** (`platform/base_transform.py`) - Universal transformation logic
-3. **APIVersionRegistry** (`platform/registry.py`) - Version discovery
-4. **DynamicClassLoader** (`platform/loader.py`) - Runtime class loading
-5. **PlatformService** (`manager/platform_manager.py`) - Persistent service
-6. **PlatformManager** (`manager/platform_manager.py`) - Multiprocessing manager
-7. **ManagerRPCClient** (`manager/rpc_client.py`) - RPC client
-8. **BaseResourceActionPlugin** (`action/base_action.py`) - Base action plugin
+3. **GatewayConfig** (`platform/config.py`) - Platform SDK for gateway configuration
+4. **APIVersionRegistry** (`platform/registry.py`) - Version discovery
+5. **DynamicClassLoader** (`platform/loader.py`) - Runtime class loading
+6. **ProcessManager** (`manager/process_manager.py`) - Platform SDK for process management
+7. **PlatformService** (`manager/platform_manager.py`) - Persistent service
+8. **PlatformManager** (`manager/platform_manager.py`) - Multiprocessing manager
+9. **ManagerRPCClient** (`manager/rpc_client.py`) - RPC client
+10. **BaseResourceActionPlugin** (`action/base_action.py`) - Base action plugin
 
 ### Implementation Status
 
@@ -80,8 +82,11 @@ class UserTransformMixin_v1(BaseTransformMixin):
         }
     }
     _transform_registry = {
-        'names_to_ids': lambda names, ctx: ctx['manager'].lookup_org_ids(names),
+        'names_to_ids': lambda names, ctx: ctx.manager.lookup_org_ids(names),
     }
+```
+
+**Note**: Context is now a `TransformContext` dataclass (not a dict) for better type safety and mypy support.
 ```
 
 #### 3. APIVersionRegistry
@@ -109,7 +114,7 @@ user_versions = registry.get_versions_for_module('user')  # ['1', '2']
 best = registry.find_best_version('2.1', 'user')  # '2' (closest lower)
 ```
 
-#### 4. DynamicClassLoader
+#### 5. DynamicClassLoader
 
 **File**: `plugins/plugin_utils/platform/loader.py`
 
@@ -131,7 +136,45 @@ loader = DynamicClassLoader(registry)
 AnsibleClass, APIClass, MixinClass = loader.load_classes_for_module('user', '1')
 ```
 
-#### 5. PlatformService
+#### 6. ProcessManager (Platform SDK)
+
+**File**: `plugins/plugin_utils/manager/process_manager.py`
+
+**Purpose**: Generic process management utilities (not Ansible-specific).
+
+**Key Methods**:
+- `generate_connection_info()` - Generate socket path and authkey
+- `spawn_manager_process()` - Spawn manager process
+- `wait_for_process_startup()` - Wait for process to be ready
+- `cleanup_old_socket()` - Clean up old socket files
+
+**Characteristics**:
+- Not Ansible-specific (can be used by CLI, MCP, etc.)
+- Type-safe with dataclasses
+- Reusable for any process spawning needs
+
+**Example**:
+```python
+from ...manager.process_manager import ProcessManager
+
+conn_info = ProcessManager.generate_connection_info(
+    identifier='localhost',
+    socket_dir=Path('/tmp/ansible_platform')
+)
+# Returns ProcessConnectionInfo(socket_path=..., authkey=..., authkey_b64=...)
+
+process = ProcessManager.spawn_manager_process(
+    script_path=script_path,
+    socket_path=conn_info.socket_path,
+    socket_dir=str(socket_dir),
+    identifier='localhost',
+    gateway_config=gateway_config,
+    authkey_b64=conn_info.authkey_b64,
+    sys_path=sys.path
+)
+```
+
+#### 7. PlatformService
 
 **File**: `plugins/plugin_utils/manager/platform_manager.py`
 
@@ -165,7 +208,7 @@ service = PlatformService(
 result = service.execute('create', 'user', user_dict)
 ```
 
-#### 6. PlatformManager
+#### 8. PlatformManager
 
 **File**: `plugins/plugin_utils/manager/platform_manager.py`
 
@@ -184,7 +227,7 @@ manager = PlatformManager(address=socket_path, authkey=authkey)
 manager.start()
 ```
 
-#### 7. ManagerRPCClient
+#### 9. ManagerRPCClient
 
 **File**: `plugins/plugin_utils/manager/rpc_client.py`
 
@@ -198,17 +241,21 @@ client = ManagerRPCClient(base_url, socket_path, authkey)
 result = client.execute('create', 'user', ansible_user)
 ```
 
-#### 8. BaseResourceActionPlugin
+#### 10. BaseResourceActionPlugin
 
 **File**: `plugins/action/base_action.py`
 
 **Purpose**: Base class for all resource action plugins.
 
 **Key Methods**:
-- `_get_or_spawn_manager(task_vars)` - Get or spawn manager
+- `_get_or_spawn_manager(task_vars)` - Get or spawn manager (returns tuple: client, facts_dict)
 - `_build_argspec_from_docs(documentation)` - Parse DOCUMENTATION
 - `_validate_data(data, argspec, direction)` - Validate input/output
 - `_detect_operation(args)` - Detect operation type
+
+**Separation of Concerns**:
+- **Ansible-specific**: task_vars, AnsibleError, result dict formatting
+- **Platform SDK**: Uses `extract_gateway_config()` and `ProcessManager` for generic operations
 
 **How Subclasses Use It**:
 ```python
