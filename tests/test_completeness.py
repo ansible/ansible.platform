@@ -27,6 +27,11 @@ no_module_for_endpoint = []
 # Some modules work on the related fields of an endpoint. These modules will not have an auto-associated endpoint
 no_endpoint_for_module = ['token']
 
+# Modules that have conditional endpoints (only exist under certain configuration conditions)
+conditional_endpoint_modules = {
+    'feature_flag': 'RUNTIME_FEATURE_FLAGS'  # feature_flags endpoint only exists when RUNTIME_FEATURE_FLAGS is True
+}
+
 # Add modules with endpoints that are not at /api/v2
 extra_endpoints = {}
 
@@ -138,6 +143,11 @@ def determine_state(module_id, endpoint, module, parameter, api_option, module_o
     # If module is listed as not needing an endpoint and we don't have one we are ok
     if module_id in no_endpoint_for_module and endpoint == 'N/A':
         return "OK, this module does not require an endpoint"
+
+    # If module has a conditional endpoint and we don't have one, check if the condition is met
+    if module_id in conditional_endpoint_modules and endpoint == 'N/A':
+        condition_setting = conditional_endpoint_modules[module_id]
+        return f"OK, conditional endpoint - {condition_setting} may not be enabled"
 
     # All the end/point module conditionals are done so if we don't have a module or endpoint we have a problem
     if module == 'N/A':
