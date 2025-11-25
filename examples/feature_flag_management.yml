@@ -1,0 +1,76 @@
+---
+- name: Feature Flag Management Example
+  hosts: localhost
+  gather_facts: false
+  vars:
+    gateway_hostname: "{{ ansible_host }}"
+    gateway_username: "admin"
+    gateway_password: "{{ gateway_admin_password }}"
+    gateway_validate_certs: false
+
+  tasks:
+    - name: Check if a feature flag exists
+      ansible.platform.feature_flag:
+        name: FEATURE_EXAMPLE_ENABLED
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: feature_flag_info
+
+    - name: Display feature flag information
+      ansible.builtin.debug:
+        msg: |
+          Feature Flag: {{ feature_flag_info.name }}
+          Current Value: {{ feature_flag_info.value }}
+          Toggle Type: {{ feature_flag_info.toggle_type }}
+          Description: {{ feature_flag_info.description }}
+
+    - name: Enable a runtime feature flag (if it's a runtime flag)
+      ansible.platform.feature_flag:
+        name: "{{ feature_flag_info.name }}"
+        value: "True"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      when: feature_flag_info.toggle_type == 'run-time'
+      register: feature_flag_update
+
+    - name: Show update result
+      ansible.builtin.debug:
+        msg: |
+          Feature flag update result:
+          Changed: {{ feature_flag_update.changed | default('N/A') }}
+          New Value: {{ feature_flag_update.value | default('N/A') }}
+      when: feature_flag_update is defined
+
+    - name: Configuration as Code Example - Ensure multiple feature flags are in desired state
+      ansible.platform.feature_flag:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: "{{ item.state | default('present') }}"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      loop:
+        - name: FEATURE_EXAMPLE_ONE_ENABLED
+          value: "True"
+        - name: FEATURE_EXAMPLE_TWO_ENABLED
+          value: "False"
+          state: enforced  # Ensure exact value
+      when: false  # Set to true to run this example
+      register: bulk_updates
+
+    - name: Show bulk update results
+      ansible.builtin.debug:
+        msg: |
+          Flag: {{ item.name }}
+          Changed: {{ item.changed }}
+          Value: {{ item.value }}
+      loop: "{{ bulk_updates.results | default([]) }}"
+      when: bulk_updates is defined
+...

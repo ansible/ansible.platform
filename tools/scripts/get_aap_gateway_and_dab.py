@@ -64,6 +64,10 @@ def _checkout_aap_gateway(pr_body):
         print(f"This ansible.platform PR requires aap-gateway PR {required_pr}")
         url = f'https://api.github.com/repos/ansible-automation-platform/aap-gateway/pulls/{required_pr}'
         response = requests.get(url, headers=GH_API_HEADERS)
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Error fetching PR data: {response.status_code} - {response.text}")
+
         pr_data = response.json()
         merged = pr_data['merged']
 
@@ -90,6 +94,10 @@ def _checkout_django_ansible_base(pr_body):
         print(f"This aap-gateway PR requires django-ansible-base PR {required_pr}")
         url = f'https://api.github.com/repos/ansible/django-ansible-base/pulls/{required_pr}'
         response = requests.get(url)
+
+        if response.status_code != 200:
+            raise RuntimeError(f"Error fetching PR data: {response.status_code} - {response.text}")
+
         pr_data = response.json()
         merged = pr_data['merged']
 

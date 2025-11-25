@@ -1,0 +1,217 @@
+---
+- name: Get current settings to check if runtime feature flags are enabled
+  ansible.builtin.set_fact:
+    all_settings: "{{ lookup('ansible.platform.gateway_api', 'settings', **connection_info) }}"
+
+- name: Check if RUNTIME_FEATURE_FLAGS is enabled
+  ansible.builtin.set_fact:
+    runtime_feature_flags_enabled: >-
+      {{
+        (all_settings
+         | selectattr('key', 'equalto', 'RUNTIME_FEATURE_FLAGS')
+         | map(attribute='value')
+         | first
+         | default('false')).lower() == 'true'
+      }}
+
+- name: Skip tests if RUNTIME_FEATURE_FLAGS is not enabled
+  ansible.builtin.meta: end_play
+  when: not runtime_feature_flags_enabled
+
+- name: Get list of available feature flags
+  ansible.builtin.set_fact:
+    available_flags: "{{ lookup('ansible.platform.gateway_api', 'feature_flags', **connection_info) }}"
+
+- name: Find a runtime feature flag for testing
+  ansible.builtin.set_fact:
+    test_flag: "{{ available_flags | selectattr('toggle_type', 'equalto', 'run-time') | selectattr('condition', 'equalto', 'boolean') | first }}"
+  when: available_flags | selectattr('toggle_type', 'equalto', 'run-time') | selectattr('condition', 'equalto', 'boolean') | list | length > 0
+
+- name: Skip tests if no runtime boolean feature flags available
+  ansible.builtin.meta: end_play
+  when: test_flag is not defined
+
+- name: Store original feature flag value
+  ansible.builtin.set_fact:
+    original_flag_value: "{{ test_flag.value }}"
+    test_flag_name: "{{ test_flag.name }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # Test checking if feature flag exists
+    - name: Check if feature flag exists
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        state: exists
+      register: flag_exists
+
+    - name: Assert that feature flag exists
+      ansible.builtin.assert:
+        that:
+          - flag_exists is not changed
+          - flag_exists.name == test_flag_name
+          - flag_exists.id is defined
+
+    # Test updating feature flag value (enable)
+    - name: Enable feature flag
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "True"
+        state: present
+      register: flag_enable
+
+    - name: Assert that enabling feature flag changes the system
+      ansible.builtin.assert:
+        that:
+          - flag_enable is changed or (flag_enable is not changed and original_flag_value == "True")
+          - flag_enable.value == "True"
+
+    # Test idempotency
+    - name: Enable feature flag again (test idempotency)
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "True"
+        state: present
+      register: flag_enable_again
+
+    - name: Assert that re-enabling does not change the system
+      ansible.builtin.assert:
+        that:
+          - flag_enable_again is not changed
+
+    # Test updating feature flag value (disable)
+    - name: Disable feature flag
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "False"
+        state: present
+      register: flag_disable
+
+    - name: Assert that disabling feature flag changes the system
+      ansible.builtin.assert:
+        that:
+          - flag_disable is changed
+          - flag_disable.value == "False"
+
+    # Test idempotency again
+    - name: Disable feature flag again (test idempotency)
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "False"
+        state: present
+      register: flag_disable_again
+
+    - name: Assert that re-disabling does not change the system
+      ansible.builtin.assert:
+        that:
+          - flag_disable_again is not changed
+
+    # Test enforced state
+    - name: Enforce feature flag state
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "True"
+        state: enforced
+      register: flag_enforce
+
+    - name: Assert that enforcing changes the system
+      ansible.builtin.assert:
+        that:
+          - flag_enforce is changed
+          - flag_enforce.value == "True"
+
+    # Test check mode
+    - name: Test check mode
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "False"
+        state: present
+      check_mode: true
+      register: flag_check
+
+    - name: Assert check mode doesn't change system
+      ansible.builtin.assert:
+        that:
+          - flag_check is changed  # Would change, but didn't due to check mode
+
+    # Verify the flag is still True after check mode
+    - name: Verify flag value after check mode
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        state: exists
+      register: flag_after_check
+
+    - name: Assert flag value unchanged by check mode
+      ansible.builtin.assert:
+        that:
+          - flag_after_check.value == "True"
+
+    # Test error handling - non-existent flag
+    - name: Try to access non-existent feature flag
+      ansible.platform.feature_flag:
+        name: "FEATURE_NONEXISTENT_ENABLED"
+        state: exists
+      register: flag_not_found
+      ignore_errors: true
+
+    - name: Assert that non-existent flag fails appropriately
+      ansible.builtin.assert:
+        that:
+          - flag_not_found is failed
+
+    # Test error handling - invalid value for boolean flag
+    - name: Try to set invalid boolean value
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "invalid_value"
+        state: present
+      register: flag_invalid
+      ignore_errors: true
+
+    - name: Assert that invalid boolean value fails appropriately
+      ansible.builtin.assert:
+        that:
+          - flag_invalid is failed
+
+    # Test error handling - missing value parameter
+    - name: Try to update without value parameter
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        state: present
+      register: flag_no_value
+      ignore_errors: true
+
+    - name: Assert that missing value parameter fails appropriately
+      ansible.builtin.assert:
+        that:
+          - flag_no_value is failed
+
+    # Test error handling - trying to delete a feature flag
+    - name: Try to delete feature flag
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        state: absent
+      register: flag_delete
+      ignore_errors: true
+
+    - name: Assert that deletion fails appropriately
+      ansible.builtin.assert:
+        that:
+          - flag_delete is failed
+
+  always:
+    # Always restore original feature flag value
+    - name: Restore original feature flag value
+      ansible.platform.feature_flag:
+        name: "{{ test_flag_name }}"
+        value: "{{ original_flag_value }}"
+        state: present
+      when: test_flag_name is defined and original_flag_value is defined
+...
