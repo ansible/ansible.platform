@@ -50,6 +50,12 @@ This directory contains comprehensive documentation for the Ansible Platform Col
    - Communication channels
    - Diagram specifications (Mermaid, PlantUML, Graphviz)
 
+7. **[MANAGER_SHUTDOWN.md](MANAGER_SHUTDOWN.md)** - Manager process shutdown mechanism
+   - Current shutdown behavior
+   - Proposed solutions for graceful shutdown
+   - Implementation recommendations
+   - Cleanup strategies
+
 ## Quick Start
 
 ### For New Developers
@@ -98,6 +104,7 @@ docs/
 ├── IMPLEMENTATION_GUIDE.md   # Implementation details
 ├── API_REFERENCE.md          # API documentation
 ├── DEVELOPER_GUIDE.md        # Developer workflow
+├── MANAGER_SHUTDOWN.md       # Manager process shutdown mechanism
 ├── QUICK_REFERENCE.md        # Quick reference for AI agents
 └── diagrams/                 # Diagram specifications
     ├── README.md             # How to generate diagrams
@@ -145,5 +152,6 @@ When adding new features or components:
 - **Implementation Questions**: See [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)
 - **API Questions**: See [API_REFERENCE.md](API_REFERENCE.md)
 - **Development Questions**: See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)
+- **Shutdown/Cleanup Questions**: See [MANAGER_SHUTDOWN.md](MANAGER_SHUTDOWN.md)
 
 
