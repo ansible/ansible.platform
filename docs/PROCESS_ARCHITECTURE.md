@@ -235,6 +235,210 @@ Ansible Playbook Process
 
 ---
 
+## Spawn Sequence Walkthrough (Code-Level)
+
+This section ties the diagrams directly to the code so you can walk people through the *exact* call path.
+
+### 1. Action Plugin: `_get_or_spawn_manager` (BaseResourceActionPlugin)
+
+**Location**: `plugins/action/base_action.py`
+
+High level:
+
+1. Check `hostvars` for existing manager metadata (socket path, authkey, etc.).
+2. If not found, generate new connection info and spawn the manager:
+
+```python
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+
+connection_info = ProcessManager.generate_connection_info(inventory_hostname, socket_dir)
+socket_path = connection_info.socket_path
+authkey_b64 = connection_info.authkey_b64
+
+process = ProcessManager.spawn_manager_process(
+    script_path=script_path,
+    socket_path=socket_path,
+    socket_dir=str(socket_dir),
+    identifier=inventory_hostname,
+    gateway_config=gateway_config,
+    authkey_b64=authkey_b64,
+    sys_path=parent_sys_path,
+)
+
+ProcessManager.wait_for_process_startup(
+    socket_path=socket_path,
+    socket_dir=socket_dir,
+    identifier=inventory_hostname,
+    process=process,
+)
+```
+
+3. Store `socket_path` and `authkey_b64` in facts so later tasks can reuse the same manager.
+4. Create a `ManagerRPCClient` with `socket_path` and decoded `authkey`.
+
+### 2. ProcessManager: `spawn_manager_process`
+
+**Location**: `plugins/plugin_utils/manager/process_manager.py`
+
+Key responsibilities:
+
+- Construct a command line to launch the manager script in a **separate Python process**.
+- Pass connection details (socket path, identifier, auth key, gateway config, and `sys.path`) as process arguments and environment variables.
+
+```python
+cmd = [
+    sys.executable,
+    str(script_path),        # _manager_process.py
+    socket_path,
+    socket_dir,
+    identifier,
+    gateway_config.base_url,
+    gateway_config.username or "",
+    gateway_config.password or "",
+    gateway_config.oauth_token or "",
+    str(gateway_config.verify_ssl),
+    str(gateway_config.request_timeout),
+]
+
+process = subprocess.Popen(
+    cmd,
+    env=env,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    start_new_session=True,  # detached child process
+)
+```
+
+At this layer we are **just starting a new OS process**; no `BaseManager` yet. The manager script is responsible for creating the `BaseManager` server.
+
+### 3. Manager Process Entry Point: `_manager_process.py`
+
+**Location**: `plugins/plugin_utils/manager/_manager_process.py`
+
+Steps:
+
+1. Read CLI arguments (socket path, socket dir, identifier, gateway URL, auth key, etc.).
+2. Restore `sys.path` from the encoded value passed by the parent.
+3. Import `PlatformManager` and `PlatformService`:
+
+```python
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import (
+    PlatformManager,
+    PlatformService,
+)
+```
+
+4. Create the **single** `PlatformService` instance:
+
+```python
+service = PlatformService(
+    base_url=gateway_url,
+    username=gateway_username,
+    password=gateway_password,
+    oauth_token=gateway_token,
+    verify_ssl=gateway_validate_certs,
+    request_timeout=gateway_request_timeout,
+)
+```
+
+5. Register the service with the `BaseManager` subclass:
+
+```python
+PlatformManager.register("get_platform_service", callable=lambda: service)
+```
+
+6. Create and start the `BaseManager` server:
+
+```python
+manager = PlatformManager(address=socket_path, authkey=authkey)
+server = manager.get_server()
+server.serve_forever()   # Main thread blocks here
+```
+
+**This is where the Python `multiprocessing.managers.BaseManager` server actually lives.**
+
+### 4. Client-Side RPC: `ManagerRPCClient`
+
+**Location**: `plugins/plugin_utils/manager/rpc_client.py`
+
+The action plugin uses this client to connect back to the manager process:
+
+```python
+from .platform_manager import PlatformManager
+
+PlatformManager.register("get_platform_service")
+
+self.manager = PlatformManager(address=socket_path, authkey=authkey)
+self.manager.connect()
+self.service_proxy = self.manager.get_platform_service()
+```
+
+- `PlatformManager` here is the same `BaseManager` subclass, but used in **client mode**.
+- `service_proxy` is a proxy object to the `PlatformService` instance in the manager process.
+- When the action plugin calls `service_proxy.execute(...)`, the call:
+  - Travels over the Unix socket into the manager process.
+  - Is serviced by a worker thread in `PlatformManager` (because of `ThreadingMixIn`).
+
+---
+
+## Spawn and Threading Diagrams (Mermaid)
+
+### 1. Spawn Sequence (Processes and Manager)
+
+```mermaid
+sequenceDiagram
+    participant AP as Action Plugin<br/>(Process 1)
+    participant PM as ProcessManager<br/>(Process 1)
+    participant MP as _manager_process.py<br/>(Process 2)
+    participant BM as PlatformManager<br/>(BaseManager)
+    participant PS as PlatformService
+
+    AP->>PM: generate_connection_info()
+    AP->>PM: spawn_manager_process(script_path, socket_path, ...)
+    PM->>MP: subprocess.Popen(cmd, env)
+
+    Note over MP: New Python process starts
+
+    MP->>PS: create PlatformService(...)
+    MP->>BM: PlatformManager.register('get_platform_service', lambda: service)
+    MP->>BM: manager = PlatformManager(address, authkey)
+    MP->>BM: server = manager.get_server()\nserver.serve_forever()
+
+    AP->>PM: wait_for_process_startup(socket_path, ...)
+    AP->>BM: ManagerRPCClient.connect(address, authkey)
+    BM-->>AP: service_proxy (PlatformService proxy)
+    AP->>PS: service_proxy.execute(operation, module, data)
+```
+
+### 2. Threads Inside the Manager Process
+
+```mermaid
+flowchart TD
+    subgraph Manager_Process[Process 2: Manager Process]
+      MainThread[Main Thread\nserver.serve_forever()]
+      Worker1[Worker Thread 1\nhandles RPC from Task 1]
+      Worker2[Worker Thread 2\nhandles RPC from Task 2]
+      WorkerN[Worker Thread N\nhandles RPC from Task N]
+      Service[PlatformService\nsingle shared instance]
+    end
+
+    MainThread -->|accepts connection| Worker1
+    MainThread -->|accepts connection| Worker2
+    MainThread -->|accepts connection| WorkerN
+
+    Worker1 -->|calls methods on| Service
+    Worker2 -->|calls methods on| Service
+    WorkerN -->|calls methods on| Service
+```
+
+This pair of diagrams is ideal for explaining:
+
+- How the **two OS processes** relate (playbook vs. manager).
+- Where the **BaseManager server** actually runs.
+- How **multiple tasks** (and thus multiple RPC clients) are handled concurrently by worker threads inside the manager process, all sharing the same `PlatformService` instance and HTTP session.
+
+---
+
 ## Key Points
 
 ### Process Isolation
