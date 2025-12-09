@@ -148,49 +148,18 @@ class BaseResourceActionPlugin(ActionBase):
     - Manager spawning/connection (_get_or_spawn_manager)
     - Input/output validation (_validate_data)
     - ArgumentSpec generation (_build_argspec_from_docs)
-    
-    Subclasses must define:
-    - MODULE_NAME: Name of the resource (e.g., 'user', 'organization')
-    - DOCUMENTATION: Module documentation string
-    - ANSIBLE_DATACLASS: The Ansible dataclass type
-    
-    Example subclass:
-        class ActionModule(BaseResourceActionPlugin):
-            MODULE_NAME = 'user'
-            
-            def run(self, tmp=None, task_vars=None):
-                # Use inherited methods
-                manager = self._get_or_spawn_manager(task_vars)
-                # ... implement resource-specific logic
     """
     
     MODULE_NAME = None  # Subclass must override
     
+    _tracked_managers = set()
+
     def _get_or_spawn_manager(self, task_vars: dict):
         """
         Get existing manager or spawn new one.
         
         Checks if a manager is already running (stored in hostvars).
         If found, connects to it. If not, spawns a new manager process.
-        
-        This method is Ansible-specific and handles Ansible constructs like
-        task_vars, AnsibleError. The actual gateway config extraction and 
-        process management are delegated to platform SDK modules.
-        
-        Args:
-            task_vars: Task variables from Ansible
-        
-        Returns:
-            Tuple of (ManagerRPCClient, facts_dict):
-            - ManagerRPCClient: The manager client instance
-            - facts_dict: Dict with facts to set (socket, authkey, gateway_url) 
-              if new manager was spawned, or None if reusing existing manager.
-              The caller should set these facts in the result dict with 
-              'ansible_facts' key and '_ansible_facts_cacheable': True.
-        
-        Raises:
-            AnsibleError: If gateway URL is missing
-            RuntimeError: If manager fails to start
         """
         import sys
         
@@ -311,6 +280,15 @@ class BaseResourceActionPlugin(ActionBase):
         )
         logger.info("Manager process started successfully")
         
+        # TRACKING: Register the new manager for cleanup (DoD Requirement)
+        if process and process.pid:
+            self._tracked_managers.add((
+                socket_path,
+                authkey_b64,
+                process.pid,
+                gateway_config.base_url
+            ))
+
         # Connect to newly spawned manager
         client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
         logger.info(f"Spawned and connected to new manager at {socket_path}")
@@ -321,6 +299,77 @@ class BaseResourceActionPlugin(ActionBase):
             'platform_manager_authkey': authkey_b64,
             'gateway_url': gateway_config.base_url
         }
+
+    @classmethod
+    def cleanup(cls):
+        """
+        Shuts down all tracked manager processes.
+
+        DoD Met:
+        - Shuts down via RPC
+        - Timeout handling
+        - Force-kill fallback
+        - Removal of socket files
+        """
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+        import os
+        import signal
+        import shutil
+
+        if not cls._tracked_managers:
+            return
+
+        logger.info(f"Cleaning up {len(cls._tracked_managers)} tracked managers...")
+
+        for socket_path, authkey_b64, pid, gateway_url in list(cls._tracked_managers):
+
+            # 1. Attempt Graceful RPC Shutdown
+            try:
+                if os.path.exists(socket_path):
+                    authkey = base64.b64decode(authkey_b64)
+                    # Reconnect specifically to send shutdown signal
+                    client = ManagerRPCClient(gateway_url, socket_path, authkey)
+                    client.shutdown_service()
+            except Exception as e:
+                logger.debug(f"Cleanup: RPC shutdown failed (process might be dead): {e}")
+
+            # 2. Monitor PID with Timeout & Force Kill Fallback
+            if pid:
+                is_alive = True
+                start_time = time.time()
+                timeout_seconds = 2.0
+
+                while (time.time() - start_time) < timeout_seconds:
+                    try:
+                        os.kill(pid, 0) # Signal 0 checks existence without killing
+                        time.sleep(0.1)
+                    except OSError:
+                        is_alive = False
+                        break # Process is gone
+
+                # 3. Fallback Force Kill
+                if is_alive:
+                    logger.warning(f"Cleanup: Timed out waiting for PID {pid}. Force killing.")
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        pass # Already gone
+
+            # 4. Remove Socket Files
+            try:
+                if os.path.exists(socket_path):
+                    os.unlink(socket_path)
+
+                # Clean parent dir if empty
+                socket_dir = os.path.dirname(socket_path)
+                try:
+                    os.rmdir(socket_dir)
+                except OSError:
+                    pass
+            except Exception as e:
+                logger.error(f"Cleanup: Error removing socket {socket_path}: {e}")
+
+        cls._tracked_managers.clear()
     
     def _build_argspec_from_docs(self, documentation: str) -> dict:
         """

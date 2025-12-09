@@ -10,6 +10,7 @@ import os
 import json
 import base64
 import traceback
+import signal
 from pathlib import Path
 
 
@@ -50,6 +51,15 @@ def main():
     gateway_validate_certs = sys.argv[8].lower() == 'true'
     gateway_request_timeout = float(sys.argv[9])
     log_marker("Arguments parsed successfully")
+
+    # --- DoD Requirement: Manager process handles SIGTERM/SIGINT gracefully ---
+    def graceful_shutdown(signum, frame):
+        log_marker(f"Received signal {signum}. Shutting down gracefully...")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
+    # ------------------------------------------------------------------------
     
     # Read sys.path and authkey from environment
     log_marker("Reading environment variables...")

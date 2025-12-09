@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 from dataclasses import asdict, is_dataclass
 from urllib.parse import urlparse, urlencode
 import requests
+import time
+import os
 
 from ..platform.registry import APIVersionRegistry
 from ..platform.loader import DynamicClassLoader
@@ -130,6 +132,23 @@ class PlatformService:
         else:
             raise ValueError("Either oauth_token or username/password must be provided")
     
+    def shutdown(self) -> bool:
+        """
+        RPC method to trigger graceful server shutdown.
+        """
+        logger.info("RPC: Received shutdown request.")
+
+        try:
+            self.session.close()
+        except Exception:
+            pass
+        def _trigger_exit():
+            time.sleep(0.5)  # Wait for RPC response to flush
+            logger.info("RPC: Triggering self-termination via SIGTERM...")
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        threading.Thread(target=_trigger_exit, daemon=True).start()
+        return True
     def _detect_version(self) -> str:
         """
         Detect platform API version.

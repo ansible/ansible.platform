@@ -97,10 +97,24 @@ class ManagerRPCClient:
         )
         
         return result_dict
+
+    def shutdown_service(self) -> None:
+        """
+        Trigger the remote service to shut down via RPC.
+
+        This satisfies the DoD requirement to shut down tracked managers
+        via RPC before falling back to force-killing.
+        """
+        try:
+            logger.debug("Client: Calling shutdown on remote service...")
+            self.service_proxy.shutdown()
+        except Exception as e:
+            logger.debug(f"Client: Exception during shutdown RPC (expected): {e}")
     
     def close(self) -> None:
         """Close connection to manager."""
         if hasattr(self, 'manager'):
+            # This shuts down the client-side manager connection
             self.manager.shutdown()
             logger.debug("Disconnected from Platform Manager")
 
