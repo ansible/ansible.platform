@@ -41,8 +41,17 @@ class ActionModule(BaseResourceActionPlugin):
         Returns:
             Result dictionary with user data
         """
+        import time
+        
         if task_vars is None:
             task_vars = dict()
+        
+        # Store task_vars for cleanup() method
+        self._task_vars = task_vars
+
+        # Performance timing: Action plugin start
+        action_start = time.perf_counter()
+        logger.debug(f"⏱️  TIMING START: Action plugin (timestamp={action_start:.6f})")
 
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp  # not used
@@ -124,18 +133,35 @@ class ActionModule(BaseResourceActionPlugin):
             # Step 4: Create dataclass from validated input
             self._display.vvv("📦 Creating user dataclass...")
             # Filter out None values and auth params for dataclass
+            # validated_input is a ValidationResult object, access validated_parameters
+            try:
+                validated_params = validated_input.validated_parameters
+                self._display.vvvv(f"validated_params type: {type(validated_params)}, value: {validated_params}")
+            except AttributeError as e:
+                raise AnsibleError(
+                    f"ValidationResult object missing 'validated_parameters' attribute. "
+                    f"Object type: {type(validated_input)}, attributes: {dir(validated_input)}, error: {e}"
+                )
+            
+            # Ensure validated_params is a dict
+            if not isinstance(validated_params, dict):
+                raise AnsibleError(
+                    f"Expected validated_parameters to be a dict, got {type(validated_params)}: {validated_params}. "
+                    f"validated_input type: {type(validated_input)}, validated_input: {validated_input}"
+                )
+            
             user_data = {
-                k: v for k, v in validated_input.items()
+                k: v for k, v in validated_params.items()
                 if v is not None and k not in auth_params
             }
             user = AnsibleUser(**user_data)
             
             # Step 5: Detect operation
-            operation = self._detect_operation(validated_input)
+            operation = self._detect_operation(validated_params)
             self._display.vvv(f"🎯 Operation detected: {operation}")
             
             # Step 5.5: For 'create' with state='present', check if user exists first (idempotency)
-            if operation == 'create' and validated_input.get('state') == 'present':
+            if operation == 'create' and validated_params.get('state') == 'present':
                 self._display.vvv("🔍 Checking if user already exists (idempotency check)...")
                 try:
                     # Try to find the user by username
@@ -161,6 +187,11 @@ class ActionModule(BaseResourceActionPlugin):
             )
             
             self._display.vvv("📥 Received result from manager")
+            
+            # Extract timing info from result if available
+            if isinstance(manager_result, dict) and '_timing' in manager_result:
+                timing = manager_result['_timing']
+                logger.debug(f"⏱️  TIMING: RPC time={timing.get('rpc_time', 0):.6f}s")
             
             # Step 7: Validate output
             self._display.vvv("✓ Validating output...")
@@ -195,6 +226,52 @@ class ActionModule(BaseResourceActionPlugin):
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
             })
+            
+            # Performance timing: Action plugin end
+            action_end = time.perf_counter()
+            action_elapsed = action_end - action_start
+            logger.debug(f"⏱️  TIMING END: Action plugin (elapsed={action_elapsed:.6f}s, timestamp={action_end:.6f})")
+            
+            # Extract timing info from manager result if available
+            timing = {}
+            if isinstance(manager_result, dict) and '_timing' in manager_result:
+                timing = manager_result['_timing']
+            
+            # Calculate our code time (excluding AAP response time)
+            rpc_time = timing.get('rpc_time', 0)
+            manager_time = timing.get('manager_processing_time', 0)
+            api_time = timing.get('api_call_time', 0)
+            
+            # Our code time = RPC + Manager processing (excluding API call which is AAP's time)
+            our_code_time = rpc_time + manager_time
+            
+            # Add timing to result
+            result.setdefault('_timing', {})['action_plugin_time'] = action_elapsed
+            result['_timing']['action_plugin_start'] = action_start
+            result['_timing']['action_plugin_end'] = action_end
+            result['_timing']['total_time'] = action_elapsed
+            
+            # Add component times
+            result['_timing']['rpc_time'] = rpc_time
+            result['_timing']['manager_processing_time'] = manager_time
+            result['_timing']['api_call_time'] = api_time  # AAP response time
+            
+            # Key metric: Our code execution time (excluding AAP)
+            result['_timing']['our_code_time'] = our_code_time
+            result['_timing']['aap_response_time'] = api_time
+            
+            # Add HTTP and TLS metrics from manager
+            result['_timing']['http_request_count'] = timing.get('http_request_count', 0)
+            result['_timing']['tls_handshake_count'] = timing.get('tls_handshake_count', 0)
+            
+            # Log summary
+            logger.info(
+                f"⏱️  PERFORMANCE SUMMARY: "
+                f"Total={action_elapsed:.3f}s | "
+                f"Our Code={our_code_time:.3f}s | "
+                f"AAP Response={api_time:.3f}s | "
+                f"Other={action_elapsed - our_code_time - api_time:.3f}s"
+            )
             
             self._display.vvv("=" * 80)
             self._display.vvv("✅ Action plugin completed successfully")

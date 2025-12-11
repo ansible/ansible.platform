@@ -163,8 +163,38 @@ def main():
             callable=lambda: service
         )
         
+        # Register shutdown method
+        PlatformManager.register(
+            'shutdown',
+            callable=lambda: service.shutdown()
+        )
+        
         with open(error_log, 'a') as f:
-            f.write("Service registered\n")
+            f.write("Service registered with shutdown method\n")
+            f.flush()
+        
+        # Set up signal handlers for graceful shutdown
+        import signal
+        
+        def signal_handler(signum, frame):
+            """Handle shutdown signals gracefully."""
+            with open(error_log, 'a') as f:
+                f.write(f"Received signal {signum}, shutting down...\n")
+                f.flush()
+            try:
+                service.shutdown()
+            except Exception as e:
+                with open(error_log, 'a') as f:
+                    f.write(f"Error during shutdown: {e}\n")
+                    f.flush()
+            sys.exit(0)
+        
+        # Register signal handlers
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+        
+        with open(error_log, 'a') as f:
+            f.write("Signal handlers registered\n")
             f.flush()
         
         # Start manager server
@@ -180,7 +210,14 @@ def main():
             f.write("Server obtained, starting serve_forever()\n")
             f.flush()
         
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            with open(error_log, 'a') as f:
+                f.write("Keyboard interrupt received, shutting down...\n")
+                f.flush()
+            service.shutdown()
+            sys.exit(0)
         
     except Exception as e:
         # Log to a temp file for debugging

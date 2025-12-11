@@ -46,7 +46,8 @@ class ProcessManager:
     @staticmethod
     def generate_connection_info(
         identifier: str,
-        socket_dir: Optional[Path] = None
+        socket_dir: Optional[Path] = None,
+        gateway_config: Optional['GatewayConfig'] = None
     ) -> ProcessConnectionInfo:
         """
         Generate connection information for a new manager process.
@@ -54,6 +55,7 @@ class ProcessManager:
         Args:
             identifier: Unique identifier (e.g., inventory_hostname)
             socket_dir: Directory for socket files (default: tempdir)
+            gateway_config: Gateway configuration (optional, for credential-aware socket path)
             
         Returns:
             ProcessConnectionInfo with socket_path and authkey
@@ -65,7 +67,21 @@ class ProcessManager:
             socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
         
         socket_dir.mkdir(exist_ok=True)
-        socket_path = str(socket_dir / f'manager_{identifier}.sock')
+        
+        # Include credentials in socket path to ensure different credentials get different managers
+        if gateway_config:
+            import hashlib
+            # Create a hash of credentials to include in socket path
+            # This ensures different credentials = different socket path = different manager
+            cred_string = f"{gateway_config.username or ''}:{gateway_config.password or ''}:{gateway_config.oauth_token or ''}"
+            cred_hash = hashlib.sha256(cred_string.encode('utf-8')).hexdigest()[:8]
+            socket_path = str(socket_dir / f'manager_{identifier}_{cred_hash}.sock')
+            logger.debug(f"Including credentials in socket path (hash: {cred_hash[:4]}...)")
+        else:
+            # Backward compatibility: if no gateway_config, use old format
+            socket_path = str(socket_dir / f'manager_{identifier}.sock')
+            logger.debug("No gateway_config provided, using identifier-only socket path")
+        
         authkey = secrets.token_bytes(32)
         authkey_b64 = base64.b64encode(authkey).decode('utf-8')
         

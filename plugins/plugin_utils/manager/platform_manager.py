@@ -98,6 +98,15 @@ class PlatformService:
         
         # Cache for lookups
         self.cache: Dict[str, Any] = {}
+        
+        # Performance counters (thread-safe)
+        self._http_request_count = 0
+        self._tls_handshake_count = 1  # 1 handshake when session is created (HTTPS)
+        self._lock = threading.Lock()
+        
+        # Shutdown flag
+        self._shutdown_requested = False
+        self._shutdown_lock = threading.Lock()
     
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
@@ -210,11 +219,17 @@ class PlatformService:
             ansible_data_dict: Ansible dataclass as dict
         
         Returns:
-            Result as dict (Ansible format)
+            Result as dict (Ansible format) with timing information
         
         Raises:
             ValueError: If operation is unknown or execution fails
         """
+        import time
+        
+        # Performance timing: Manager processing start
+        manager_start = time.perf_counter()
+        logger.debug(f"⏱️  TIMING START: Manager processing (operation={operation}, module={module_name}, timestamp={manager_start:.6f})")
+        
         thread_id = threading.get_ident()
         logger.info(
             f"Executing {operation} on {module_name} [Thread: {thread_id}]"
@@ -262,6 +277,44 @@ class PlatformService:
                 f"Operation {operation} on {module_name} completed "
                 f"[Thread: {thread_id}]"
             )
+            
+            # Performance timing: Manager processing end
+            manager_end = time.perf_counter()
+            manager_elapsed = manager_end - manager_start
+            logger.debug(f"⏱️  TIMING END: Manager processing (elapsed={manager_elapsed:.6f}s, timestamp={manager_end:.6f})")
+            
+            # Extract API call time from context if available
+            api_time = 0
+            if isinstance(context, dict) and 'timing' in context:
+                api_time = context['timing'].get('api_call_time', 0)
+            elif hasattr(context, 'timing'):
+                api_time = getattr(context.timing, 'api_call_time', 0)
+            
+            # Calculate our code time in manager (excluding API call which is AAP's time)
+            # Manager time includes: transformations, class loading, etc.
+            # But API call time is AAP response time, so subtract it
+            our_manager_code_time = manager_elapsed - api_time
+            
+            # Add timing info to result
+            if isinstance(result, dict):
+                result.setdefault('_timing', {})['manager_processing_time'] = manager_elapsed
+                result['_timing']['manager_start'] = manager_start
+                result['_timing']['manager_end'] = manager_end
+                result['_timing']['api_call_time'] = api_time
+                result['_timing']['our_manager_code_time'] = our_manager_code_time
+                
+                # Add HTTP and TLS metrics (thread-safe read)
+                with self._lock:
+                    result['_timing']['http_request_count'] = self._http_request_count
+                    result['_timing']['tls_handshake_count'] = self._tls_handshake_count
+                
+                # Log summary
+                logger.debug(
+                    f"⏱️  MANAGER SUMMARY: "
+                    f"Total={manager_elapsed:.3f}s | "
+                    f"Our Code={our_manager_code_time:.3f}s | "
+                    f"AAP Response={api_time:.3f}s"
+                )
             
             return result
             
@@ -560,7 +613,17 @@ class PlatformService:
             logger.debug(f"Calling {endpoint_op.method} {url}")
             logger.debug(f"Request data: {request_data}")
             logger.debug(f"Request data keys: {list(request_data.keys())}")
+            
+            # Performance timing: API call start
+            import time
+            api_start = time.perf_counter()
+            logger.debug(f"⏱️  TIMING START: API call ({endpoint_op.method} {url}, timestamp={api_start:.6f})")
+            
             try:
+                # Increment HTTP request counter (thread-safe)
+                with self._lock:
+                    self._http_request_count += 1
+                
                 response = self.session.request(
                     endpoint_op.method,
                     url,
@@ -569,6 +632,22 @@ class PlatformService:
                     verify=self.verify_ssl
                 )
                 response.raise_for_status()
+                
+                # Performance timing: API call end
+                api_end = time.perf_counter()
+                api_elapsed = api_end - api_start
+                logger.debug(f"⏱️  TIMING END: API call (elapsed={api_elapsed:.6f}s, timestamp={api_end:.6f})")
+                
+                # Store timing in context for later retrieval
+                if hasattr(context, 'timing'):
+                    context.timing['api_call_time'] = api_elapsed
+                    context.timing['api_call_start'] = api_start
+                    context.timing['api_call_end'] = api_end
+                elif isinstance(context, dict):
+                    context.setdefault('timing', {})['api_call_time'] = api_elapsed
+                    context['timing']['api_call_start'] = api_start
+                    context['timing']['api_call_end'] = api_end
+                    
             except Exception as e:
                 logger.error(f"API call failed: {e}")
                 if hasattr(e, 'response') and e.response is not None:
@@ -705,6 +784,44 @@ class PlatformService:
     def lookup_organization_names(self, org_ids: list) -> list:
         """Alias for lookup_org_names."""
         return self.lookup_org_names(org_ids)
+    
+    def shutdown(self) -> dict:
+        """
+        Gracefully shutdown the manager service.
+        
+        This method:
+        - Closes the HTTP session
+        - Cleans up resources
+        - Signals the manager process to exit
+        
+        Returns:
+            dict with shutdown status
+        """
+        with self._shutdown_lock:
+            if self._shutdown_requested:
+                logger.debug("Shutdown already requested")
+                return {"status": "already_shutdown"}
+            
+            self._shutdown_requested = True
+            logger.info("Shutdown requested for PlatformService")
+        
+        # Close HTTP session
+        try:
+            if hasattr(self, 'session') and self.session:
+                self.session.close()
+                logger.debug("HTTP session closed")
+        except Exception as e:
+            logger.warning(f"Error closing HTTP session: {e}")
+        
+        # Clear cache
+        try:
+            self.cache.clear()
+            logger.debug("Cache cleared")
+        except Exception as e:
+            logger.warning(f"Error clearing cache: {e}")
+        
+        logger.info("PlatformService shutdown complete")
+        return {"status": "shutdown", "message": "Manager service shut down gracefully"}
 
 
 class PlatformManager(ThreadingMixIn, BaseManager):
@@ -714,5 +831,10 @@ class PlatformManager(ThreadingMixIn, BaseManager):
     Uses ThreadingMixIn to handle concurrent client connections.
     """
     daemon_threads = True
+    
+    @staticmethod
+    def register_shutdown_method(service):
+        """Register shutdown method with manager."""
+        PlatformManager.register('shutdown', callable=lambda: service.shutdown())
 
 

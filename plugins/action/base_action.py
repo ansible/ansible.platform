@@ -14,6 +14,9 @@ import tempfile
 import secrets
 import base64
 import time
+import subprocess
+import json
+import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +169,23 @@ class BaseResourceActionPlugin(ActionBase):
     
     MODULE_NAME = None  # Subclass must override
     
+    # Class-level tracking of spawned manager processes
+    # Key: socket_path, Value: (process, socket_path, authkey_b64)
+    _spawned_processes = {}  # type: dict
+    
+    # Playbook task tracking: track total tasks and completed tasks per play
+    # NOTE: Using file-based tracking for process-safety (works across forks)
+    # Class-level dict would not work with Ansible's fork/worker processes
+    
+    # Track which manager each task uses
+    # Key: task_uuid, Value: socket_path
+    _task_to_manager = {}  # type: dict
+    
     def _get_or_spawn_manager(self, task_vars: dict):
         """
         Get existing manager or spawn new one.
+        
+        Also stores task_vars for use in cleanup() method.
         
         Checks if a manager is already running (stored in hostvars).
         If found, connects to it. If not, spawns a new manager process.
@@ -204,6 +221,12 @@ class BaseResourceActionPlugin(ActionBase):
         
         # Import Ansible-specific modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+        
+        # Store task_vars for cleanup() method
+        self._task_vars = task_vars
+        
+        # Initialize playbook task tracking if this is the first task
+        self._initialize_playbook_tracking()
         
         # Check if manager info in hostvars (Ansible-specific)
         hostvars = task_vars.get('hostvars', {})
@@ -243,14 +266,76 @@ class BaseResourceActionPlugin(ActionBase):
             logger.error(f"Failed to extract gateway configuration: {e}")
             raise AnsibleError(str(e)) from e
         
-        # If manager already running, try to connect
+        # Generate expected socket path based on current credentials
+        # This ensures we check for the correct manager (matching credentials)
+        import tempfile
+        socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
+        logger.debug(f"Generating connection info for identifier: {inventory_hostname}, socket_dir: {socket_dir}")
+        
+        # Generate expected connection info with current credentials
+        expected_conn_info = ProcessManager.generate_connection_info(
+            identifier=inventory_hostname,
+            socket_dir=socket_dir,
+            gateway_config=gateway_config
+        )
+        expected_socket_path = expected_conn_info.socket_path
+        
+        # Check if manager with matching credentials already exists
+        # First check the stored socket path (for backward compatibility)
+        # Then check the expected socket path (credential-aware)
+        manager_found = False
+        actual_socket_path = None
+        actual_authkey_b64 = None
+        
         if socket_path and authkey_b64 and Path(socket_path).exists():
+            # Check if stored socket path matches expected (same credentials)
+            if socket_path == expected_socket_path:
+                logger.debug(f"Found existing manager with matching credentials: {socket_path}")
+                manager_found = True
+                actual_socket_path = socket_path
+                actual_authkey_b64 = authkey_b64
+            else:
+                logger.info(
+                    f"Stored manager socket path ({socket_path}) doesn't match expected "
+                    f"({expected_socket_path}) - credentials may have changed. "
+                    f"Will spawn new manager with current credentials."
+                )
+        
+        # Also check if expected socket path exists (in case facts weren't updated)
+        if not manager_found and Path(expected_socket_path).exists() and authkey_b64:
+            logger.debug(f"Found manager at expected socket path: {expected_socket_path}")
+            # Use expected socket path and stored authkey
+            manager_found = True
+            actual_socket_path = expected_socket_path
+            actual_authkey_b64 = authkey_b64
+        
+        # If manager already running with matching credentials, try to connect
+        if manager_found and actual_socket_path and actual_authkey_b64:
             try:
-                authkey = base64.b64decode(authkey_b64)
-                client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-                logger.info("Connected to existing manager")
-                # Return client and None for facts (no new facts to set when reusing)
-                return client, None
+                authkey = base64.b64decode(actual_authkey_b64)
+                client = ManagerRPCClient(gateway_config.base_url, actual_socket_path, authkey)
+                logger.info("Connected to existing manager with matching credentials")
+                
+                # Track this task's manager
+                task_uuid = self._get_task_uuid(task_vars)
+                BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path
+                
+                # Track this manager in playbook tracking (process-safe)
+                play_id = self._get_play_id()
+                tracking = self._read_tracking_file(play_id)
+                if tracking:
+                    if 'socket_paths' in tracking:
+                        if isinstance(tracking['socket_paths'], list):
+                            tracking['socket_paths'] = set(tracking['socket_paths'])
+                        tracking['socket_paths'].add(actual_socket_path)
+                        self._write_tracking_file(play_id, tracking)
+                logger.debug(f"Task {task_uuid} using manager {actual_socket_path}")
+                
+                # Return client and updated facts (socket path may have changed)
+                return client, {
+                    'platform_manager_socket': actual_socket_path,
+                    'platform_manager_authkey': actual_authkey_b64
+                }
             except Exception as e:
                 logger.warning(
                     f"Failed to connect to existing manager: {e}. "
@@ -261,14 +346,11 @@ class BaseResourceActionPlugin(ActionBase):
         # Spawn new manager using platform SDK (generic process management)
         logger.info("Spawning new Platform Manager")
         
-        # Generate connection info using platform SDK
-        import tempfile
-        socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
-        logger.debug(f"Generating connection info for identifier: {inventory_hostname}, socket_dir: {socket_dir}")
-        
+        # Generate connection info using platform SDK (with credentials)
         conn_info = ProcessManager.generate_connection_info(
             identifier=inventory_hostname,
-            socket_dir=socket_dir
+            socket_dir=socket_dir,
+            gateway_config=gateway_config
         )
         socket_path = conn_info.socket_path
         authkey = conn_info.authkey
@@ -314,6 +396,18 @@ class BaseResourceActionPlugin(ActionBase):
         # Connect to newly spawned manager
         client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
         logger.info(f"Spawned and connected to new manager at {socket_path}")
+        
+        # Track this task's manager
+        task_uuid = self._get_task_uuid(task_vars)
+        BaseResourceActionPlugin._task_to_manager[task_uuid] = socket_path
+        
+        # Track this manager in playbook tracking (process-safe)
+        play_id = self._get_play_id()
+        tracking = self._read_tracking_file(play_id)
+        if tracking:
+            tracking['socket_paths'].add(socket_path)
+            self._write_tracking_file(play_id, tracking)
+        logger.debug(f"Task {task_uuid} using manager {socket_path}")
         
         # Return client and facts to be set (facts will be set in run() method's result)
         return client, {
@@ -380,38 +474,352 @@ class BaseResourceActionPlugin(ActionBase):
         Raises:
             AnsibleError: If validation fails
         """
-        try:
-            logger.debug(f"Creating ArgumentSpecValidator with argspec keys: {list(argspec.keys())}")
+        logger.debug(f"Creating ArgumentSpecValidator with argspec keys: {list(argspec.keys())}")
+        
+        # Create validator - pass all parameters as kwargs
+        validator = ArgumentSpecValidator(
+            argument_spec=argspec.get('argument_spec', {}),
+            mutually_exclusive=argspec.get('mutually_exclusive'),
+            required_together=argspec.get('required_together'),
+            required_one_of=argspec.get('required_one_of'),
+            required_if=argspec.get('required_if'),
+            required_by=argspec.get('required_by')
+        )
+        
+        logger.debug(f"Validating {direction} data with keys: {list(data.keys())}")
+        
+        # Validate
+        result = validator.validate(data)
+        
+        # Check for errors
+        if result.error_messages:
+            error_msg = (
+                f"{direction.title()} validation failed: " +
+                ", ".join(result.error_messages)
+            )
+            raise AnsibleError(error_msg)
+        
+        logger.debug(f"Validation successful for {direction}")
+        return result
+    
+    def _get_play_id(self):
+        """
+        Get unique identifier for current play.
+        
+        Uses play name and hosts to create a unique ID.
+        """
+        task = self._task
+        play = getattr(task, '_play', None)
+        if play:
+            play_name = getattr(play, 'name', None) or 'unknown'
+            hosts = getattr(play, 'hosts', [])
+            hosts_str = ','.join(str(h) for h in hosts[:3])  # First 3 hosts for uniqueness
+            play_id = f"{play_name}::{hosts_str}"
+        else:
+            play_id = 'unknown_play'
+        return play_id
+    
+    def _get_task_uuid(self, task_vars):
+        """
+        Get unique identifier for current task.
+        
+        Uses play name, task name, and hostname to create a unique ID.
+        """
+        task = self._task
+        play = getattr(task, '_play', None)
+        play_name = getattr(play, 'name', None) or 'unknown'
+        task_name = getattr(task, 'name', None) or getattr(task, '_uuid', None) or 'unnamed'
+        hostname = task_vars.get('inventory_hostname', 'localhost')
+        # Use task's internal UUID if available, otherwise construct one
+        task_uuid = getattr(task, '_uuid', None) or f"{play_name}::{task_name}::{hostname}"
+        return str(task_uuid)
+    
+    def _get_tracking_file_path(self, play_id):
+        """
+        Get path to tracking file for this play (process-safe).
+        
+        Args:
+            play_id: Unique play identifier
             
-            # Create validator - pass all parameters as kwargs
-            validator = ArgumentSpecValidator(
-                argument_spec=argspec.get('argument_spec', {}),
-                mutually_exclusive=argspec.get('mutually_exclusive'),
-                required_together=argspec.get('required_together'),
-                required_one_of=argspec.get('required_one_of'),
-                required_if=argspec.get('required_if'),
-                required_by=argspec.get('required_by')
+        Returns:
+            Path to tracking file
+        """
+        import tempfile
+        tracking_dir = Path(tempfile.gettempdir()) / 'ansible_platform_tracking'
+        tracking_dir.mkdir(exist_ok=True)
+        # Sanitize play_id for filename
+        safe_play_id = play_id.replace('/', '_').replace(':', '_').replace(' ', '_')
+        return tracking_dir / f'playbook_{safe_play_id}.json'
+    
+    def _read_tracking_file(self, play_id):
+        """
+        Read tracking data from file (process-safe with file locking).
+        
+        Args:
+            play_id: Unique play identifier
+            
+        Returns:
+            dict with tracking data, or None if file doesn't exist
+        """
+        file_path = self._get_tracking_file_path(play_id)
+        if file_path.exists():
+            try:
+                with open(file_path, 'r') as f:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_SH)  # Shared lock for reading
+                    try:
+                        data = json.load(f)
+                        # Convert socket_paths list back to set
+                        if 'socket_paths' in data and isinstance(data['socket_paths'], list):
+                            data['socket_paths'] = set(data['socket_paths'])
+                        return data
+                    finally:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (IOError, json.JSONDecodeError) as e:
+                logger.warning(f"Error reading tracking file {file_path}: {e}")
+                return None
+        return None
+    
+    def _write_tracking_file(self, play_id, data):
+        """
+        Write tracking data to file (process-safe with file locking).
+        
+        Args:
+            play_id: Unique play identifier
+            data: dict with tracking data
+        """
+        file_path = self._get_tracking_file_path(play_id)
+        try:
+            # Convert socket_paths set to list for JSON serialization
+            data_copy = data.copy()
+            if 'socket_paths' in data_copy and isinstance(data_copy['socket_paths'], set):
+                data_copy['socket_paths'] = list(data_copy['socket_paths'])
+            
+            with open(file_path, 'w') as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)  # Exclusive lock for writing
+                try:
+                    json.dump(data_copy, f, indent=2)
+                    f.flush()
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except IOError as e:
+            logger.warning(f"Error writing tracking file {file_path}: {e}")
+    
+    def _delete_tracking_file(self, play_id):
+        """
+        Delete tracking file for this play.
+        
+        Args:
+            play_id: Unique play identifier
+        """
+        file_path = self._get_tracking_file_path(play_id)
+        try:
+            if file_path.exists():
+                file_path.unlink()
+                logger.debug(f"Deleted tracking file: {file_path}")
+        except Exception as e:
+            logger.debug(f"Could not delete tracking file {file_path}: {e}")
+    
+    def _initialize_playbook_tracking(self):
+        """
+        Initialize tracking for the current playbook.
+        
+        Counts total tasks in the play (pre_tasks + tasks + post_tasks).
+        Only initializes once per play.
+        """
+        play_id = self._get_play_id()
+        
+        # Check if already initialized (process-safe file read)
+        existing_tracking = self._read_tracking_file(play_id)
+        if existing_tracking is not None:
+            logger.debug(f"Playbook tracking already initialized for play '{play_id}'")
+            return
+        
+        # Initialize tracking (process-safe)
+        task = self._task
+        play = getattr(task, '_play', None)
+        
+        total_tasks = 0
+        if play:
+            # Count tasks in pre_tasks, tasks, and post_tasks
+            pre_tasks = getattr(play, 'pre_tasks', []) or []
+            tasks = getattr(play, 'tasks', []) or []
+            post_tasks = getattr(play, 'post_tasks', []) or []
+            
+            # Count all tasks (including tasks in blocks)
+            def count_tasks_in_list(task_list):
+                count = 0
+                for item in task_list:
+                    # Check if it's a block
+                    if hasattr(item, 'block') and item.block:
+                        # Count tasks in block
+                        count += count_tasks_in_list(item.block)
+                    elif hasattr(item, 'tasks') and item.tasks:
+                        # It's a block with tasks attribute
+                        count += count_tasks_in_list(item.tasks)
+                    else:
+                        # It's a regular task
+                        count += 1
+                return count
+            
+            total_tasks = (
+                count_tasks_in_list(pre_tasks) +
+                count_tasks_in_list(tasks) +
+                count_tasks_in_list(post_tasks)
+            )
+        
+        # Initialize tracking (process-safe file write)
+        tracking_data = {
+            'total_tasks': total_tasks,
+            'completed_tasks': 0,
+            'socket_paths': []
+        }
+        self._write_tracking_file(play_id, tracking_data)
+        
+        logger.info(
+            f"Initialized playbook tracking for play '{play_id}': "
+            f"{total_tasks} total tasks (file-based, process-safe)"
+        )
+    
+    def cleanup(self, force=False):
+        """
+        Clean up manager processes when all tasks in playbook complete.
+        
+        This method is called by Ansible after EACH task completes.
+        We track total tasks and completed tasks, and only shutdown when all are done.
+        
+        Args:
+            force: If True, force cleanup even if async is in use
+        """
+        # Call parent cleanup first
+        super().cleanup(force)
+        
+        # Import ProcessManager for cleanup
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
+            ProcessManager
+        )
+        
+        # Get play ID
+        try:
+            play_id = self._get_play_id()
+        except Exception as e:
+            logger.debug(f"Could not determine play ID for cleanup: {e}")
+            return
+        
+        # Read tracking data (process-safe)
+        tracking = self._read_tracking_file(play_id)
+        if tracking is None:
+            logger.debug(f"Play '{play_id}' not in tracking (may not have platform tasks)")
+            return
+        
+        # Increment completed tasks counter (process-safe with file locking)
+        # Use atomic read-modify-write pattern
+        tracking['completed_tasks'] = tracking.get('completed_tasks', 0) + 1
+        
+        total_tasks = tracking.get('total_tasks', 0)
+        completed_tasks = tracking['completed_tasks']
+        
+        # Convert socket_paths list to set if needed
+        if 'socket_paths' in tracking:
+            if isinstance(tracking['socket_paths'], list):
+                tracking['socket_paths'] = set(tracking['socket_paths'])
+        
+        logger.debug(
+            f"Task completed for play '{play_id}': "
+            f"{completed_tasks}/{total_tasks} tasks completed (process-safe)"
+        )
+        
+        # Write updated tracking (process-safe)
+        self._write_tracking_file(play_id, tracking)
+        
+        # Check if all tasks are done
+        if completed_tasks >= total_tasks:
+            logger.info(
+                f"All tasks completed for play '{play_id}' "
+                f"({completed_tasks}/{total_tasks}), shutting down manager processes..."
             )
             
-            logger.debug(f"Validating {direction} data with keys: {list(data.keys())}")
+            # Shutdown all managers used by this play
+            socket_paths = list(tracking.get('socket_paths', set()))
+            for socket_path in socket_paths:
+                self._shutdown_manager_process(socket_path, ProcessManager)
             
-            # Validate
-            result = validator.validate(data)
+            # Clean up tracking file
+            self._delete_tracking_file(play_id)
+            logger.info(f"Cleanup complete for play '{play_id}'")
+        else:
+            logger.debug(
+                f"Play '{play_id}' still has {total_tasks - completed_tasks} "
+                f"task(s) remaining, keeping managers alive"
+            )
+    
+    def _shutdown_manager_process(self, socket_path, ProcessManager):
+        """
+        Shutdown a specific manager process.
+        
+        Args:
+            socket_path: Socket path of the manager to shutdown
+            ProcessManager: ProcessManager class for cleanup utilities
+        """
+        process_info = BaseResourceActionPlugin._spawned_processes.get(socket_path)
+        if not process_info:
+            logger.debug(f"Manager {socket_path} not found in spawned processes")
+            return
+        
+        process = process_info['process']
+        authkey_b64 = process_info.get('authkey_b64')
+        
+        # Check if process is still running
+        if process.poll() is None:
+            logger.debug(f"Manager process still running at {socket_path}, shutting down...")
             
-            # Check for errors
-            if result.error_messages:
-                error_msg = (
-                    f"{direction.title()} validation failed: " +
-                    ", ".join(result.error_messages)
-                )
-                raise AnsibleError(error_msg)
-            
-            logger.debug(f"Validation successful for {direction}")
-            return result.validated_parameters
-            
+            try:
+                # Try graceful shutdown via RPC
+                if authkey_b64 and Path(socket_path).exists():
+                    try:
+                        authkey = base64.b64decode(authkey_b64)
+                        from .plugin_utils.manager.rpc_client import ManagerRPCClient
+                        client = ManagerRPCClient(process_info.get('gateway_url', ''), socket_path, authkey)
+                        # Call shutdown method
+                        try:
+                            shutdown_result = client.shutdown_manager()
+                            logger.debug(f"Sent shutdown signal to manager at {socket_path}: {shutdown_result}")
+                        except Exception as e:
+                            logger.debug(f"Shutdown RPC failed (manager may have already shut down): {e}")
+                        finally:
+                            client.close()
+                    except Exception as e:
+                        logger.debug(f"Could not connect for graceful shutdown: {e}")
+                
+                # Wait for graceful shutdown (max 5 seconds)
+                try:
+                    process.wait(timeout=5)
+                    logger.debug(f"Manager process at {socket_path} shut down gracefully")
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Manager process at {socket_path} did not shut down gracefully, forcing termination")
+                    process.terminate()
+                    time.sleep(1)
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+            except Exception as e:
+                logger.warning(f"Error shutting down manager at {socket_path}: {e}")
+                # Force kill as fallback
+                try:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+                except Exception:
+                    pass
+        
+        # Clean up socket file
+        try:
+            ProcessManager.cleanup_old_socket(socket_path)
+            logger.debug(f"Cleaned up socket file: {socket_path}")
         except Exception as e:
-            logger.error(f"Validation error: {e}", exc_info=True)
-            raise
+            logger.debug(f"Could not clean up socket file {socket_path}: {e}")
+        
+        # Remove from tracking
+        BaseResourceActionPlugin._spawned_processes.pop(socket_path, None)
     
     def _detect_operation(self, args: dict) -> str:
         """

@@ -1,105 +1,61 @@
-# Ansible Platform Collection
+# Architecture Diagrams
 
-## Changelog for v2.5.20250326
+This directory contains diagram specifications for the Ansible Platform Collection architecture.
 
-* Added support for setting URL for applications
+## Files
 
-## Description
+- **process_architecture.mmd** - Mermaid diagram (for GitHub, GitLab, etc.)
+- **process_architecture.puml** - PlantUML diagram (for documentation tools)
+- **process_architecture.dot** - Graphviz DOT format (for generating PNG/SVG)
 
-This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
+## How to Generate Diagrams
 
+### Mermaid (GitHub/GitLab)
 
-## Requirements
+Mermaid diagrams render automatically on GitHub and GitLab. Just include the `.mmd` file content in a markdown file:
 
-This collection supports python versions >=3.11 and requires an ansible-core version of >=2.16.0. 
-
-It also requires an existing install of Ansible Automation Platform as a target. 
-
-
-## Installation
-
-Before using this collection, you need to install it with the Ansible Galaxy command-line tool:
-
+```markdown
+```mermaid
+[content from process_architecture.mmd]
 ```
-ansible-galaxy collection install ansible.platform
 ```
 
-You can also include it in a requirements.yml file and install it with ansible-galaxy collection install -r requirements.yml, using the format:
+Or use online tools:
+- https://mermaid.live/
+- https://mermaid-js.github.io/mermaid-live-editor/
 
+### PlantUML
 
-```yaml
-collections:
-  - name: ansible.platform.
-```
+1. Install PlantUML: http://plantuml.com/starting
+2. Generate diagram:
+   ```bash
+   plantuml process_architecture.puml
+   ```
 
-Note that if you install any collections from Ansible Galaxy, they will not be upgraded automatically when you upgrade the Ansible package.
-To upgrade the collection to the latest available version, run the following command:
+Or use online tools:
+- http://www.plantuml.com/plantuml/uml/
+- VS Code extension: "PlantUML"
 
-```
-ansible-galaxy collection install ansible.platform --upgrade
-```
+### Graphviz (DOT)
 
-You can also install a specific version of the collection, for example, if you need to downgrade when something is broken in the latest version (please report an issue in this repository). Use the following syntax to install version 2.5.0:
+1. Install Graphviz: https://graphviz.org/download/
+2. Generate diagram:
+   ```bash
+   dot -Tpng process_architecture.dot -o process_architecture.png
+   dot -Tsvg process_architecture.dot -o process_architecture.svg
+   ```
 
-```
-ansible-galaxy collection install ansible.platform:==2.5.0
-```
+## Diagram Content
 
-See [using Ansible collections](https://docs.ansible.com/ansible/devel/user_guide/collections_using.html) for more details.
+All diagrams show:
+- **2 Processes**: Ansible Playbook Process + Manager Process
+- **Threads**: Main thread + worker threads in Manager Process
+- **Services**: PlatformService (shared instance)
+- **Communication**: Unix Socket (RPC) and HTTP/HTTPS
 
-## Use Cases
+## Key Points
 
-This collection can be used to automate to the creation of resources inside of the Ansible Automation Platform. Things such as users, organizations and teams can be created using this collection. 
-
-Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added. 
-
-## Authenticating to AAP in a playbook
-
-Connecting to AAP requires specifying authentication variables (the ones prefixed by `aap_` here) in the task. Alternatively, `AAP_` environment variables can also be set. For a complete list of authentication variables that can be used, please refer to the module specific documentations.
-
-```yaml
-- name: Manage AAP
-  hosts: localhost
-  tasks:
-    - name: Example for auth
-      ansible.platform.<module-name>:
-        your-module-parameters: parameter-values
-        aap_hostname: your-hostname
-        aap_username: your-username
-        aap_password: your-password
-```
-
-## Testing
-
-This collection is tested using integration tests which can be called via `ansible-test integration`. If you wish to run the tests manually, we recommend using the parent Makefile via `make collection-test`. It will require a running version of Ansible Automation Platform.
-
-The collection is tested against current version of Ansible Automation Platform.
-
-
-## Support
-
-This collection is supported by RedHat Engineering. Support cases can be opened at: https://access.redhat.com/support/
-
-## Release Notes and Roadmap
-
-Changelogs can be found in the changelogs directory. 
-
-
-## Related Information
-
-Please refer to Ansible Automation Platform Documentation for further documentation needs: https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5
-
-
-## License Information
-
-[GPLv3](https://github.com/ansible/ansible.platform/COPYING)
-
-## Authors
-
-[Sean Sullivan](https://github.com/sean-m-sullivan)
-[Martin Slemr](https://github.com/slemrmartin)
-[Jake Jackson](https://github.com/thedboubl3j)
-[Brennan Paciorek](https://github.com/brennanpaciorek)
-[John Westcott](https://github.com/john-westcott-iv)
-[Jessica Steurer](https://github.com/jay-steurer)
-[Bryan Havenstein](https://github.com/bhavenst)
+1. **Manager Process** creates PlatformService (the sharable resource)
+2. **PlatformManager** uses ThreadingMixIn for concurrent connections
+3. **PlatformService** is shared via RPC proxy to all action plugins
+4. **Persistent HTTP session** is reused across all tasks

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 import base64
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,13 @@ class ManagerRPCClient:
             ansible_data: Ansible dataclass instance
         
         Returns:
-            Result dict (Ansible format)
+            Result dict (Ansible format) with timing information
         """
         from dataclasses import asdict, is_dataclass
+        
+        # Performance timing: RPC call start
+        rpc_start = time.perf_counter()
+        logger.debug(f"⏱️  TIMING START: RPC call to manager (operation={operation}, module={module_name}, timestamp={rpc_start:.6f})")
         
         # Convert to dict for RPC
         if is_dataclass(ansible_data):
@@ -96,7 +101,35 @@ class ManagerRPCClient:
             data_dict
         )
         
+        # Performance timing: RPC call end
+        rpc_end = time.perf_counter()
+        rpc_elapsed = rpc_end - rpc_start
+        logger.debug(f"⏱️  TIMING END: RPC call to manager (elapsed={rpc_elapsed:.6f}s, timestamp={rpc_end:.6f})")
+        
+        # Add timing info to result if it's a dict
+        if isinstance(result_dict, dict):
+            result_dict.setdefault('_timing', {})['rpc_time'] = rpc_elapsed
+            result_dict['_timing']['rpc_start'] = rpc_start
+            result_dict['_timing']['rpc_end'] = rpc_end
+        
         return result_dict
+    
+    def shutdown_manager(self) -> dict:
+        """
+        Request manager to shutdown gracefully.
+        
+        Returns:
+            dict with shutdown status
+        """
+        try:
+            if hasattr(self, 'service_proxy') and self.service_proxy:
+                result = self.service_proxy.shutdown()
+                logger.debug(f"Manager shutdown response: {result}")
+                return result
+        except Exception as e:
+            logger.debug(f"Error calling shutdown on manager: {e}")
+            return {"status": "error", "error": str(e)}
+        return {"status": "not_connected"}
     
     def close(self) -> None:
         """Close connection to manager."""
