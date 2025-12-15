@@ -306,8 +306,26 @@ class BaseResourceActionPlugin(ActionBase):
         logger.info(f"    Type: {type(socket_path_from_taskvars)}")
         
         # Determine which source was used
-        socket_path = socket_path_from_hostvars or socket_path_from_taskvars
+        socket_path_raw = socket_path_from_hostvars or socket_path_from_taskvars
         socket_path_source = "hostvars" if socket_path_from_hostvars else ("task_vars" if socket_path_from_taskvars else "none")
+        
+        # CRITICAL: Convert to plain string explicitly (Fedora/_AnsibleTaggedStr compatibility)
+        # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
+        # On Fedora, BaseManager.address_type() is strict and rejects subclasses
+        if socket_path_raw is not None:
+            # Force conversion to plain Python str (not a subclass)
+            # Use string slicing or new string creation to ensure plain str type
+            socket_path = f"{socket_path_raw}"  # f-string forces plain str
+            # Double-check: ensure it's actually a plain str, not a subclass
+            if type(socket_path) is not str:
+                socket_path = str(socket_path)
+            logger.info(f"  Raw socket_path type: {type(socket_path_raw)}")
+            logger.info(f"  Converted socket_path type: {type(socket_path)}")
+            logger.info(f"  Is plain str (not subclass): {type(socket_path) is str}")
+            logger.info(f"  Socket path value: {socket_path}")
+        else:
+            socket_path = None
+        
         logger.info(f"  Selected socket_path: {socket_path}")
         logger.info(f"  Source: {socket_path_source}")
         
@@ -537,7 +555,20 @@ class BaseResourceActionPlugin(ActionBase):
                 authkey = base64.b64decode(actual_authkey_b64)
                 logger.info(f"Authkey decoded successfully (length: {len(authkey)} bytes)")
                 
-                client = ManagerRPCClient(gateway_config.base_url, actual_socket_path, authkey)
+                # CRITICAL: Ensure socket_path is a plain str (Fedora/_AnsibleTaggedStr compatibility)
+                # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
+                # On Fedora, BaseManager.address_type() is strict and rejects subclasses
+                # Force conversion to plain Python str using f-string
+                actual_socket_path_str = f"{actual_socket_path}"  # f-string forces plain str
+                # Double-check: ensure it's actually a plain str, not a subclass
+                if type(actual_socket_path_str) is not str:
+                    actual_socket_path_str = str(actual_socket_path_str)
+                logger.info(f"Socket path type before conversion: {type(actual_socket_path)}")
+                logger.info(f"Socket path after conversion: {actual_socket_path_str} (type: {type(actual_socket_path_str)})")
+                logger.info(f"Is plain str (not subclass): {type(actual_socket_path_str) is str}")
+                
+                # Pass plain string to ManagerRPCClient (Fedora compatibility)
+                client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
                 
                 # Track this task's manager
                 task_uuid = self._get_task_uuid(task_vars)
@@ -550,17 +581,18 @@ class BaseResourceActionPlugin(ActionBase):
                 logger.info(f"Task UUID: {task_uuid}")
                 logger.info(f"Task name: {task_name}")
                 logger.info(f"Play name: {play_name}")
-                logger.info(f"Manager socket: {actual_socket_path}")
+                logger.info(f"Manager socket: {actual_socket_path_str}")
                 logger.info(f"Host: {inventory_hostname}")
                 logger.info(f"Gateway URL: {gateway_config.base_url}")
-                logger.info(f"Task-to-manager mapping: {task_uuid} -> {actual_socket_path}")
+                logger.info(f"Task-to-manager mapping: {task_uuid} -> {actual_socket_path_str}")
                 
-                BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path
+                # Use string version for tracking (ensure consistency)
+                BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path_str
                 
                 # Log all tasks using this manager
                 tasks_using_this_manager = [
                     tid for tid, sock in BaseResourceActionPlugin._task_to_manager.items()
-                    if sock == actual_socket_path
+                    if str(sock) == actual_socket_path_str  # Compare as strings
                 ]
                 logger.info(f"Total tasks using this manager: {len(tasks_using_this_manager)}")
                 logger.info(f"Task IDs using this manager: {tasks_using_this_manager}")
@@ -572,15 +604,16 @@ class BaseResourceActionPlugin(ActionBase):
                     if 'socket_paths' in tracking:
                         if isinstance(tracking['socket_paths'], list):
                             tracking['socket_paths'] = set(tracking['socket_paths'])
-                        tracking['socket_paths'].add(actual_socket_path)
+                        tracking['socket_paths'].add(actual_socket_path_str)  # Store as string
                         self._write_tracking_file(play_id, tracking)
-                        logger.info(f"Updated playbook tracking: manager {actual_socket_path} registered")
+                        logger.info(f"Updated playbook tracking: manager {actual_socket_path_str} registered")
                 
                 logger.info("=" * 80)
                 
                 # Return client and updated facts (socket path may have changed)
+                # CRITICAL: Return string, not Path object (Fedora compatibility)
                 return client, {
-                    'platform_manager_socket': actual_socket_path,
+                    'platform_manager_socket': actual_socket_path_str,
                     'platform_manager_authkey': actual_authkey_b64
                 }
             except Exception as e:
@@ -673,7 +706,14 @@ class BaseResourceActionPlugin(ActionBase):
         
         # Connect to newly spawned manager
         logger.info("Connecting to newly spawned manager...")
-        client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
+        
+        # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
+        # BaseManager expects a string, not a Path object
+        socket_path_str = str(socket_path)
+        logger.info(f"Socket path type before conversion: {type(socket_path)}")
+        logger.info(f"Socket path after str() conversion: {socket_path_str} (type: {type(socket_path_str)})")
+        
+        client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
         
         # Track this task's manager
         task_uuid = self._get_task_uuid(task_vars)
@@ -686,18 +726,19 @@ class BaseResourceActionPlugin(ActionBase):
         logger.info(f"Task UUID: {task_uuid}")
         logger.info(f"Task name: {task_name}")
         logger.info(f"Play name: {play_name}")
-        logger.info(f"Manager socket: {socket_path}")
+        logger.info(f"Manager socket: {socket_path_str}")
         logger.info(f"Manager PID: {process.pid}")
         logger.info(f"Host: {inventory_hostname}")
         logger.info(f"Gateway URL: {gateway_config.base_url}")
-        logger.info(f"Task-to-manager mapping: {task_uuid} -> {socket_path}")
+        logger.info(f"Task-to-manager mapping: {task_uuid} -> {socket_path_str}")
         
-        BaseResourceActionPlugin._task_to_manager[task_uuid] = socket_path
+        # Use string version for tracking (ensure consistency)
+        BaseResourceActionPlugin._task_to_manager[task_uuid] = socket_path_str
         
         # Log all tasks using this manager
         tasks_using_this_manager = [
             tid for tid, sock in BaseResourceActionPlugin._task_to_manager.items()
-            if sock == socket_path
+            if str(sock) == socket_path_str  # Compare as strings
         ]
         logger.info(f"Total tasks using this manager: {len(tasks_using_this_manager)}")
         logger.info(f"Task IDs using this manager: {tasks_using_this_manager}")
@@ -710,15 +751,16 @@ class BaseResourceActionPlugin(ActionBase):
                 tracking['socket_paths'] = set()
             if isinstance(tracking['socket_paths'], list):
                 tracking['socket_paths'] = set(tracking['socket_paths'])
-            tracking['socket_paths'].add(socket_path)
+            tracking['socket_paths'].add(socket_path_str)  # Store as string
             self._write_tracking_file(play_id, tracking)
-            logger.info(f"Updated playbook tracking: manager {socket_path} registered")
+            logger.info(f"Updated playbook tracking: manager {socket_path_str} registered")
         
         logger.info("=" * 80)
         
         # Return client and facts to be set (facts will be set in run() method's result)
+        # CRITICAL: Return string, not Path object (Fedora compatibility)
         return client, {
-            'platform_manager_socket': socket_path,
+            'platform_manager_socket': socket_path_str,
             'platform_manager_authkey': authkey_b64,
             'gateway_url': gateway_config.base_url
         }
@@ -1085,7 +1127,9 @@ class BaseResourceActionPlugin(ActionBase):
                     try:
                         authkey = base64.b64decode(authkey_b64)
                         from .plugin_utils.manager.rpc_client import ManagerRPCClient
-                        client = ManagerRPCClient(process_info.get('gateway_url', ''), socket_path, authkey)
+                        # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
+                        socket_path_str = str(socket_path)
+                        client = ManagerRPCClient(process_info.get('gateway_url', ''), socket_path_str, authkey)
                         # Call shutdown method
                         try:
                             shutdown_result = client.shutdown_manager()

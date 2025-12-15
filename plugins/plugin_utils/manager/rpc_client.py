@@ -44,7 +44,17 @@ class ManagerRPCClient:
             authkey: Authentication key
         """
         self.base_url = base_url
-        self.socket_path = socket_path
+        # CRITICAL: Ensure socket_path is always a plain str (Fedora/_AnsibleTaggedStr compatibility)
+        # BaseManager.address must be a plain str type, not _AnsibleTaggedStr (str subclass) or Path object
+        # On Fedora, BaseManager.address_type() is strict and rejects subclasses
+        if socket_path is not None:
+            # Force conversion to plain Python str using f-string (not a subclass)
+            self.socket_path = f"{socket_path}"  # f-string forces plain str
+            # Double-check: ensure it's actually a plain str, not a subclass
+            if type(self.socket_path) is not str:
+                self.socket_path = str(self.socket_path)
+        else:
+            self.socket_path = socket_path
         self.authkey = authkey
         
         # Import manager class
@@ -54,9 +64,15 @@ class ManagerRPCClient:
         PlatformManager.register('get_platform_service')
         
         # Connect to manager
-        logger.debug(f"Connecting to manager at {socket_path}")
+        # CRITICAL: BaseManager.address must be a plain str type (not subclass)
+        # Use f-string to ensure plain str type
+        socket_path_str = f"{self.socket_path}" if self.socket_path is not None else self.socket_path
+        # Double-check: ensure it's actually a plain str
+        if socket_path_str is not None and type(socket_path_str) is not str:
+            socket_path_str = str(socket_path_str)
+        logger.debug(f"Connecting to manager at {socket_path_str} (type: {type(socket_path_str)}, is plain str: {type(socket_path_str) is str})")
         self.manager = PlatformManager(
-            address=socket_path,
+            address=socket_path_str,
             authkey=authkey
         )
         self.manager.connect()
