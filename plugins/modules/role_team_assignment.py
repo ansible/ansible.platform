@@ -137,7 +137,7 @@ EXAMPLES = '''
     state: absent
   register: result
 
-- name: Assign role using object_ansible_id
+- name: Role Team assignment using object_ansible_id
   ansible.platform.role_team_assignment:
     team: "APAC-BLR"
     assignment_objects:
@@ -146,6 +146,23 @@ EXAMPLES = '''
     state: present
   register: result
 
+- name: Check Role Team assignment exists
+  ansible.platform.role_team_assignment:
+    team: "APAC-BLR"
+    assignment_objects:
+      - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
+    role_definition: Organization Inventory Admin
+    state: exists
+    register: result
+
+- name: Role Team assignment
+  ansible.platform.role_team_assignment:
+    team: "APAC-BLR"
+    assignment_objects:
+      - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
+    role_definition: Organization Inventory Admin
+    state: absent
+    register: result  
 
 # FAILED SCENARIOS - These demonstrate unsupported role assignments that will fail
 
