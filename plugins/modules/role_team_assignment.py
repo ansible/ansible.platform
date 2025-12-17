@@ -81,6 +81,7 @@ extends_documentation_fragment:
 
 EXAMPLES = '''
 ---
+...
 # SUCCESSFUL SCENARIOS - These work correctly with supported roles
 
 - name: Assign Organization Inventory Admin role to a team
@@ -153,7 +154,7 @@ EXAMPLES = '''
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     role_definition: Organization Inventory Admin
     state: exists
-    register: result
+  register: result
 
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
@@ -162,7 +163,7 @@ EXAMPLES = '''
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     role_definition: Organization Inventory Admin
     state: absent
-    register: result  
+  register: result
 
 # FAILED SCENARIOS - These demonstrate unsupported role assignments that will fail
 
