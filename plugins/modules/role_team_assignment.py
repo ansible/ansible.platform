@@ -81,7 +81,6 @@ extends_documentation_fragment:
 
 EXAMPLES = '''
 ---
-...
 # SUCCESSFUL SCENARIOS - These work correctly with supported roles
 
 - name: Assign Organization Inventory Admin role to a team
