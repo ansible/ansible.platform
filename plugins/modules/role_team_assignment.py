@@ -75,12 +75,10 @@ options:
       type: str
 extends_documentation_fragment:
 - ansible.platform.auth
-...
 '''
 
 
 EXAMPLES = '''
----
 # SUCCESSFUL SCENARIOS - These work correctly with supported roles
 
 - name: Assign Organization Inventory Admin role to a team
