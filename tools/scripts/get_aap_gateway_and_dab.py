@@ -16,7 +16,7 @@ git checkout master >&2
 git pull origin master >&2
 git checkout -b bh-poc >&2
 git add . >&2
-git push -u origin bh-poc >&2
+# git push -u origin bh-poc >&2 # removed for not creating a branch on your repo
 
 echo "--- token extraction ---" >&2 
 
