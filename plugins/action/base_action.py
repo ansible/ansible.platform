@@ -6,6 +6,13 @@ Provides common functionality inherited by all resource action plugins.
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.errors import AnsibleError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import (
+    PlatformError,
+    AuthenticationError,
+    ValidationError,
+    NetworkError,
+    APIError
+)
 from ansible.module_utils.six import string_types
 from pathlib import Path
 import yaml
@@ -1197,4 +1204,28 @@ class BaseResourceActionPlugin(ActionBase):
         else:
             raise AnsibleError(f"Unknown state: {state}")
 
-
+    def _handle_exception(self, e):
+        result = {'failed': True}
+        if isinstance(e, PlatformError):
+            result['msg'] = str(e)
+            result['error_type'] = e.__class__.__name__
+            if hasattr(e, 'status_code') and e.status_code:
+                result['status_code'] = e.status_code
+            
+            if isinstance(e, AuthenticationError): 
+                 result['suggestion'] = "Check your gateway_username, gateway_password, or gateway_token."
+            elif isinstance(e, ValidationError):
+                 result['suggestion'] = "Check your playbook parameters."
+            elif isinstance(e, NetworkError):
+                 result['suggestion'] = "Check your gateway_hostname and network connectivity."
+            elif isinstance(e, APIError):
+                 result['suggestion'] = "The Gateway server returned an error. Check Gateway logs or try again later." 
+        elif isinstance(e, AnsibleError):
+            result['msg'] = str(e)
+            result['error_type'] = 'AnsibleError'
+        else:
+            result['msg'] = f"An unexpected error occurred: {str(e)}"
+            result['error_type'] = 'GeneralError'
+            import traceback
+            result['exception'] = traceback.format_exc()
+        return result

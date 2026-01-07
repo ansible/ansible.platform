@@ -278,14 +278,6 @@ class ActionModule(BaseResourceActionPlugin):
             self._display.vvv("=" * 80)
             
         except Exception as e:
-            self._display.vvv(f"❌ Error in action plugin: {e}")
-            result['failed'] = True
-            result['msg'] = str(e)
-            
-            # Include traceback in verbose mode
-            if self._display.verbosity >= 3:
-                import traceback
-                result['exception'] = traceback.format_exc()
+            return self._handle_exception(e)
         
         return result
-
