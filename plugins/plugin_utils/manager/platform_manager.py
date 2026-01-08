@@ -9,7 +9,7 @@ import logging
 import threading
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from dataclasses import asdict, is_dataclass
 from urllib.parse import urlparse, urlencode
 import requests
@@ -17,6 +17,21 @@ import requests
 from ..platform.registry import APIVersionRegistry
 from ..platform.loader import DynamicClassLoader
 from ..platform.types import EndpointOperation, TransformContext
+from ..platform.credential_manager import (
+    get_credential_manager,
+    CredentialStore,
+    TokenInfo
+)
+from ..platform.exceptions import (
+    PlatformError,
+    AuthenticationError,
+    NetworkError,
+    ValidationError,
+    APIError,
+    TimeoutError,
+    classify_exception
+)
+from ..platform.retry import retry_http_request, RetryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +77,24 @@ class PlatformService:
             request_timeout: Request timeout in seconds
         """
         self.base_url = base_url.rstrip('/')
-        self.username = username
-        self.password = password
-        self.oauth_token = oauth_token
         self.verify_ssl = verify_ssl
         self.request_timeout = request_timeout
+        
+        # Initialize credential manager and store credentials securely
+        self.credential_manager = get_credential_manager()
+        self.credential_store = self.credential_manager.get_or_create_store(
+            gateway_url=self.base_url,
+            username=username,
+            password=password,
+            oauth_token=oauth_token,
+            process_id=str(id(self))  # Use object ID as process identifier
+        )
+        
+        # Store namespace ID for credential operations
+        self.namespace_id = self.credential_store.namespace.namespace_id
+        
+        # Get credentials from store (they're stored securely there)
+        self.username, self.password, self.oauth_token = self.credential_store.get_auth_credentials()
         
         # Initialize persistent session (thread-safe)
         self.session = requests.Session()
@@ -76,12 +104,17 @@ class PlatformService:
             'Content-Type': 'application/json'
         })
         
+        # Track authentication state
+        self._auth_lock = threading.Lock()
+        self._last_auth_error = None
+        
         # Authenticate (with error handling)
         try:
             self._authenticate()
             logger.info("Authentication successful")
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
+            self._last_auth_error = e
             # Continue anyway - some operations might work without auth
         
         # Detect API version (cached for lifetime)
@@ -107,37 +140,428 @@ class PlatformService:
         # Shutdown flag
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
+        
+        # Retry configuration
+        self.retry_config = RetryConfig(
+            max_attempts=3,
+            initial_delay=1.0,
+            max_delay=60.0,
+            exponential_base=2.0,
+            jitter=True
+        )
+    
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = 'http_request',
+        resource: str = 'unknown',
+        **kwargs
+    ) -> requests.Response:
+        """
+        Make HTTP request with retry logic (using decorator pattern).
+        
+        This method uses the retry decorator to handle retries automatically.
+        
+        Args:
+            method: HTTP method ('get', 'post', 'put', 'patch', 'delete')
+            url: Request URL
+            operation: Operation name for error context
+            resource: Resource type for error context
+            **kwargs: Additional arguments for requests method
+            
+        Returns:
+            Response object
+            
+        Raises:
+            PlatformError: Classified platform error
+        """
+        # Create a retried version of the request function
+        @retry_http_request(config=self.retry_config)
+        def _execute_with_retry():
+            # Set default timeout and verify_ssl if not provided
+            request_kwargs = kwargs.copy()
+            if 'timeout' not in request_kwargs:
+                request_kwargs['timeout'] = self.request_timeout
+            if 'verify' not in request_kwargs:
+                request_kwargs['verify'] = self.verify_ssl
+            
+            # Get the appropriate session method
+            session_method = getattr(self.session, method.lower())
+            
+            # Track request count
+            with self._lock:
+                self._http_request_count += 1
+            
+            # Make the actual HTTP request
+            response = session_method(url, **request_kwargs)
+            
+            # Check for HTTP error status codes
+            if response.status_code >= 400:
+                # Handle 401 separately (authentication recovery)
+                if response.status_code == 401:
+                    # Try to recover authentication
+                    if self._handle_auth_error(response):
+                        # Retry the request after re-authentication
+                        response = session_method(url, **request_kwargs)
+                        if response.status_code == 401:
+                            # Still 401 after recovery attempt
+                            raise AuthenticationError(
+                                message=f"Authentication failed: HTTP {response.status_code}",
+                                operation=operation,
+                                resource=resource,
+                                details={
+                                    'status_code': response.status_code,
+                                    'url': url,
+                                    'response_body': response.text[:500]
+                                },
+                                status_code=response.status_code
+                            )
+                    else:
+                        # Authentication recovery failed
+                        raise AuthenticationError(
+                            message=f"Authentication failed: HTTP {response.status_code}",
+                            operation=operation,
+                            resource=resource,
+                            details={
+                                'status_code': response.status_code,
+                                'url': url,
+                                'response_body': response.text[:500]
+                            },
+                            status_code=response.status_code
+                        )
+                
+                # For other HTTP errors, raise APIError
+                # The decorator will determine if it's retryable
+                response.raise_for_status()  # Will raise requests.HTTPError
+            
+            return response
+        
+        # Execute with retry logic
+        return _execute_with_retry()
+        """
+        Make HTTP request with retry logic and error classification.
+        
+        Args:
+            method: HTTP method ('get', 'post', 'put', 'patch', 'delete')
+            url: Request URL
+            operation: Operation name for error context
+            resource: Resource type for error context
+            **kwargs: Additional arguments for requests method
+            
+        Returns:
+            Response object
+            
+        Raises:
+            PlatformError: Classified platform error
+        """
+        # Set default timeout and verify_ssl if not provided
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = self.request_timeout
+        if 'verify' not in kwargs:
+            kwargs['verify'] = self.verify_ssl
+        
+        # Get the appropriate session method
+        session_method = getattr(self.session, method.lower())
+        
+        # Track request count
+        with self._lock:
+            self._http_request_count += 1
+        
+        # Make request with retry logic
+        last_exception = None
+        for attempt in range(self.retry_config.max_attempts):
+            try:
+                response = session_method(url, **kwargs)
+                
+                # Check for HTTP error status codes
+                if response.status_code >= 400:
+                    # Handle 401 separately (authentication)
+                    if response.status_code == 401:
+                        # Try to recover authentication
+                        if self._handle_auth_error(response):
+                            # Retry the request after re-authentication
+                            if attempt < self.retry_config.max_attempts - 1:
+                                continue
+                        
+                        # Authentication failed
+                        raise AuthenticationError(
+                            message=f"Authentication failed: HTTP {response.status_code}",
+                            operation=operation,
+                            resource=resource,
+                            details={
+                                'status_code': response.status_code,
+                                'url': url,
+                                'response_body': response.text[:500]  # Limit response body
+                            },
+                            status_code=response.status_code
+                        )
+                    
+                    # Create APIError for other HTTP errors
+                    error = APIError(
+                        message=f"HTTP {response.status_code} error: {response.reason}",
+                        operation=operation,
+                        resource=resource,
+                        details={
+                            'status_code': response.status_code,
+                            'url': url,
+                            'response_body': response.text[:500]
+                        },
+                        status_code=response.status_code,
+                        response_body=response.json() if response.headers.get('content-type', '').startswith('application/json') else None
+                    )
+                    
+                    # Check if retryable and not last attempt
+                    if error.retryable and attempt < self.retry_config.max_attempts - 1:
+                        delay = self.retry_config.calculate_delay(attempt)
+                        logger.warning(
+                            f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
+                            f"after {delay:.2f}s: HTTP {response.status_code}"
+                        )
+                        import time
+                        time.sleep(delay)
+                        continue
+                    else:
+                        response.raise_for_status()  # Will raise requests.HTTPError
+                
+                return response
+            
+            except requests.exceptions.Timeout as e:
+                last_exception = e
+                if attempt < self.retry_config.max_attempts - 1:
+                    delay = self.retry_config.calculate_delay(attempt)
+                    logger.warning(
+                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
+                        f"after {delay:.2f}s: Timeout"
+                    )
+                    import time
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise TimeoutError(
+                        message=f"Request timed out after {self.retry_config.max_attempts} attempts: {str(e)}",
+                        operation=operation,
+                        resource=resource,
+                        details={'url': url, 'timeout': kwargs.get('timeout')},
+                        timeout_seconds=kwargs.get('timeout')
+                    )
+            
+            except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as e:
+                last_exception = e
+                if attempt < self.retry_config.max_attempts - 1:
+                    delay = self.retry_config.calculate_delay(attempt)
+                    logger.warning(
+                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
+                        f"after {delay:.2f}s: Network error"
+                    )
+                    import time
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise NetworkError(
+                        message=f"Network error after {self.retry_config.max_attempts} attempts: {str(e)}",
+                        operation=operation,
+                        resource=resource,
+                        details={'url': url, 'original_exception': str(e)},
+                        original_exception=e
+                    )
+            
+            except requests.exceptions.HTTPError as e:
+                # HTTPError from raise_for_status()
+                response = e.response
+                error = APIError(
+                    message=f"HTTP {response.status_code} error: {response.reason}",
+                    operation=operation,
+                    resource=resource,
+                    details={
+                        'status_code': response.status_code,
+                        'url': url,
+                        'response_body': response.text[:500]
+                    },
+                    status_code=response.status_code,
+                    response_body=response.json() if response.headers.get('content-type', '').startswith('application/json') else None
+                )
+                
+                if error.retryable and attempt < self.retry_config.max_attempts - 1:
+                    delay = self.retry_config.calculate_delay(attempt)
+                    logger.warning(
+                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
+                        f"after {delay:.2f}s: HTTP {response.status_code}"
+                    )
+                    import time
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise error
+            
+            except Exception as e:
+                # Classify and handle other exceptions
+                platform_error = classify_exception(e, operation, resource)
+                platform_error.details['url'] = url
+                
+                if platform_error.retryable and attempt < self.retry_config.max_attempts - 1:
+                    delay = self.retry_config.calculate_delay(attempt)
+                    logger.warning(
+                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
+                        f"after {delay:.2f}s: {type(e).__name__}"
+                    )
+                    import time
+                    time.sleep(delay)
+                    continue
+                else:
+                    raise platform_error
+        
+        # If we get here, all retries failed
+        if last_exception:
+            raise classify_exception(last_exception, operation, resource)
+        
+        raise RuntimeError(f"Request failed for {method.upper()} {url}")
     
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
-        # Use simple URL for auth - we don't know the API version yet
-        url = self.base_url
+        with self._auth_lock:
+            # Get fresh credentials from store
+            username, password, oauth_token = self.credential_store.get_auth_credentials()
+            
+            # Use simple URL for auth - we don't know the API version yet
+            url = self.base_url
+            
+            if oauth_token:
+                # OAuth token authentication
+                header = {"Authorization": f"Bearer {oauth_token}"}
+                self.session.headers.update(header)
+                try:
+                    response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+                    response.raise_for_status()
+                    logger.info("Authenticated using OAuth token")
+                    self._last_auth_error = None
+                except requests.RequestException as e:
+                    self._last_auth_error = e
+                    raise ValueError(f"Authentication error with token: {e}") from e
+            elif username and password:
+                # Basic authentication
+                basic_str = base64.b64encode(
+                    f"{username}:{password}".encode("ascii")
+                )
+                header = {"Authorization": f"Basic {basic_str.decode('ascii')}"}
+                self.session.headers.update(header)
+                try:
+                    response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+                    response.raise_for_status()
+                    logger.info("Authenticated using basic auth")
+                    self._last_auth_error = None
+                except requests.RequestException as e:
+                    self._last_auth_error = e
+                    raise ValueError(f"Authentication error: {e}") from e
+            else:
+                error_msg = "Either oauth_token or username/password must be provided"
+                self._last_auth_error = ValueError(error_msg)
+                raise ValueError(error_msg)
+    
+    def _check_token_expiration(self) -> Tuple[bool, Optional[float]]:
+        """
+        Check if current token is expired.
         
-        if self.oauth_token:
-            # OAuth token authentication
-            header = {"Authorization": f"Bearer {self.oauth_token}"}
-            self.session.headers.update(header)
+        Returns:
+            Tuple of (is_expired, seconds_until_expiry)
+        """
+        return self.credential_manager.check_token_expiration(self.namespace_id)
+    
+    def _refresh_token(self) -> bool:
+        """
+        Attempt to refresh OAuth token.
+        
+        Returns:
+            True if token was refreshed, False otherwise
+        """
+        with self._auth_lock:
+            if not self.credential_store.token_info:
+                logger.debug("No token info available for refresh")
+                return False
+            
+            token_info = self.credential_store.token_info
+            if not token_info.refresh_token:
+                logger.debug("No refresh token available")
+                return False
+            
+            # Attempt to refresh token
+            # Note: This is a placeholder - actual refresh endpoint depends on Gateway API
             try:
-                response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
-                response.raise_for_status()
-                logger.info("Authenticated using OAuth token")
-            except requests.RequestException as e:
-                raise ValueError(f"Authentication error with token: {e}") from e
-        elif self.username and self.password:
-            # Basic authentication
-            basic_str = base64.b64encode(
-                f"{self.username}:{self.password}".encode("ascii")
-            )
-            header = {"Authorization": f"Basic {basic_str.decode('ascii')}"}
-            self.session.headers.update(header)
-            try:
-                response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
-                response.raise_for_status()
-                logger.info("Authenticated using basic auth")
-            except requests.RequestException as e:
-                raise ValueError(f"Authentication error: {e}") from e
-        else:
-            raise ValueError("Either oauth_token or username/password must be provided")
+                # Gateway token refresh endpoint (if available)
+                refresh_url = f"{self.base_url}/api/gateway/v1/auth/token/refresh/"
+                response = self.session.post(
+                    refresh_url,
+                    json={"refresh_token": token_info.refresh_token},
+                    timeout=self.request_timeout,
+                    verify=self.verify_ssl
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    new_token = data.get('access_token')
+                    new_refresh_token = data.get('refresh_token', token_info.refresh_token)
+                    expires_in = data.get('expires_in')
+                    
+                    if new_token:
+                        self.credential_store.update_token(
+                            token=new_token,
+                            refresh_token=new_refresh_token,
+                            expires_in=expires_in
+                        )
+                        # Update session header
+                        self.session.headers.update({
+                            "Authorization": f"Bearer {new_token}"
+                        })
+                        logger.info("Token refreshed successfully")
+                        return True
+            except Exception as e:
+                logger.warning(f"Token refresh failed: {e}")
+            
+            return False
+    
+    def _re_authenticate(self) -> bool:
+        """
+        Re-authenticate using stored credentials.
+        
+        Returns:
+            True if re-authentication succeeded, False otherwise
+        """
+        try:
+            self._authenticate()
+            return True
+        except Exception as e:
+            logger.error(f"Re-authentication failed: {e}")
+            return False
+    
+    def _handle_auth_error(self, response: requests.Response) -> bool:
+        """
+        Handle authentication error (401) and attempt recovery.
+        
+        Args:
+            response: HTTP response with 401 status
+            
+        Returns:
+            True if authentication was recovered, False otherwise
+        """
+        if response.status_code != 401:
+            return False
+        
+        logger.warning("Received 401 Unauthorized, attempting to recover authentication")
+        
+        # Try token refresh first (if using OAuth)
+        _, _, oauth_token = self.credential_store.get_auth_credentials()
+        if oauth_token:
+            if self._refresh_token():
+                logger.info("Authentication recovered via token refresh")
+                return True
+        
+        # Fall back to re-authentication
+        if self._re_authenticate():
+            logger.info("Authentication recovered via re-authentication")
+            return True
+        
+        logger.error("Failed to recover authentication")
+        return False
     
     def _detect_version(self) -> str:
         """

@@ -66,21 +66,34 @@ class ProcessManager:
             import tempfile
             socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
         
+        # Create socket directory with user-only permissions (0700)
+        # This prevents other users from enumerating running jobs or accessing error logs
+        import os
         socket_dir.mkdir(exist_ok=True)
+        try:
+            # Set permissions to 0700 (user read/write/execute only)
+            os.chmod(socket_dir, 0o700)
+            logger.debug(f"Set socket directory permissions to 0700: {socket_dir}")
+        except OSError as e:
+            logger.warning(f"Failed to set socket directory permissions: {e}")
         
-        # Include credentials in socket path to ensure different credentials get different managers
+        # Include user ID and credentials in socket path to prevent collisions
+        # User ID ensures different users on same jump host don't collide
+        # Credential hash ensures different credentials get different managers
+        import hashlib
+        user_id = os.getuid()
+        
         if gateway_config:
-            import hashlib
             # Create a hash of credentials to include in socket path
             # This ensures different credentials = different socket path = different manager
             cred_string = f"{gateway_config.username or ''}:{gateway_config.password or ''}:{gateway_config.oauth_token or ''}"
             cred_hash = hashlib.sha256(cred_string.encode('utf-8')).hexdigest()[:8]
-            socket_path = str(socket_dir / f'manager_{identifier}_{cred_hash}.sock')
-            logger.debug(f"Including credentials in socket path (hash: {cred_hash[:4]}...)")
+            socket_path = str(socket_dir / f'manager_{user_id}_{identifier}_{cred_hash}.sock')
+            logger.debug(f"Including user ID ({user_id}) and credentials in socket path (hash: {cred_hash[:4]}...)")
         else:
-            # Backward compatibility: if no gateway_config, use old format
-            socket_path = str(socket_dir / f'manager_{identifier}.sock')
-            logger.debug("No gateway_config provided, using identifier-only socket path")
+            # Backward compatibility: if no gateway_config, use old format but still include user ID
+            socket_path = str(socket_dir / f'manager_{user_id}_{identifier}.sock')
+            logger.debug(f"Including user ID ({user_id}) in socket path (no gateway_config provided)")
         
         authkey = secrets.token_bytes(32)
         authkey_b64 = base64.b64encode(authkey).decode('utf-8')
