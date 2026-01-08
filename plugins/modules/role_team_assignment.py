@@ -23,6 +23,7 @@ notes:
   - Organization Member role cannot be assigned to teams.
   - Only resource-scoped organization roles (e.g. "Organization Inventory Admin", "Organization Credential Admin") can be meaningfully assigned to teams.
   - Attempting unsupported role assignments will result in errors.
+  - The ansible.platform RBAC modules currently perform role assignments via the AAP Gateway unified RBAC APIs. As a result, team-scoped role assignments are limited to what is supported by Gateway API today. Component-specific APIs (Controller, Hub, EDA) expose different RBAC semantics and are not yet supported for these operations within ansible.platform role_team_assignment module. This reflects current public API capabilities, not a limitation of the module design. Support for additional APIs may be introduced as RBAC capabilities converge across services.
 options:
     assignment_objects:
         description:
@@ -173,6 +174,7 @@ EXAMPLES = '''
     team: "{{ team.name }}"
     state: present
   register: result
+  ignore_errors: true
   # Error: Teams can only be assigned roles where all permissions are for the 'galaxy' service.
   # Role 'Platform Auditor' has non-galaxy permissions from EDA and Controller services.
   # This is expected and will fail.
@@ -186,6 +188,7 @@ EXAMPLES = '''
     team: "akash"
     state: present
   register: result
+  ignore_errors: true
   # Error: "Assigning organization member permission to teams is not allowed"
   # This is expected and will fail.
 ...
