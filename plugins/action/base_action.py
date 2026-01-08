@@ -184,12 +184,13 @@ class BaseResourceActionPlugin(ActionBase):
     
     def _get_or_spawn_manager(self, task_vars: dict):
         """
-        Get existing manager or spawn new one.
+        Get connection client based on connection mode.
         
         Also stores task_vars for use in cleanup() method.
         
-        Checks if a manager is already running (stored in hostvars).
-        If found, connects to it. If not, spawns a new manager process.
+        Connection modes:
+        - Standard mode (default): Returns DirectHTTPClient (direct HTTP, no persistent process)
+        - Experimental mode (opt-in): Returns ManagerRPCClient (persistent manager process)
         
         This method is Ansible-specific and handles Ansible constructs like
         task_vars, AnsibleError. The actual gateway config extraction and 
@@ -199,16 +200,14 @@ class BaseResourceActionPlugin(ActionBase):
             task_vars: Task variables from Ansible
         
         Returns:
-            Tuple of (ManagerRPCClient, facts_dict):
-            - ManagerRPCClient: The manager client instance
-            - facts_dict: Dict with facts to set (socket, authkey, gateway_url) 
-              if new manager was spawned, or None if reusing existing manager.
-              The caller should set these facts in the result dict with 
-              'ansible_facts' key and '_ansible_facts_cacheable': True.
+            Tuple of (client, facts_dict):
+            - client: DirectHTTPClient (standard) or ManagerRPCClient (experimental)
+            - facts_dict: Dict with facts to set (only for experimental mode)
+              None for standard mode (no facts needed)
         
         Raises:
             AnsibleError: If gateway URL is missing
-            RuntimeError: If manager fails to start
+            RuntimeError: If manager fails to start (experimental mode only)
         """
         import sys
         
@@ -216,12 +215,71 @@ class BaseResourceActionPlugin(ActionBase):
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import (
             extract_gateway_config
         )
+        
+        # Extract gateway configuration (includes connection_mode)
+        gateway_config = extract_gateway_config(
+            task_args=self._task.args,
+            host_vars=task_vars,
+            required=True
+        )
+        
+        # Route based on connection mode
+        if gateway_config.connection_mode == 'experimental':
+            # Experimental mode: Use persistent manager
+            return self._get_or_spawn_persistent_manager(task_vars, gateway_config)
+        else:
+            # Standard mode (default): Use direct HTTP client
+            return self._get_direct_client(task_vars, gateway_config)
+    
+    def _get_direct_client(self, task_vars: dict, gateway_config):
+        """
+        Get or create DirectHTTPClient for standard mode.
+        
+        Args:
+            task_vars: Task variables from Ansible
+            gateway_config: Gateway configuration
+        
+        Returns:
+            Tuple of (DirectHTTPClient, None):
+            - DirectHTTPClient: Direct HTTP client instance
+            - None: No facts to set (standard mode doesn't need facts)
+        """
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+        
+        logger.info("Using standard connection mode (DirectHTTPClient)")
+        
+        # Create direct HTTP client (new instance per task)
+        client = DirectHTTPClient(gateway_config)
+        
+        logger.info(f"DirectHTTPClient created for {gateway_config.base_url}")
+        
+        return client, None
+    
+    def _get_or_spawn_persistent_manager(self, task_vars: dict, gateway_config):
+        """
+        Get existing persistent manager or spawn new one (experimental mode).
+        
+        This is the original persistent manager logic, now only used when
+        connection_mode is 'experimental'.
+        
+        Args:
+            task_vars: Task variables from Ansible
+            gateway_config: Gateway configuration
+        
+        Returns:
+            Tuple of (ManagerRPCClient, facts_dict):
+            - ManagerRPCClient: The manager client instance
+            - facts_dict: Dict with facts to set (socket, authkey, gateway_url) 
+              if new manager was spawned, or None if reusing existing manager.
+        """
+        import sys
+        
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
             ProcessManager
         )
-        
-        # Import Ansible-specific modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+        
+        logger.info("Using experimental connection mode (Persistent Manager)")
         
         # Store task_vars for cleanup() method
         self._task_vars = task_vars
@@ -418,18 +476,8 @@ class BaseResourceActionPlugin(ActionBase):
         
         logger.info("=" * 80)
         
-        # Extract gateway configuration using platform SDK (generic)
-        try:
-            logger.debug("Extracting gateway configuration from task_args and host_vars")
-            gateway_config = extract_gateway_config(
-                task_args=self._task.args,
-                host_vars=host_vars,
-                required=True
-            )
-            logger.info(f"Gateway configuration extracted successfully: {gateway_config.base_url}")
-        except ValueError as e:
-            logger.error(f"Failed to extract gateway configuration: {e}")
-            raise AnsibleError(str(e)) from e
+        # Gateway config is already passed in, no need to extract again
+        logger.info(f"Using gateway configuration: {gateway_config.base_url}")
         
         # Generate expected socket path based on current credentials
         # This ensures we check for the correct manager (matching credentials)

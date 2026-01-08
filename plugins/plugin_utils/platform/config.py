@@ -24,6 +24,7 @@ class GatewayConfig:
     oauth_token: Optional[str] = None
     verify_ssl: bool = True
     request_timeout: float = 10.0
+    connection_mode: str = "standard"  # "standard" or "experimental"
     
     def __post_init__(self):
         """Normalize URL after initialization."""
@@ -115,6 +116,12 @@ def extract_gateway_config(
         host_vars.get('gateway_request_timeout') or 
         10.0
     )
+    # Connection mode: "standard" (default) or "experimental" (persistent manager)
+    connection_mode = (
+        task_args.get('platform_connection_mode') or
+        host_vars.get('platform_connection_mode') or
+        'standard'
+    )
     
     if required and not gateway_url:
         logger.error("Gateway URL is required but not found in task_args or host_vars")
@@ -132,7 +139,8 @@ def extract_gateway_config(
         password=gateway_password,
         oauth_token=gateway_token,
         verify_ssl=gateway_validate_certs,
-        request_timeout=gateway_request_timeout
+        request_timeout=gateway_request_timeout,
+        connection_mode=connection_mode
     )
     
     logger.debug(f"GatewayConfig created successfully")
