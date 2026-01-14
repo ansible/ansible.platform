@@ -433,7 +433,6 @@ class PlatformService:
                 try:
                     response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
                     response.raise_for_status()
-                    logger.info("Authenticated using OAuth token")
                     self._last_auth_error = None
                 except requests.RequestException as e:
                     self._last_auth_error = e
@@ -448,7 +447,6 @@ class PlatformService:
                 try:
                     response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
                     response.raise_for_status()
-                    logger.info("Authenticated using basic auth")
                     self._last_auth_error = None
                 except requests.RequestException as e:
                     self._last_auth_error = e
@@ -593,7 +591,6 @@ class PlatformService:
             if version_str.startswith('v'):
                 version_str = version_str[1:]
             
-            logger.info(f"Detected platform API version: {version_str}")
             return version_str
             
         except Exception as e:
@@ -652,12 +649,8 @@ class PlatformService:
         
         # Performance timing: Manager processing start
         manager_start = time.perf_counter()
-        logger.debug(f"⏱️  TIMING START: Manager processing (operation={operation}, module={module_name}, timestamp={manager_start:.6f})")
         
-        thread_id = threading.get_ident()
-        logger.info(
-            f"Executing {operation} on {module_name} [Thread: {thread_id}]"
-        )
+        logger.info(f"Executing {operation} on {module_name}")
         
         # Load version-appropriate classes
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(
@@ -697,15 +690,9 @@ class PlatformService:
             else:
                 raise ValueError(f"Unknown operation: {operation}")
             
-            logger.info(
-                f"Operation {operation} on {module_name} completed "
-                f"[Thread: {thread_id}]"
-            )
-            
             # Performance timing: Manager processing end
             manager_end = time.perf_counter()
             manager_elapsed = manager_end - manager_start
-            logger.debug(f"⏱️  TIMING END: Manager processing (elapsed={manager_elapsed:.6f}s, timestamp={manager_end:.6f})")
             
             # Extract API call time from context if available
             api_time = 0
@@ -731,14 +718,6 @@ class PlatformService:
                 with self._lock:
                     result['_timing']['http_request_count'] = self._http_request_count
                     result['_timing']['tls_handshake_count'] = self._tls_handshake_count
-                
-                # Log summary
-                logger.debug(
-                    f"⏱️  MANAGER SUMMARY: "
-                    f"Total={manager_elapsed:.3f}s | "
-                    f"Our Code={our_manager_code_time:.3f}s | "
-                    f"AAP Response={api_time:.3f}s"
-                )
             
             return result
             
@@ -1035,13 +1014,9 @@ class PlatformService:
             
             # Make API call
             logger.debug(f"Calling {endpoint_op.method} {url}")
-            logger.debug(f"Request data: {request_data}")
-            logger.debug(f"Request data keys: {list(request_data.keys())}")
-            
             # Performance timing: API call start
             import time
             api_start = time.perf_counter()
-            logger.debug(f"⏱️  TIMING START: API call ({endpoint_op.method} {url}, timestamp={api_start:.6f})")
             
             try:
                 # Increment HTTP request counter (thread-safe)
@@ -1060,7 +1035,6 @@ class PlatformService:
                 # Performance timing: API call end
                 api_end = time.perf_counter()
                 api_elapsed = api_end - api_start
-                logger.debug(f"⏱️  TIMING END: API call (elapsed={api_elapsed:.6f}s, timestamp={api_end:.6f})")
                 
                 # Store timing in context for later retrieval
                 if hasattr(context, 'timing'):

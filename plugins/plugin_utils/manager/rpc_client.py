@@ -102,7 +102,6 @@ class ManagerRPCClient:
         
         # Performance timing: RPC call start
         rpc_start = time.perf_counter()
-        logger.debug(f"⏱️  TIMING START: RPC call to manager (operation={operation}, module={module_name}, timestamp={rpc_start:.6f})")
         
         # Convert to dict for RPC
         if is_dataclass(ansible_data):
@@ -120,7 +119,6 @@ class ManagerRPCClient:
         # Performance timing: RPC call end
         rpc_end = time.perf_counter()
         rpc_elapsed = rpc_end - rpc_start
-        logger.debug(f"⏱️  TIMING END: RPC call to manager (elapsed={rpc_elapsed:.6f}s, timestamp={rpc_end:.6f})")
         
         # Add timing info to result if it's a dict
         if isinstance(result_dict, dict):

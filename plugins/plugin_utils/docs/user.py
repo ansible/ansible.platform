@@ -72,45 +72,14 @@ options:
     type: str
     choices: ['present', 'absent']
     default: 'present'
-    
-  gateway_hostname:
-    description:
-      - Gateway hostname
-    type: str
-    
-  gateway_username:
-    description:
-      - Gateway username for authentication
-    type: str
-    
-  gateway_password:
-    description:
-      - Gateway password for authentication
-    type: str
-    no_log: true
-    
-  gateway_token:
-    description:
-      - OAuth token for authentication
-    type: str
-    no_log: true
-    
-  gateway_validate_certs:
-    description:
-      - Whether to validate SSL certificates
-    type: bool
-    default: true
-    
-  gateway_request_timeout:
-    description:
-      - Request timeout in seconds
-    type: float
-    default: 10.0
+
+extends_documentation_fragment:
+  - ansible.platform.auth
+  - ansible.platform.state
 
 notes:
   - This module uses a persistent connection manager for improved performance
   - Multiple tasks in a playbook will reuse the same connection
   - The organizations and is_platform_auditor fields are deprecated
-  - Authentication requires either gateway_username/gateway_password or gateway_token
 """
 

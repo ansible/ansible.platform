@@ -118,9 +118,6 @@ class DynamicClassLoader:
         # Fallback: find any class starting with 'Ansible'
         for name, obj in inspect.getmembers(module, inspect.isclass):
             if name.startswith('Ansible'):
-                logger.warning(
-                    f"Using {name} instead of expected {class_name}"
-                )
                 return obj
         
         raise ValueError(
@@ -219,15 +216,11 @@ class DynamicClassLoader:
                 prefix = pattern.replace('*', '')
                 for name, cls in classes:
                     if name.startswith(prefix):
-                        logger.debug(
-                            f"Found {description}: {name} (pattern: {pattern})"
-                        )
                         return cls
             else:
                 # Exact match
                 for name, cls in classes:
                     if name == pattern:
-                        logger.debug(f"Found {description}: {name}")
                         return cls
         
         # Not found

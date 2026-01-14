@@ -6,76 +6,148 @@ This directory contains comprehensive documentation for the Ansible Platform Col
 
 ## Documentation Files
 
-### For Understanding the System
+### Core Architecture Documentation
 
 1. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete system architecture
    - High-level architecture diagrams
    - Component responsibilities
    - Data flow diagrams
    - Key design decisions
-   - Migration from legacy architecture
+   - Dual-mode connection support (standard vs experimental)
 
-2. **[IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)** - Step-by-step implementation guide
-   - Foundation components details
-   - Adding new resources
-   - Code generation
-   - Testing
-   - Troubleshooting
+2. **[ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md)** - Visual architecture diagrams
+   - High-level architecture diagrams
+   - Component architecture
+   - Data flow diagrams
+   - Sequence diagrams
 
-3. **[API_REFERENCE.md](API_REFERENCE.md)** - Complete API reference
-   - All component APIs
-   - Method signatures
-   - Parameters and return values
-   - Usage examples
+3. **[FLOW_EXPLANATION.md](FLOW_EXPLANATION.md)** - Detailed flow explanation
+   - Complete request flow (step-by-step)
+   - Component interactions
+   - Data transformation flow
+   - Version management
 
-### For Developers
+4. **[CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)** - Detailed code walkthrough
+   - Step-by-step execution flow with code snippets
+   - Line-by-line explanation of user module execution
+   - File locations and key functions
+   - Debugging tips and code examples
 
-4. **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)** - Developer workflow guide
+### Developer Documentation
+
+5. **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)** - Developer workflow guide
    - Getting started
    - Project structure
    - Development workflow
    - Code standards
    - Testing and debugging
 
-5. **[CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)** - Detailed code walkthrough
-   - Step-by-step execution flow with code snippets
-   - Line-by-line explanation of user module execution
-   - File locations and key functions
-   - Debugging tips and code examples
+6. **[API_REFERENCE.md](API_REFERENCE.md)** - Complete API reference
+   - All component APIs
+   - Method signatures
+   - Parameters and return values
+   - Usage examples
 
-6. **[PROCESS_ARCHITECTURE.md](PROCESS_ARCHITECTURE.md)** - Process, thread, and service architecture
-   - Process overview (2 processes)
-   - Thread architecture (main + worker threads)
-   - Service sharing mechanism
-   - Communication channels
-   - Diagram specifications (Mermaid, PlantUML, Graphviz)
+### Feature-Specific Documentation
 
-7. **[MANAGER_SHUTDOWN.md](MANAGER_SHUTDOWN.md)** - Manager process shutdown mechanism
-   - Current shutdown behavior
-   - Proposed solutions for graceful shutdown
-   - Implementation recommendations
-   - Cleanup strategies
+7. **[CREDENTIAL_HANDLING.md](CREDENTIAL_HANDLING.md)** - Credential management architecture
+   - Secure credential storage
+   - Credential isolation per process/namespace
+   - Token rotation and expiration
+   - Security threat assessment
+
+8. **[ERROR_TAXONOMY.md](ERROR_TAXONOMY.md)** - Error classification and retry logic
+   - Error taxonomy (PlatformError, AuthenticationError, etc.)
+   - Retry logic with exponential backoff
+   - Error message formatting
+   - Configurable retry settings
+
+9. **[SOCKET_SECURITY_FIXES.md](SOCKET_SECURITY_FIXES.md)** - Socket security implementation
+   - Socket directory permissions (0700)
+   - User ID in socket paths
+   - Security fixes for shared environments
+
+10. **[DATACLASS_ARCHITECTURE.md](DATACLASS_ARCHITECTURE.md)** - Dataclass design
+    - Ansible dataclasses vs API dataclasses
+    - Type safety and validation
+    - Data transformation patterns
+
+11. **[MOCK_GATEWAY.md](MOCK_GATEWAY.md)** - Mock Gateway server for testing
+    - Local HTTP server for API testing
+    - Testing different API versions
+    - Usage examples
+
+12. **[TURBO_MODULE_COMPARISON.md](TURBO_MODULE_COMPARISON.md)** - Comparison with Ansible Turbo Module
+    - Architecture comparison
+    - Use case analysis
+    - Decision rationale
+
+13. **[PROPOSAL_IMPLEMENTATION_MAPPING.md](PROPOSAL_IMPLEMENTATION_MAPPING.md)** - Detailed mapping of proposal to POC code
+    - Code snippets for each proposal requirement
+    - File locations and implementations
+    - Step-by-step code walkthrough
+    - Verification checklist
+
+14. **[POC_IMPLEMENTATION_GUIDE.md](POC_IMPLEMENTATION_GUIDE.md)** - POC implementation guide
+    - Architecture components overview
+    - Code walkthrough
+    - Quality tooling setup
+    - Demo guide
+
+15. **[DEMO_GUIDE.md](DEMO_GUIDE.md)** - Step-by-step demo guide
+    - Demo scripts and examples
+    - Presentation tips
+    - Troubleshooting
+
+16. **[STANDARD_MODE_IMPLEMENTATION.md](STANDARD_MODE_IMPLEMENTATION.md)** - Standard mode implementation details
+    - How proposal features work in DirectHTTPClient
+    - Code flow diagrams
+    - File locations and line numbers
+    - Verification examples
+
+17. **[API_VERSION_DISCOVERY_AND_CLASS_LOADING.md](API_VERSION_DISCOVERY_AND_CLASS_LOADING.md)** - Complete flow of API version discovery and dynamic class loading
+    - How APIVersionRegistry discovers versions from filesystem
+    - How DynamicClassLoader uses registry to load classes
+    - Step-by-step execution flow with code examples
+    - Real-world examples and scenarios
+
+18. **[SERIALIZATION_DESERIALIZATION_STANDARD_MODE.md](SERIALIZATION_DESERIALIZATION_STANDARD_MODE.md)** - Serialization and deserialization in standard mode
+    - Complete flow from Ansible input to API request and back
+    - How transform mixins handle data transformation
+    - JSON serialization/deserialization with requests library
+    - Complex transformations (e.g., organizations names ↔ IDs)
+    - Comparison with experimental mode
+
+19. **[AUTH_PARAMS_VALIDATION.md](AUTH_PARAMS_VALIDATION.md)** - Authentication parameters and validation
+    - Why auth params are not in module DOCUMENTATION
+    - How documentation fragments work
+    - Why auth params are excluded from module validation
+    - How auth params are handled separately for connection configuration
+
+20. **[ADDING_NEW_API_VERSION.md](ADDING_NEW_API_VERSION.md)** - Adding a new API version explained
+    - What "No changes required to existing v1 code or action plugins" means
+    - Why action plugins are version-agnostic
+    - How automatic version discovery works
+    - Step-by-step example of adding v2 support
 
 ## Quick Start
 
 ### For New Developers
 
 1. **Start Here**: Read [ARCHITECTURE.md](ARCHITECTURE.md) to understand the system
-2. **Process Architecture**: Read [PROCESS_ARCHITECTURE.md](PROCESS_ARCHITECTURE.md) for process/thread/service details
+2. **Visual Overview**: Review [ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md) for visual diagrams
 3. **Flow Overview**: Read [FLOW_EXPLANATION.md](FLOW_EXPLANATION.md) for high-level flow
 4. **Code Details**: Read [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md) for detailed step-by-step execution
-5. **Implementation**: Read [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for details
-6. **Development**: Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for workflow
-7. **Reference**: Use [API_REFERENCE.md](API_REFERENCE.md) as needed
+5. **Development**: Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for workflow
+6. **Reference**: Use [API_REFERENCE.md](API_REFERENCE.md) as needed
 
 ### For AI Agents
 
 1. **Context Loading**: Read all documentation files in order:
    - ARCHITECTURE.md (system overview)
-   - PROCESS_ARCHITECTURE.md (process/thread/service architecture)
+   - ARCHITECTURE_DIAGRAMS.md (visual diagrams)
    - FLOW_EXPLANATION.md (high-level flow)
    - CODE_WALKTHROUGH.md (detailed step-by-step execution with code)
-   - IMPLEMENTATION_GUIDE.md (implementation details)
    - API_REFERENCE.md (component APIs)
    - DEVELOPER_GUIDE.md (workflow patterns)
 
@@ -96,30 +168,32 @@ This directory contains comprehensive documentation for the Ansible Platform Col
 
 ```
 docs/
-├── README.md                 # This file
-├── ARCHITECTURE.md           # System architecture
-├── FLOW_EXPLANATION.md       # High-level flow explanation
-├── CODE_WALKTHROUGH.md       # Detailed step-by-step code walkthrough
-├── PROCESS_ARCHITECTURE.md   # Process, thread, and service architecture
-├── IMPLEMENTATION_GUIDE.md   # Implementation details
-├── API_REFERENCE.md          # API documentation
-├── DEVELOPER_GUIDE.md        # Developer workflow
-├── MANAGER_SHUTDOWN.md       # Manager process shutdown mechanism
-├── QUICK_REFERENCE.md        # Quick reference for AI agents
-└── diagrams/                 # Diagram specifications
-    ├── README.md             # How to generate diagrams
-    ├── process_architecture.mmd  # Mermaid diagram
-    ├── process_architecture.puml # PlantUML diagram
-    └── process_architecture.dot  # Graphviz DOT diagram
+├── README.md                    # This file
+├── ARCHITECTURE.md              # System architecture
+├── ARCHITECTURE_DIAGRAMS.md     # Visual architecture diagrams
+├── FLOW_EXPLANATION.md          # High-level flow explanation
+├── CODE_WALKTHROUGH.md          # Detailed step-by-step code walkthrough
+├── API_REFERENCE.md             # API documentation
+├── DEVELOPER_GUIDE.md           # Developer workflow
+├── CREDENTIAL_HANDLING.md       # Credential management
+├── ERROR_TAXONOMY.md            # Error classification and retry logic
+├── SOCKET_SECURITY_FIXES.md     # Socket security implementation
+├── DATACLASS_ARCHITECTURE.md    # Dataclass design
+├── MOCK_GATEWAY.md              # Mock Gateway server for testing
+├── TURBO_MODULE_COMPARISON.md   # Comparison with Ansible Turbo Module
+├── DOCUMENTATION_INDEX.md       # Complete documentation index
+└── reusables/                   # Reusable documentation fragments
+    └── variables.md
 ```
 
 ## Key Architecture Principles
 
-1. **Manager-Side Transformations**: All transformations happen in the persistent manager
-2. **Round-Trip Data Contract**: Output format matches input format
-3. **Generic Manager**: Resource-agnostic, works for all modules
-4. **Dynamic Version Management**: Filesystem-based discovery
-5. **Persistent Connections**: Reuse HTTP sessions across tasks
+1. **Dual-Mode Connections**: Support for both standard (direct HTTP) and experimental (persistent manager) modes
+2. **Manager-Side Transformations**: All transformations happen in the connection layer (manager or direct client)
+3. **Round-Trip Data Contract**: Output format matches input format
+4. **Generic Manager**: Resource-agnostic, works for all modules
+5. **Dynamic Version Management**: Filesystem-based API version discovery
+6. **Shared Layers**: Both connection modes use the same layers (version detection, error handling, credentials, CRUD)
 
 ## Component Locations
 
@@ -149,9 +223,19 @@ When adding new features or components:
 
 - **Architecture Questions**: See [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Flow Questions**: See [FLOW_EXPLANATION.md](FLOW_EXPLANATION.md) or [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)
-- **Implementation Questions**: See [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)
 - **API Questions**: See [API_REFERENCE.md](API_REFERENCE.md)
 - **Development Questions**: See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)
-- **Shutdown/Cleanup Questions**: See [MANAGER_SHUTDOWN.md](MANAGER_SHUTDOWN.md)
+- **Credential Questions**: See [CREDENTIAL_HANDLING.md](CREDENTIAL_HANDLING.md)
+- **Error Handling Questions**: See [ERROR_TAXONOMY.md](ERROR_TAXONOMY.md)
+- **Complete Index**: See [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) for all documentation
+
+## Related Resources
+
+- **Refactoring Plan**: `../REFACTORING_PLAN.md` - Dual-mode connection refactoring plan
+- **Refactoring Summary**: `../REFACTORING_SUMMARY.md` - Refactoring implementation summary
+- **Collection README**: `../README.md` - Main collection README
+- **Changelog**: `../CHANGELOG.rst` - Collection changelog
+- **Requirements**: `../requirements/requirements_dev.txt` - Development requirements
+- **Tests**: `../tests/` - Test suite
 
 

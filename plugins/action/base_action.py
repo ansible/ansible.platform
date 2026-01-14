@@ -9,6 +9,7 @@ from ansible.errors import AnsibleError
 from ansible.module_utils.six import string_types
 from pathlib import Path
 import yaml
+import importlib.util
 import logging
 import tempfile
 import secrets
@@ -284,58 +285,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Store task_vars for cleanup() method
         self._task_vars = task_vars
         
-        # Trace playcontext availability
-        logger.info("=" * 80)
-        logger.info("TRACING PLAYCONTEXT AVAILABILITY")
-        logger.info("=" * 80)
-        
-        # Check if _play_context attribute exists
-        has_play_context_attr = hasattr(self, '_play_context')
-        logger.info(f"hasattr(self, '_play_context'): {has_play_context_attr}")
-        
-        if has_play_context_attr:
-            play_context = getattr(self, '_play_context', None)
-            logger.info(f"self._play_context is not None: {play_context is not None}")
-            if play_context is not None:
-                logger.info(f"self._play_context type: {type(play_context)}")
-                logger.info(f"self._play_context attributes: {dir(play_context)}")
-                # Log some common play_context attributes if they exist
-                for attr in ['remote_addr', 'remote_user', 'connection', 'become', 'become_user', 'become_method']:
-                    if hasattr(play_context, attr):
-                        value = getattr(play_context, attr, None)
-                        logger.info(f"self._play_context.{attr}: {value}")
-        else:
-            logger.warning("self._play_context attribute does not exist")
-        
-        # Check if _play attribute exists (another way play context might be accessed)
-        has_play_attr = hasattr(self, '_play')
-        logger.info(f"hasattr(self, '_play'): {has_play_attr}")
-        if has_play_attr:
-            play = getattr(self, '_play', None)
-            logger.info(f"self._play is not None: {play is not None}")
-            if play is not None:
-                logger.info(f"self._play type: {type(play)}")
-                logger.info(f"self._play attributes: {dir(play)}")
-        
-        # Check if _task attribute exists
-        has_task_attr = hasattr(self, '_task')
-        logger.info(f"hasattr(self, '_task'): {has_task_attr}")
-        if has_task_attr:
-            task = getattr(self, '_task', None)
-            logger.info(f"self._task is not None: {task is not None}")
-            if task is not None:
-                logger.info(f"self._task type: {type(task)}")
-                # Check if task has play_context
-                if hasattr(task, '_play_context'):
-                    task_play_context = getattr(task, '_play_context', None)
-                    logger.info(f"self._task._play_context is not None: {task_play_context is not None}")
-                    if task_play_context is not None:
-                        logger.info(f"self._task._play_context type: {type(task_play_context)}")
-        
-        # Check all instance attributes that might contain play context
-        logger.info(f"All instance attributes: {[attr for attr in dir(self) if not attr.startswith('__')]}")
-        logger.info("=" * 80)
-        
         # Initialize playbook task tracking if this is the first task
         self._initialize_playbook_tracking()
         
@@ -345,145 +294,39 @@ class BaseResourceActionPlugin(ActionBase):
         host_vars = hostvars.get(inventory_hostname, {})
         
         logger.info(f"Getting or spawning manager for host: {inventory_hostname}")
-        logger.debug(f"Host vars keys: {list(host_vars.keys())}")
-        logger.debug(f"All task_vars keys: {list(task_vars.keys())}")
         
         # Check both hostvars and top-level task_vars (facts might be in either location)
-        logger.info("=" * 80)
-        logger.info("SOCKET PATH RETRIEVAL")
-        logger.info("=" * 80)
-        logger.info(f"Retrieving socket path from facts...")
-        logger.info(f"  Checking hostvars['{inventory_hostname}']['platform_manager_socket']...")
         socket_path_from_hostvars = host_vars.get('platform_manager_socket')
-        logger.info(f"    Value from hostvars: {socket_path_from_hostvars}")
-        logger.info(f"    Type: {type(socket_path_from_hostvars)}")
-        
-        logger.info(f"  Checking task_vars['platform_manager_socket']...")
         socket_path_from_taskvars = task_vars.get('platform_manager_socket')
-        logger.info(f"    Value from task_vars: {socket_path_from_taskvars}")
-        logger.info(f"    Type: {type(socket_path_from_taskvars)}")
-        
-        # Determine which source was used
         socket_path_raw = socket_path_from_hostvars or socket_path_from_taskvars
-        socket_path_source = "hostvars" if socket_path_from_hostvars else ("task_vars" if socket_path_from_taskvars else "none")
         
         # CRITICAL: Convert to plain string explicitly (Fedora/_AnsibleTaggedStr compatibility)
         # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
-        # On Fedora, BaseManager.address_type() is strict and rejects subclasses
         if socket_path_raw is not None:
-            # Force conversion to plain Python str (not a subclass)
-            # Use string slicing or new string creation to ensure plain str type
             socket_path = f"{socket_path_raw}"  # f-string forces plain str
-            # Double-check: ensure it's actually a plain str, not a subclass
             if type(socket_path) is not str:
                 socket_path = str(socket_path)
-            logger.info(f"  Raw socket_path type: {type(socket_path_raw)}")
-            logger.info(f"  Converted socket_path type: {type(socket_path)}")
-            logger.info(f"  Is plain str (not subclass): {type(socket_path) is str}")
-            logger.info(f"  Socket path value: {socket_path}")
         else:
             socket_path = None
         
-        logger.info(f"  Selected socket_path: {socket_path}")
-        logger.info(f"  Source: {socket_path_source}")
-        
-        logger.info(f"Retrieving authkey from facts...")
-        logger.info(f"  Checking hostvars['{inventory_hostname}']['platform_manager_authkey']...")
+        # Get authkey from facts
         authkey_from_hostvars = host_vars.get('platform_manager_authkey')
-        logger.info(f"    Present: {bool(authkey_from_hostvars)}")
-        logger.info(f"    Length: {len(authkey_from_hostvars) if authkey_from_hostvars else 0}")
-        
-        logger.info(f"  Checking task_vars['platform_manager_authkey']...")
         authkey_from_taskvars = task_vars.get('platform_manager_authkey')
-        logger.info(f"    Present: {bool(authkey_from_taskvars)}")
-        logger.info(f"    Length: {len(authkey_from_taskvars) if authkey_from_taskvars else 0}")
-        
         authkey_b64 = authkey_from_hostvars or authkey_from_taskvars
-        authkey_source = "hostvars" if authkey_from_hostvars else ("task_vars" if authkey_from_taskvars else "none")
-        logger.info(f"  Selected authkey source: {authkey_source}")
-        logger.info(f"  Final authkey present: {bool(authkey_b64)}")
-        logger.info(f"  Final authkey length: {len(authkey_b64) if authkey_b64 else 0}")
         
-        logger.info("=" * 80)
-        logger.info("SOCKET FILE VALIDATION")
-        logger.info("=" * 80)
-        
+        # Validate socket file if found
         if socket_path:
-            logger.info(f"Validating socket file: {socket_path}")
             socket_file = Path(socket_path)
-            
-            # Check if path is absolute
-            logger.info(f"  Path is absolute: {socket_file.is_absolute()}")
-            logger.info(f"  Path resolved: {socket_file.resolve()}")
-            
-            # Check if file exists
             socket_exists = socket_file.exists()
-            logger.info(f"  File exists: {socket_exists}")
-            
-            if socket_exists:
-                try:
-                    stat_info = socket_file.stat()
-                    logger.info(f"  File size: {stat_info.st_size} bytes")
-                    logger.info(f"  File mode: {oct(stat_info.st_mode)}")
-                    logger.info(f"  File UID: {stat_info.st_uid}")
-                    logger.info(f"  File GID: {stat_info.st_gid}")
-                    logger.info(f"  Modified time: {stat_info.st_mtime}")
-                    
-                    # Check if it's actually a socket
-                    is_socket = socket_file.is_socket()
-                    logger.info(f"  Is socket file: {is_socket}")
-                    
-                    # Check if it's a regular file (stale socket)
-                    is_file = socket_file.is_file()
-                    logger.info(f"  Is regular file: {is_file}")
-                    
-                    # Check parent directory
-                    parent_dir = socket_file.parent
-                    logger.info(f"  Parent directory: {parent_dir}")
-                    logger.info(f"  Parent exists: {parent_dir.exists()}")
-                    logger.info(f"  Parent is directory: {parent_dir.is_dir()}")
-                    if parent_dir.exists():
-                        logger.info(f"  Parent permissions: {oct(parent_dir.stat().st_mode)}")
-                    
-                    # Check if socket is readable/writable
-                    logger.info(f"  Socket readable: {os.access(socket_path, os.R_OK)}")
-                    logger.info(f"  Socket writable: {os.access(socket_path, os.W_OK)}")
-                    
-                    if is_socket:
-                        logger.info(f"✅ Socket file exists and is a valid Unix socket")
-                    elif is_file:
-                        logger.warning(f"⚠️  Socket path exists but is a regular file (stale socket?)")
-                    else:
-                        logger.warning(f"⚠️  Socket path exists but is not a socket or file")
-                        
-                except OSError as e:
-                    logger.error(f"  Error accessing socket file: {e}")
-                    logger.error(f"  Error type: {type(e).__name__}")
-                    socket_exists = False
-            else:
-                logger.info(f"  Socket file does not exist")
-                # Check if parent directory exists
-                parent_dir = socket_file.parent
-                logger.info(f"  Parent directory: {parent_dir}")
-                logger.info(f"  Parent exists: {parent_dir.exists()}")
-                if not parent_dir.exists():
-                    logger.warning(f"  ⚠️  Parent directory does not exist - socket cannot be created here")
-            
-            logger.info(f"✅ Found socket path in facts: {socket_path} (from {socket_path_source})")
+            if socket_exists and not socket_file.is_socket():
+                logger.warning(f"Socket path exists but is not a valid socket: {socket_path}")
+                socket_exists = False
         else:
-            logger.info("❌ No socket path found in facts")
-            logger.info("  Will need to spawn new manager")
-        
-        logger.info("=" * 80)
-        
-        # Gateway config is already passed in, no need to extract again
-        logger.info(f"Using gateway configuration: {gateway_config.base_url}")
+            socket_exists = False
         
         # Generate expected socket path based on current credentials
-        # This ensures we check for the correct manager (matching credentials)
         import tempfile
         socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
-        logger.debug(f"Generating connection info for identifier: {inventory_hostname}, socket_dir: {socket_dir}")
         
         # Generate expected connection info with current credentials
         expected_conn_info = ProcessManager.generate_connection_info(
@@ -493,157 +336,47 @@ class BaseResourceActionPlugin(ActionBase):
         )
         expected_socket_path = expected_conn_info.socket_path
         
-        logger.info("=" * 80)
-        logger.info("MANAGER PATH VALIDATION AND COMPARISON")
-        logger.info("=" * 80)
-        logger.info(f"Generating expected socket path based on current credentials...")
-        logger.info(f"  Identifier: {inventory_hostname}")
-        logger.info(f"  Socket directory: {socket_dir}")
-        logger.info(f"  Gateway URL: {gateway_config.base_url}")
-        logger.info(f"  Expected socket path: {expected_socket_path}")
-        logger.info(f"")
-        logger.info(f"Comparing stored vs expected socket paths...")
-        logger.info(f"  Stored socket path (from facts): {socket_path}")
-        logger.info(f"  Expected socket path (current creds): {expected_socket_path}")
-        
-        if socket_path:
-            paths_match = socket_path == expected_socket_path
-            logger.info(f"  Paths match: {paths_match}")
-            if not paths_match:
-                logger.info(f"  Path difference:")
-                logger.info(f"    Stored:    {socket_path}")
-                logger.info(f"    Expected: {expected_socket_path}")
-                # Show character-by-character comparison if similar
-                if len(socket_path) == len(expected_socket_path):
-                    diff_chars = [i for i, (a, b) in enumerate(zip(socket_path, expected_socket_path)) if a != b]
-                    if diff_chars:
-                        logger.info(f"    First difference at position: {diff_chars[0]}")
-        else:
-            logger.info(f"  Paths match: N/A (no stored path)")
-        
         # Check if manager with matching credentials already exists
-        # First check the stored socket path (for backward compatibility)
-        # Then check the expected socket path (credential-aware)
         manager_found = False
         actual_socket_path = None
         actual_authkey_b64 = None
         
-        logger.info("")
-        logger.info("Checking stored socket path...")
         if socket_path and authkey_b64:
             stored_path_exists = Path(socket_path).exists()
-            logger.info(f"  Stored socket path: {socket_path}")
-            logger.info(f"  Authkey present: {bool(authkey_b64)}")
-            logger.info(f"  Socket file exists: {stored_path_exists}")
-            
             if stored_path_exists:
                 # Check if stored socket path matches expected (same credentials)
                 if socket_path == expected_socket_path:
-                    logger.info(f"  ✅ Stored socket path matches expected path - same credentials")
-                    logger.info(f"     This indicates we're reusing the same manager")
                     manager_found = True
                     actual_socket_path = socket_path
                     actual_authkey_b64 = authkey_b64
+                    logger.info(f"Found existing manager: {socket_path}")
                 else:
-                    logger.info("=" * 80)
-                    logger.info("⚠️  CREDENTIAL MISMATCH DETECTED")
-                    logger.info("=" * 80)
-                    logger.info(f"   Stored socket path: {socket_path}")
-                    logger.info(f"   Expected socket path: {expected_socket_path}")
-                    logger.info(f"   The stored path exists but doesn't match expected path")
-                    logger.info(f"   This suggests credentials changed - will spawn new manager")
-            else:
-                logger.info(f"  ⚠️  Stored socket path in facts but file does not exist")
-                logger.info(f"     Manager may have crashed or been cleaned up")
-        else:
-            if not socket_path:
-                logger.info(f"  ❌ No socket path in facts")
-            if not authkey_b64:
-                logger.info(f"  ❌ No authkey in facts")
+                    logger.info(f"Credentials changed, will spawn new manager")
         
         # Also check if expected socket path exists (in case facts weren't updated)
-        logger.info("")
-        logger.info("Checking expected socket path (fallback check)...")
-        if not manager_found:
-            expected_path_exists = Path(expected_socket_path).exists()
-            logger.info(f"  Expected socket path: {expected_socket_path}")
-            logger.info(f"  Socket file exists: {expected_path_exists}")
-            logger.info(f"  Authkey available: {bool(authkey_b64)}")
-            
-            if expected_path_exists and authkey_b64:
-                logger.info("=" * 80)
-                logger.info("✅ FOUND MANAGER AT EXPECTED PATH (facts may not be updated)")
-                logger.info("=" * 80)
-                logger.info(f"   Expected socket path exists: {expected_socket_path}")
-                logger.info(f"   Using stored authkey from facts")
-                logger.info(f"   This suggests facts weren't updated but manager is running")
-                # Use expected socket path and stored authkey
-                manager_found = True
-                actual_socket_path = expected_socket_path
-                actual_authkey_b64 = authkey_b64
-            else:
-                if not expected_path_exists:
-                    logger.info(f"  ❌ Expected socket path does not exist")
-                if not authkey_b64:
-                    logger.info(f"  ❌ Authkey not available")
-        
-        logger.info("=" * 80)
-        logger.info(f"Manager reuse decision: {'✅ REUSE EXISTING' if manager_found else '🆕 SPAWN NEW'}")
-        logger.info("=" * 80)
+        if not manager_found and Path(expected_socket_path).exists() and authkey_b64:
+            manager_found = True
+            actual_socket_path = expected_socket_path
+            actual_authkey_b64 = authkey_b64
+            logger.info(f"Found manager at expected path: {expected_socket_path}")
         
         # If manager already running with matching credentials, try to connect
         if manager_found and actual_socket_path and actual_authkey_b64:
-            logger.info("=" * 80)
-            logger.info("🔄 REUSING EXISTING MANAGER")
-            logger.info("=" * 80)
-            logger.info(f"Manager socket path: {actual_socket_path}")
-            logger.info(f"Attempting to connect to existing manager...")
+            logger.info(f"Connecting to existing manager: {actual_socket_path}")
             
             try:
                 authkey = base64.b64decode(actual_authkey_b64)
-                logger.info(f"Authkey decoded successfully (length: {len(authkey)} bytes)")
                 
                 # CRITICAL: Ensure socket_path is a plain str (Fedora/_AnsibleTaggedStr compatibility)
-                # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
-                # On Fedora, BaseManager.address_type() is strict and rejects subclasses
-                # Force conversion to plain Python str using f-string
                 actual_socket_path_str = f"{actual_socket_path}"  # f-string forces plain str
-                # Double-check: ensure it's actually a plain str, not a subclass
                 if type(actual_socket_path_str) is not str:
                     actual_socket_path_str = str(actual_socket_path_str)
-                logger.info(f"Socket path type before conversion: {type(actual_socket_path)}")
-                logger.info(f"Socket path after conversion: {actual_socket_path_str} (type: {type(actual_socket_path_str)})")
-                logger.info(f"Is plain str (not subclass): {type(actual_socket_path_str) is str}")
                 
-                # Pass plain string to ManagerRPCClient (Fedora compatibility)
                 client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
                 
                 # Track this task's manager
                 task_uuid = self._get_task_uuid(task_vars)
-                task_name = getattr(self._task, 'name', 'unknown')
-                play_name = getattr(self._play, 'name', 'unknown') if hasattr(self, '_play') else 'unknown'
-                
-                logger.info("=" * 80)
-                logger.info("✅ SUCCESSFULLY CONNECTED TO EXISTING MANAGER")
-                logger.info("=" * 80)
-                logger.info(f"Task UUID: {task_uuid}")
-                logger.info(f"Task name: {task_name}")
-                logger.info(f"Play name: {play_name}")
-                logger.info(f"Manager socket: {actual_socket_path_str}")
-                logger.info(f"Host: {inventory_hostname}")
-                logger.info(f"Gateway URL: {gateway_config.base_url}")
-                logger.info(f"Task-to-manager mapping: {task_uuid} -> {actual_socket_path_str}")
-                
-                # Use string version for tracking (ensure consistency)
                 BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path_str
-                
-                # Log all tasks using this manager
-                tasks_using_this_manager = [
-                    tid for tid, sock in BaseResourceActionPlugin._task_to_manager.items()
-                    if str(sock) == actual_socket_path_str  # Compare as strings
-                ]
-                logger.info(f"Total tasks using this manager: {len(tasks_using_this_manager)}")
-                logger.info(f"Task IDs using this manager: {tasks_using_this_manager}")
                 
                 # Track this manager in playbook tracking (process-safe)
                 play_id = self._get_play_id()
@@ -652,38 +385,21 @@ class BaseResourceActionPlugin(ActionBase):
                     if 'socket_paths' in tracking:
                         if isinstance(tracking['socket_paths'], list):
                             tracking['socket_paths'] = set(tracking['socket_paths'])
-                        tracking['socket_paths'].add(actual_socket_path_str)  # Store as string
+                        tracking['socket_paths'].add(actual_socket_path_str)
                         self._write_tracking_file(play_id, tracking)
-                        logger.info(f"Updated playbook tracking: manager {actual_socket_path_str} registered")
                 
-                logger.info("=" * 80)
+                logger.info(f"Connected to existing manager: {actual_socket_path_str}")
                 
-                # Return client and updated facts (socket path may have changed)
-                # CRITICAL: Return string, not Path object (Fedora compatibility)
                 return client, {
                     'platform_manager_socket': actual_socket_path_str,
                     'platform_manager_authkey': actual_authkey_b64
                 }
             except Exception as e:
-                logger.warning("=" * 80)
-                logger.warning("❌ FAILED TO CONNECT TO EXISTING MANAGER")
-                logger.warning("=" * 80)
-                logger.warning(f"Socket path: {actual_socket_path}")
-                logger.warning(f"Error: {e}")
-                logger.warning(f"Error type: {type(e).__name__}")
-                import traceback
-                logger.warning(f"Traceback:\n{traceback.format_exc()}")
-                logger.warning("Falling back to spawning new manager...")
-                logger.warning("=" * 80)
+                logger.warning(f"Failed to connect to existing manager: {e}, spawning new one")
                 # Fall through to spawn new one
         
-        # Spawn new manager using platform SDK (generic process management)
-        logger.info("=" * 80)
-        logger.info("🆕 SPAWNING NEW MANAGER")
-        logger.info("=" * 80)
-        logger.info(f"Reason: {'No existing manager found' if not manager_found else 'Failed to connect to existing manager'}")
-        logger.info(f"Host: {inventory_hostname}")
-        logger.info(f"Gateway URL: {gateway_config.base_url}")
+        # Spawn new manager
+        logger.info(f"Spawning new manager for host: {inventory_hostname}")
         
         # Generate connection info using platform SDK (with credentials)
         conn_info = ProcessManager.generate_connection_info(
@@ -695,26 +411,16 @@ class BaseResourceActionPlugin(ActionBase):
         authkey = conn_info.authkey
         authkey_b64 = conn_info.authkey_b64
         
-        logger.info(f"Generated new manager connection info:")
-        logger.info(f"  Socket path: {socket_path}")
-        logger.info(f"  Authkey length: {len(authkey)} bytes")
-        logger.info(f"  Authkey (b64): {authkey_b64[:20]}... (truncated)")
-        
         # Clean up old socket if exists
-        logger.debug(f"Checking for old socket at: {socket_path}")
         ProcessManager.cleanup_old_socket(socket_path)
         
         # Capture sys.path from parent to ensure child has same imports
         parent_sys_path = list(sys.path)
-        logger.debug(f"Parent sys.path has {len(parent_sys_path)} entries")
-        logger.debug(f"First few entries: {parent_sys_path[:3]}")
         
         # Get path to manager process script
         script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
-        logger.debug(f"Manager process script path: {script_path}")
         
-        # Spawn process using platform SDK (generic)
-        logger.info("Spawning manager process...")
+        # Spawn process
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -725,13 +431,9 @@ class BaseResourceActionPlugin(ActionBase):
             sys_path=parent_sys_path
         )
         
-        logger.info(f"✅ Manager process spawned successfully")
-        logger.info(f"  Process PID: {process.pid}")
-        logger.info(f"  Socket path: {socket_path}")
-        logger.info(f"  Process returncode: {process.returncode}")
+        logger.info(f"Manager process spawned (PID: {process.pid})")
         
-        # Wait for process startup using platform SDK (generic)
-        logger.info("Waiting for manager process to start and create socket...")
+        # Wait for process startup
         ProcessManager.wait_for_process_startup(
             socket_path=socket_path,
             socket_dir=socket_dir,
@@ -741,55 +443,18 @@ class BaseResourceActionPlugin(ActionBase):
         
         # Verify socket file was created
         socket_file = Path(socket_path)
-        if socket_file.exists():
-            logger.info(f"✅ Socket file created successfully")
-            logger.info(f"  Socket path: {socket_path}")
-            logger.info(f"  Socket file size: {socket_file.stat().st_size} bytes")
-            logger.info(f"  Socket file is socket: {socket_file.is_socket()}")
-        else:
-            logger.error(f"❌ Socket file was not created: {socket_path}")
+        if not socket_file.exists():
             raise RuntimeError(f"Manager process started but socket file not found: {socket_path}")
         
-        logger.info("Manager process started successfully")
+        # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
+        socket_path_str = str(socket_path)
         
         # Connect to newly spawned manager
-        logger.info("Connecting to newly spawned manager...")
-        
-        # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
-        # BaseManager expects a string, not a Path object
-        socket_path_str = str(socket_path)
-        logger.info(f"Socket path type before conversion: {type(socket_path)}")
-        logger.info(f"Socket path after str() conversion: {socket_path_str} (type: {type(socket_path_str)})")
-        
         client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
         
         # Track this task's manager
         task_uuid = self._get_task_uuid(task_vars)
-        task_name = getattr(self._task, 'name', 'unknown')
-        play_name = getattr(self._play, 'name', 'unknown') if hasattr(self, '_play') else 'unknown'
-        
-        logger.info("=" * 80)
-        logger.info("✅ SUCCESSFULLY SPAWNED AND CONNECTED TO NEW MANAGER")
-        logger.info("=" * 80)
-        logger.info(f"Task UUID: {task_uuid}")
-        logger.info(f"Task name: {task_name}")
-        logger.info(f"Play name: {play_name}")
-        logger.info(f"Manager socket: {socket_path_str}")
-        logger.info(f"Manager PID: {process.pid}")
-        logger.info(f"Host: {inventory_hostname}")
-        logger.info(f"Gateway URL: {gateway_config.base_url}")
-        logger.info(f"Task-to-manager mapping: {task_uuid} -> {socket_path_str}")
-        
-        # Use string version for tracking (ensure consistency)
         BaseResourceActionPlugin._task_to_manager[task_uuid] = socket_path_str
-        
-        # Log all tasks using this manager
-        tasks_using_this_manager = [
-            tid for tid, sock in BaseResourceActionPlugin._task_to_manager.items()
-            if str(sock) == socket_path_str  # Compare as strings
-        ]
-        logger.info(f"Total tasks using this manager: {len(tasks_using_this_manager)}")
-        logger.info(f"Task IDs using this manager: {tasks_using_this_manager}")
         
         # Track this manager in playbook tracking (process-safe)
         play_id = self._get_play_id()
@@ -799,14 +464,11 @@ class BaseResourceActionPlugin(ActionBase):
                 tracking['socket_paths'] = set()
             if isinstance(tracking['socket_paths'], list):
                 tracking['socket_paths'] = set(tracking['socket_paths'])
-            tracking['socket_paths'].add(socket_path_str)  # Store as string
+            tracking['socket_paths'].add(socket_path_str)
             self._write_tracking_file(play_id, tracking)
-            logger.info(f"Updated playbook tracking: manager {socket_path_str} registered")
         
-        logger.info("=" * 80)
+        logger.info(f"Connected to new manager: {socket_path_str} (PID: {process.pid})")
         
-        # Return client and facts to be set (facts will be set in run() method's result)
-        # CRITICAL: Return string, not Path object (Fedora compatibility)
         return client, {
             'platform_manager_socket': socket_path_str,
             'platform_manager_authkey': authkey_b64,
@@ -817,8 +479,8 @@ class BaseResourceActionPlugin(ActionBase):
         """
         Build argument spec from DOCUMENTATION string.
         
-        Parses the YAML documentation and converts it to Ansible's
-        ArgumentSpec format for validation.
+        Parses the YAML documentation and merges documentation fragments
+        (e.g., ansible.platform.auth) before converting to ArgumentSpec format.
         
         Args:
             documentation: DOCUMENTATION string from module
@@ -834,7 +496,19 @@ class BaseResourceActionPlugin(ActionBase):
         except yaml.YAMLError as e:
             raise ValueError(f"Failed to parse DOCUMENTATION: {e}") from e
         
-        options = doc_data.get('options', {})
+        # Start with module's own options
+        options = doc_data.get('options', {}).copy()
+        
+        # Merge documentation fragments if specified
+        extends_fragments = doc_data.get('extends_documentation_fragment', [])
+        if not isinstance(extends_fragments, list):
+            extends_fragments = [extends_fragments]
+        
+        for fragment_name in extends_fragments:
+            fragment_options = self._load_documentation_fragment(fragment_name)
+            if fragment_options:
+                # Merge fragment options into module options
+                options.update(fragment_options)
         
         # Build argspec in Ansible format
         # ArgumentSpecValidator expects 'argument_spec' key, not 'options'
@@ -847,6 +521,56 @@ class BaseResourceActionPlugin(ActionBase):
         }
         
         return argspec
+    
+    def _load_documentation_fragment(self, fragment_name: str) -> dict:
+        """
+        Load documentation fragment options.
+        
+        Args:
+            fragment_name: Fragment name (e.g., 'ansible.platform.auth')
+        
+        Returns:
+            Dict of options from fragment, or empty dict if not found
+        """
+        try:
+            # Fragment name format: 'ansible.platform.auth' or 'auth'
+            if '.' in fragment_name:
+                # Full collection path: 'ansible.platform.auth'
+                parts = fragment_name.split('.')
+                if len(parts) >= 3:
+                    collection = '.'.join(parts[:-1])  # 'ansible.platform'
+                    fragment = parts[-1]  # 'auth'
+                else:
+                    fragment = fragment_name
+            else:
+                # Just fragment name: 'auth'
+                fragment = fragment_name
+            
+            # Try to load fragment from doc_fragments
+            fragment_path = Path(__file__).parent.parent / 'doc_fragments' / f'{fragment}.py'
+            
+            if fragment_path.exists():
+                import importlib.util
+                spec = importlib.util.spec_from_file_location(f"doc_fragment_{fragment}", fragment_path)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    
+                    # Get DOCUMENTATION from ModuleDocFragment class
+                    if hasattr(module, 'ModuleDocFragment'):
+                        fragment_class = module.ModuleDocFragment
+                        fragment_doc = getattr(fragment_class, 'DOCUMENTATION', '')
+                        
+                        if fragment_doc:
+                            fragment_data = yaml.safe_load(fragment_doc)
+                            return fragment_data.get('options', {})
+            
+            logger.debug(f"Documentation fragment '{fragment_name}' not found, skipping")
+            return {}
+            
+        except Exception as e:
+            logger.warning(f"Failed to load documentation fragment '{fragment_name}': {e}")
+            return {}
     
     def _validate_data(
         self,
