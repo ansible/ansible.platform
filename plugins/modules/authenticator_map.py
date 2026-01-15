@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: authenticator_map
@@ -283,7 +282,6 @@ EXAMPLES = """
 from ..module_utils.aap_authenticator_map import AAPAuthenticatorMap  # noqa
 from ..module_utils.aap_module import AAPModule  # noqa
 
-
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -304,7 +302,6 @@ def main():
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
     AAPAuthenticatorMap(module).manage()
-
 
 if __name__ == "__main__":
     main()

@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: route
@@ -126,7 +125,6 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule
 from ..module_utils.aap_route import AAPRoute
 
-
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -159,7 +157,6 @@ def main():
         )
 
     AAPRoute(module).manage()
-
 
 if __name__ == "__main__":
     main()

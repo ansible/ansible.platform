@@ -2,7 +2,6 @@ from ..module_utils.aap_object import AAPObject
 
 __metaclass__ = type
 
-
 class AAPHttpPort(AAPObject):
     API_ENDPOINT_NAME = "http_ports"
     ITEM_TYPE = "http_port"

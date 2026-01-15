@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: service_cluster
@@ -92,7 +91,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 """
 
-
 EXAMPLES = """
 - name: Add service cluster
   ansible.platform.service_cluster:
@@ -114,7 +112,6 @@ EXAMPLES = """
 
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_service_cluster import AAPServiceCluster  # noqa
-
 
 def main():
     # Any additional arguments that are not fields of the item can be added here
@@ -145,7 +142,6 @@ def main():
 
     # Manage objects through API
     AAPServiceCluster(module).manage()
-
 
 if __name__ == "__main__":
     main()

@@ -9,7 +9,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = '''
 ---
 module: application
@@ -90,7 +89,6 @@ options:
 extends_documentation_fragment: ansible.platform.auth
 '''
 
-
 EXAMPLES = '''
 - name: Add Foo application
   ansible.platform.application:
@@ -119,7 +117,6 @@ EXAMPLES = '''
 from ..module_utils.aap_application import AAPApplication
 from ..module_utils.aap_module import AAPModule
 
-
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -142,7 +139,6 @@ def main():
     # Create a module for ourselves
     module = AAPModule(argument_spec=argument_spec)
     AAPApplication(module).manage(json_output_fields=['client_id', 'client_secret'])
-
 
 if __name__ == '__main__':
     main()

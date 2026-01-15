@@ -7,7 +7,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = '''
 ---
 module: role_team_assignment
@@ -78,7 +77,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 '''
 
-
 EXAMPLES = '''
 - name: Assign roles for multiple objects using names
   ansible.platform.role_team_assignment:
@@ -135,7 +133,6 @@ EXAMPLES = '''
 
 from ..module_utils.aap_module import AAPModule
 
-
 def assign_team_role(module, state, role_team_assignment, kwargs,
                      role_definition_str, team_param, team_ansible_id, auto_exit=False):
     """
@@ -161,7 +158,6 @@ def assign_team_role(module, state, role_team_assignment, kwargs,
             auto_exit=auto_exit
         )
     return
-
 
 def _validate_selector(entry, module):
     """
@@ -195,7 +191,6 @@ def _validate_selector(entry, module):
         allowed = ("organizations", "teams")  # extend if/when we support more
         if entry["type"] not in allowed:
             module.fail_json(msg=f"Unsupported type '{entry['type']}'. Valid types: {', '.join(allowed)}")
-
 
 def main():
     # Any additional arguments that are not fields of the item can be added here
@@ -282,7 +277,6 @@ def main():
 
     # At the end, return *all* results
     module.exit_json(changed=any(r.get("changed", False) for r in results), assignments=results)
-
 
 if __name__ == '__main__':
     main()

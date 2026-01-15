@@ -19,7 +19,6 @@ try:
 except ImportError:
     HAS_CRYPTOGRAPHY = False
 
-
 class AAPCACertificate(AAPObject):
     API_ENDPOINT_NAME = "ca_certificates"
     ITEM_TYPE = "ca_certificate"

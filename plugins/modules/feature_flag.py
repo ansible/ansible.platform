@@ -6,7 +6,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: feature_flag
@@ -154,7 +153,6 @@ state:
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_feature_flag import AAPFeatureFlag  # noqa
 
-
 def main():
     # Define the argument specification for the module
     argument_spec = dict(
@@ -175,7 +173,6 @@ def main():
 
     # Use the AAPFeatureFlag class to manage the feature flag
     AAPFeatureFlag(module).manage()
-
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,6 @@ from ..module_utils.aap_object import AAPObject
 
 __metaclass__ = type
 
-
 class AAPOrganization(AAPObject):
     API_ENDPOINT_NAME = "organizations"
     ITEM_TYPE = "organization"

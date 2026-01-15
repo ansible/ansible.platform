@@ -2,7 +2,6 @@ from ..module_utils.aap_object import AAPObject  # noqa
 
 __metaclass__ = type
 
-
 class AAPFeatureFlag(AAPObject):
     API_ENDPOINT_NAME = "feature_flags"
     ITEM_TYPE = "feature_flag"

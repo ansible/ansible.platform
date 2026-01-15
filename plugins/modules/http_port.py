@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: http_port
@@ -45,7 +44,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 """
 
-
 EXAMPLES = """
 - name: Add API http port
   ansible.platform.http_port:
@@ -71,7 +69,6 @@ EXAMPLES = """
 from ..module_utils.aap_http_port import AAPHttpPort  # noqa
 from ..module_utils.aap_module import AAPModule  # noqa
 
-
 def main():
     args_spec = dict(
         name=dict(required=True, type='str'),
@@ -87,7 +84,6 @@ def main():
 
     # Manage objects through API
     AAPHttpPort(module).manage()
-
 
 if __name__ == "__main__":
     main()

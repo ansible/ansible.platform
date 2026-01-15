@@ -7,9 +7,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 ANSIBLE_METADATA = {'metadata_version': '1.1', 'status': ['preview'], 'supported_by': 'community'}
-
 
 DOCUMENTATION = '''
 ---
@@ -70,7 +68,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 '''
 
-
 EXAMPLES = '''
 - name: Give Bob organization admin role for org 1
   ansible.platform.role_user_assignment:
@@ -97,7 +94,6 @@ EXAMPLES = '''
 '''
 
 from ..module_utils.aap_module import AAPModule
-
 
 def assign_user_role(module, auto_exit=False, **role_args):
     """
@@ -131,7 +127,6 @@ def assign_user_role(module, auto_exit=False, **role_args):
             auto_exit=auto_exit
         )
     return
-
 
 def main():
     # Any additional arguments that are not fields of the item can be added here
@@ -238,7 +233,6 @@ def main():
         assign_user_role(module, **role_args)
 
     module.exit_json(**module.json_output)
-
 
 if __name__ == '__main__':
     main()

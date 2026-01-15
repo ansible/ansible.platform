@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: authenticator
@@ -137,10 +136,8 @@ EXAMPLES = """
 ...
 """
 
-
 from ..module_utils.aap_authenticator import AAPAuthenticator
 from ..module_utils.aap_module import AAPModule
-
 
 def main():
     argument_spec = dict(
@@ -161,7 +158,6 @@ def main():
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
     AAPAuthenticator(module).manage()
-
 
 if __name__ == "__main__":
     main()
