@@ -13,14 +13,13 @@ import time
 
 logger = logging.getLogger(__name__)
 
-
 class ManagerRPCClient:
     """
     Client for communicating with Platform Manager.
-    
+
     Handles connection to the manager service and provides a simple
     interface for action plugins to execute operations.
-    
+
     Attributes:
         base_url: Platform base URL
         socket_path: Path to Unix socket
@@ -28,7 +27,7 @@ class ManagerRPCClient:
         manager: Manager instance
         service_proxy: Proxy to PlatformService
     """
-    
+
     def __init__(
         self,
         base_url: str,
@@ -37,7 +36,7 @@ class ManagerRPCClient:
     ):
         """
         Initialize RPC client.
-        
+
         Args:
             base_url: Platform base URL
             socket_path: Path to Unix socket
@@ -56,13 +55,13 @@ class ManagerRPCClient:
         else:
             self.socket_path = socket_path
         self.authkey = authkey
-        
+
         # Import manager class
         from .platform_manager import PlatformManager
-        
+
         # Register remote service
         PlatformManager.register('get_platform_service')
-        
+
         # Connect to manager
         # CRITICAL: BaseManager.address must be a plain str type (not subclass)
         # Use f-string to ensure plain str type
@@ -76,11 +75,11 @@ class ManagerRPCClient:
             authkey=authkey
         )
         self.manager.connect()
-        
+
         # Get service proxy
         self.service_proxy = self.manager.get_platform_service()
         logger.info("Connected to Platform Manager")
-    
+
     def execute(
         self,
         operation: str,
@@ -89,49 +88,49 @@ class ManagerRPCClient:
     ) -> Any:
         """
         Execute operation via manager.
-        
+
         Args:
             operation: Operation type
             module_name: Module name
             ansible_data: Ansible dataclass instance
-        
+
         Returns:
             Result dict (Ansible format) with timing information
         """
         from dataclasses import asdict, is_dataclass
-        
+
         # Performance timing: RPC call start
         rpc_start = time.perf_counter()
-        
+
         # Convert to dict for RPC
         if is_dataclass(ansible_data):
             data_dict = asdict(ansible_data)
         else:
             data_dict = ansible_data
-        
+
         # Execute via proxy
         result_dict = self.service_proxy.execute(
             operation,
             module_name,
             data_dict
         )
-        
+
         # Performance timing: RPC call end
         rpc_end = time.perf_counter()
         rpc_elapsed = rpc_end - rpc_start
-        
+
         # Add timing info to result if it's a dict
         if isinstance(result_dict, dict):
             result_dict.setdefault('_timing', {})['rpc_time'] = rpc_elapsed
             result_dict['_timing']['rpc_start'] = rpc_start
             result_dict['_timing']['rpc_end'] = rpc_end
-        
+
         return result_dict
-    
+
     def shutdown_manager(self) -> dict:
         """
         Request manager to shutdown gracefully.
-        
+
         Returns:
             dict with shutdown status
         """
@@ -144,11 +143,10 @@ class ManagerRPCClient:
             logger.debug(f"Error calling shutdown on manager: {e}")
             return {"status": "error", "error": str(e)}
         return {"status": "not_connected"}
-    
+
     def close(self) -> None:
         """Close connection to manager."""
         if hasattr(self, 'manager'):
             self.manager.shutdown()
             logger.debug("Disconnected from Platform Manager")
-
 

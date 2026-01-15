@@ -9,7 +9,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: settings
@@ -108,7 +107,6 @@ EXAMPLES = """
 
 from ..module_utils.aap_module import AAPModule
 
-
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -164,7 +162,6 @@ def main():
         module.fail_json(msg=response["json"]["__all__"])
     else:
         module.fail_json(**{"msg": "Unable to update settings, see response", "response": response})
-
 
 if __name__ == "__main__":
     main()

@@ -4,7 +4,6 @@ __metaclass__ = type
 
 from .aap_object import AAPObject
 
-
 class AAPAuthenticatorUser(AAPObject):
     API_ENDPOINT_NAME = "authenticator_users"
     ITEM_TYPE = "authenticator_user"
@@ -20,7 +19,6 @@ class AAPAuthenticatorUser(AAPObject):
             unique = self.unique_value()
             self.data = self.module.get_endpoint(f"{self.api_endpoint}/{unique}").get('json')
         return self.data
-
 
 class AAPAuthenticatorUserMove(AAPObject):
     def __init__(self, module):

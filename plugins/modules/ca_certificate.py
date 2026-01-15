@@ -86,7 +86,6 @@ id:
 from ..module_utils.aap_module import AAPModule
 from ..module_utils.aap_ca_certificate import AAPCACertificate
 
-
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -108,7 +107,6 @@ def main():
             module.fail_json(msg="pem_data and sha256 must be provided together for certificate validation")
 
     AAPCACertificate(module).manage()
-
 
 if __name__ == "__main__":
     main()

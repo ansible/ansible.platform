@@ -9,7 +9,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: organization
@@ -53,7 +52,6 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule
 from ..module_utils.aap_organization import AAPOrganization
 
-
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -66,7 +64,6 @@ def main():
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
     AAPOrganization(module).manage()
-
 
 if __name__ == "__main__":
     main()

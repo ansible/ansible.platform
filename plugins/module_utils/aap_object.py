@@ -4,7 +4,6 @@ from abc import abstractmethod
 
 __metaclass__ = type
 
-
 class AAPObject:
     API_ENDPOINT_NAME = ""
     ITEM_TYPE = ""

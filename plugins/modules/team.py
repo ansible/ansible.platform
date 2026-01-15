@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: team
@@ -64,7 +63,6 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_team import AAPTeam  # noqa
 
-
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -79,7 +77,6 @@ def main():
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
     AAPTeam(module).manage()
-
 
 if __name__ == "__main__":
     main()

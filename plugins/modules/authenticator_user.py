@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: authenticator_user
@@ -77,7 +76,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 """
 
-
 EXAMPLES = """
 - name: Move authenticator users to a new authenticator and merge with another user
   ansible.platform.authenticator_user:
@@ -107,7 +105,6 @@ EXAMPLES = """
 from ..module_utils.aap_authenticator_users import AAPAuthenticatorUserMove  # noqa
 from ..module_utils.aap_module import AAPModule  # noqa
 
-
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -129,7 +126,6 @@ def main():
         ],
     )
     AAPAuthenticatorUserMove(module).manage()
-
 
 if __name__ == "__main__":
     main()

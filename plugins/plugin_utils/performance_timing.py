@@ -12,7 +12,6 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class TimingMetrics:
     """Container for timing metrics."""
@@ -30,7 +29,7 @@ class TimingMetrics:
     manager_processing_time: float = 0.0
     api_call_time: float = 0.0
     other_time: float = 0.0
-    
+
     def calculate(self):
         """Calculate derived metrics."""
         self.total_time = self.action_plugin_end - self.action_plugin_start
@@ -39,12 +38,12 @@ class TimingMetrics:
         self.manager_processing_time = self.manager_processing_end - self.manager_processing_start
         self.api_call_time = self.api_call_end - self.api_call_start
         self.other_time = self.total_time - (
-            self.action_plugin_time + 
-            self.rpc_time + 
-            self.manager_processing_time + 
+            self.action_plugin_time +
+            self.rpc_time +
+            self.manager_processing_time +
             self.api_call_time
         )
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for logging."""
         return {
@@ -60,16 +59,15 @@ class TimingMetrics:
             'api_call_percent': (self.api_call_time / self.total_time * 100) if self.total_time > 0 else 0,
         }
 
-
 class PerformanceTimer:
     """Context manager for timing operations."""
-    
+
     def __init__(self, operation_name: str, log_level: int = logging.DEBUG):
         self.operation_name = operation_name
         self.log_level = log_level
         self.start_time: Optional[float] = None
         self.end_time: Optional[float] = None
-    
+
     def __enter__(self):
         self.start_time = time.perf_counter()
         logger.log(
@@ -77,7 +75,7 @@ class PerformanceTimer:
             f"⏱️  TIMING START: {self.operation_name} (timestamp: {self.start_time:.6f})"
         )
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.end_time = time.perf_counter()
         elapsed = self.end_time - self.start_time
@@ -86,7 +84,7 @@ class PerformanceTimer:
             f"⏱️  TIMING END: {self.operation_name} (elapsed: {elapsed:.6f}s, timestamp: {self.end_time:.6f})"
         )
         return False
-    
+
     @property
     def elapsed(self) -> float:
         """Get elapsed time."""
@@ -96,17 +94,15 @@ class PerformanceTimer:
             return time.perf_counter() - self.start_time
         return self.end_time - self.start_time
 
-
 def get_timestamp() -> float:
     """Get current high-resolution timestamp."""
     return time.perf_counter()
-
 
 def log_timing(operation: str, start_time: float, end_time: Optional[float] = None):
     """Log timing information."""
     if end_time is None:
         end_time = time.perf_counter()
-    
+
     elapsed = end_time - start_time
     logger.debug(
         f"⏱️  TIMING: {operation} | "
@@ -115,4 +111,3 @@ def log_timing(operation: str, start_time: float, end_time: Optional[float] = No
         f"Elapsed: {elapsed:.6f}s"
     )
     return elapsed
-

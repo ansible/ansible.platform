@@ -4,7 +4,6 @@ __metaclass__ = type
 
 from ..module_utils.aap_object import AAPObject
 
-
 class AAPApplication(AAPObject):
     API_ENDPOINT_NAME = "applications"
     ITEM_TYPE = "application"

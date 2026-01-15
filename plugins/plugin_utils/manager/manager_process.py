@@ -12,7 +12,6 @@ import base64
 import traceback
 from pathlib import Path
 
-
 def main():
     """Main entry point for the manager process."""
     # Write startup marker immediately
@@ -21,24 +20,25 @@ def main():
         with open(marker, 'a') as f:
             f.write(f"Script started with {len(sys.argv)} args\n")
             f.write(f"Args: {sys.argv}\n")
-    except:
+    except Exception:
         pass
-    
+
     # Read configuration from command line args
     if len(sys.argv) < 10:
         print(f"ERROR: Expected 9 args, got {len(sys.argv) - 1}", file=sys.stderr)
         print(f"Args received: {sys.argv}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Log progress
     marker = Path('/tmp/ansible_platform_manager_started.txt')
+
     def log_marker(msg):
         try:
             with open(marker, 'a') as f:
                 f.write(f"{msg}\n")
-        except:
+        except Exception:
             pass
-    
+
     log_marker("Parsing arguments...")
     socket_path = sys.argv[1]
     socket_dir = sys.argv[2]
@@ -50,14 +50,14 @@ def main():
     gateway_validate_certs = sys.argv[8].lower() == 'true'
     gateway_request_timeout = float(sys.argv[9])
     log_marker("Arguments parsed successfully")
-    
+
     # Read sys.path and authkey from environment
     log_marker("Reading environment variables...")
     sys_path_b64 = os.environ.get('ANSIBLE_PLATFORM_SYS_PATH', '')
     authkey_b64 = os.environ.get('ANSIBLE_PLATFORM_AUTHKEY', '')
     log_marker(f"Got sys_path_b64 length: {len(sys_path_b64)}")
     log_marker(f"Got authkey_b64 length: {len(authkey_b64)}")
-    
+
     # Decode sys.path
     log_marker("Decoding sys.path...")
     try:
@@ -67,12 +67,12 @@ def main():
     except Exception as e:
         log_marker(f"FAILED to decode sys.path: {e}")
         sys.exit(1)
-    
+
     # Redirect stderr to a file for debugging
     log_marker("Setting up logging...")
     stderr_log = Path(socket_dir) / f'manager_stderr_{inventory_hostname}.log'
     error_log = Path(socket_dir) / f'manager_error_{inventory_hostname}.log'
-    
+
     try:
         sys.stderr = open(stderr_log, 'w', buffering=1)
         sys.stdout = open(stderr_log, 'a', buffering=1)
@@ -80,13 +80,13 @@ def main():
     except Exception as e:
         log_marker(f"Failed to redirect logging: {e}")
         pass  # Continue without redirecting
-    
+
     try:
         log_marker("Restoring sys.path...")
         # Restore parent's sys.path in child process
         sys.path = sys_path_list
         log_marker(f"sys.path restored with entries: {sys_path_list}")
-        
+
         # Ensure collections directory is on sys.path
         # The script is in: ansible_collections/ansible/platform/plugins/plugin_utils/manager/
         # To import ansible_collections.ansible.platform, we need the PARENT of ansible_collections/
@@ -101,12 +101,12 @@ def main():
             log_marker(f"Added workspace root to sys.path")
         else:
             log_marker(f"Workspace root already in sys.path")
-        
+
         # Decode authkey from base64
         log_marker("Decoding authkey...")
         authkey = base64.b64decode(authkey_b64)
         log_marker(f"Authkey decoded, length: {len(authkey)}")
-        
+
         # Write to log immediately
         log_marker(f"Writing to error log: {error_log}")
         with open(error_log, 'w') as f:
@@ -116,7 +116,7 @@ def main():
             f.write(f"About to create service with base_url={gateway_url}\n")
             f.flush()
         log_marker("Error log written successfully")
-        
+
         log_marker("About to import platform_manager...")
         try:
             from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import (
@@ -128,11 +128,11 @@ def main():
             log_marker(f"Import failed: {import_err}")
             log_marker(f"Import traceback: {traceback.format_exc()}")
             raise
-        
+
         with open(error_log, 'a') as f:
             f.write("Imports successful\n")
             f.flush()
-        
+
         # Create service
         try:
             service = PlatformService(
@@ -152,30 +152,30 @@ def main():
                 f.write(traceback.format_exc())
                 f.flush()
             raise
-        
+
         with open(error_log, 'a') as f:
             f.write("Service created\n")
             f.flush()
-        
+
         # Register with manager
         PlatformManager.register(
             'get_platform_service',
             callable=lambda: service
         )
-        
+
         # Register shutdown method
         PlatformManager.register(
             'shutdown',
             callable=lambda: service.shutdown()
         )
-        
+
         with open(error_log, 'a') as f:
             f.write("Service registered with shutdown method\n")
             f.flush()
-        
+
         # Set up signal handlers for graceful shutdown
         import signal
-        
+
         def signal_handler(signum, frame):
             """Handle shutdown signals gracefully."""
             with open(error_log, 'a') as f:
@@ -188,28 +188,28 @@ def main():
                     f.write(f"Error during shutdown: {e}\n")
                     f.flush()
             sys.exit(0)
-        
+
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
-        
+
         with open(error_log, 'a') as f:
             f.write("Signal handlers registered\n")
             f.flush()
-        
+
         # Start manager server
         manager = PlatformManager(address=socket_path, authkey=authkey)
-        
+
         with open(error_log, 'a') as f:
             f.write("Manager instance created\n")
             f.flush()
-        
+
         server = manager.get_server()
-        
+
         with open(error_log, 'a') as f:
             f.write("Server obtained, starting serve_forever()\n")
             f.flush()
-        
+
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -218,14 +218,13 @@ def main():
                 f.flush()
             service.shutdown()
             sys.exit(0)
-        
+
     except Exception as e:
         # Log to a temp file for debugging
         with open(error_log, 'a') as f:
             f.write(f"\n\nManager startup failed: {e}\n")
             f.write(traceback.format_exc())
         sys.exit(1)
-
 
 if __name__ == '__main__':
     main()

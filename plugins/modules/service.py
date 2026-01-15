@@ -7,7 +7,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: service
@@ -118,7 +117,6 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_service import AAPService  # noqa
 
-
 def main():
     argument_spec = dict(
         name=dict(type="str", required=True),
@@ -152,7 +150,6 @@ def main():
         )
 
     AAPService(module).manage()
-
 
 if __name__ == "__main__":
     main()

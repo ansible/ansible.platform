@@ -11,17 +11,16 @@ import base64
 import traceback
 from pathlib import Path
 
-
 def main():
     """Main entry point for the manager process."""
     # Read configuration from command line args
     if len(sys.argv) < 2:
         print("ERROR: No config provided", file=sys.stderr)
         sys.exit(1)
-    
+
     config_json = sys.argv[1]
     config = json.loads(config_json)
-    
+
     socket_path = config['socket_path']
     socket_dir = config['socket_dir']
     inventory_hostname = config['inventory_hostname']
@@ -33,24 +32,24 @@ def main():
     gateway_request_timeout = config['gateway_request_timeout']
     authkey_b64 = config['authkey_b64']
     sys_path = config['sys_path']
-    
+
     # Redirect stderr to a file for debugging
     stderr_log = Path(socket_dir) / f'manager_stderr_{inventory_hostname}.log'
     error_log = Path(socket_dir) / f'manager_error_{inventory_hostname}.log'
-    
+
     try:
         sys.stderr = open(stderr_log, 'w', buffering=1)
         sys.stdout = open(stderr_log, 'a', buffering=1)
     except Exception:
         pass  # Continue without redirecting
-    
+
     try:
         # Restore parent's sys.path in child process
         sys.path = sys_path
-        
+
         # Decode authkey from base64
         authkey = base64.b64decode(authkey_b64)
-        
+
         # Write to log immediately
         with open(error_log, 'w') as f:
             f.write(f"Process started, socket_path={socket_path}\n")
@@ -58,16 +57,16 @@ def main():
             f.write(f"Manager starting at {socket_path}\n")
             f.write(f"About to create service with base_url={gateway_url}\n")
             f.flush()
-        
+
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import (
             PlatformManager,
             PlatformService
         )
-        
+
         with open(error_log, 'a') as f:
             f.write("Imports successful\n")
             f.flush()
-        
+
         # Create service
         try:
             service = PlatformService(
@@ -87,36 +86,36 @@ def main():
                 f.write(traceback.format_exc())
                 f.flush()
             raise
-        
+
         with open(error_log, 'a') as f:
             f.write("Service created\n")
             f.flush()
-        
+
         # Register with manager
         PlatformManager.register(
             'get_platform_service',
             callable=lambda: service
         )
-        
+
         with open(error_log, 'a') as f:
             f.write("Service registered\n")
             f.flush()
-        
+
         # Start manager server
         manager = PlatformManager(address=socket_path, authkey=authkey)
-        
+
         with open(error_log, 'a') as f:
             f.write("Manager instance created\n")
             f.flush()
-        
+
         server = manager.get_server()
-        
+
         with open(error_log, 'a') as f:
             f.write("Server obtained, starting serve_forever()\n")
             f.flush()
-        
+
         server.serve_forever()
-        
+
     except Exception as e:
         # Log to a temp file for debugging
         with open(error_log, 'a') as f:
@@ -124,7 +123,5 @@ def main():
             f.write(traceback.format_exc())
         sys.exit(1)
 
-
 if __name__ == '__main__':
     main()
-

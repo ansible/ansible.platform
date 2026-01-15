@@ -4,7 +4,6 @@ __metaclass__ = type
 
 API_PREFIX = "/api/"
 
-
 class AAPService(AAPObject):
     API_ENDPOINT_NAME = "services"
     ITEM_TYPE = "service"

@@ -15,29 +15,28 @@ from .registry import APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
-
 class DynamicClassLoader:
     """
     Dynamically load version-specific classes at runtime.
-    
+
     Loads the appropriate Ansible dataclass and API dataclass/mixin
     based on the module name and API version.
-    
+
     Attributes:
         registry: APIVersionRegistry for version discovery
         class_cache: Cache of loaded classes to avoid repeated imports
     """
-    
+
     def __init__(self, registry: APIVersionRegistry):
         """
         Initialize loader with a version registry.
-        
+
         Args:
             registry: Version registry for discovering available versions
         """
         self.registry = registry
         self._class_cache: Dict[str, Tuple[Type, Type, Type]] = {}
-    
+
     def load_classes_for_module(
         self,
         module_name: str,
@@ -45,86 +44,86 @@ class DynamicClassLoader:
     ) -> Tuple[Type, Type, Type]:
         """
         Load classes for a module and API version.
-        
+
         Args:
             module_name: Module name (e.g., 'user', 'organization')
             api_version: API version (e.g., '1', '2.1')
-        
+
         Returns:
             Tuple of (AnsibleClass, APIClass, MixinClass)
-        
+
         Raises:
             ValueError: If classes cannot be loaded
         """
         # Find best matching version
         best_version = self.registry.find_best_version(api_version, module_name)
-        
+
         if not best_version:
             raise ValueError(
                 f"No compatible API version found for module '{module_name}' "
                 f"with requested version '{api_version}'"
             )
-        
+
         # Check cache
         cache_key = f"{module_name}_{best_version.replace('.', '_')}"
         if cache_key in self._class_cache:
             logger.debug(f"Using cached classes for {cache_key}")
             return self._class_cache[cache_key]
-        
+
         # Load classes
         logger.info(
             f"Loading classes for {module_name} (API version {best_version})"
         )
-        
+
         ansible_class = self._load_ansible_class(module_name)
         api_class, mixin_class = self._load_api_classes(module_name, best_version)
-        
+
         # Cache and return
         result = (ansible_class, api_class, mixin_class)
         self._class_cache[cache_key] = result
-        
+
         return result
-    
+
     def _load_ansible_class(self, module_name: str) -> Type:
         """
         Load stable Ansible dataclass.
-        
+
         Args:
             module_name: Module name
-        
+
         Returns:
             Ansible dataclass type
-        
+
         Raises:
             ImportError: If module cannot be imported
             ValueError: If class cannot be found
         """
         # Import from ansible_models/<module_name>.py
         module_path = f'ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_name}'
-        
+
         try:
             module = importlib.import_module(module_path)
         except ImportError as e:
             raise ImportError(
                 f"Failed to import Ansible module {module_path}: {e}"
             ) from e
-        
+
         # Find Ansible dataclass (e.g., AnsibleUser)
         class_name = f'Ansible{module_name.title()}'
-        
+
         if hasattr(module, class_name):
             return getattr(module, class_name)
-        
+
         # Fallback: find any class starting with 'Ansible'
         for name, obj in inspect.getmembers(module, inspect.isclass):
             if name.startswith('Ansible'):
                 return obj
-        
+
         raise ValueError(
             f"No Ansible dataclass found in {module_path} "
             f"(expected {class_name})"
         )
-    
+
     def _load_api_classes(
         self,
         module_name: str,
@@ -132,14 +131,14 @@ class DynamicClassLoader:
     ) -> Tuple[Type, Type]:
         """
         Load API dataclass and transform mixin for a version.
-        
+
         Args:
             module_name: Module name
             api_version: API version
-        
+
         Returns:
             Tuple of (APIClass, MixinClass)
-        
+
         Raises:
             ImportError: If module cannot be imported
             ValueError: If classes cannot be found
@@ -150,14 +149,14 @@ class DynamicClassLoader:
             f'ansible_collections.ansible.platform.plugins.plugin_utils.api.'
             f'v{version_normalized}.{module_name}'
         )
-        
+
         try:
             module = importlib.import_module(module_path)
         except ImportError as e:
             raise ImportError(
                 f"Failed to import API module {module_path}: {e}"
             ) from e
-        
+
         # Find API dataclass (e.g., APIUser_v1)
         api_class_name = f'API{module_name.title()}_v{version_normalized}'
         api_class = self._find_class_in_module(
@@ -165,7 +164,7 @@ class DynamicClassLoader:
             [api_class_name, f'API{module_name.title()}', 'API*'],
             f"API dataclass for {module_name}"
         )
-        
+
         # Find transform mixin (e.g., UserTransformMixin_v1)
         mixin_class_name = f'{module_name.title()}TransformMixin_v{version_normalized}'
         mixin_class = self._find_class_in_module(
@@ -174,9 +173,9 @@ class DynamicClassLoader:
             f"Transform mixin for {module_name}",
             base_class=BaseTransformMixin
         )
-        
+
         return api_class, mixin_class
-    
+
     def _find_class_in_module(
         self,
         module,
@@ -186,29 +185,29 @@ class DynamicClassLoader:
     ) -> Type:
         """
         Find a class in a module matching patterns.
-        
+
         Args:
             module: Imported module
             patterns: List of patterns to try (wildcards supported)
             description: Description for error messages
             base_class: Optional base class to filter by
-        
+
         Returns:
             Matched class type
-        
+
         Raises:
             ValueError: If no matching class found
         """
         # Get all classes from module
         classes = inspect.getmembers(module, inspect.isclass)
-        
+
         # Filter by base class if specified
         if base_class:
             classes = [
                 (name, cls) for name, cls in classes
                 if issubclass(cls, base_class) and cls != base_class
             ]
-        
+
         # Try each pattern
         for pattern in patterns:
             if '*' in pattern:
@@ -222,11 +221,10 @@ class DynamicClassLoader:
                 for name, cls in classes:
                     if name == pattern:
                         return cls
-        
+
         # Not found
         raise ValueError(
             f"No {description} found in {module.__name__}. "
             f"Tried patterns: {patterns}"
         )
-
 
