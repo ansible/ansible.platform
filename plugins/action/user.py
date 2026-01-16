@@ -164,13 +164,11 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'create' and validated_params.get('state') == 'present':
                 self._display.vvv("🔍 Checking if user already exists (idempotency check)...")
                 try:
-                    # Try to find the user by username using RETRY logic
-                    find_result = self.execute_with_retry(
-                        manager_client=manager,
+                    # Try to find the user by username
+                    find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        data={'username': user.username},
-                        task_vars=task_vars
+                        ansible_data={'username': user.username}
                     )
                     if find_result and find_result.get('id'):
                         self._display.vvv(f"✅ User '{user.username}' already exists (id={find_result.get('id')}), switching to update")
@@ -182,12 +180,10 @@ class ActionModule(BaseResourceActionPlugin):
             
             # Step 6: Execute via manager
             self._display.vvv(f"📤 Sending '{operation}' request to manager...")
-            manager_result = self.execute_with_retry(
-                manager_client=manager,
+            manager_result = manager.execute(
                 operation=operation,
                 module_name=self.MODULE_NAME,
-                data=user.__dict__,
-                task_vars=task_vars
+                ansible_data=user.__dict__
             )
             
             self._display.vvv("📥 Received result from manager")

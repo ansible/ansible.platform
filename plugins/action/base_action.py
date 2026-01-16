@@ -188,9 +188,8 @@ class BaseResourceActionPlugin(ActionBase):
     # Track which manager each task uses
     # Key: task_uuid, Value: socket_path
     _task_to_manager = {}  # type: dict
-    MAX_RETRIES = 1
     
-    def _get_or_spawn_manager(self, task_vars: dict, force_spawn: bool = False):
+    def _get_or_spawn_manager(self, task_vars: dict):
         """
         Get existing manager or spawn new one.
         
@@ -488,65 +487,64 @@ class BaseResourceActionPlugin(ActionBase):
         actual_socket_path = None
         actual_authkey_b64 = None
         
-        if not force_spawn:
-            logger.info("")
-            logger.info("Checking stored socket path...")
-            if socket_path and authkey_b64:
-                stored_path_exists = Path(socket_path).exists()
-                logger.info(f"  Stored socket path: {socket_path}")
-                logger.info(f"  Authkey present: {bool(authkey_b64)}")
-                logger.info(f"  Socket file exists: {stored_path_exists}")
-
-                if stored_path_exists:
-                    # Check if stored socket path matches expected (same credentials)
-                    if socket_path == expected_socket_path:
-                        logger.info(f"  ✅ Stored socket path matches expected path - same credentials")
-                        logger.info(f"     This indicates we're reusing the same manager")
-                        manager_found = True
-                        actual_socket_path = socket_path
-                        actual_authkey_b64 = authkey_b64
-                    else:
-                        logger.info("=" * 80)
-                        logger.info("⚠️  CREDENTIAL MISMATCH DETECTED")
-                        logger.info("=" * 80)
-                        logger.info(f"   Stored socket path: {socket_path}")
-                        logger.info(f"   Expected socket path: {expected_socket_path}")
-                        logger.info(f"   The stored path exists but doesn't match expected path")
-                        logger.info(f"   This suggests credentials changed - will spawn new manager")
-                else:
-                    logger.info(f"  ⚠️  Stored socket path in facts but file does not exist")
-                    logger.info(f"     Manager may have crashed or been cleaned up")
-            else:
-                if not socket_path:
-                    logger.info(f"  ❌ No socket path in facts")
-                if not authkey_b64:
-                    logger.info(f"  ❌ No authkey in facts")
-
-            # Also check if expected socket path exists (in case facts weren't updated)
-            logger.info("")
-            logger.info("Checking expected socket path (fallback check)...")
-            if not manager_found:
-                expected_path_exists = Path(expected_socket_path).exists()
-                logger.info(f"  Expected socket path: {expected_socket_path}")
-                logger.info(f"  Socket file exists: {expected_path_exists}")
-                logger.info(f"  Authkey available: {bool(authkey_b64)}")
-
-                if expected_path_exists and authkey_b64:
-                    logger.info("=" * 80)
-                    logger.info("✅ FOUND MANAGER AT EXPECTED PATH (facts may not be updated)")
-                    logger.info("=" * 80)
-                    logger.info(f"   Expected socket path exists: {expected_socket_path}")
-                    logger.info(f"   Using stored authkey from facts")
-                    logger.info(f"   This suggests facts weren't updated but manager is running")
-                    # Use expected socket path and stored authkey
+        logger.info("")
+        logger.info("Checking stored socket path...")
+        if socket_path and authkey_b64:
+            stored_path_exists = Path(socket_path).exists()
+            logger.info(f"  Stored socket path: {socket_path}")
+            logger.info(f"  Authkey present: {bool(authkey_b64)}")
+            logger.info(f"  Socket file exists: {stored_path_exists}")
+            
+            if stored_path_exists:
+                # Check if stored socket path matches expected (same credentials)
+                if socket_path == expected_socket_path:
+                    logger.info(f"  ✅ Stored socket path matches expected path - same credentials")
+                    logger.info(f"     This indicates we're reusing the same manager")
                     manager_found = True
-                    actual_socket_path = expected_socket_path
+                    actual_socket_path = socket_path
                     actual_authkey_b64 = authkey_b64
                 else:
-                    if not expected_path_exists:
-                        logger.info(f"  ❌ Expected socket path does not exist")
-                    if not authkey_b64:
-                        logger.info(f"  ❌ Authkey not available")
+                    logger.info("=" * 80)
+                    logger.info("⚠️  CREDENTIAL MISMATCH DETECTED")
+                    logger.info("=" * 80)
+                    logger.info(f"   Stored socket path: {socket_path}")
+                    logger.info(f"   Expected socket path: {expected_socket_path}")
+                    logger.info(f"   The stored path exists but doesn't match expected path")
+                    logger.info(f"   This suggests credentials changed - will spawn new manager")
+            else:
+                logger.info(f"  ⚠️  Stored socket path in facts but file does not exist")
+                logger.info(f"     Manager may have crashed or been cleaned up")
+        else:
+            if not socket_path:
+                logger.info(f"  ❌ No socket path in facts")
+            if not authkey_b64:
+                logger.info(f"  ❌ No authkey in facts")
+        
+        # Also check if expected socket path exists (in case facts weren't updated)
+        logger.info("")
+        logger.info("Checking expected socket path (fallback check)...")
+        if not manager_found:
+            expected_path_exists = Path(expected_socket_path).exists()
+            logger.info(f"  Expected socket path: {expected_socket_path}")
+            logger.info(f"  Socket file exists: {expected_path_exists}")
+            logger.info(f"  Authkey available: {bool(authkey_b64)}")
+            
+            if expected_path_exists and authkey_b64:
+                logger.info("=" * 80)
+                logger.info("✅ FOUND MANAGER AT EXPECTED PATH (facts may not be updated)")
+                logger.info("=" * 80)
+                logger.info(f"   Expected socket path exists: {expected_socket_path}")
+                logger.info(f"   Using stored authkey from facts")
+                logger.info(f"   This suggests facts weren't updated but manager is running")
+                # Use expected socket path and stored authkey
+                manager_found = True
+                actual_socket_path = expected_socket_path
+                actual_authkey_b64 = authkey_b64
+            else:
+                if not expected_path_exists:
+                    logger.info(f"  ❌ Expected socket path does not exist")
+                if not authkey_b64:
+                    logger.info(f"  ❌ Authkey not available")
         
         logger.info("=" * 80)
         logger.info(f"Manager reuse decision: {'✅ REUSE EXISTING' if manager_found else '🆕 SPAWN NEW'}")
@@ -559,91 +557,84 @@ class BaseResourceActionPlugin(ActionBase):
             logger.info("=" * 80)
             logger.info(f"Manager socket path: {actual_socket_path}")
             logger.info(f"Attempting to connect to existing manager...")
-
-            # CRITICAL: Ensure socket_path is a plain str (Fedora/_AnsibleTaggedStr compatibility)
-            # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
-            # On Fedora, BaseManager.address_type() is strict and rejects subclasses
-            # Force conversion to plain Python str using f-string
-            actual_socket_path_str = f"{actual_socket_path}"  # f-string forces plain str
-            # Double-check: ensure it's actually a plain str, not a subclass
-            if type(actual_socket_path_str) is not str:
-                actual_socket_path_str = str(actual_socket_path_str)
             
-            if ProcessManager.is_socket_responsive(actual_socket_path_str):
-                try:
-                    authkey = base64.b64decode(actual_authkey_b64)
-                    logger.info(f"Authkey decoded successfully (length: {len(authkey)} bytes)")
-
-                    logger.info(f"Socket path type before conversion: {type(actual_socket_path)}")
-                    logger.info(f"Socket path after conversion: {actual_socket_path_str} (type: {type(actual_socket_path_str)})")
-                    logger.info(f"Is plain str (not subclass): {type(actual_socket_path_str) is str}")
-
-                    # Pass plain string to ManagerRPCClient (Fedora compatibility)
-                    client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
-
-                    if client.check_health():
-                        # Track this task's manager
-                        task_uuid = self._get_task_uuid(task_vars)
-                        task_name = getattr(self._task, 'name', 'unknown')
-                        play_name = getattr(self._play, 'name', 'unknown') if hasattr(self, '_play') else 'unknown'
-
-                        logger.info("=" * 80)
-                        logger.info("✅ SUCCESSFULLY CONNECTED TO EXISTING MANAGER")
-                        logger.info("=" * 80)
-                        logger.info(f"Task UUID: {task_uuid}")
-                        logger.info(f"Task name: {task_name}")
-                        logger.info(f"Play name: {play_name}")
-                        logger.info(f"Manager socket: {actual_socket_path_str}")
-                        logger.info(f"Host: {inventory_hostname}")
-                        logger.info(f"Gateway URL: {gateway_config.base_url}")
-                        logger.info(f"Task-to-manager mapping: {task_uuid} -> {actual_socket_path_str}")
-
-                        # Use string version for tracking (ensure consistency)
-                        BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path_str
-
-                        # Log all tasks using this manager
-                        tasks_using_this_manager = [
-                            tid for tid, sock in BaseResourceActionPlugin._task_to_manager.items()
-                            if str(sock) == actual_socket_path_str  # Compare as strings
-                        ]
-                        logger.info(f"Total tasks using this manager: {len(tasks_using_this_manager)}")
-                        logger.info(f"Task IDs using this manager: {tasks_using_this_manager}")
-
-                        # Track this manager in playbook tracking (process-safe)
-                        play_id = self._get_play_id()
-                        tracking = self._read_tracking_file(play_id)
-                        if tracking:
-                            if 'socket_paths' in tracking:
-                                if isinstance(tracking['socket_paths'], list):
-                                    tracking['socket_paths'] = set(tracking['socket_paths'])
-                                tracking['socket_paths'].add(actual_socket_path_str)  # Store as string
-                                self._write_tracking_file(play_id, tracking)
-                                logger.info(f"Updated playbook tracking: manager {actual_socket_path_str} registered")
-
-                        logger.info("=" * 80)
-
-                        # Return client and updated facts (socket path may have changed)
-                        # CRITICAL: Return string, not Path object (Fedora compatibility)
-                        return client, {
-                            'platform_manager_socket': actual_socket_path_str,
-                            'platform_manager_authkey': actual_authkey_b64
-                        }
-                    else:
-                        logger.warning("Manager connected but failed RPC health check")
-                except Exception as e:
-                    logger.warning("=" * 80)
-                    logger.warning("❌ FAILED TO CONNECT TO EXISTING MANAGER")
-                    logger.warning("=" * 80)
-                    logger.warning(f"Socket path: {actual_socket_path}")
-                    logger.warning(f"Error: {e}")
-                    logger.warning(f"Error type: {type(e).__name__}")
-                    import traceback
-                    logger.warning(f"Traceback:\n{traceback.format_exc()}")
-                    logger.warning("Falling back to spawning new manager...")
-                    logger.warning("=" * 80)
-                    # Fall through to spawn new one
-        else:
-            logger.warning("Socket file exists but is not responsive (process may be dead)")
+            try:
+                authkey = base64.b64decode(actual_authkey_b64)
+                logger.info(f"Authkey decoded successfully (length: {len(authkey)} bytes)")
+                
+                # CRITICAL: Ensure socket_path is a plain str (Fedora/_AnsibleTaggedStr compatibility)
+                # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
+                # On Fedora, BaseManager.address_type() is strict and rejects subclasses
+                # Force conversion to plain Python str using f-string
+                actual_socket_path_str = f"{actual_socket_path}"  # f-string forces plain str
+                # Double-check: ensure it's actually a plain str, not a subclass
+                if type(actual_socket_path_str) is not str:
+                    actual_socket_path_str = str(actual_socket_path_str)
+                logger.info(f"Socket path type before conversion: {type(actual_socket_path)}")
+                logger.info(f"Socket path after conversion: {actual_socket_path_str} (type: {type(actual_socket_path_str)})")
+                logger.info(f"Is plain str (not subclass): {type(actual_socket_path_str) is str}")
+                
+                # Pass plain string to ManagerRPCClient (Fedora compatibility)
+                client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
+                
+                # Track this task's manager
+                task_uuid = self._get_task_uuid(task_vars)
+                task_name = getattr(self._task, 'name', 'unknown')
+                play_name = getattr(self._play, 'name', 'unknown') if hasattr(self, '_play') else 'unknown'
+                
+                logger.info("=" * 80)
+                logger.info("✅ SUCCESSFULLY CONNECTED TO EXISTING MANAGER")
+                logger.info("=" * 80)
+                logger.info(f"Task UUID: {task_uuid}")
+                logger.info(f"Task name: {task_name}")
+                logger.info(f"Play name: {play_name}")
+                logger.info(f"Manager socket: {actual_socket_path_str}")
+                logger.info(f"Host: {inventory_hostname}")
+                logger.info(f"Gateway URL: {gateway_config.base_url}")
+                logger.info(f"Task-to-manager mapping: {task_uuid} -> {actual_socket_path_str}")
+                
+                # Use string version for tracking (ensure consistency)
+                BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path_str
+                
+                # Log all tasks using this manager
+                tasks_using_this_manager = [
+                    tid for tid, sock in BaseResourceActionPlugin._task_to_manager.items()
+                    if str(sock) == actual_socket_path_str  # Compare as strings
+                ]
+                logger.info(f"Total tasks using this manager: {len(tasks_using_this_manager)}")
+                logger.info(f"Task IDs using this manager: {tasks_using_this_manager}")
+                
+                # Track this manager in playbook tracking (process-safe)
+                play_id = self._get_play_id()
+                tracking = self._read_tracking_file(play_id)
+                if tracking:
+                    if 'socket_paths' in tracking:
+                        if isinstance(tracking['socket_paths'], list):
+                            tracking['socket_paths'] = set(tracking['socket_paths'])
+                        tracking['socket_paths'].add(actual_socket_path_str)  # Store as string
+                        self._write_tracking_file(play_id, tracking)
+                        logger.info(f"Updated playbook tracking: manager {actual_socket_path_str} registered")
+                
+                logger.info("=" * 80)
+                
+                # Return client and updated facts (socket path may have changed)
+                # CRITICAL: Return string, not Path object (Fedora compatibility)
+                return client, {
+                    'platform_manager_socket': actual_socket_path_str,
+                    'platform_manager_authkey': actual_authkey_b64
+                }
+            except Exception as e:
+                logger.warning("=" * 80)
+                logger.warning("❌ FAILED TO CONNECT TO EXISTING MANAGER")
+                logger.warning("=" * 80)
+                logger.warning(f"Socket path: {actual_socket_path}")
+                logger.warning(f"Error: {e}")
+                logger.warning(f"Error type: {type(e).__name__}")
+                import traceback
+                logger.warning(f"Traceback:\n{traceback.format_exc()}")
+                logger.warning("Falling back to spawning new manager...")
+                logger.warning("=" * 80)
+                # Fall through to spawn new one
         
         # Spawn new manager using platform SDK (generic process management)
         logger.info("=" * 80)
@@ -1238,27 +1229,3 @@ class BaseResourceActionPlugin(ActionBase):
             import traceback
             result['exception'] = traceback.format_exc()
         return result
-    
-    def execute_with_retry(self, manager_client, operation, module_name, data, task_vars):
-        """
-        Execute an operation with automatic retry on connection failure.
-        """
-        attempts = 0
-        current_client = manager_client
-        
-        while attempts <= self.MAX_RETRIES:
-            try:
-                return current_client.execute(operation, module_name, data)
-            except (ConnectionError, BrokenPipeError, EOFError) as e:
-                attempts += 1
-                if attempts > self.MAX_RETRIES:
-                    logger.error(f"Max retries ({self.MAX_RETRIES}) reached for operation {operation}")
-                    raise e
-                logger.warning(f"Connection lost during {operation}. Attempting recovery ({attempts}/{self.MAX_RETRIES})...")
-                try:
-                    new_client, _ = self._get_or_spawn_manager(task_vars, force_spawn=True)
-                    current_client = new_client
-                    logger.info(f"Recovery successful. Retrying operation...")
-                except Exception as spawn_err:
-                    logger.error(f"Failed to recover manager: {spawn_err}")
-                    raise e

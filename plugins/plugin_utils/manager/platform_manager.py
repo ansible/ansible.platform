@@ -204,13 +204,6 @@ class PlatformService:
         
         return url
     
-    def ping(self) -> bool:
-        """
-        Lightweight health check.
-        Returns True to confirm the application layer is responsive.
-        """
-        return True
-    
     def execute(
         self,
         operation: str,

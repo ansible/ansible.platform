@@ -10,7 +10,6 @@ from typing import Dict, Any, Optional
 import logging
 import base64
 import time
-import socket
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +56,6 @@ class ManagerRPCClient:
         else:
             self.socket_path = socket_path
         self.authkey = authkey
-        self.manager = None
-        self.service_proxy = None
-        self._connected = False
         
         # Import manager class
         from .platform_manager import PlatformManager
@@ -114,70 +110,25 @@ class ManagerRPCClient:
         else:
             data_dict = ansible_data
         
-        try:
-            if not self._connected:
-                self.connect()
-            # Execute via proxy
-            result_dict = self.service_proxy.execute(
-                operation,
-                module_name,
-                data_dict
-            )
-            
-            # Performance timing: RPC call end
-            rpc_end = time.perf_counter()
-            rpc_elapsed = rpc_end - rpc_start
-            logger.debug(f"⏱️  TIMING END: RPC call to manager (elapsed={rpc_elapsed:.6f}s, timestamp={rpc_end:.6f})")
-            
-            # Add timing info to result if it's a dict
-            if isinstance(result_dict, dict):
-                result_dict.setdefault('_timing', {})['rpc_time'] = rpc_elapsed
-                result_dict['_timing']['rpc_start'] = rpc_start
-                result_dict['_timing']['rpc_end'] = rpc_end
-            
-            return result_dict
-        except (EOFError, BrokenPipeError, ConnectionRefusedError) as e:
-            logger.error(f"RPC connection error during execute: {e}")
-            self._cleanup_on_failure()
-            raise ConnectionError(f"Manager connection lost: {e}") from e
-    
-    def connect(self) -> None:
-        """Establish connection to the manager."""
-        try:
-            from .platform_manager import PlatformManager
-            if not hasattr(PlatformManager, 'get_platform_service'):
-                PlatformManager.register('get_platform_service')
-            self.manager = PlatformManager(
-                address=self.socket_path, 
-                authkey=self.authkey
-            )
-            logger.debug(f"Connecting to manager at {self.socket_path}...")
-            self.manager.connect()
-            self.service_proxy = self.manager.get_platform_service()
-            self._connected = True
-            logger.debug("RPC Connection established")
-        except Exception as e:
-            logger.error(f"Failed to connect to manager: {e}")
-            self._cleanup_on_failure()
-            raise
-
-    def check_health(self) -> bool:
-        """
-        Check if the manager is responsive using an explicit Ping.
-        """
-        try:
-            if not self._connected:
-                self.connect()
-            if self.service_proxy.ping():
-                return True
-            return False
-        except (EOFError, BrokenPipeError, ConnectionRefusedError, socket.error, AttributeError):
-            self._cleanup_on_failure()
-            return False
-        except Exception as e:
-            logger.warning(f"Health check failed unexpectedly: {e}")
-            self._cleanup_on_failure()
-            return False
+        # Execute via proxy
+        result_dict = self.service_proxy.execute(
+            operation,
+            module_name,
+            data_dict
+        )
+        
+        # Performance timing: RPC call end
+        rpc_end = time.perf_counter()
+        rpc_elapsed = rpc_end - rpc_start
+        logger.debug(f"⏱️  TIMING END: RPC call to manager (elapsed={rpc_elapsed:.6f}s, timestamp={rpc_end:.6f})")
+        
+        # Add timing info to result if it's a dict
+        if isinstance(result_dict, dict):
+            result_dict.setdefault('_timing', {})['rpc_time'] = rpc_elapsed
+            result_dict['_timing']['rpc_start'] = rpc_start
+            result_dict['_timing']['rpc_end'] = rpc_end
+        
+        return result_dict
     
     def shutdown_manager(self) -> dict:
         """
@@ -202,8 +153,4 @@ class ManagerRPCClient:
             self.manager.shutdown()
             logger.debug("Disconnected from Platform Manager")
 
-    def _cleanup_on_failure(self):
-        """Reset internal state on connection failure."""
-        self._connected = False
-        self.manager = None
-        self.service_proxy = None
+
