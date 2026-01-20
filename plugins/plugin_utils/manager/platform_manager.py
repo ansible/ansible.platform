@@ -31,7 +31,7 @@ from ..platform.exceptions import (
     TimeoutError,
     classify_exception
 )
-from ..platform.retry import retry_http_request, RetryConfig
+from ..platform.retry import retry_http_request, RetryConfig, retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -621,6 +621,13 @@ class PlatformService:
             url = f"{url}?{urlencode(query_params)}"
 
         return url
+    
+    def ping(self) -> bool:
+        """
+        Lightweight health check.
+        Returns True to confirm the application layer is responsive.
+        """
+        return True
 
     def execute(
         self,
@@ -956,6 +963,31 @@ class PlatformService:
         ansible_instance = mixin_class.from_api(api_result, context)
         from dataclasses import asdict
         return asdict(ansible_instance)
+    
+    @retry_with_backoff(max_retries=3, delay=1, backoff=2)
+    def _perform_request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """
+        Centralized request method with automatic retry and error handling.
+        """
+        try:
+            # Increment HTTP request counter (thread-safe)
+            with self._lock:
+                self._http_request_count += 1
+            response = self.session.request(method, url, **kwargs)
+            
+            if response.status_code in [401, 403]:
+                raise AuthenticationError(f"Authentication failed: {response.text}")
+            if response.status_code >= 500:
+                raise APIError(f"Server Error {response.status_code}: {response.text}", status_code=response.status_code)
+            if response.status_code >= 400:
+                raise ValidationError(f"Client Error {response.status_code}: {response.text}")
+            return response
+        except requests.exceptions.ConnectionError as e:
+            raise NetworkError("Connection refused or network down", orig_exc=e)
+        except requests.exceptions.Timeout as e:
+            raise NetworkError("Request timed out", orig_exc=e)
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"Unexpected network error: {e}", orig_exc=e)
 
     def _execute_operations(
         self,
@@ -1020,18 +1052,13 @@ class PlatformService:
             api_start = time.perf_counter()
 
             try:
-                # Increment HTTP request counter (thread-safe)
-                with self._lock:
-                    self._http_request_count += 1
-
-                response = self.session.request(
-                    endpoint_op.method,
-                    url,
+                response = self._perform_request(
+                    method=endpoint_op.method,
+                    url=url,
                     json=request_data,
                     timeout=self.request_timeout,
                     verify=self.verify_ssl
                 )
-                response.raise_for_status()
 
                 # Performance timing: API call end
                 api_end = time.perf_counter()
@@ -1234,4 +1261,3 @@ class PlatformManager(ThreadingMixIn, BaseManager):
     def register_shutdown_method(service):
         """Register shutdown method with manager."""
         PlatformManager.register('shutdown', callable=lambda: service.shutdown())
-
