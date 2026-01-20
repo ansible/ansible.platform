@@ -302,7 +302,11 @@ class BaseResourceActionPlugin(ActionBase):
 
         return client, None
 
-    def _get_or_spawn_persistent_manager(self, task_vars: dict, gateway_config, force_spawn: bool = False):
+    def _get_or_spawn_persistent_manager(
+        self, 
+        task_vars: dict, 
+        gateway_config: Any, force_spawn: bool = False
+    ) -> Tuple['ManagerRPCClient', Optional[Dict[str, Any]]]:
         """
         Get existing persistent manager or spawn new one (experimental mode).
 
@@ -451,7 +455,7 @@ class BaseResourceActionPlugin(ActionBase):
                             tracking['socket_paths'].add(actual_socket_path_str)
                             self._write_tracking_file(play_id, tracking)
 
-                    logger.info(f"Connected to existing manager: {actual_socket_path_str}")
+                    logger.debug(f"Successfully connected to existing persistent manager: {actual_socket_path_str}")
 
                     return client, {
                         'platform_manager_socket': actual_socket_path_str,
@@ -1101,4 +1105,3 @@ class BaseResourceActionPlugin(ActionBase):
             return 'find'
         else:
             raise AnsibleError(f"Unknown state: {state}")
-

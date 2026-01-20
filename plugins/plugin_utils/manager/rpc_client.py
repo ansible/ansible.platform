@@ -127,7 +127,6 @@ class ManagerRPCClient:
             # Performance timing: RPC call end
             rpc_end = time.perf_counter()
             rpc_elapsed = rpc_end - rpc_start
-            logger.debug(f"⏱️  TIMING END: RPC call to manager (elapsed={rpc_elapsed:.6f}s, timestamp={rpc_end:.6f})")
             
             # Add timing info to result if it's a dict
             if isinstance(result_dict, dict):
