@@ -155,10 +155,12 @@ class ActionModule(BaseResourceActionPlugin):
                 sys.stderr.write("PHASE 15: Checking if user exists (idempotency)\n")
                 sys.stderr.flush()
                 try:
-                    find_result = manager.execute(
+                    find_result = self.execute_with_retry(
+                        manager_client=manager,
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        data={'username': user.username},
+                        task_vars=task_vars
                     )
                     sys.stderr.write("PHASE 16: Find operation completed\n")
                     sys.stderr.flush()
@@ -176,10 +178,12 @@ class ActionModule(BaseResourceActionPlugin):
                 sys.stderr.write("PHASE 15b: Finding user to get ID for delete operation\n")
                 sys.stderr.flush()
                 try:
-                    find_result = manager.execute(
+                    find_result = self.execute_with_retry(
+                        manager_client=manager,
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        data={'username': user.username},
+                        task_vars=task_vars
                     )
                     sys.stderr.write("PHASE 16b: Find operation completed for delete\n")
                     sys.stderr.flush()
@@ -213,10 +217,12 @@ class ActionModule(BaseResourceActionPlugin):
             # Execute via manager
             sys.stderr.write(f"PHASE 18: About to execute {operation} via manager\n")
             sys.stderr.flush()
-            manager_result = manager.execute(
+            manager_result = self.execute_with_retry(
+                manager_client=manager,
                 operation=operation,
                 module_name=self.MODULE_NAME,
-                ansible_data=user.__dict__
+                data=user.__dict__,
+                task_vars=task_vars
             )
             sys.stderr.write("PHASE 19: Manager execution completed\n")
             sys.stderr.flush()
@@ -303,13 +309,7 @@ class ActionModule(BaseResourceActionPlugin):
             import traceback
             sys.stderr.write(f"TRACEBACK:\n{traceback.format_exc()}\n")
             sys.stderr.flush()
-            self._display.vvv(f"❌ Error in action plugin: {e}")
-            result['failed'] = True
-            result['msg'] = str(e)
-
-            # Include traceback in verbose mode
-            if self._display.verbosity >= 3:
-                result['exception'] = traceback.format_exc()
+            return self._handle_exception(e)
 
         sys.stderr.write("PHASE 25: Returning result from run()\n")
         sys.stderr.flush()
