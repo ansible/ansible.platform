@@ -119,6 +119,7 @@ def main():
 
         log_marker("About to import platform_manager...")
         try:
+            from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
             from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import (
                 PlatformManager,
                 PlatformService
@@ -133,18 +134,41 @@ def main():
             f.write("Imports successful\n")
             f.flush()
 
-        # Create service
+        # Create GatewayConfig
         try:
-            service = PlatformService(
+            config = GatewayConfig(
                 base_url=gateway_url,
                 username=gateway_username,
                 password=gateway_password,
                 oauth_token=gateway_token,
                 verify_ssl=gateway_validate_certs,
-                request_timeout=gateway_request_timeout
+                request_timeout=gateway_request_timeout,
+                connection_mode='experimental'  # Persistent manager is always experimental mode
             )
             with open(error_log, 'a') as f:
-                f.write("Service created successfully\n")
+                f.write("GatewayConfig created successfully\n")
+                f.flush()
+        except Exception as config_err:
+            with open(error_log, 'a') as f:
+                f.write(f"GatewayConfig creation failed: {config_err}\n")
+                f.write(traceback.format_exc())
+                f.flush()
+            raise
+
+        # Create service
+        try:
+            with open(error_log, 'a') as f:
+                f.write("=" * 80 + "\n")
+                f.write("About to create PlatformService...\n")
+                f.write("=" * 80 + "\n")
+                f.flush()
+            service = PlatformService(config)
+            with open(error_log, 'a') as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"✅ Service created successfully\n")
+                f.write(f"   API Version: {service.api_version}\n")
+                f.write(f"   Base URL: {config.base_url}\n")
+                f.write("=" * 80 + "\n")
                 f.flush()
         except Exception as service_err:
             with open(error_log, 'a') as f:

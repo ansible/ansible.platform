@@ -71,16 +71,13 @@ class DynamicClassLoader:
             return self._class_cache[cache_key]
 
         # Load classes
-        logger.info(
-            f"Loading classes for {module_name} (API version {best_version})"
-        )
-
+        logger.debug(f"Loading classes for {module_name} (API version {best_version})")
         ansible_class = self._load_ansible_class(module_name)
         api_class, mixin_class = self._load_api_classes(module_name, best_version)
 
         # Cache and return
         result = (ansible_class, api_class, mixin_class)
-        self._class_cache[cache_key] = result
+        logger.debug(f"Loaded classes: {ansible_class.__name__}, {api_class.__name__}, {mixin_class.__name__}")
 
         return result
 
@@ -104,6 +101,7 @@ class DynamicClassLoader:
         try:
             module = importlib.import_module(module_path)
         except ImportError as e:
+            logger.error(f"Failed to import Ansible module {module_path}: {e}")
             raise ImportError(
                 f"Failed to import Ansible module {module_path}: {e}"
             ) from e
@@ -153,6 +151,7 @@ class DynamicClassLoader:
         try:
             module = importlib.import_module(module_path)
         except ImportError as e:
+            logger.error(f"Failed to import API module {module_path}: {e}")
             raise ImportError(
                 f"Failed to import API module {module_path}: {e}"
             ) from e

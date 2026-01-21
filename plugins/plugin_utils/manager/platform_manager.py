@@ -14,6 +14,8 @@ from dataclasses import asdict, is_dataclass
 from urllib.parse import urlparse, urlencode
 import requests
 
+from ..platform.base_client import BaseAPIClient
+from ..platform.config import GatewayConfig
 from ..platform.registry import APIVersionRegistry
 from ..platform.loader import DynamicClassLoader
 from ..platform.types import EndpointOperation, TransformContext
@@ -35,57 +37,52 @@ from ..platform.retry import retry_http_request, RetryConfig, retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
-class PlatformService:
+class PlatformService(BaseAPIClient):
     """
-    Generic platform service - resource agnostic.
+    Persistent platform service for experimental connection mode.
 
     This service maintains a persistent connection and handles all resource operations
     generically. It performs all transformations and API calls.
 
-    Attributes:
+    Inherits from BaseAPIClient and shares the same interface as DirectHTTPClient:
+    - Version detection (APIVersionRegistry, DynamicClassLoader)
+    - Error taxonomy (exceptions.py, retry.py)
+    - Credential management (credential_manager.py)
+    - CRUD operations (transform mixins, endpoint operations)
+    - Optimizations (caching, lookup helpers)
+
+    Attributes (from BaseAPIClient):
         base_url: Platform base URL
-        session: Persistent HTTP session
         api_version: Detected/cached API version
         registry: Version registry
         loader: Class loader
         cache: Lookup cache (org names ↔ IDs, etc.)
+
+    Additional Attributes:
+        session: Persistent HTTP session (requests.Session)
         username: Authentication username
         password: Authentication password
         oauth_token: OAuth token for authentication
         verify_ssl: SSL verification flag
     """
 
-    def __init__(
-        self,
-        base_url: str,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        oauth_token: Optional[str] = None,
-        verify_ssl: bool = True,
-        request_timeout: float = 10.0
-    ):
+    def __init__(self, config: GatewayConfig):
         """
         Initialize platform service.
 
         Args:
-            base_url: Platform base URL (e.g., https://platform.example.com)
-            username: Username for basic auth
-            password: Password for basic auth
-            oauth_token: OAuth token for bearer auth
-            verify_ssl: Whether to verify SSL certificates
-            request_timeout: Request timeout in seconds
+            config: Gateway configuration
         """
-        self.base_url = base_url.rstrip('/')
-        self.verify_ssl = verify_ssl
-        self.request_timeout = request_timeout
+        # Initialize base class (sets up registry, loader, cache, api_version)
+        super().__init__(config)
 
         # Initialize credential manager and store credentials securely
         self.credential_manager = get_credential_manager()
         self.credential_store = self.credential_manager.get_or_create_store(
             gateway_url=self.base_url,
-            username=username,
-            password=password,
-            oauth_token=oauth_token,
+            username=config.username,
+            password=config.password,
+            oauth_token=config.oauth_token,
             process_id=str(id(self))  # Use object ID as process identifier
         )
 
@@ -110,26 +107,33 @@ class PlatformService:
         # Authenticate (with error handling)
         try:
             self._authenticate()
-            logger.info("Authentication successful")
+            logger.info("PlatformService: Authentication successful")
         except Exception as e:
-            logger.error(f"Authentication failed: {e}")
+            logger.error(f"PlatformService: Authentication failed: {e}")
             self._last_auth_error = e
             # Continue anyway - some operations might work without auth
 
         # Detect API version (cached for lifetime)
+        # IMPORTANT: Always default to '1' if detection fails
+        # Do NOT use registry-discovered versions - we detect from the actual API
         try:
-            self.api_version = self._detect_version()
-            logger.info(f"PlatformService initialized with API v{self.api_version}")
+            detected_version = self._detect_api_version()
+            # Ensure we got a valid version string
+            if not detected_version or detected_version not in ['1', '2', '2.1']:
+                logger.warning(f"PlatformService: Invalid detected version '{detected_version}', defaulting to '1'")
+                detected_version = '1'
+            self.api_version = detected_version
+            logger.info(f"PlatformService: API version detected: v{self.api_version}")
         except Exception as e:
-            logger.warning(f"Version detection failed: {e}, defaulting to v1")
+            logger.warning(f"PlatformService: Version detection failed: {e}, defaulting to v1")
+            self.api_version = '1'  # CRITICAL: Always default to '1' on failure
+        
+        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
+        if self.api_version != '1':
+            logger.warning(f"PlatformService: Detected version '{self.api_version}' but AAP Gateway only supports v1, forcing to '1'")
             self.api_version = '1'
-
-        # Initialize registry and loader
-        self.registry = APIVersionRegistry()
-        self.loader = DynamicClassLoader(self.registry)
-
-        # Cache for lookups
-        self.cache: Dict[str, Any] = {}
+        
+        logger.info(f"PlatformService initialized with API v{self.api_version}")
 
         # Performance counters (thread-safe)
         self._http_request_count = 0
@@ -560,40 +564,114 @@ class PlatformService:
         logger.error("Failed to recover authentication")
         return False
 
-    def _detect_version(self) -> str:
+    def _detect_api_version(self) -> str:
         """
         Detect platform API version.
+
+        Uses the /api/gateway/ endpoint which returns version information in JSON format:
+        {
+          "current_version": "/api/gateway/v1/",
+          "available_versions": {
+            "v1": "/api/gateway/v1/"
+          }
+        }
+
+        The method:
+        1. Makes a GET request to /api/gateway/
+        2. Parses the JSON response to extract current_version
+        3. Extracts the version number from the path (e.g., "/api/gateway/v1/" -> "1")
+        4. Falls back to available_versions if current_version is not present
+        5. Defaults to '1' if detection fails
+
+        Falls back to v1 if detection fails.
 
         Returns:
             Version string (e.g., '1', '2.1')
         """
+        # Write to both logger and stderr for visibility in manager process logs
+        import sys
+        import os
+        import re
+        from pathlib import Path
+        
+        # Get error_log path from environment (set by process_manager.py when spawning)
+        error_log_path = None
         try:
-            # Try to get version from API
-            # Most AAP APIs have a version endpoint or include version in response
+            socket_dir = os.environ.get('ANSIBLE_PLATFORM_SOCKET_DIR')
+            if socket_dir:
+                inventory_hostname = os.environ.get('ANSIBLE_PLATFORM_HOSTNAME', 'localhost')
+                error_log_path = Path(socket_dir) / f'manager_error_{inventory_hostname}.log'
+                # Note: error_log is created by manager_process.py before PlatformService is instantiated
+                # so it should exist, but we'll try to write anyway
+        except Exception:
+            pass
+        
+        try:
+            # Use the /api/gateway/ endpoint which provides version information
+            gateway_url = f'{self.base_url.rstrip("/")}/api/gateway/'
+            logger.debug(f"PlatformService: Detecting API version via {gateway_url}")
+            
+            # Make request using session (authentication headers already set)
             response = self.session.get(
-                f'{self.base_url}/api/gateway/v1/ping/',
+                gateway_url,
                 timeout=self.request_timeout,
                 verify=self.verify_ssl
             )
             response.raise_for_status()
-
-            # Try to extract version from response or default to v1
-            version_str = '1'  # Default to v1 for AAP Gateway
-
-            # If API provides version info, extract it
-            if response.headers.get('X-API-Version'):
-                version_str = response.headers.get('X-API-Version', '1')
-            elif response.json().get('version'):
-                version_str = str(response.json().get('version', '1'))
-
-            # Normalize version string
-            if version_str.startswith('v'):
-                version_str = version_str[1:]
-
+            
+            # Default to v1 if detection fails
+            version_str = '1'
+            
+            # Parse JSON response
+            if response.headers.get('Content-Type', '').startswith('application/json'):
+                try:
+                    response_data = response.json()
+                    logger.debug(f"PlatformService: Gateway API response: {response_data}")
+                    
+                    # Extract version from current_version field (e.g., "/api/gateway/v1/" -> "1")
+                    if 'current_version' in response_data:
+                        current_version_path = response_data['current_version']
+                        version_match = re.search(r'/v(\d+(?:\.\d+)?)/?$', current_version_path)
+                        if version_match:
+                            version_str = version_match.group(1)
+                            logger.debug(f"PlatformService: Extracted version '{version_str}' from current_version path")
+                    
+                    # Fallback: Check available_versions if current_version not found
+                    elif 'available_versions' in response_data:
+                        available = response_data['available_versions']
+                        if isinstance(available, dict) and available:
+                            version_keys = sorted(available.keys(), reverse=True)
+                            if version_keys:
+                                version_key = version_keys[0]  # Get highest version
+                                if version_key.startswith('v'):
+                                    version_str = version_key[1:]
+                                else:
+                                    version_str = version_key
+                                logger.debug(f"PlatformService: Extracted version '{version_str}' from available_versions")
+                    
+                except (ValueError, KeyError, AttributeError) as e:
+                    logger.debug(f"PlatformService: Could not parse version from response: {e}")
+            
+            # Validate version string format
+            if not version_str or not version_str.replace('.', '').isdigit():
+                logger.warning(f"PlatformService: Invalid version format '{version_str}', defaulting to '1'")
+                version_str = '1'
+            
             return version_str
-
+            
+        except requests.RequestException as e:
+            # Network/HTTP errors - default to v1
+            error_msg = f"PlatformService: Version detection failed (HTTP error): {e}, defaulting to v1"
+            logger.warning(error_msg)
+            print(error_msg, file=sys.stderr, flush=True)
+            return '1'
         except Exception as e:
-            logger.warning(f"Failed to detect API version: {e}, using default '1'")
+            # Any other errors - default to v1
+            error_msg = f"PlatformService: Version detection failed (unexpected error): {e}, defaulting to v1"
+            logger.warning(error_msg)
+            print(error_msg, file=sys.stderr, flush=True)
+            import traceback
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
             return '1'
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
@@ -727,6 +805,13 @@ class PlatformService:
 
             return result
 
+        except ValueError as e:
+            # "Resource not found" is expected during idempotency checks
+            if "not found" in str(e):
+                logger.debug(f"Operation {operation} on {module_name}: {e}")
+            else:
+                logger.error(f"Operation {operation} on {module_name} failed: {e}")
+            raise
         except Exception as e:
             logger.error(
                 f"Operation {operation} on {module_name} failed: {e}",
