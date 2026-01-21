@@ -24,6 +24,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Tuple, Union, Optional, Dict, Any
 
 import yaml
 
@@ -31,6 +32,10 @@ from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
+
+if TYPE_CHECKING:
+    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +85,7 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
 
     try:
 
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import (
             PlatformManager,
             PlatformService
@@ -89,16 +95,30 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
             f.write("Imports successful\n")
             f.flush()
 
-        # Create service
+        # Create GatewayConfig
         try:
-            service = PlatformService(
+            config = GatewayConfig(
                 base_url=gateway_url,
                 username=gateway_username,
                 password=gateway_password,
                 oauth_token=gateway_token,
                 verify_ssl=gateway_validate_certs,
-                request_timeout=gateway_request_timeout
+                request_timeout=gateway_request_timeout,
+                connection_mode='experimental'  # Persistent manager is always experimental mode
             )
+            with open(error_log_path, 'a') as f:
+                f.write("GatewayConfig created successfully\n")
+                f.flush()
+        except Exception as config_err:
+            with open(error_log_path, 'a') as f:
+                f.write(f"GatewayConfig creation failed: {config_err}\n")
+                f.write(traceback.format_exc())
+                f.flush()
+            raise
+
+        # Create service
+        try:
+            service = PlatformService(config)
             with open(error_log_path, 'a') as f:
                 f.write("Service created successfully\n")
                 f.flush()
@@ -193,7 +213,10 @@ class BaseResourceActionPlugin(ActionBase):
     # Key: task_uuid, Value: socket_path
     _task_to_manager = {}  # type: dict
 
-    def _get_or_spawn_manager(self, task_vars: dict):
+    def _get_or_spawn_manager(
+        self, 
+        task_vars: dict
+    ) -> Tuple[Union['DirectHTTPClient', 'ManagerRPCClient'], Optional[Dict[str, Any]]]:
         """
         Get connection client based on connection mode.
 
@@ -242,7 +265,11 @@ class BaseResourceActionPlugin(ActionBase):
             # Standard mode (default): Use direct HTTP client
             return self._get_direct_client(task_vars, gateway_config)
 
-    def _get_direct_client(self, task_vars: dict, gateway_config):
+    def _get_direct_client(
+        self, 
+        task_vars: dict, 
+        gateway_config: Any
+    ) -> Tuple['DirectHTTPClient', None]:
         """
         Get or create DirectHTTPClient for standard mode.
 
@@ -257,7 +284,7 @@ class BaseResourceActionPlugin(ActionBase):
         """
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
-        logger.info("Using standard connection mode (DirectHTTPClient)")
+        logger.debug("Using standard connection mode (DirectHTTPClient)")
 
         # Create direct HTTP client (new instance per task)
         client = DirectHTTPClient(gateway_config)
@@ -266,7 +293,11 @@ class BaseResourceActionPlugin(ActionBase):
 
         return client, None
 
-    def _get_or_spawn_persistent_manager(self, task_vars: dict, gateway_config):
+    def _get_or_spawn_persistent_manager(
+        self, 
+        task_vars: dict, 
+        gateway_config: Any
+    ) -> Tuple['ManagerRPCClient', Optional[Dict[str, Any]]]:
         """
         Get existing persistent manager or spawn new one (experimental mode).
 
@@ -290,7 +321,7 @@ class BaseResourceActionPlugin(ActionBase):
         )
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
-        logger.info("Using experimental connection mode (Persistent Manager)")
+        logger.debug("Using experimental connection mode (Persistent Manager)")
 
         # Store task_vars for cleanup() method
         self._task_vars = task_vars
@@ -303,7 +334,7 @@ class BaseResourceActionPlugin(ActionBase):
         inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
         host_vars = hostvars.get(inventory_hostname, {})
 
-        logger.info(f"Getting or spawning manager for host: {inventory_hostname}")
+        logger.info(f"Checking for existing persistent manager for host: {inventory_hostname}")
 
         # Check both hostvars and top-level task_vars (facts might be in either location)
         socket_path_from_hostvars = host_vars.get('platform_manager_socket')
@@ -316,21 +347,33 @@ class BaseResourceActionPlugin(ActionBase):
             socket_path = f"{socket_path_raw}"  # f-string forces plain str
             if type(socket_path) is not str:
                 socket_path = str(socket_path)
+            logger.info(f"   Found socket path in facts: {socket_path}")
         else:
             socket_path = None
+            logger.info(f"   No socket path found in facts (will spawn new manager)")
 
         # Get authkey from facts
         authkey_from_hostvars = host_vars.get('platform_manager_authkey')
         authkey_from_taskvars = task_vars.get('platform_manager_authkey')
         authkey_b64 = authkey_from_hostvars or authkey_from_taskvars
+        
+        if authkey_b64:
+            logger.info(f"   Found authkey in facts")
+        else:
+            logger.info(f"   No authkey found in facts")
 
         # Validate socket file if found
         if socket_path:
             socket_file = Path(socket_path)
             socket_exists = socket_file.exists()
-            if socket_exists and not socket_file.is_socket():
-                logger.warning(f"Socket path exists but is not a valid socket: {socket_path}")
-                socket_exists = False
+            if socket_exists:
+                if socket_file.is_socket():
+                    logger.info(f"   ✅ Socket file exists and is valid: {socket_path}")
+                else:
+                    logger.warning(f"   ⚠️  Socket path exists but is not a valid socket: {socket_path}")
+                    socket_exists = False
+            else:
+                logger.info(f"   ⚠️  Socket path from facts does not exist: {socket_path}")
         else:
             socket_exists = False
 
@@ -345,6 +388,7 @@ class BaseResourceActionPlugin(ActionBase):
             gateway_config=gateway_config
         )
         expected_socket_path = expected_conn_info.socket_path
+        logger.info(f"   Expected socket path (for current credentials): {expected_socket_path}")
 
         # Check if manager with matching credentials already exists
         manager_found = False
@@ -359,20 +403,22 @@ class BaseResourceActionPlugin(ActionBase):
                     manager_found = True
                     actual_socket_path = socket_path
                     actual_authkey_b64 = authkey_b64
-                    logger.info(f"Found existing manager: {socket_path}")
+                    logger.info(f"   ✅ Found existing manager with matching credentials: {socket_path}")
                 else:
-                    logger.info(f"Credentials changed, will spawn new manager")
+                    logger.info(f"   ⚠️  Credentials changed (socket path mismatch), will spawn new manager")
+                    logger.info(f"      Stored: {socket_path}")
+                    logger.info(f"      Expected: {expected_socket_path}")
 
         # Also check if expected socket path exists (in case facts weren't updated)
         if not manager_found and Path(expected_socket_path).exists() and authkey_b64:
             manager_found = True
             actual_socket_path = expected_socket_path
             actual_authkey_b64 = authkey_b64
-            logger.info(f"Found manager at expected path: {expected_socket_path}")
+            logger.debug(f"Found manager at expected path: {expected_socket_path}")
 
         # If manager already running with matching credentials, try to connect
         if manager_found and actual_socket_path and actual_authkey_b64:
-            logger.info(f"Connecting to existing manager: {actual_socket_path}")
+            logger.info(f"Reusing existing persistent manager (host: {inventory_hostname}, gateway: {gateway_config.base_url})")
 
             try:
                 authkey = base64.b64decode(actual_authkey_b64)
@@ -398,7 +444,7 @@ class BaseResourceActionPlugin(ActionBase):
                         tracking['socket_paths'].add(actual_socket_path_str)
                         self._write_tracking_file(play_id, tracking)
 
-                logger.info(f"Connected to existing manager: {actual_socket_path_str}")
+                logger.debug(f"Successfully connected to existing persistent manager: {actual_socket_path_str}")
 
                 return client, {
                     'platform_manager_socket': actual_socket_path_str,
@@ -409,7 +455,7 @@ class BaseResourceActionPlugin(ActionBase):
                 # Fall through to spawn new one
 
         # Spawn new manager
-        logger.info(f"Spawning new manager for host: {inventory_hostname}")
+        logger.info(f"Spawning new persistent manager (host: {inventory_hostname}, gateway: {gateway_config.base_url})")
 
         # Generate connection info using platform SDK (with credentials)
         conn_info = ProcessManager.generate_connection_info(
@@ -420,6 +466,8 @@ class BaseResourceActionPlugin(ActionBase):
         socket_path = conn_info.socket_path
         authkey = conn_info.authkey
         authkey_b64 = conn_info.authkey_b64
+
+        logger.debug(f"Generated socket path: {socket_path}")
 
         # Clean up old socket if exists
         ProcessManager.cleanup_old_socket(socket_path)
@@ -441,7 +489,19 @@ class BaseResourceActionPlugin(ActionBase):
             sys_path=parent_sys_path
         )
 
-        logger.info(f"Manager process spawned (PID: {process.pid})")
+        logger.info(f"✅ Manager process spawned successfully")
+        logger.info(f"   Process PID: {process.pid}")
+        logger.info(f"   Socket Path: {socket_path}")
+        logger.info(f"   Future tasks with same credentials will reuse this manager")
+        
+        # Log where to find manager process logs (for debugging version detection, etc.)
+        import tempfile
+        socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
+        error_log = socket_dir / f'manager_error_{inventory_hostname}.log'
+        stderr_log = socket_dir / f'manager_stderr_{inventory_hostname}.log'
+        logger.info(f"   📋 Manager process logs (version detection, etc.):")
+        logger.info(f"      - Error log: {error_log}")
+        logger.info(f"      - Stderr log: {stderr_log}")
 
         # Wait for process startup
         ProcessManager.wait_for_process_startup(
@@ -477,7 +537,10 @@ class BaseResourceActionPlugin(ActionBase):
             tracking['socket_paths'].add(socket_path_str)
             self._write_tracking_file(play_id, tracking)
 
-        logger.info(f"Connected to new manager: {socket_path_str} (PID: {process.pid})")
+        logger.info(f"✅ Connected to new persistent manager")
+        logger.info(f"   Socket: {socket_path_str}")
+        logger.info(f"   PID: {process.pid}")
+        logger.info("=" * 80)
 
         return client, {
             'platform_manager_socket': socket_path_str,
@@ -978,4 +1041,3 @@ class BaseResourceActionPlugin(ActionBase):
             return 'find'
         else:
             raise AnsibleError(f"Unknown state: {state}")
-
