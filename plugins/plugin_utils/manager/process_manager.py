@@ -12,6 +12,7 @@ import base64
 import json
 import time
 import logging
+import socket
 from pathlib import Path
 from typing import Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
@@ -223,8 +224,10 @@ class ProcessManager:
 
         for attempt in range(max_wait):
             if Path(socket_path).exists():
-                logger.info(f"Socket created successfully after {attempt * 0.1:.1f}s")
-                return
+                if ProcessManager.is_socket_responsive(socket_path):
+                    logger.info(f"Socket ready and responsive")
+                    return
+                logger.debug(f"Socket exists but not yet responsive (attempt {attempt})...")
             time.sleep(0.1)
             if attempt % 10 == 0 and attempt > 0:  # Log every second
                 logger.debug(f"Still waiting for socket... ({attempt * 0.1:.1f}s elapsed)")
@@ -244,3 +247,19 @@ class ProcessManager:
             error_msg += f"\n\nManager process died (exitcode: {returncode})"
 
         raise RuntimeError(error_msg)
+
+    @staticmethod
+    def is_socket_responsive(socket_path: str, timeout: float = 1.0) -> bool:
+        """Check if the socket is accepting connections."""
+        if not os.path.exists(socket_path):
+            return False
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(timeout)
+        try:
+            client.connect(socket_path)
+            client.close()
+            return True
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            return False
+        finally:
+            client.close()

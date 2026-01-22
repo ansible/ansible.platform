@@ -32,6 +32,13 @@ from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import (
+    PlatformError,
+    AuthenticationError,
+    ValidationError,
+    NetworkError,
+    APIError
+)
 
 if TYPE_CHECKING:
     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
@@ -212,10 +219,12 @@ class BaseResourceActionPlugin(ActionBase):
     # Track which manager each task uses
     # Key: task_uuid, Value: socket_path
     _task_to_manager = {}  # type: dict
+    MAX_RETRIES = 1
 
     def _get_or_spawn_manager(
         self, 
-        task_vars: dict
+        task_vars: dict,
+        force_spawn: bool = False
     ) -> Tuple[Union['DirectHTTPClient', 'ManagerRPCClient'], Optional[Dict[str, Any]]]:
         """
         Get connection client based on connection mode.
@@ -232,6 +241,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         Args:
             task_vars: Task variables from Ansible
+            force_spawn: If True, forces spawning a new manager (ignores existing reuse)
 
         Returns:
             Tuple of (client, facts_dict):
@@ -260,7 +270,7 @@ class BaseResourceActionPlugin(ActionBase):
         # Route based on connection mode
         if gateway_config.connection_mode == 'experimental':
             # Experimental mode: Use persistent manager
-            return self._get_or_spawn_persistent_manager(task_vars, gateway_config)
+            return self._get_or_spawn_persistent_manager(task_vars, gateway_config, force_spawn=force_spawn)
         else:
             # Standard mode (default): Use direct HTTP client
             return self._get_direct_client(task_vars, gateway_config)
@@ -296,7 +306,8 @@ class BaseResourceActionPlugin(ActionBase):
     def _get_or_spawn_persistent_manager(
         self, 
         task_vars: dict, 
-        gateway_config: Any
+        gateway_config: Any,
+        force_spawn: bool = False
     ) -> Tuple['ManagerRPCClient', Optional[Dict[str, Any]]]:
         """
         Get existing persistent manager or spawn new one (experimental mode).
@@ -307,6 +318,7 @@ class BaseResourceActionPlugin(ActionBase):
         Args:
             task_vars: Task variables from Ansible
             gateway_config: Gateway configuration
+            force_spawn: Force a fresh process spawn
 
         Returns:
             Tuple of (ManagerRPCClient, facts_dict):
@@ -395,7 +407,7 @@ class BaseResourceActionPlugin(ActionBase):
         actual_socket_path = None
         actual_authkey_b64 = None
 
-        if socket_path and authkey_b64:
+        if not force_spawn and socket_path and authkey_b64:
             stored_path_exists = Path(socket_path).exists()
             if stored_path_exists:
                 # Check if stored socket path matches expected (same credentials)
@@ -410,7 +422,7 @@ class BaseResourceActionPlugin(ActionBase):
                     logger.info(f"      Expected: {expected_socket_path}")
 
         # Also check if expected socket path exists (in case facts weren't updated)
-        if not manager_found and Path(expected_socket_path).exists() and authkey_b64:
+        if not force_spawn and not manager_found and Path(expected_socket_path).exists() and authkey_b64:
             manager_found = True
             actual_socket_path = expected_socket_path
             actual_authkey_b64 = authkey_b64
@@ -430,26 +442,29 @@ class BaseResourceActionPlugin(ActionBase):
 
                 client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
 
-                # Track this task's manager
-                task_uuid = self._get_task_uuid(task_vars)
-                BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path_str
+                if client.check_health():
+                    # Track this task's manager
+                    task_uuid = self._get_task_uuid(task_vars)
+                    BaseResourceActionPlugin._task_to_manager[task_uuid] = actual_socket_path_str
 
-                # Track this manager in playbook tracking (process-safe)
-                play_id = self._get_play_id()
-                tracking = self._read_tracking_file(play_id)
-                if tracking:
-                    if 'socket_paths' in tracking:
-                        if isinstance(tracking['socket_paths'], list):
-                            tracking['socket_paths'] = set(tracking['socket_paths'])
-                        tracking['socket_paths'].add(actual_socket_path_str)
-                        self._write_tracking_file(play_id, tracking)
+                    # Track this manager in playbook tracking (process-safe)
+                    play_id = self._get_play_id()
+                    tracking = self._read_tracking_file(play_id)
+                    if tracking:
+                        if 'socket_paths' in tracking:
+                            if isinstance(tracking['socket_paths'], list):
+                                tracking['socket_paths'] = set(tracking['socket_paths'])
+                            tracking['socket_paths'].add(actual_socket_path_str)
+                            self._write_tracking_file(play_id, tracking)
 
-                logger.debug(f"Successfully connected to existing persistent manager: {actual_socket_path_str}")
+                    logger.debug(f"Successfully connected to existing persistent manager: {actual_socket_path_str}")
 
-                return client, {
-                    'platform_manager_socket': actual_socket_path_str,
-                    'platform_manager_authkey': actual_authkey_b64
-                }
+                    return client, {
+                        'platform_manager_socket': actual_socket_path_str,
+                        'platform_manager_authkey': actual_authkey_b64
+                    }
+                else:
+                    logger.warning("Manager connected but failed RPC health check")
             except Exception as e:
                 logger.warning(f"Failed to connect to existing manager: {e}, spawning new one")
                 # Fall through to spawn new one
@@ -547,6 +562,57 @@ class BaseResourceActionPlugin(ActionBase):
             'platform_manager_authkey': authkey_b64,
             'gateway_url': gateway_config.base_url
         }
+
+    def _handle_exception(self, e):
+        result = {'failed': True}
+        if isinstance(e, PlatformError):
+            result['msg'] = str(e)
+            result['error_type'] = e.__class__.__name__
+            if hasattr(e, 'status_code') and e.status_code:
+                result['status_code'] = e.status_code
+
+            if isinstance(e, AuthenticationError): 
+                 result['suggestion'] = "Check your gateway_username, gateway_password, or gateway_token."
+            elif isinstance(e, ValidationError):
+                 result['suggestion'] = "Check your playbook parameters."
+            elif isinstance(e, NetworkError):
+                 result['suggestion'] = "Check your gateway_hostname and network connectivity."
+            elif isinstance(e, APIError):
+                 result['suggestion'] = "The Gateway server returned an error. Check Gateway logs or try again later." 
+        elif isinstance(e, AnsibleError):
+            result['msg'] = str(e)
+            result['error_type'] = 'AnsibleError'
+        else:
+            result['msg'] = f"An unexpected error occurred: {str(e)}"
+            result['error_type'] = 'GeneralError'
+            import traceback
+            result['exception'] = traceback.format_exc()
+        return result
+
+    def execute_with_retry(self, manager_client, operation, module_name, data, task_vars):
+        """
+        Execute an operation with automatic retry on connection failure.
+        """
+        attempts = 0
+        current_client = manager_client
+
+        while attempts <= self.MAX_RETRIES:
+            try:
+                return current_client.execute(operation, module_name, data)
+            except (ConnectionError, BrokenPipeError, EOFError) as e:
+                attempts += 1
+                if attempts > self.MAX_RETRIES:
+                    logger.error(f"Max retries ({self.MAX_RETRIES}) reached for operation {operation}")
+                    raise e
+                logger.warning(f"Connection lost during {operation}. Attempting recovery ({attempts}/{self.MAX_RETRIES})...")
+                try:
+                    # Retry with force_spawn=True to get a fresh manager
+                    new_client, _ = self._get_or_spawn_manager(task_vars, force_spawn=True)
+                    current_client = new_client
+                    logger.info(f"Recovery successful. Retrying operation...")
+                except Exception as spawn_err:
+                    logger.error(f"Failed to recover manager: {spawn_err}")
+                    raise e
 
     def _build_argspec_from_docs(self, documentation: str) -> dict:
         """
