@@ -1068,11 +1068,11 @@ class PlatformService(BaseAPIClient):
                 raise ValidationError(f"Client Error {response.status_code}: {response.text}")
             return response
         except requests.exceptions.ConnectionError as e:
-            raise NetworkError("Connection refused or network down", orig_exc=e)
+            raise NetworkError("Connection refused or network down", original_exception=e)
         except requests.exceptions.Timeout as e:
-            raise NetworkError("Request timed out", orig_exc=e)
+            raise NetworkError("Request timed out", original_exception=e)
         except requests.exceptions.RequestException as e:
-            raise NetworkError(f"Unexpected network error: {e}", orig_exc=e)
+            raise NetworkError(f"Unexpected network error: {e}", original_exception=e)
 
     def _execute_operations(
         self,
