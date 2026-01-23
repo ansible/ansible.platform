@@ -6,6 +6,10 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+    
 env:
   PY_COLORS: '1'
   ANSIBLE_FORCE_COLOR: '1'
@@ -13,6 +17,7 @@ jobs:
   integration:
     name: collection integration test with stable-2.5 branches
     runs-on: ubuntu-latest
+    environment: CI
     env:
       HEADLESS: 'yes'
 
@@ -63,6 +68,7 @@ jobs:
   coverage_test:
     name: collection integration check with stable-2.5 branches
     runs-on: ubuntu-latest
+    environment: CI
     env:
       HEADLESS: 'yes'
     steps:
@@ -102,6 +108,7 @@ jobs:
   completeness_test:
     name: collection completeness test with stable-2.5 branches
     runs-on: ubuntu-latest
+    environment: CI
     env:
       HEADLESS: 'yes'
     steps:
