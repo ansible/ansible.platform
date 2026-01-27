@@ -10,10 +10,24 @@ This directory contains architecture documentation for the Ansible Platform Coll
    - High-level architecture overview
    - Component responsibilities
    - Data flow and transformations
-   - Dual-mode connection support (standard vs experimental)
+   - Dual-mode connection support (direct vs persistent)
    - Key design decisions
 
-2. **[ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md)** - Visual architecture diagrams
+2. **[CONNECTION_MODES.md](CONNECTION_MODES.md)** - Connection modes guide
+   - Direct mode (ephemeral managers) - default
+   - Persistent mode (long-lived managers) - opt-in
+   - Performance comparison
+   - When to use each mode
+   - Troubleshooting
+
+3. **[CONNECTION_INITIALIZATION.md](CONNECTION_INITIALIZATION.md)** - Connection plugin initialization
+   - How Ansible selects connection plugins
+   - Connection plugin initialization flow
+   - When and how get_client() is called
+   - Configuration option reading
+   - Debugging tips
+
+4. **[ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md)** - Visual architecture diagrams
    - High-level architecture diagrams
    - Component architecture
    - Data flow diagrams
@@ -21,11 +35,13 @@ This directory contains architecture documentation for the Ansible Platform Coll
 
 ## Key Architecture Principles
 
-1. **Dual-Mode Connections**: Support for both standard (direct HTTP) and experimental (persistent manager) modes
-2. **API Version Management**: Filesystem-based API version discovery and dynamic class loading
-3. **Shared Layers**: Both connection modes use the same layers (version detection, error handling, credentials, CRUD)
-4. **Action Plugin Architecture**: Migration from modules to action plugins (new architecture)
-5. **Quality Tooling**: Modern Python tooling (ruff, mypy, pydoclint) with automated checks
+1. **Dual-Mode Connections**: Support for both direct (ephemeral managers) and persistent (long-lived managers) modes
+2. **Unified Architecture**: Both modes use the same manager process architecture with TransitMixin, API version detection, and Ansible dataclasses
+3. **No Worker Crashes**: HTTP requests made in separate manager processes, not in action plugin workers
+4. **API Version Management**: Filesystem-based API version discovery and dynamic class loading
+5. **Shared Layers**: Both connection modes use the same layers (version detection, error handling, credentials, CRUD)
+6. **Action Plugin Architecture**: Migration from modules to action plugins (new architecture)
+7. **Quality Tooling**: Modern Python tooling (ruff, mypy, pydoclint) with automated checks
 
 ## Component Locations
 

@@ -6,7 +6,8 @@ This document describes the architecture of the Ansible Platform Collection POC 
 
 ### Key Features
 
-- **Dual-Mode Connections**: Support for both standard (direct HTTP) and experimental (persistent manager) modes
+- **Dual-Mode Connections**: Support for both direct (ephemeral managers) and persistent (long-lived managers) modes
+- **Unified Architecture**: Both modes use the same manager process architecture with TransitMixin, API version detection, and Ansible dataclasses
 - **API Version Management**: Filesystem-based version discovery and dynamic class loading
 - **Action Plugin Architecture**: Migration from modules to action plugins (new architecture)
 - **Shared Layers**: Both connection modes use the same layers (version detection, error handling, credentials, CRUD)
@@ -46,18 +47,22 @@ This document describes the architecture of the Ansible Platform Collection POC 
         │                             │
         ▼                             ▼
 ┌──────────────────┐        ┌──────────────────┐
-│  Standard Mode   │        │ Experimental Mode│
-│ DirectHTTPClient │        │ ManagerRPCClient │
-│                  │        │   → PlatformService│
-│ - Direct HTTP    │        │ - Persistent      │
-│ - Per-task       │        │ - Across tasks     │
-│ - New session    │        │ - Reused session  │
+│   Direct Mode    │        │ Persistent Mode  │
+│ ManagerRPCClient │        │ ManagerRPCClient │
+│   → PlatformService│      │   → PlatformService│
+│                  │        │                  │
+│ - Ephemeral      │        │ - Long-lived      │
+│ - Per-task       │        │ - Across tasks    │
+│ - Shut down      │        │ - Reused session  │
+│   after task     │        │ - Facts stored    │
 └────────┬─────────┘        └────────┬──────────┘
          │                           │
          └───────────┬───────────────┘
                      │
-                     │ Shared Layers
-                     │ - Version Detection
+                     │ Shared Architecture
+                     │ - Manager Process
+                     │ - TransitMixin
+                     │ - API Version Detection
                      │ - Error Handling
                      │ - Credential Management
                      │ - CRUD Operations
@@ -84,16 +89,22 @@ This document describes the architecture of the Ansible Platform Collection POC 
   - Connection mode selection (standard vs experimental)
 
 #### Layer 2: Connection Layer
-- **Standard Mode**: `plugins/plugin_utils/platform/direct_client.py`
-  - `DirectHTTPClient` - Direct HTTP requests, new session per task
-  - Inherits from `BaseAPIClient`
-  - Uses shared layers (version detection, error handling, credentials, CRUD)
+- **Connection Plugin**: `plugins/connection/http.py`
+  - Dispatcher pattern: Routes to persistent or direct mode based on `persistent` option
+  - `get_client()` method returns appropriate client based on configuration
   
-- **Experimental Mode**: `plugins/plugin_utils/manager/`
-  - `PlatformService` - Persistent service with HTTP session reuse
-  - `PlatformManager` - Multiprocessing Manager for sharing service
-  - `ManagerRPCClient` - Client-side RPC communication
-  - Uses shared layers (version detection, error handling, credentials, CRUD)
+- **Direct Mode** (default, `persistent: false`): `plugins/plugin_utils/manager/`
+  - Spawns ephemeral manager process per task
+  - `ManagerRPCClient` - Client-side RPC communication to ephemeral manager
+  - `PlatformService` - Manager process with HTTP session (shut down after task)
+  - Uses shared architecture (TransitMixin, API version detection, error handling, credentials, CRUD)
+  
+- **Persistent Mode** (`persistent: true`): `plugins/plugin_utils/manager/`
+  - Spawns or reuses long-lived manager process across tasks
+  - `ManagerRPCClient` - Client-side RPC communication to persistent manager
+  - `PlatformService` - Manager process with HTTP session reuse
+  - Facts stored to enable manager reuse across tasks
+  - Uses shared architecture (TransitMixin, API version detection, error handling, credentials, CRUD)
 
 #### Layer 3: Platform Framework
 - **Location**: `plugins/plugin_utils/platform/`
@@ -140,33 +151,38 @@ This document describes the architecture of the Ansible Platform Collection POC 
 - `DynamicClassLoader` - Dynamic class loading
 - `cache` - Connection-level cache for lookups
 
-### 2. DirectHTTPClient (Standard Mode)
+### 2. Direct Mode (Ephemeral Managers)
 
-**Purpose**: Direct HTTP client for standard connection mode.
+**Purpose**: Ephemeral manager process for direct connection mode (default).
 
-**Location**: `plugins/plugin_utils/platform/direct_client.py`
+**Location**: `plugins/connection/http.py::_get_direct_client()`
 
 **Characteristics**:
-- New `requests.Session` per task
-- Authenticates on initialization
-- Detects API version on initialization
-- Uses all shared layers (version detection, error handling, credentials, CRUD)
+- Spawns new manager process per task
+- Manager process uses `requests.Session` for HTTP requests
+- Manager is shut down immediately after task completes
+- Uses all shared architecture (TransitMixin, API version detection, error handling, credentials, CRUD)
 - Cache persists for task lifetime only
+- Socket path: `/tmp/ap/manager_<uid>_e<hash>_<cred_hash>.sock` (short path to avoid AF_UNIX limit)
 
-### 3. PlatformService (Experimental Mode)
+### 3. PlatformService (Both Modes)
 
-**Purpose**: Persistent service that handles all API communication and transformations.
+**Purpose**: Manager process service that handles all API communication and transformations.
 
 **Location**: `plugins/plugin_utils/manager/platform_manager.py`
 
 **Characteristics**:
-- Persistent `requests.Session` across tasks
+- Uses `requests.Session` for HTTP requests
 - Detects and caches API version on startup
 - Loads version-specific classes via `DynamicClassLoader`
-- Performs forward transform (Ansible → API)
+- Performs forward transform (Ansible → API) via TransitMixin
 - Executes API calls (potentially multiple endpoints)
-- Performs reverse transform (API → Ansible)
-- Cache persists across tasks
+- Performs reverse transform (API → Ansible) via TransitMixin
+- Cache persists for manager lifetime
+
+**Lifecycle**:
+- **Direct Mode**: Manager spawned per task, shut down immediately after task
+- **Persistent Mode**: Manager spawned once, reused across tasks, shut down when play completes
 
 ### 4. APIVersionRegistry
 
@@ -239,66 +255,84 @@ Registry discovers:
 - `_validate_data(data, argspec, direction)` - Validate input/output
 
 **Connection Mode Selection**:
-- Checks `gateway_config.connection_mode`
-- Standard mode → `DirectHTTPClient`
-- Experimental mode → `ManagerRPCClient` → `PlatformService`
+- Delegates to connection plugin's `get_client()` method
+- Connection plugin checks `persistent` option (default: false)
+- Direct mode (`persistent: false`) → Ephemeral `ManagerRPCClient` → `PlatformService` (shut down after task)
+- Persistent mode (`persistent: true`) → Long-lived `ManagerRPCClient` → `PlatformService` (reused across tasks)
 
 ## Data Flow
 
-### Standard Mode Flow
+### Direct Mode Flow (Default)
 
 ```
 1. Playbook Task
    └─> Action Plugin
        ├─> Validate Input
        ├─> Create AnsibleUser dataclass
-       ├─> Get DirectHTTPClient (standard mode)
-       │   ├─> Authenticate
-       │   ├─> Detect API version
-       │   └─> Load version-specific classes
-       ├─> Execute operation
-       │   ├─> Forward transform (Ansible → API)
-       │   ├─> API call
-       │   └─> Reverse transform (API → Ansible)
-       ├─> Validate Output
-       └─> Format Return Dict
-```
-
-### Experimental Mode Flow
-
-```
-1. Playbook Task
-   └─> Action Plugin
-       ├─> Validate Input
-       ├─> Create AnsibleUser dataclass
-       ├─> Get ManagerRPCClient (experimental mode)
-       │   └─> Connect to PlatformService (persistent)
+       ├─> Connection Plugin: get_client() (persistent: false)
+       │   └─> Spawn ephemeral manager process
+       │       └─> Wait for manager to be ready
+       ├─> Get ManagerRPCClient (ephemeral)
+       │   └─> Connect to PlatformService (ephemeral)
        ├─> Execute via RPC
        │   └─> PlatformService
        │       ├─> Load version-specific classes
-       │       ├─> Forward transform (Ansible → API)
+       │       ├─> Forward transform (Ansible → API) via TransitMixin
+       │       ├─> API call (new session)
+       │       └─> Reverse transform (API → Ansible) via TransitMixin
+       ├─> Validate Output
+       ├─> Format Return Dict
+       └─> Cleanup: Shut down ephemeral manager
+```
+
+### Persistent Mode Flow
+
+```
+1. Playbook Task
+   └─> Action Plugin
+       ├─> Validate Input
+       ├─> Create AnsibleUser dataclass
+       ├─> Connection Plugin: get_client() (persistent: true)
+       │   └─> Check for existing manager in facts
+       │       ├─> Found: Reuse existing manager
+       │       └─> Not found: Spawn new manager, store facts
+       ├─> Get ManagerRPCClient (persistent)
+       │   └─> Connect to PlatformService (long-lived)
+       ├─> Execute via RPC
+       │   └─> PlatformService
+       │       ├─> Load version-specific classes
+       │       ├─> Forward transform (Ansible → API) via TransitMixin
        │       ├─> API call (reused session)
-       │       └─> Reverse transform (API → Ansible)
+       │       └─> Reverse transform (API → Ansible) via TransitMixin
        ├─> Validate Output
        └─> Format Return Dict
+
+2. Next Task (same play)
+   └─> Reuses same manager from facts
+       └─> (No manager spawn overhead)
+
+3. Play Complete
+   └─> Cleanup: Shut down persistent manager
 ```
 
 ## Key Design Decisions
 
 ### 1. Dual-Mode Connection Support
 
-**Decision**: Support both standard (direct HTTP) and experimental (persistent manager) modes.
+**Decision**: Support both direct (ephemeral managers) and persistent (long-lived managers) modes, both using the same manager process architecture.
 
 **Rationale**:
-- Standard mode provides familiar behavior (like current modules)
-- Experimental mode provides performance benefits (session reuse)
-- Both modes share the same layers (version detection, error handling, credentials, CRUD)
-- Users can opt-in to experimental mode when needed
+- Both modes use the same architecture (TransitMixin, API version detection, Ansible dataclasses)
+- Direct mode (default) provides simplicity: one manager per task, shut down immediately
+- Persistent mode provides performance: manager reused across tasks, session reuse
+- No worker process crashes: HTTP requests made in separate manager processes, not in action plugin worker
+- Users can opt-in to persistent mode when performance is needed
 
 **Benefits**:
-- Backward compatibility with standard mode
-- Performance optimization available via experimental mode
+- Unified architecture: same code path for both modes
+- Performance optimization available via persistent mode
 - Shared codebase reduces maintenance burden
+- No HTTP request limitations: manager processes can safely make HTTP requests
 
 ### 2. Shared Layers
 

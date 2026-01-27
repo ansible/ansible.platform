@@ -218,80 +218,73 @@ class BaseResourceActionPlugin(ActionBase):
         task_vars: dict
     ) -> Tuple[Union['DirectHTTPClient', 'ManagerRPCClient'], Optional[Dict[str, Any]]]:
         """
-        Get connection client based on connection mode.
+        Dispatcher: Get connection client from the connection plugin.
 
-        Also stores task_vars for use in cleanup() method.
+        This method delegates to the connection plugin (e.g., 'ansible.platform.http')
+        which handles routing between persistent and direct (ephemeral) modes.
 
-        Connection modes:
-        - Standard mode (default): Returns DirectHTTPClient (direct HTTP, no persistent process)
-        - Experimental mode (opt-in): Returns ManagerRPCClient (persistent manager process)
-
-        This method is Ansible-specific and handles Ansible constructs like
-        task_vars, AnsibleError. The actual gateway config extraction and
-        process management are delegated to platform SDK modules.
+        Connection modes (determined by connection plugin):
+        - Persistent mode: Returns ManagerRPCClient (long-lived manager process)
+        - Direct mode: Returns ManagerRPCClient (ephemeral manager, shut down after task)
 
         Args:
             task_vars: Task variables from Ansible
 
         Returns:
             Tuple of (client, facts_dict):
-            - client: DirectHTTPClient (standard) or ManagerRPCClient (experimental)
-            - facts_dict: Dict with facts to set (only for experimental mode)
-              None for standard mode (no facts needed)
+            - client: ManagerRPCClient (persistent or ephemeral)
+            - facts_dict: Dict with facts to set (only for persistent mode), None otherwise
 
         Raises:
-            AnsibleError: If gateway URL is missing
-            RuntimeError: If manager fails to start (experimental mode only)
+            AnsibleError: If gateway URL is missing or connection plugin doesn't support get_client()
+            RuntimeError: If manager fails to start
         """
-        import sys
-
-        # Import platform SDK modules (generic, not Ansible-specific)
+        # Import platform SDK modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import (
             extract_gateway_config
         )
 
-        # Extract gateway configuration (includes connection_mode)
+        # Extract gateway configuration
         gateway_config = extract_gateway_config(
             task_args=self._task.args,
             host_vars=task_vars,
             required=True
         )
 
-        # Route based on connection mode
-        if gateway_config.connection_mode == 'experimental':
-            # Experimental mode: Use persistent manager
-            return self._get_or_spawn_persistent_manager(task_vars, gateway_config)
-        else:
-            # Standard mode (default): Use direct HTTP client
-            return self._get_direct_client(task_vars, gateway_config)
+        # DISPATCHER: Delegate to connection plugin's get_client() method
+        # The connection plugin handles routing to persistent or ephemeral managers
+        try:
+            if hasattr(self._connection, 'get_client'):
+                logger.debug("Dispatching to connection plugin's get_client() method")
+                logger.debug(f"Connection plugin type: {type(self._connection)}")
+                logger.debug(f"Gateway config: {gateway_config}")
+                
+                client, facts_to_set = self._connection.get_client(task_vars, gateway_config)
+                logger.debug(f"Got client from connection plugin: {type(client)}")
+                return client, facts_to_set
+            else:
+                # Fallback: Connection plugin doesn't implement get_client()
+                raise AnsibleError(
+                    f"Connection plugin '{self._connection.transport}' does not support 'get_client()' method. "
+                    "Ensure you are using 'connection: ansible.platform.http' in your playbook."
+                )
+        except Exception as e:
+            logger.error(f"Failed in _get_or_spawn_manager dispatcher: {type(e).__name__}: {e}")
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Traceback: {tb}")
+            
+            # Write full traceback to file for debugging
+            try:
+                with open('/tmp/ansible_platform_error.log', 'w') as f:
+                    f.write(f"Error: {type(e).__name__}: {e}\n\n")
+                    f.write(f"Full Traceback:\n{tb}\n")
+            except:
+                pass
+            
+            raise
 
-    def _get_direct_client(
-        self, 
-        task_vars: dict, 
-        gateway_config: Any
-    ) -> Tuple['DirectHTTPClient', None]:
-        """
-        Get or create DirectHTTPClient for standard mode.
-
-        Args:
-            task_vars: Task variables from Ansible
-            gateway_config: Gateway configuration
-
-        Returns:
-            Tuple of (DirectHTTPClient, None):
-            - DirectHTTPClient: Direct HTTP client instance
-            - None: No facts to set (standard mode doesn't need facts)
-        """
-        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-
-        logger.debug("Using standard connection mode (DirectHTTPClient)")
-
-        # Create direct HTTP client (new instance per task)
-        client = DirectHTTPClient(gateway_config)
-
-        logger.info(f"DirectHTTPClient created for {gateway_config.base_url}")
-
-        return client, None
+    # NOTE: _get_direct_client() method removed - now handled by connection plugin's get_client()
 
     def _get_or_spawn_persistent_manager(
         self, 
@@ -879,7 +872,8 @@ class BaseResourceActionPlugin(ActionBase):
         Clean up manager processes when all tasks in playbook complete.
 
         This method is called by Ansible after EACH task completes.
-        We track total tasks and completed tasks, and only shutdown when all are done.
+        - For ephemeral managers (direct mode): Shut down immediately
+        - For persistent managers: Track tasks and shutdown when all are done
 
         Args:
             force: If True, force cleanup even if async is in use
@@ -891,6 +885,19 @@ class BaseResourceActionPlugin(ActionBase):
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
             ProcessManager
         )
+        
+        # Check if we have an ephemeral manager (direct mode) that should be shut down immediately
+        if hasattr(self, '_client') and hasattr(self._client, '_ephemeral') and self._client._ephemeral:
+            logger.info("Shutting down ephemeral manager (direct mode)")
+            try:
+                socket_path = getattr(self._client, 'socket_path', None)
+                if socket_path:
+                    self._shutdown_manager_process(socket_path, ProcessManager)
+                    logger.info(f"Ephemeral manager shut down: {socket_path}")
+            except Exception as e:
+                logger.warning(f"Failed to shutdown ephemeral manager: {e}")
+            # Don't process persistent manager tracking for ephemeral managers
+            return
 
         # Get play ID
         try:
