@@ -27,12 +27,13 @@ jobs:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Checkout aap-gateway (From Nick's Fork)
+      - name: Checkout aap-gateway (Custom Branch from Upstream)
         uses: actions/checkout@v3
         with:
-          repository: nickbhasin/aap-gateway 
-          ref: stable-2.6-custom             
-          path: aap-gateway                 
+          repository: ansible-automation-platform/aap-gateway
+          ref: stable-2.6-custom                       
+          path: aap-gateway
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}                
 
       - name: Build the image
         run: make docker-compose-build
