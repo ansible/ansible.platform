@@ -27,13 +27,12 @@ jobs:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          GH_TOKEN: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
-          GH_WORKSPACE: ${{ github.workspace }}
-        run: tools/scripts/get_aap_gateway_and_dab.py
-        working-directory: ansible-platform
+      - name: Checkout aap-gateway (From Nick's Fork)
+        uses: actions/checkout@v3
+        with:
+          repository: nickbhasin/aap-gateway 
+          ref: stable-2.6-custom             
+          path: aap-gateway                 
 
       - name: Build the image
         run: make docker-compose-build
