@@ -173,43 +173,35 @@ def main():
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
     if module.params["organizations"]:
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
         module.deprecate(
             msg="Configuring organizations via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
             date="2026-01-31",
             collection_name="ansible.platform",
         )
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
     if module.params["is_platform_auditor"]:
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
         module.deprecate(
             msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
             date="2026-01-31",
             collection_name="ansible.platform",
         )
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
 
     if module.params["authenticator_uid"]:
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
         module.deprecate(
             msg="The 'authenticator_uid' parameter is deprecated and will be removed in a future version. "
             "Please use 'associated_authenticators' instead to specify UIDs per authenticator.",
             date="2026-01-31",
             collection_name="ansible.platform",
         )
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
 
     if module.params["authenticators"]:
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
         module.deprecate(
             msg="The 'authenticators' parameter is deprecated and will be removed in a future version. "
             "Please use 'associated_authenticators' instead to specify authenticator associations.",
             date="2026-01-31",
             collection_name="ansible.platform",
         )
-        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
 
     user_existed_before = True
     try:
