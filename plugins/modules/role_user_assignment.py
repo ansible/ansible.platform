@@ -173,14 +173,14 @@ def main():
     if object_id:
         object_id = [object_id]
         kwargs['object_id'] = [object_id]
-        # pylint: disable=ansible-expired-deprecated-date
+        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
         module.deprecate(
             msg="The usage of 'object_id' parameter in the 'role_user_assignment' module is not recommended. "
             "For associating a user to team(s)/organization(s), please use the 'object_ids' parameter. ",
             date="2026-01-31",
             collection_name="ansible.platform",
         )
-        # pylint: disable=ansible-expired-deprecated-date
+        # pylint: disable=ansible-expired-deprecated-date, unknown-option-value
     if object_ids is not None:
         kwargs['object_id'] = object_ids
     if user is not None:
