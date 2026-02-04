@@ -1,2 +1,0 @@
-plugins/modules/role_user_assignment.py ansible-expired-deprecated-date
-plugins/modules/user.py ansible-expired-deprecated-date
