@@ -179,7 +179,7 @@ def main():
             date="2026-05-20",
             collection_name="ansible.platform",
         )
-        
+
     if module.params["is_platform_auditor"]:
         module.deprecate(
             msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
