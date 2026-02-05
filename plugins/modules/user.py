@@ -149,7 +149,7 @@ def main():
         module.deprecate(
             msg="Configuring organizations via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
+            date="2026-05-20",
             collection_name="ansible.platform",
         )
 
@@ -157,7 +157,7 @@ def main():
         module.deprecate(
             msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
+            date="2026-05-20",
             collection_name="ansible.platform",
         )
 
