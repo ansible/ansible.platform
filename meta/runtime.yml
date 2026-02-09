@@ -6,6 +6,8 @@ action_groups:
     - authenticator
     - authenticator_map
     - authenticator_user
+    - ca_certificate
+    - feature_flag
     - http_port
     - organization
     - role_user_assignment
@@ -22,5 +24,4 @@ action_groups:
     - token
     - ui_plugin_route
     - user
-    - ca_certificate
 ...
