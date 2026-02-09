@@ -11,8 +11,9 @@ short_description: Search the API for objects
 requirements:
   - None
 description:
-  - Returns GET requests from the Automation Platform Gateway API. See
-    U(https://docs.ansible.com/TODO) for API usage.
+  - Returns GET requests from the Automation Platform Gateway API.
+  - This plugin is intended for retrieving platform-level information such as Gateway version, status, and configuration.
+  - "B(Warning): This plugin is NOT intended for querying Automation Hub or Automation Controller directly."
 options:
   _terms:
     description:
@@ -63,6 +64,10 @@ options:
 extends_documentation_fragment: ansible.platform.auth_lookup
 notes:
   - If the query is not filtered properly this can cause a performance impact.
+  - "SUPPORTED USAGE: This plugin is designed strictly for interacting with the Platform Gateway service APIs (endpoints under /api/gateway/)."
+  - "UNSUPPORTED USAGE: Do NOT use this plugin to query Automation Hub (Galaxy) content or Automation Controller resources directly."
+  - "To interact with Automation Hub, use the C(ansible.hub) collection."
+  - "To interact with Automation Controller, use the C(ansible.controller) collection."
 """
 
 RETURN = """
