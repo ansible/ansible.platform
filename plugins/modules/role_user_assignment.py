@@ -28,7 +28,7 @@ options:
     object_id:
         description:
             - B(Deprecated)
-            - This option is deprecated and will be removed in a release after 2026-01-31.
+            - This option is deprecated and will be removed in a release after 2026-05-20.
             - For associating a user to team(s)/organization(s), please use the object_ids param.
             - HORIZONTALLINE
             - Primary key/Name of the object this assignment applies to.
