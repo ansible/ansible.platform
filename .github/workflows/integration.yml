@@ -20,7 +20,7 @@ jobs:
     environment: CI
     env:
       HEADLESS: 'yes'
-
+    if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -71,6 +71,7 @@ jobs:
     environment: CI
     env:
       HEADLESS: 'yes'
+    if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -111,6 +112,7 @@ jobs:
     environment: CI
     env:
       HEADLESS: 'yes'
+    if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
       - uses: actions/checkout@v3
         with:
