@@ -15,7 +15,7 @@ description:
     U(https://docs.ansible.com/TODO) for API usage.
   - This plugin is designed to support Gateway API endpoints used to manage resources with ansible.platform modules,
     such as users, teams, organizations, settings, role_definitions, and related endpoints.
-  - Querying APIs outside of the Gateway API (such as Automation Hub, Galaxy, or Pulp) is not supported and may lead to unexpected errors.
+  - Querying APIs outside of the Gateway API (such as Automation Hub, Galaxy etc.) is not supported and may lead to unexpected errors.
 options:
   _terms:
     description:
