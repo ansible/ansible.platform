@@ -248,6 +248,13 @@
     - name: Delete custom role
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
+        content_type: "shared.organization"
+        permissions:
+          - "shared.view_organization"
         state: absent
-      ignore_errors: true
+      register: role_delete
+      failed_when:
+        - role_delete.failed
+        - "'Not found' not in role_delete.msg"
+        - "'does not exist' not in role_delete.msg"
 ...
