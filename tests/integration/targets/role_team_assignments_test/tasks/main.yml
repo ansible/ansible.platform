@@ -249,4 +249,5 @@
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         state: absent
+      ignore_errors: true
 ...
