@@ -144,7 +144,7 @@
     # --------------------------------------------------------------------------
     - name: Fetch roles for Team 1 to verify assignment
       ansible.builtin.uri:
-        url: "https://{{ gateway_hostname }}/api/gateway/v1/teams/{{ team1.id }}/roles/"
+        url: "{{ gateway_hostname }}api/gateway/v1/teams/{{ team1.id }}/roles/"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
