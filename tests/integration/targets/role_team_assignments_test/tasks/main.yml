@@ -139,11 +139,24 @@
         state: present
       register: custom_role_assignment
 
-    - name: Assert Custom Role Assignment was successful
+    # --------------------------------------------------------------------------
+    # VERIFICATION: Query API to confirm assignment persists
+    # --------------------------------------------------------------------------
+    - name: Fetch roles for Team 1 to verify assignment
+      ansible.builtin.uri:
+        url: "https://{{ gateway_hostname }}/api/gateway/v1/teams/{{ team1.id }}/roles/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: team_roles_query
+
+    - name: Assert Custom Role is present in Team 1's roles
       ansible.builtin.assert:
         that:
-          - custom_role_assignment is changed
-          - custom_role_assignment.assignments | length > 0
+          - "custom_role.id in (team_roles_query.json.results | map(attribute='id') | list)"
+        fail_msg: "The Custom Role ID {{ custom_role.id }} was not found in the Team's assigned roles."
 
     # Once we have role_definition , module available we can uncomment these
     # 3. Assign Org Inventory Admin role to Team2 on Org2
