@@ -39,7 +39,9 @@ options:
 """
 
 import base64
+import json
 import logging
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -87,6 +89,27 @@ class Connection(ConnectionBase):
         """
         self._connected = True
         return self
+
+    def _benchmark_record_sessions(self, http_delta: int = 1, tls_delta: int = 1) -> None:
+        """
+        When BENCHMARK_STATS_FILE is set, increment http_sessions and tls_sessions in that JSON file.
+        Used by the benchmark script to report actual session counts (direct vs persistent).
+        """
+        stats_path = os.environ.get('BENCHMARK_STATS_FILE')
+        if not stats_path:
+            return
+        try:
+            data = {'http_sessions': 0, 'tls_sessions': 0}
+            path = Path(stats_path)
+            if path.exists():
+                with open(path, 'r') as f:
+                    data = json.load(f)
+            data['http_sessions'] = data.get('http_sessions', 0) + http_delta
+            data['tls_sessions'] = data.get('tls_sessions', 0) + tls_delta
+            with open(path, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.warning("Benchmark stats file update failed: %s", e)
 
     def get_client(
         self,
@@ -265,7 +288,10 @@ class Connection(ConnectionBase):
         client.socket_path = socket_path  # Store for cleanup
         
         logger.info(f"Ephemeral manager spawned for {gateway_config.base_url} at {socket_path}")
-        
+
+        # Benchmark: each new manager = 1 HTTP session + 1 TLS session
+        self._benchmark_record_sessions(1, 1)
+
         # Return client without facts (direct mode doesn't persist facts)
         return client, None
 
@@ -311,7 +337,7 @@ class Connection(ConnectionBase):
         
         # Validate socket if found
         if socket_path and Path(socket_path).exists() and authkey_b64:
-            # Reuse existing manager
+            # Reuse existing manager (no new HTTP/TLS session)
             try:
                 authkey = base64.b64decode(authkey_b64)
                 client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
@@ -370,16 +396,19 @@ class Connection(ConnectionBase):
         
         # Connect to manager
         client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-        
+
+        # Benchmark: one new manager = 1 HTTP session + 1 TLS session
+        self._benchmark_record_sessions(1, 1)
+
         # Return facts to set
         facts_dict = {
             'platform_manager_socket': socket_path,
             'platform_manager_authkey': authkey_b64,
             'gateway_url': gateway_config.base_url
         }
-        
+
         logger.info(f"Successfully spawned and connected to persistent manager: {socket_path}")
-        
+
         return client, facts_dict
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
