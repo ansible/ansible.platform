@@ -21,6 +21,7 @@
       ansible.builtin.set_fact:
         organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
         team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
+        custom_role_name: "GW-Custom-Role-{{ test_id }}"
 
     # --------------------------------------------------------------------------
     # Organizations
@@ -91,6 +92,20 @@
           - team2 is changed
           - team3 is changed
           - team4 is changed
+
+    # --------------------------------------------------------------------------
+    # Custom Role Setup
+    # --------------------------------------------------------------------------
+    - name: Create Custom Role
+      ansible.platform.role_definition:
+        name: "{{ custom_role_name }}"
+        description: "Custom role for integration test"
+        content_type: "shared.organization"
+        permissions:
+          - "shared.view_organization"
+        state: present
+      register: custom_role
+
     # 1. Assign Org Admin role to Team1 on Org1 (Global role can't be assigned)
     - name: Assign Org Admin to Team1 on Org1
       ansible.platform.role_team_assignment:
@@ -112,6 +127,36 @@
         team: "{{ team1.name }}"
       register: org_admin_assignment_2
       ignore_errors: true  # this may fail depending on AAP limitations
+
+    # 3. Assign Custom Role Assignment Test to Team1 on Org1
+    - name: Assign Custom Role to Team1 on Org1
+      ansible.platform.role_team_assignment:
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: "organizations"
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        state: present
+      register: custom_role_assignment
+
+    # --------------------------------------------------------------------------
+    # VERIFICATION: Query API to confirm assignment persists
+    # --------------------------------------------------------------------------
+    - name: Fetch assignment for Team 1 and Custom Role
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: assignment_query
+
+    - name: Assert Assignment exists
+      ansible.builtin.assert:
+        that:
+          - "assignment_query.json.count > 0"
+        fail_msg: "No role assignment found for Custom Role ID {{ custom_role.id }} and Team ID {{ team1.id }}."
 
     # Once we have role_definition , module available we can uncomment these
     # 3. Assign Org Inventory Admin role to Team2 on Org2
@@ -212,4 +257,17 @@
         - "{{ org2.name }}"
         - "{{ org3.name }}"
         - "{{ org4.name }}"
+
+    - name: Delete custom role
+      ansible.platform.role_definition:
+        name: "{{ custom_role_name }}"
+        content_type: "shared.organization"
+        permissions:
+          - "shared.view_organization"
+        state: absent
+      register: role_delete
+      failed_when:
+        - role_delete.failed
+        - "'Not found' not in role_delete.msg"
+        - "'does not exist' not in role_delete.msg"
 ...
