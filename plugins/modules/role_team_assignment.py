@@ -237,16 +237,7 @@ def main():
     if team_ansible_id is not None:
         kwargs['team_ansible_id'] = team_ansible_id
 
-    role_map = {
-        'Team': 'teams',
-        'Organization': 'organizations',
-    }
-
-    entity_type = next((
-        mapped
-        for prefix, mapped in role_map.items()
-        if role_definition_str.startswith(prefix)
-    ), None)
+    entity_type = role_definition.get('content_type')
     object_param = assignment_objects
     results = []
 
