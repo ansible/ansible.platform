@@ -26,6 +26,7 @@ jobs:
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
@@ -80,6 +81,7 @@ jobs:
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
@@ -121,6 +123,7 @@ jobs:
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
+          token: ${{ secrets.AAP_GATEWAY_REPO_TOKEN }}
 
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
