@@ -1,4 +1,4 @@
 ---
 bugfixes:
-  - Strip scheme and hostname from AAP url builder, which previously lead to malformed urls in the ansible.platform.gateway_api lookup plugin
+  - Strip scheme and hostname from AAP url builder, which previously led to malformed URLs in the ansible.platform.gateway_api lookup plugin
 ...

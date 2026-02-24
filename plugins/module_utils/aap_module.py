@@ -234,7 +234,6 @@ class AAPModule(AnsibleModule):
     def build_url(self, endpoint, query_params=None):
         # Remove the host_url part if it is already present
         if endpoint.startswith(("https://", "http://")):
-        if endpoint.startswith(("https://", "http://")):
             parsed = urlparse(endpoint)
             endpoint = parsed.path
             if parsed.query:
