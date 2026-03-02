@@ -347,7 +347,7 @@
           - version_test.user.organizations[0] == org1.name
         fail_msg: "Dynamic versioning or transformation logic failed."
 
-    - name: TEST - Idempotency via Dynamic Lookup
+    - name: Idempotency via Dynamic Lookup
       ansible.platform.user:
         username: "{{ username }}-version-test"
         organizations:
