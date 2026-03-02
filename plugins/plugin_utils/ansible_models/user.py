@@ -46,20 +46,3 @@ class AnsibleUser:
             self.organizations = []
         elif not isinstance(self.organizations, list):
             self.organizations = [self.organizations]
-
-    def to_api(self, context: Union[TransformContext, Dict[str, Any]]):
-        """
-        Transform to API format using version-specific mixin.
-
-        The actual transformation is done by the mixin class loaded
-        by the manager based on the detected API version.
-
-        Args:
-            context: TransformContext or dict with manager and other runtime info
-        """
-        # Import at runtime to avoid circular dependencies
-        from ..api.v1.user import UserTransformMixin_v1
-
-        # Create a temporary instance with transform mixin
-        # The mixin will handle the actual transformation
-        return UserTransformMixin_v1.from_ansible_data(self, context)

@@ -234,8 +234,8 @@ Registry discovers:
 **Location**: `plugins/plugin_utils/platform/base_transform.py`
 
 **Key Methods**:
-- `to_api(context)` - Transform Ansible → API format
-- `from_api(api_data, context)` - Transform API → Ansible format
+- `from_ansible_data(ansible_instance, context)` - Class method to transform Ansible → API format
+- `from_api(api_data, context)` - Class method to transform API → Ansible format
 
 **How It Works**:
 1. Subclasses define `_field_mapping` dict
@@ -384,3 +384,18 @@ Registry discovers:
 - **SDP**: [ANSTRAT-1640 SDP](../../handbook/The%20Ansible%20Engineering%20Handbook/System%20Design%20Plans/ANSTRAT-1640-persistent-connection-manager-for-ansible-platform-collection.md)
 - **P1 Proposal**: [Platform API Evolution Proposal](../../handbook/The%20Ansible%20Engineering%20Handbook/proposals/ANSTRAT-1640-ANSTRAT-1640-Platform-API-Evolution.md)
 - **Architecture Diagrams**: [ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md)
+
+## Developer Guide: Extending API Support
+
+### How to Add a New API Version
+The collection uses a filesystem-based registry that automatically discovers and negotiates API versions. To add a new version (e.g., `v2`):
+
+1. **Create Directory**: Create `plugins/plugin_utils/api/v2/`.
+2. **Implement Resource**: Create a resource file (e.g., `user.py`) containing an API dataclass and a Transform Mixin.
+3. **Implement Interface**: Your Mixin must implement the following class methods:
+   * `from_ansible_data(cls, ansible_instance, context)`: Forward transform logic.
+   * `from_api(cls, api_data, context)`: Reverse transform logic for idempotency.
+   * `get_endpoint_operations(cls)`: Defines version-specific HTTP paths and methods.
+4. **Define Mappings**: Set `_field_mapping` and `_transform_registry` within the Mixin to handle version-specific schema changes.
+
+The `APIVersionRegistry` will automatically discover the new directory and include it in the version negotiation matrix.

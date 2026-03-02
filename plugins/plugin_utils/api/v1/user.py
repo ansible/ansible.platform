@@ -223,51 +223,6 @@ class UserTransformMixin_v1(BaseTransformMixin):
         """
         return 'username'
 
-    def to_api(self, context: Union[TransformContext, Dict[str, Any]]) -> 'APIUser_v1':
-        """
-        Transform from Ansible format to API format.
-
-        Args:
-            context: TransformContext or dict with manager and other runtime info
-
-        Returns:
-            APIUser_v1 instance ready for API submission
-        """
-        logger.info(f"Transforming to API format: username={getattr(self, 'username', None)}")
-        api_data = {}
-
-        # Apply field mappings
-        for ansible_field, mapping in self._field_mapping.items():
-            if not hasattr(self, ansible_field):
-                continue
-
-            value = getattr(self, ansible_field)
-            if value is None:
-                continue
-
-            # Simple 1:1 mapping
-            if isinstance(mapping, str):
-                api_data[mapping] = value
-                logger.debug(f"Mapped {ansible_field} -> {mapping}: {value}")
-
-            # Complex mapping with transformation
-            elif isinstance(mapping, dict):
-                api_field = mapping['api_field']
-                transform_name = mapping.get('forward_transform')
-
-                if transform_name and transform_name in self._transform_registry:
-                    logger.debug(f"Applying forward transform '{transform_name}' for {ansible_field} -> {api_field}")
-                    transform_func = self._transform_registry[transform_name]
-                    transformed_value = transform_func(value, context)
-                    api_data[api_field] = transformed_value
-                    logger.debug(f"Transform completed: {value} -> {transformed_value}")
-                else:
-                    api_data[api_field] = value
-                    logger.debug(f"Direct mapping {ansible_field} -> {api_field}: {value}")
-
-        logger.info(f"APIUser_v1 transformation completed with {len(api_data)} fields")
-        return APIUser_v1(**api_data)
-
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> 'AnsibleUser':
         """

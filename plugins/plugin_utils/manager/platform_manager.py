@@ -116,17 +116,9 @@ class PlatformService(BaseAPIClient):
         # Detect API version (cached for lifetime)
         # IMPORTANT: Always default to '1' if detection fails
         # Do NOT use registry-discovered versions - we detect from the actual API
-        try:
-            detected_version = self._detect_api_version()
-            # Ensure we got a valid version string
-            if not detected_version or detected_version not in ['1', '2', '2.1']:
-                logger.warning(f"PlatformService: Invalid detected version '{detected_version}', defaulting to '1'")
-                detected_version = '1'
-            self.api_version = detected_version
-            logger.info(f"PlatformService: API version detected: v{self.api_version}")
-        except Exception as e:
-            logger.warning(f"PlatformService: Version detection failed: {e}, defaulting to v1")
-            self.api_version = '1'  # CRITICAL: Always default to '1' on failure
+        # Detect API version dynamically
+        self.api_version = self._detect_api_version()
+        logger.info(f"PlatformService: API version locked in for execution: v{self.api_version}")
         
         # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
         if self.api_version != '1':
@@ -579,11 +571,8 @@ class PlatformService(BaseAPIClient):
         The method:
         1. Makes a GET request to /api/gateway/
         2. Parses the JSON response to extract current_version
-        3. Extracts the version number from the path (e.g., "/api/gateway/v1/" -> "1")
-        4. Falls back to available_versions if current_version is not present
-        5. Defaults to '1' if detection fails
-
-        Falls back to v1 if detection fails.
+        3. Negotiates the highest mutual version from available_versions
+        4. Dynamically falls back to highest collection version if detection fails.
 
         Returns:
             Version string (e.g., '1', '2.1')
@@ -619,8 +608,7 @@ class PlatformService(BaseAPIClient):
             )
             response.raise_for_status()
             
-            # Default to v1 if detection fails
-            version_str = '1'
+            version_str = None
             
             # Parse JSON response
             if response.headers.get('Content-Type', '').startswith('application/json'):
@@ -636,28 +624,29 @@ class PlatformService(BaseAPIClient):
                             version_str = version_match.group(1)
                             logger.debug(f"PlatformService: Extracted version '{version_str}' from current_version path")
                     
-                    # Fallback: Check available_versions if current_version not found
-                    elif 'available_versions' in response_data:
+                    # 2. Negotiate highest mutual version from available_versions
+                    if not version_str and 'available_versions' in response_data:
                         available = response_data['available_versions']
                         if isinstance(available, dict) and available:
-                            version_keys = sorted(available.keys(), reverse=True)
-                            if version_keys:
-                                version_key = version_keys[0]  # Get highest version
-                                if version_key.startswith('v'):
-                                    version_str = version_key[1:]
-                                else:
-                                    version_str = version_key
-                                logger.debug(f"PlatformService: Extracted version '{version_str}' from available_versions")
+                            platform_versions = [v.lstrip('v') for v in available.keys()]
+                            collection_supported = self.registry.get_supported_versions()
+                            mutual_versions = [v for v in platform_versions if v in collection_supported]
+                            
+                            if mutual_versions:
+                                try:
+                                    from packaging.version import parse as parse_version
+                                except ImportError:
+                                    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
+                                    parse_version = version.parse
+                                version_str = max(mutual_versions, key=parse_version)
+                                logger.debug(f"PlatformService: Negotiated mutual version '{version_str}' from available_versions")
                     
                 except (ValueError, KeyError, AttributeError) as e:
                     logger.debug(f"PlatformService: Could not parse version from response: {e}")
             
-            # Validate version string format
-            if not version_str or not version_str.replace('.', '').isdigit():
-                logger.warning(f"PlatformService: Invalid version format '{version_str}', defaulting to '1'")
-                version_str = '1'
-            
-            return version_str
+            if version_str and version_str in self.registry.get_supported_versions():
+                logger.info(f"PlatformService: API version locked in: v{version_str}")
+                return version_str
             
         except requests.RequestException as e:
             # Network/HTTP errors - default to v1
@@ -672,7 +661,12 @@ class PlatformService(BaseAPIClient):
             print(error_msg, file=sys.stderr, flush=True)
             import traceback
             print(traceback.format_exc(), file=sys.stderr, flush=True)
-            return '1'
+        latest_supported = self.registry.get_latest_version()
+        if not latest_supported:
+            raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
+            
+        logger.info(f"PlatformService: Defaulting to highest collection version: v{latest_supported}")
+        return latest_supported
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
         """
@@ -830,7 +824,7 @@ class PlatformService(BaseAPIClient):
             Created resource as dict (Ansible format) with 'changed': True
         """
         # FORWARD TRANSFORM: Ansible → API
-        api_data = ansible_data.to_api(context)
+        api_data = mixin_class.from_ansible_data(ansible_data, context)
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
@@ -882,7 +876,7 @@ class PlatformService(BaseAPIClient):
             current_data = {}
 
         # FORWARD TRANSFORM: Ansible → API
-        api_data = ansible_data.to_api(context)
+        api_data = mixin_class.from_ansible_data(ansible_data, context)
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()

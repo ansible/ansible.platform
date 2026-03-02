@@ -31,30 +31,6 @@ class BaseTransformMixin(ABC):
     _field_mapping: Optional[Dict] = None
     _transform_registry: Optional[Dict] = None
 
-    def to_api(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:
-        """
-        Transform from Ansible format to API format.
-
-        Args:
-            context: Optional TransformContext or dict containing:
-                - manager: PlatformService instance for lookups
-                - session: HTTP session
-                - cache: Lookup cache
-                - api_version: Current API version
-
-        Returns:
-            API dataclass instance
-        """
-        logger.debug(f"Transforming {self.__class__.__name__} to API format")
-        ctx = self._normalize_context(context)
-        result = self._transform(
-            target_class=self._get_api_class(),
-            direction='forward',
-            context=ctx
-        )
-        logger.debug(f"Transformation to API format completed: {result.__class__.__name__}")
-        return result
-
     def to_ansible(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:
         """
         Transform from API format to Ansible format.
