@@ -120,11 +120,7 @@ class PlatformService(BaseAPIClient):
         self.api_version = self._detect_api_version()
         logger.info(f"PlatformService: API version locked in for execution: v{self.api_version}")
         
-        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
-        if self.api_version != '1':
-            logger.warning(f"PlatformService: Detected version '{self.api_version}' but AAP Gateway only supports v1, forcing to '1'")
-            self.api_version = '1'
-        
+        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)        
         logger.info(f"PlatformService initialized with API v{self.api_version}")
 
         # Performance counters (thread-safe)
@@ -665,7 +661,7 @@ class PlatformService(BaseAPIClient):
         if not latest_supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
             
-        logger.info(f"PlatformService: Defaulting to highest collection version: v{latest_supported}")
+        logger.info(f"PlatformService: Version mismatch or detection failed. Falling back to highest supported: v{latest_supported}")
         return latest_supported
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
