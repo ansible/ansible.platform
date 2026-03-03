@@ -21,16 +21,9 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 
 from .base_client import BaseAPIClient
 from .config import GatewayConfig
-from .credential_manager import get_credential_manager, CredentialStore
-from .exceptions import (
-    PlatformError,
-    AuthenticationError,
-    NetworkError,
-    APIError,
-    TimeoutError,
-    classify_exception
-)
-from .retry import retry_http_request, RetryConfig
+from .credential_manager import get_credential_manager
+from .exceptions import AuthenticationError, APIError
+from .retry import RetryConfig
 from .types import TransformContext
 
 logger = logging.getLogger(__name__)
@@ -116,7 +109,7 @@ class DirectHTTPClient(BaseAPIClient):
     def _detect_api_version(self) -> str:
         """
         Detect API version (simplified - just return default).
-        
+
         In standard mode, we default to v1 without making an HTTP request.
         This avoids worker process crashes from HTTP requests during init.
 
@@ -132,7 +125,7 @@ class DirectHTTPClient(BaseAPIClient):
     def _authenticate(self) -> None:
         """
         Set authentication headers in session (no test request).
-        
+
         This just configures the session with auth headers.
         Authentication will be validated when actual API calls are made.
 
@@ -196,40 +189,40 @@ class DirectHTTPClient(BaseAPIClient):
         request_kwargs = kwargs.copy()
         timeout = request_kwargs.pop('timeout', self.request_timeout)
         verify = request_kwargs.pop('verify', self.verify_ssl)
-        
+
         # Prepare data for JSON requests
         data = None
         if 'json' in request_kwargs:
             data = json.dumps(request_kwargs.pop('json'))
         elif 'data' in request_kwargs:
             data = request_kwargs.pop('data')
-        
+
         # Parse URL (Ansible's Request.open() expects a parsed URL or string)
         if isinstance(url, str):
             parsed_url = urlparse(url)
         else:
             parsed_url = url
-        
+
         try:
             # Use Ansible's Request.open() - this is compatible with Ansible worker processes
             # Single connection per task - no persistence, just like current collection
             logger.info("DirectHTTPClient: Making %s request to %s", method.upper(), url)
-            
+
             # Ensure session is properly initialized
             if not hasattr(self.session, 'open'):
                 raise RuntimeError("Session does not have 'open' method. Session type: %s" % type(self.session))
-            
+
             # Get URL string - Ansible's Request.open() accepts string URLs
             # Use geturl() if it's a ParseResult, otherwise use the string directly
             if hasattr(parsed_url, 'geturl'):
                 url_str = parsed_url.geturl()
             else:
                 url_str = str(url)
-            
+
             logger.info("DirectHTTPClient: Calling session.open() with method=%s, url=%s", method.upper(), url_str)
             logger.info("DirectHTTPClient: Session type: %s", type(self.session))
             logger.info("DirectHTTPClient: Session has open method: %s", hasattr(self.session, 'open'))
-            
+
             # Ansible's Request.open() makes the HTTP request
             # This is the same approach used by current ansible.platform collection
             # Wrap in try-except to catch any exceptions before worker crashes
@@ -260,7 +253,7 @@ class DirectHTTPClient(BaseAPIClient):
         except HTTPError as he:
             # Ansible's Request.open() raises HTTPError for 4xx/5xx responses
             status = he.code
-            
+
             # Handle 401 separately (authentication recovery)
             if status == 401:
                 # Try to recover authentication
@@ -282,7 +275,7 @@ class DirectHTTPClient(BaseAPIClient):
                             # Still 401 after recovery attempt
                             try:
                                 response_body = he2.read()[:500] if hasattr(he2, 'read') else str(he2)
-                            except:
+                            except Exception:
                                 response_body = str(he2)
                             raise AuthenticationError(
                                 message=f"Authentication failed: HTTP {he2.code}",
@@ -293,14 +286,15 @@ class DirectHTTPClient(BaseAPIClient):
                                     'url': url,
                                     'response_body': response_body
                                 },
-                                status_code=he2.code
+                                    status_code=he2.code
                             )
                         raise
                 else:
+
                     # Authentication recovery failed
                     try:
                         response_body = he.read()[:500] if hasattr(he, 'read') else str(he)
-                    except:
+                    except Exception:
                         response_body = str(he)
                     raise AuthenticationError(
                         message=f"Authentication failed: HTTP {he.code}",
@@ -313,11 +307,11 @@ class DirectHTTPClient(BaseAPIClient):
                         },
                         status_code=he.code
                     )
-            
+
             # For other HTTP errors, raise appropriate exception
             try:
                 response_body = he.read()[:500] if hasattr(he, 'read') else str(he)
-            except:
+            except Exception:
                 response_body = str(he)
             raise APIError(
                 message=f"API request failed: HTTP {he.code}",
@@ -356,14 +350,15 @@ class DirectHTTPClient(BaseAPIClient):
             status = response.status
         else:
             return False
-            
+
         if status != 401:
             return False
 
         logger.warning("Received 401 Unauthorized, attempting to recover authentication")
 
         # Try token refresh first (if using OAuth)
-        _, _, oauth_token = self.credential_store.get_auth_credentials()
+        creds = self.credential_store.get_auth_credentials()
+        oauth_token = creds[2] if len(creds) > 2 else None
         if oauth_token:
             if self._refresh_token():
                 return True
@@ -429,7 +424,7 @@ class DirectHTTPClient(BaseAPIClient):
         self,
         operation: str,
         module_name: str,
-        ansible_data: Any
+        ansible_data_dict: dict
     ) -> dict:
         """
         Execute a generic operation on any resource.
@@ -440,7 +435,7 @@ class DirectHTTPClient(BaseAPIClient):
         Args:
             operation: Operation type ('create', 'update', 'delete', 'find')
             module_name: Module name (e.g., 'user', 'organization')
-            ansible_data: Ansible dataclass instance or dict
+            ansible_data_dict: Ansible dataclass as dict
 
         Returns:
             Result as dict (Ansible format) with timing information
@@ -451,10 +446,9 @@ class DirectHTTPClient(BaseAPIClient):
         from dataclasses import asdict, is_dataclass
 
         # Convert to dict if dataclass (for consistency with ManagerRPCClient)
-        if is_dataclass(ansible_data):
-            ansible_data_dict = asdict(ansible_data)
-        else:
-            ansible_data_dict = ansible_data
+        if is_dataclass(ansible_data_dict):
+            ansible_data_dict = asdict(ansible_data_dict)
+        # else: already a dict
         # Performance timing: Processing start
         processing_start = time.perf_counter()
 

@@ -17,13 +17,7 @@ import requests
 
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
-from ..platform.exceptions import (
-    AuthenticationError,
-    NetworkError,
-    APIError,
-    TimeoutError,
-    classify_exception
-)
+from ..platform.exceptions import AuthenticationError
 from ..platform.credential_manager import get_credential_manager
 from ..platform.retry import retry_http_request, RetryConfig
 from ..platform.types import TransformContext

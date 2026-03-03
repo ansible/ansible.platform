@@ -1,2 +1,1 @@
 """Module documentation strings (DOCUMENTATION)."""
-
