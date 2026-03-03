@@ -11,30 +11,22 @@ import threading
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import Any, Dict, Optional, Tuple
-from dataclasses import asdict, is_dataclass
-from urllib.parse import urlparse, urlencode
+from dataclasses import asdict
+from urllib.parse import urlencode
 import requests
 
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
-from ..platform.registry import APIVersionRegistry
-from ..platform.loader import DynamicClassLoader
-from ..platform.types import EndpointOperation, TransformContext
-from ..platform.credential_manager import (
-    get_credential_manager,
-    CredentialStore,
-    TokenInfo
-)
 from ..platform.exceptions import (
-    PlatformError,
     AuthenticationError,
     NetworkError,
-    ValidationError,
     APIError,
     TimeoutError,
     classify_exception
 )
+from ..platform.credential_manager import get_credential_manager
 from ..platform.retry import retry_http_request, RetryConfig
+from ..platform.types import TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +102,7 @@ class PlatformService(BaseAPIClient):
             self._authenticate()
             logger.info("PlatformService: Authentication successful")
         except Exception as e:
-            logger.error(f"PlatformService: Authentication failed: {e}")
+            logger.error("PlatformService: Authentication failed: %s", e)
             self._last_auth_error = e
             # Continue anyway - some operations might work without auth
 
@@ -121,24 +113,24 @@ class PlatformService(BaseAPIClient):
             detected_version = self._detect_api_version()
             # Ensure we got a valid version string
             if not detected_version or detected_version not in ['1', '2', '2.1']:
-                logger.warning(f"PlatformService: Invalid detected version '{detected_version}', defaulting to '1'")
+                logger.warning("PlatformService: Invalid detected version '%s', defaulting to '1'", detected_version)
                 detected_version = '1'
             self.api_version = detected_version
-            logger.info(f"PlatformService: API version detected: v{self.api_version}")
+            logger.info("PlatformService: API version detected: v%s", self.api_version)
         except Exception as e:
-            logger.warning(f"PlatformService: Version detection failed: {e}, defaulting to v1")
+            logger.warning("PlatformService: Version detection failed: %s, defaulting to v1", e)
             self.api_version = '1'  # CRITICAL: Always default to '1' on failure
-        
+
         # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1).
         # Allow v2 when testing against mock (ANSIBLE_PLATFORM_ALLOW_API_V2=1).
         allow_v2 = os.environ.get('ANSIBLE_PLATFORM_ALLOW_API_V2', '').strip().lower() in ('1', 'true', 'yes')
         if self.api_version != '1' and not allow_v2:
-            logger.warning(f"PlatformService: Detected version '{self.api_version}' but AAP Gateway only supports v1, forcing to '1'")
+            logger.warning("PlatformService: Detected version '%s' but AAP Gateway only supports v1, forcing to '1'", self.api_version)
             self.api_version = '1'
         elif self.api_version != '1' and allow_v2:
-            logger.info(f"PlatformService: Allowing API v{self.api_version} (ANSIBLE_PLATFORM_ALLOW_API_V2 set)")
+            logger.info("PlatformService: Allowing API v%s (ANSIBLE_PLATFORM_ALLOW_API_V2 set)", self.api_version)
 
-        logger.info(f"PlatformService initialized with API v{self.api_version}")
+        logger.info("PlatformService initialized with API v%s", self.api_version)
 
         # Performance counters (thread-safe)
         self._http_request_count = 0
@@ -247,183 +239,6 @@ class PlatformService(BaseAPIClient):
 
         # Execute with retry logic
         return _execute_with_retry()
-        """
-        Make HTTP request with retry logic and error classification.
-
-        Args:
-            method: HTTP method ('get', 'post', 'put', 'patch', 'delete')
-            url: Request URL
-            operation: Operation name for error context
-            resource: Resource type for error context
-            **kwargs: Additional arguments for requests method
-
-        Returns:
-            Response object
-
-        Raises:
-            PlatformError: Classified platform error
-        """
-        # Set default timeout and verify_ssl if not provided
-        if 'timeout' not in kwargs:
-            kwargs['timeout'] = self.request_timeout
-        if 'verify' not in kwargs:
-            kwargs['verify'] = self.verify_ssl
-
-        # Get the appropriate session method
-        session_method = getattr(self.session, method.lower())
-
-        # Track request count
-        with self._lock:
-            self._http_request_count += 1
-
-        # Make request with retry logic
-        last_exception = None
-        for attempt in range(self.retry_config.max_attempts):
-            try:
-                response = session_method(url, **kwargs)
-
-                # Check for HTTP error status codes
-                if response.status_code >= 400:
-                    # Handle 401 separately (authentication)
-                    if response.status_code == 401:
-                        # Try to recover authentication
-                        if self._handle_auth_error(response):
-                            # Retry the request after re-authentication
-                            if attempt < self.retry_config.max_attempts - 1:
-                                continue
-
-                        # Authentication failed
-                        raise AuthenticationError(
-                            message=f"Authentication failed: HTTP {response.status_code}",
-                            operation=operation,
-                            resource=resource,
-                            details={
-                                'status_code': response.status_code,
-                                'url': url,
-                                'response_body': response.text[:500]  # Limit response body
-                            },
-                            status_code=response.status_code
-                        )
-
-                    # Create APIError for other HTTP errors
-                    error = APIError(
-                        message=f"HTTP {response.status_code} error: {response.reason}",
-                        operation=operation,
-                        resource=resource,
-                        details={
-                            'status_code': response.status_code,
-                            'url': url,
-                            'response_body': response.text[:500]
-                        },
-                        status_code=response.status_code,
-                        response_body=response.json() if response.headers.get('content-type', '').startswith('application/json') else None
-                    )
-
-                    # Check if retryable and not last attempt
-                    if error.retryable and attempt < self.retry_config.max_attempts - 1:
-                        delay = self.retry_config.calculate_delay(attempt)
-                        logger.warning(
-                            f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
-                            f"after {delay:.2f}s: HTTP {response.status_code}"
-                        )
-                        import time
-                        time.sleep(delay)
-                        continue
-                    else:
-                        response.raise_for_status()  # Will raise requests.HTTPError
-
-                return response
-
-            except requests.exceptions.Timeout as e:
-                last_exception = e
-                if attempt < self.retry_config.max_attempts - 1:
-                    delay = self.retry_config.calculate_delay(attempt)
-                    logger.warning(
-                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
-                        f"after {delay:.2f}s: Timeout"
-                    )
-                    import time
-                    time.sleep(delay)
-                    continue
-                else:
-                    raise TimeoutError(
-                        message=f"Request timed out after {self.retry_config.max_attempts} attempts: {str(e)}",
-                        operation=operation,
-                        resource=resource,
-                        details={'url': url, 'timeout': kwargs.get('timeout')},
-                        timeout_seconds=kwargs.get('timeout')
-                    )
-
-            except (requests.exceptions.ConnectionError, requests.exceptions.SSLError) as e:
-                last_exception = e
-                if attempt < self.retry_config.max_attempts - 1:
-                    delay = self.retry_config.calculate_delay(attempt)
-                    logger.warning(
-                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
-                        f"after {delay:.2f}s: Network error"
-                    )
-                    import time
-                    time.sleep(delay)
-                    continue
-                else:
-                    raise NetworkError(
-                        message=f"Network error after {self.retry_config.max_attempts} attempts: {str(e)}",
-                        operation=operation,
-                        resource=resource,
-                        details={'url': url, 'original_exception': str(e)},
-                        original_exception=e
-                    )
-
-            except requests.exceptions.HTTPError as e:
-                # HTTPError from raise_for_status()
-                response = e.response
-                error = APIError(
-                    message=f"HTTP {response.status_code} error: {response.reason}",
-                    operation=operation,
-                    resource=resource,
-                    details={
-                        'status_code': response.status_code,
-                        'url': url,
-                        'response_body': response.text[:500]
-                    },
-                    status_code=response.status_code,
-                    response_body=response.json() if response.headers.get('content-type', '').startswith('application/json') else None
-                )
-
-                if error.retryable and attempt < self.retry_config.max_attempts - 1:
-                    delay = self.retry_config.calculate_delay(attempt)
-                    logger.warning(
-                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
-                        f"after {delay:.2f}s: HTTP {response.status_code}"
-                    )
-                    import time
-                    time.sleep(delay)
-                    continue
-                else:
-                    raise error
-
-            except Exception as e:
-                # Classify and handle other exceptions
-                platform_error = classify_exception(e, operation, resource)
-                platform_error.details['url'] = url
-
-                if platform_error.retryable and attempt < self.retry_config.max_attempts - 1:
-                    delay = self.retry_config.calculate_delay(attempt)
-                    logger.warning(
-                        f"Retrying {method.upper()} {url} (attempt {attempt + 1}/{self.retry_config.max_attempts}) "
-                        f"after {delay:.2f}s: {type(e).__name__}"
-                    )
-                    import time
-                    time.sleep(delay)
-                    continue
-                else:
-                    raise platform_error
-
-        # If we get here, all retries failed
-        if last_exception:
-            raise classify_exception(last_exception, operation, resource)
-
-        raise RuntimeError(f"Request failed for {method.upper()} {url}")
 
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
@@ -521,7 +336,7 @@ class PlatformService(BaseAPIClient):
                         logger.info("Token refreshed successfully")
                         return True
             except Exception as e:
-                logger.warning(f"Token refresh failed: {e}")
+                logger.warning("Token refresh failed: %s", e)
 
             return False
 
@@ -536,7 +351,7 @@ class PlatformService(BaseAPIClient):
             self._authenticate()
             return True
         except Exception as e:
-            logger.error(f"Re-authentication failed: {e}")
+            logger.error("Re-authentication failed: %s", e)
             return False
 
     def _handle_auth_error(self, response: requests.Response) -> bool:
@@ -555,7 +370,8 @@ class PlatformService(BaseAPIClient):
         logger.warning("Received 401 Unauthorized, attempting to recover authentication")
 
         # Try token refresh first (if using OAuth)
-        _, _, oauth_token = self.credential_store.get_auth_credentials()
+        creds = self.credential_store.get_auth_credentials()
+        oauth_token = creds[2] if len(creds) > 2 else None
         if oauth_token:
             if self._refresh_token():
                 logger.info("Authentication recovered via token refresh")
@@ -598,7 +414,7 @@ class PlatformService(BaseAPIClient):
         import os
         import re
         from pathlib import Path
-        
+
         # Get error_log path from environment (set by process_manager.py when spawning)
         error_log_path = None
         try:
@@ -610,12 +426,12 @@ class PlatformService(BaseAPIClient):
                 # so it should exist, but we'll try to write anyway
         except Exception:
             pass
-        
+
         try:
             # Use the /api/gateway/ endpoint which provides version information
             gateway_url = f'{self.base_url.rstrip("/")}/api/gateway/'
-            logger.debug(f"PlatformService: Detecting API version via {gateway_url}")
-            
+            logger.debug("PlatformService: Detecting API version via %s", gateway_url)
+
             # Make request using session (authentication headers already set)
             response = self.session.get(
                 gateway_url,
@@ -623,24 +439,24 @@ class PlatformService(BaseAPIClient):
                 verify=self.verify_ssl
             )
             response.raise_for_status()
-            
+
             # Default to v1 if detection fails
             version_str = '1'
-            
+
             # Parse JSON response
             if response.headers.get('Content-Type', '').startswith('application/json'):
                 try:
                     response_data = response.json()
-                    logger.debug(f"PlatformService: Gateway API response: {response_data}")
-                    
+                    logger.debug("PlatformService: Gateway API response: %s", response_data)
+
                     # Extract version from current_version field (e.g., "/api/gateway/v1/" -> "1")
                     if 'current_version' in response_data:
                         current_version_path = response_data['current_version']
                         version_match = re.search(r'/v(\d+(?:\.\d+)?)/?$', current_version_path)
                         if version_match:
                             version_str = version_match.group(1)
-                            logger.debug(f"PlatformService: Extracted version '{version_str}' from current_version path")
-                    
+                            logger.debug("PlatformService: Extracted version '%s' from current_version path", version_str)
+
                     # Fallback: Check available_versions if current_version not found
                     elif 'available_versions' in response_data:
                         available = response_data['available_versions']
@@ -652,18 +468,18 @@ class PlatformService(BaseAPIClient):
                                     version_str = version_key[1:]
                                 else:
                                     version_str = version_key
-                                logger.debug(f"PlatformService: Extracted version '{version_str}' from available_versions")
-                    
+                                logger.debug("PlatformService: Extracted version '%s' from available_versions", version_str)
+
                 except (ValueError, KeyError, AttributeError) as e:
-                    logger.debug(f"PlatformService: Could not parse version from response: {e}")
-            
+                    logger.debug("PlatformService: Could not parse version from response: %s", e)
+
             # Validate version string format
             if not version_str or not version_str.replace('.', '').isdigit():
-                logger.warning(f"PlatformService: Invalid version format '{version_str}', defaulting to '1'")
+                logger.warning("PlatformService: Invalid version format '%s', defaulting to '1'", version_str)
                 version_str = '1'
-            
+
             return version_str
-            
+
         except requests.RequestException as e:
             # Network/HTTP errors - default to v1
             error_msg = f"PlatformService: Version detection failed (HTTP error): {e}, defaulting to v1"
@@ -732,7 +548,7 @@ class PlatformService(BaseAPIClient):
         # Performance timing: Manager processing start
         manager_start = time.perf_counter()
 
-        logger.info(f"Executing {operation} on {module_name}")
+        logger.info("Executing %s on %s", operation, module_name)
 
         # Load version-appropriate classes
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(
@@ -806,13 +622,14 @@ class PlatformService(BaseAPIClient):
         except ValueError as e:
             # "Resource not found" is expected during idempotency checks
             if "not found" in str(e):
-                logger.debug(f"Operation {operation} on {module_name}: {e}")
+                logger.debug("Operation %s on %s: %s", operation, module_name, e)
             else:
-                logger.error(f"Operation {operation} on {module_name} failed: {e}")
+                logger.error("Operation %s on %s failed: %s", operation, module_name, e)
             raise
         except Exception as e:
             logger.error(
-                f"Operation {operation} on {module_name} failed: {e}",
+                "Operation %s on %s failed: %s",
+                operation, module_name, e,
                 exc_info=True
             )
             raise
@@ -965,7 +782,7 @@ class PlatformService(BaseAPIClient):
         url = self._build_url(path)
 
         # Make DELETE request
-        logger.debug(f"Calling DELETE {url}")
+        logger.debug("Calling DELETE %s", url)
         response = self.session.delete(
             url,
             timeout=self.request_timeout,
@@ -1024,7 +841,7 @@ class PlatformService(BaseAPIClient):
             if not list_op:
                 raise ValueError("No LIST operation defined for this resource")
             url = self._build_url(list_op.path, query_params={lookup_field: unique_value})
-            logger.debug(f"Calling GET {url} to find {lookup_field}={unique_value}")
+            logger.debug("Calling GET %s to find %s=%s", url, lookup_field, unique_value)
             response = self.session.get(
                 url,
                 timeout=self.request_timeout,
@@ -1089,7 +906,7 @@ class PlatformService(BaseAPIClient):
                     request_data[field] = api_data_dict[field]
 
             if not request_data:
-                logger.debug(f"Skipping {op_name} - no data")
+                logger.debug("Skipping %s - no data", op_name)
                 continue
 
             # Build URL with path parameters
@@ -1104,7 +921,7 @@ class PlatformService(BaseAPIClient):
             url = self._build_url(path)
 
             # Make API call
-            logger.debug(f"Calling {endpoint_op.method} {url}")
+            logger.debug("Calling %s %s", endpoint_op.method, url)
             # Performance timing: API call start
             import time
             api_start = time.perf_counter()
@@ -1138,10 +955,10 @@ class PlatformService(BaseAPIClient):
                     context['timing']['api_call_end'] = api_end
 
             except Exception as e:
-                logger.error(f"API call failed: {e}")
+                logger.error("API call failed: %s", e)
                 if hasattr(e, 'response') and e.response is not None:
-                    logger.error(f"Response status: {e.response.status_code}")
-                    logger.error(f"Response body: {e.response.text}")
+                    logger.error("Response status: %s", e.response.status_code)
+                    logger.error("Response body: %s", e.response.text)
                 raise
 
             # Store result
@@ -1266,13 +1083,13 @@ class PlatformService(BaseAPIClient):
         return names
 
     # Aliases for consistency with transform mixins
-    def lookup_organization_ids(self, org_names: list) -> list:
+    def lookup_organization_ids(self, names: list) -> list:
         """Alias for lookup_org_ids."""
-        return self.lookup_org_ids(org_names)
+        return self.lookup_org_ids(names)
 
-    def lookup_organization_names(self, org_ids: list) -> list:
+    def lookup_organization_names(self, ids: list) -> list:
         """Alias for lookup_org_names."""
-        return self.lookup_org_names(org_ids)
+        return self.lookup_org_names(ids)
 
     def shutdown(self) -> dict:
         """
@@ -1300,14 +1117,14 @@ class PlatformService(BaseAPIClient):
                 self.session.close()
                 logger.debug("HTTP session closed")
         except Exception as e:
-            logger.warning(f"Error closing HTTP session: {e}")
+            logger.warning("Error closing HTTP session: %s", e)
 
         # Clear cache
         try:
             self.cache.clear()
             logger.debug("Cache cleared")
         except Exception as e:
-            logger.warning(f"Error clearing cache: {e}")
+            logger.warning("Error clearing cache: %s", e)
 
         logger.info("PlatformService shutdown complete")
         return {"status": "shutdown", "message": "Manager service shut down gracefully"}
@@ -1323,5 +1140,4 @@ class PlatformManager(ThreadingMixIn, BaseManager):
     @staticmethod
     def register_shutdown_method(service):
         """Register shutdown method with manager."""
-        PlatformManager.register('shutdown', callable=lambda: service.shutdown())
-
+        PlatformManager.register('shutdown', callable=service.shutdown)

@@ -9,9 +9,8 @@ This module provides secure credential handling, including:
 
 import logging
 import threading
-import time
 import hashlib
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -168,7 +167,7 @@ class CredentialStore:
                 issued_at=datetime.now()
             )
             self.last_used = datetime.now()
-            logger.info(f"Token updated for namespace {self.namespace.namespace_id}, expires_at={expires_at}")
+            logger.info("Token updated for namespace %s, expires_at=%s", self.namespace.namespace_id, expires_at)
 
     def clear_credentials(self) -> None:
         """Clear all stored credentials."""
@@ -176,7 +175,7 @@ class CredentialStore:
             self.username = None
             self.password = None
             self.token_info = None
-            logger.info(f"Credentials cleared for namespace {self.namespace.namespace_id}")
+            logger.info("Credentials cleared for namespace %s", self.namespace.namespace_id)
 
 class CredentialManager:
     """
@@ -233,10 +232,10 @@ class CredentialManager:
                     token_info=TokenInfo(token=oauth_token) if oauth_token else None
                 )
                 self._stores[namespace.namespace_id] = store
-                logger.info(f"Created credential store for namespace {namespace.namespace_id}")
+                logger.info("Created credential store for namespace %s", namespace.namespace_id)
             else:
                 store = self._stores[namespace.namespace_id]
-                logger.debug(f"Reusing credential store for namespace {namespace.namespace_id}")
+                logger.debug("Reusing credential store for namespace %s", namespace.namespace_id)
 
             return store
 
@@ -283,7 +282,7 @@ class CredentialManager:
             if namespace_id in self._stores:
                 self._stores[namespace_id].clear_credentials()
                 del self._stores[namespace_id]
-                logger.info(f"Cleared credential store for namespace {namespace_id}")
+                logger.info("Cleared credential store for namespace %s", namespace_id)
 
     def clear_all(self) -> None:
         """Clear all credential stores."""

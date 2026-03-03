@@ -190,7 +190,7 @@ def main():
         # Register shutdown method
         PlatformManager.register(
             'shutdown',
-            callable=lambda: service.shutdown()
+            callable=service.shutdown
         )
 
         with open(error_log, 'a') as f:

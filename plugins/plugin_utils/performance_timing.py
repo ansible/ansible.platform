@@ -7,8 +7,7 @@ at different stages of the operation pipeline.
 import time
 import logging
 from typing import Dict, Optional
-from dataclasses import dataclass, field
-from contextlib import contextmanager
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +71,8 @@ class PerformanceTimer:
         self.start_time = time.perf_counter()
         logger.log(
             self.log_level,
-            f"⏱️  TIMING START: {self.operation_name} (timestamp: {self.start_time:.6f})"
+            "⏱️  TIMING START: %s (timestamp: %s)",
+            self.operation_name, self.start_time
         )
         return self
 
@@ -81,7 +81,8 @@ class PerformanceTimer:
         elapsed = self.end_time - self.start_time
         logger.log(
             self.log_level,
-            f"⏱️  TIMING END: {self.operation_name} (elapsed: {elapsed:.6f}s, timestamp: {self.end_time:.6f})"
+            "⏱️  TIMING END: %s (elapsed: %ss, timestamp: %s)",
+            self.operation_name, elapsed, self.end_time
         )
         return False
 
@@ -105,9 +106,7 @@ def log_timing(operation: str, start_time: float, end_time: Optional[float] = No
 
     elapsed = end_time - start_time
     logger.debug(
-        f"⏱️  TIMING: {operation} | "
-        f"Start: {start_time:.6f} | "
-        f"End: {end_time:.6f} | "
-        f"Elapsed: {elapsed:.6f}s"
+        "⏱️  TIMING: %s | Start: %s | End: %s | Elapsed: %ss",
+        operation, start_time, end_time, elapsed
     )
     return elapsed
