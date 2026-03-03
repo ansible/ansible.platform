@@ -9,15 +9,14 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 DOCUMENTATION = """
-author:
-  - Ansible Platform Collection Contributors
+author: Ansible Platform Collection Contributors
 name: http
 short_description: HTTP connection plugin for Ansible Automation Platform API
 description:
   - This connection plugin provides HTTP connections to the Ansible Automation Platform API.
-  - It supports two connection modes:
-    - Persistent mode: Uses a persistent manager process that maintains HTTP sessions across tasks (better performance)
-    - Direct mode: Creates new HTTP connections per task (simpler, default)
+  - It supports two connection modes: persistent mode (uses a persistent manager process that maintains
+    HTTP sessions across tasks for better performance) and direct mode (creates new HTTP connections per task,
+    simpler, default).
   - Mode is controlled by the C(persistent) connection option.
 version_added: 1.0.0
 options:

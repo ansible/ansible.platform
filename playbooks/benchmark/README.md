@@ -113,4 +113,4 @@ Update this section or add a `benchmark_metadata.txt` (or similar) when you run 
 ## Using the report in Proposal 3
 
 - Attach or paste the `benchmark_report.txt` (or a short summary) into the P3 proposal where you describe performance/benchmarks.
-- Example summary: “For 100 user creates, direct mode took Xs and persistent mode Ys (Zx speedup).”
+- Example summary: "For 100 user creates, direct mode took Xs and persistent mode Ys (Zx speedup)."

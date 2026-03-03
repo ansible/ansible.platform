@@ -4,6 +4,8 @@ This module provides the server-side manager that maintains persistent
 connections to the platform API and handles all data transformations.
 """
 
+from __future__ import annotations
+
 import base64
 import logging
 import os
@@ -161,7 +163,7 @@ class PlatformService(BaseAPIClient):
         operation: str = 'http_request',
         resource: str = 'unknown',
         **kwargs
-    ) -> requests.Response:
+    ) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -359,7 +361,7 @@ class PlatformService(BaseAPIClient):
             logger.error("Re-authentication failed: %s", e)
             return False
 
-    def _handle_auth_error(self, response: requests.Response) -> bool:
+    def _handle_auth_error(self, response: "requests.Response") -> bool:
         """
         Handle authentication error (401) and attempt recovery.
 
