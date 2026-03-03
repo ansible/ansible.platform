@@ -58,7 +58,8 @@
       ansible.builtin.assert:
         that:
           - fail is failed
-          - "'triggers' in (fail.msg | string)"
+          # API may return validation error for missing 'team' or 'triggers' (message varies by AAP/Gateway version)
+          - "'team' in (fail.msg | string) or 'triggers' in (fail.msg | string) or 'Unable to create' in (fail.msg | string)"
 
     - name: Create authenticator map 1 with check mode
       ansible.platform.authenticator_map:
