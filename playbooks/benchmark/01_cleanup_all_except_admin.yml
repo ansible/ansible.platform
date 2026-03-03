@@ -11,7 +11,7 @@
     gateway_hostname: "{{ base_url }}"
     gateway_username: "admin"
     gateway_password: "Admin!Password!Gw"
-    gateway_token: "VWyDj7nbK0aUr0BuzbcMV3rn6Tduvp"
+    gateway_token: ""
     gateway_validate_certs: false
     _has_token: "{{ (gateway_token | default('') | string | trim | length) > 0 }}"
     _has_password: "{{ (gateway_password | default('') | string | trim | length) > 0 }}"
@@ -19,7 +19,7 @@
                      | ternary({'Authorization': 'Bearer ' ~ (gateway_token | string)}, {}) }}"
 
   tasks:
-    - name: Require Gateway credentials (token or username+password)
+    - name: Require Gateway credentials token or username+password
       ansible.builtin.fail:
         msg: >
           Gateway auth failed (401). Set either AAP_TOKEN or GATEWAY_PASSWORD (and GATEWAY_USERNAME).
@@ -39,7 +39,7 @@
         return_content: true
       register: users_response
 
-    - name: Build list of users to delete (exclude {{ keep_username }})
+    - name: Build list of users to deleteexclude keep_username
       ansible.builtin.set_fact:
         users_to_delete: "{{
           users_response.json.results
