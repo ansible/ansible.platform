@@ -16,8 +16,6 @@ __metaclass__ = type
 
 import logging
 
-from ansible.errors import AnsibleError
-
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 # Lazy import: AnsibleUser imported inside run() to avoid worker crashes
 from ansible_collections.ansible.platform.plugins.plugin_utils.docs.user import DOCUMENTATION

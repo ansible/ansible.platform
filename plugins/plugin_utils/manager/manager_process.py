@@ -98,9 +98,9 @@ def main():
         log_marker(f"Collections dir: {collections_dir}")
         if workspace_root_str not in sys.path:
             sys.path.insert(0, workspace_root_str)
-            log_marker(f"Added workspace root to sys.path")
+            log_marker("Added workspace root to sys.path")
         else:
-            log_marker(f"Workspace root already in sys.path")
+            log_marker("Workspace root already in sys.path")
 
         # Decode authkey from base64
         log_marker("Decoding authkey...")
@@ -165,7 +165,7 @@ def main():
             service = PlatformService(config)
             with open(error_log, 'a') as f:
                 f.write("=" * 80 + "\n")
-                f.write(f"✅ Service created successfully\n")
+                f.write("✅ Service created successfully\n")
                 f.write(f"   API Version: {service.api_version}\n")
                 f.write(f"   Base URL: {config.base_url}\n")
                 f.write("=" * 80 + "\n")

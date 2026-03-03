@@ -481,7 +481,7 @@ class BaseResourceActionPlugin(ActionBase):
         logger.info("   Process PID: %s", process.pid)
         logger.info("   Socket Path: %s", socket_path)
         logger.info("   Future tasks with same credentials will reuse this manager")
-        
+
         # Log where to find manager process logs (for debugging version detection, etc.)
         import tempfile
         socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
@@ -858,8 +858,8 @@ class BaseResourceActionPlugin(ActionBase):
         self._write_tracking_file(play_id, tracking_data)
 
         logger.info(
-            f"Initialized playbook tracking for play '{play_id}': "
-            f"{total_tasks} total tasks (file-based, process-safe)"
+            "Initialized playbook tracking for play '%s': %s total tasks (file-based, process-safe)",
+            play_id, total_tasks
         )
 
     def cleanup(self, force=False):
@@ -880,7 +880,7 @@ class BaseResourceActionPlugin(ActionBase):
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
             ProcessManager
         )
-        
+
         # Check if we have an ephemeral manager (direct mode) that should be shut down immediately
         if hasattr(self, '_client') and hasattr(self._client, '_ephemeral') and self._client._ephemeral:
             logger.info("Shutting down ephemeral manager (direct mode)")
@@ -920,8 +920,8 @@ class BaseResourceActionPlugin(ActionBase):
                 tracking['socket_paths'] = set(tracking['socket_paths'])
 
         logger.debug(
-            f"Task completed for play '{play_id}': "
-            f"{completed_tasks}/{total_tasks} tasks completed (process-safe)"
+            "Task completed for play '%s': %s/%s tasks completed (process-safe)",
+            play_id, completed_tasks, total_tasks
         )
 
         # Write updated tracking (process-safe)
@@ -930,8 +930,8 @@ class BaseResourceActionPlugin(ActionBase):
         # Check if all tasks are done
         if completed_tasks >= total_tasks:
             logger.info(
-                f"All tasks completed for play '{play_id}' "
-                f"({completed_tasks}/{total_tasks}), shutting down manager processes..."
+                "All tasks completed for play '%s' (%s/%s), shutting down manager processes...",
+                play_id, completed_tasks, total_tasks
             )
 
             # Shutdown all managers used by this play
@@ -944,8 +944,8 @@ class BaseResourceActionPlugin(ActionBase):
             logger.info("Cleanup complete for play '%s'", play_id)
         else:
             logger.debug(
-                f"Play '{play_id}' still has {total_tasks - completed_tasks} "
-                f"task(s) remaining, keeping managers alive"
+                "Play '%s' still has %s task(s) remaining, keeping managers alive",
+                play_id, total_tasks - completed_tasks
             )
 
     def _shutdown_manager_process(self, socket_path, ProcessManager):

@@ -48,7 +48,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Tuple, Optional, Dict, Any, Union
 
 from ansible.plugins.connection import ConnectionBase
-from ansible.errors import AnsibleError
 
 if TYPE_CHECKING:
     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
@@ -197,7 +196,7 @@ class Connection(ConnectionBase):
 
             # Get inventory hostname for unique identifier
             inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
-            logger.debug(f"Inventory hostname: {inventory_hostname}")
+            logger.debug("Inventory hostname: %s", inventory_hostname)
 
             # Use a very short identifier to avoid "AF_UNIX path too long" error
             # Unix domain socket paths are limited to ~104 characters on macOS
@@ -205,17 +204,17 @@ class Connection(ConnectionBase):
             # Hash the hostname to keep it short
             host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
             identifier = f"e{host_hash}"  # "e" for ephemeral + 4-char hash
-            logger.debug(f"Generated identifier: {identifier}")
+            logger.debug("Generated identifier: %s", identifier)
 
             # Generate connection info with shorter socket directory
             socket_dir = Path('/tmp') / 'ap'  # Very short path to avoid AF_UNIX limit
-            logger.debug(f"Socket directory: {socket_dir}")
+            logger.debug("Socket directory: %s", socket_dir)
 
             try:
                 socket_dir.mkdir(exist_ok=True, parents=True)  # Ensure directory exists
-                logger.debug(f"Created socket directory: {socket_dir}")
+                logger.debug("Created socket directory: %s", socket_dir)
             except Exception as e:
-                logger.error(f"Failed to create socket directory {socket_dir}: {e}")
+                logger.error("Failed to create socket directory %s: %s", socket_dir, e)
                 raise
 
             logger.debug("Generating connection info...")
@@ -228,7 +227,7 @@ class Connection(ConnectionBase):
             socket_path = conn_info.socket_path
             authkey = conn_info.authkey
             authkey_b64 = conn_info.authkey_b64
-            logger.debug(f"Socket path: {socket_path} (length: {len(socket_path)})")
+            logger.debug("Socket path: %s (length: %s)", socket_path, len(socket_path))
 
             # Clean up old socket if exists
             logger.debug("Cleaning up old socket if exists...")
@@ -237,14 +236,14 @@ class Connection(ConnectionBase):
             # Get path to manager process script
             # __file__ is plugins/connection/platform.py
             # We need plugins/plugin_utils/manager/manager_process.py
-            logger.debug(f"__file__: {__file__}")
-            logger.debug(f"Parent: {Path(__file__).parent}")
-            logger.debug(f"Parent.parent: {Path(__file__).parent.parent}")
+            logger.debug("__file__: %s", __file__)
+            logger.debug("Parent: %s", Path(__file__).parent)
+            logger.debug("Parent.parent: %s", Path(__file__).parent.parent)
 
             script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
 
-            logger.debug(f"Calculated script_path: {script_path}")
-            logger.debug(f"Script exists: {script_path.exists()}")
+            logger.debug("Calculated script_path: %s", script_path)
+            logger.debug("Script exists: %s", script_path.exists())
 
             if not script_path.exists():
                 raise FileNotFoundError(f"Manager process script not found at: {script_path}")
@@ -260,7 +259,7 @@ class Connection(ConnectionBase):
                 authkey_b64=authkey_b64,
                 sys_path=list(sys.path)
             )
-            logger.debug(f"Manager process spawned with PID: {process.pid}")
+            logger.debug("Manager process spawned with PID: %s", process.pid)
 
             # Wait for manager to start and create socket
             logger.debug("Waiting for manager process to be ready...")
@@ -274,9 +273,9 @@ class Connection(ConnectionBase):
             logger.debug("Manager process is ready")
 
         except Exception as e:
-            logger.error(f"Failed to spawn ephemeral manager: {type(e).__name__}: {e}")
+            logger.error("Failed to spawn ephemeral manager: %s: %s", type(e).__name__, e)
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error("Traceback: %s", traceback.format_exc())
             raise
 
         # Connect to manager
@@ -287,7 +286,7 @@ class Connection(ConnectionBase):
         client._ephemeral = True
         client.socket_path = socket_path  # Store for cleanup
 
-        logger.info(f"Ephemeral manager spawned for {gateway_config.base_url} at {socket_path}")
+        logger.info("Ephemeral manager spawned for %s at %s", gateway_config.base_url, socket_path)
 
         # Benchmark: each new manager = 1 HTTP session + 1 TLS session
         self._benchmark_record_sessions(1, 1)
@@ -341,13 +340,13 @@ class Connection(ConnectionBase):
             try:
                 authkey = base64.b64decode(authkey_b64)
                 client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-                logger.info(f"Reusing existing persistent manager: {socket_path}")
+                logger.info("Reusing existing persistent manager: %s", socket_path)
                 return client, None
             except Exception as e:
-                logger.warning(f"Failed to connect to existing manager: {e}, spawning new one")
+                logger.warning("Failed to connect to existing manager: %s, spawning new one", e)
 
         # Spawn new manager
-        logger.info(f"Spawning new persistent manager for host: {inventory_hostname}")
+        logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
 
         # Generate connection info
         socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
@@ -366,8 +365,8 @@ class Connection(ConnectionBase):
 
         # Get path to manager process script
         script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
-        logger.debug(f"Script path for persistent manager: {script_path}")
-        logger.debug(f"Script exists: {script_path.exists()}")
+        logger.debug("Script path for persistent manager: %s", script_path)
+        logger.debug("Script exists: %s", script_path.exists())
 
         if not script_path.exists():
             raise FileNotFoundError(f"Manager script not found at: {script_path}")
@@ -407,7 +406,7 @@ class Connection(ConnectionBase):
             'gateway_url': gateway_config.base_url
         }
 
-        logger.info(f"Successfully spawned and connected to persistent manager: {socket_path}")
+        logger.info("Successfully spawned and connected to persistent manager: %s", socket_path)
 
         return client, facts_dict
 

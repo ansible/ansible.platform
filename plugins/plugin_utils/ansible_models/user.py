@@ -5,7 +5,7 @@ This dataclass represents the user as seen by Ansible playbooks.
 Field names and types remain stable across API versions.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, List, Union, Dict, Any
 
 from ..platform.types import TransformContext

@@ -81,7 +81,8 @@ class UserTransformMixin_v2(BaseTransformMixin):
         cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]
     ) -> "APIUser_v2":
         logger.info(
-            f"[v2] Transforming AnsibleUser -> APIUser_v2: username={getattr(ansible_instance, 'username', None)}"
+            "[v2] Transforming AnsibleUser -> APIUser_v2: username=%s",
+            getattr(ansible_instance, 'username', None),
         )
         api_data: Dict[str, Any] = {}
 
@@ -228,4 +229,3 @@ class UserTransformMixin_v2(BaseTransformMixin):
                     else:
                         ansible_data[ansible_field] = value
         return ansible_data
-
