@@ -15,7 +15,7 @@ module: authenticator_map
 author: Red Hat (@RedHatOfficial)
 short_description: Configure a gateway authenticator maps.
 description:
-    - Configure an automation platform gateway authenticator maps.
+    - Configure an automation platform gateway authenticator map.
 options:
     name:
       required: true
