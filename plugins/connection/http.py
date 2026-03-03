@@ -9,7 +9,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 DOCUMENTATION = """
-author: Ansible Platform Collection Contributors
+author: Ansible Platform Collection Contributors (@rohithakur2590)
 name: http
 short_description: HTTP connection plugin for Ansible Automation Platform API
 description:
