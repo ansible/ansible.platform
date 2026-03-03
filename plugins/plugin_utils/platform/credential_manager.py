@@ -296,6 +296,7 @@ class CredentialManager:
             self._stores.clear()
             logger.info("Cleared all credential stores")
 
+
 # Global credential manager instance (per-process)
 
 _global_credential_manager: Optional[CredentialManager] = None

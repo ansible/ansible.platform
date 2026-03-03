@@ -10,10 +10,12 @@ import os
 import threading
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 from dataclasses import asdict
 from urllib.parse import urlencode
-import requests
+
+if TYPE_CHECKING:
+    import requests
 
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
@@ -23,6 +25,12 @@ from ..platform.retry import retry_http_request, RetryConfig
 from ..platform.types import TransformContext
 
 logger = logging.getLogger(__name__)
+
+
+def _get_requests():
+    """Lazy import of requests to avoid ModuleNotFoundError during sanity import test."""
+    import requests
+    return requests
 
 
 class PlatformService(BaseAPIClient):
@@ -81,6 +89,7 @@ class PlatformService(BaseAPIClient):
         self.username, self.password, self.oauth_token = self.credential_store.get_auth_credentials()
 
         # Initialize persistent session (thread-safe)
+        requests = _get_requests()
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Ansible Platform Collection',
@@ -237,6 +246,7 @@ class PlatformService(BaseAPIClient):
 
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
+        requests = _get_requests()
         with self._auth_lock:
             # Get fresh credentials from store
             username, password, oauth_token = self.credential_store.get_auth_credentials()
@@ -404,6 +414,7 @@ class PlatformService(BaseAPIClient):
         Returns:
             Version string (e.g., '1', '2.1')
         """
+        requests = _get_requests()
         # Write to both logger and stderr for visibility in manager process logs
         import sys
         import os

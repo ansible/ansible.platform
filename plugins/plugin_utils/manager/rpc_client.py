@@ -48,7 +48,7 @@ class ManagerRPCClient:
             # Force conversion to plain Python str using f-string (not a subclass)
             self.socket_path = f"{socket_path}"  # f-string forces plain str
             # Double-check: ensure it's actually a plain str, not a subclass
-            if type(self.socket_path) is not str:
+            if not isinstance(self.socket_path, str):
                 self.socket_path = str(self.socket_path)
         else:
             self.socket_path = socket_path
@@ -65,9 +65,9 @@ class ManagerRPCClient:
         # Use f-string to ensure plain str type
         socket_path_str = f"{self.socket_path}" if self.socket_path is not None else self.socket_path
         # Double-check: ensure it's actually a plain str
-        if socket_path_str is not None and type(socket_path_str) is not str:
+        if socket_path_str is not None and not isinstance(socket_path_str, str):
             socket_path_str = str(socket_path_str)
-        logger.debug("Connecting to manager at %s (type: %s, is plain str: %s)", socket_path_str, type(socket_path_str), type(socket_path_str) is str)
+        logger.debug("Connecting to manager at %s (type: %s, is plain str: %s)", socket_path_str, type(socket_path_str), isinstance(socket_path_str, str))
         self.manager = PlatformManager(
             address=socket_path_str,
             authkey=authkey

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # (c) 2025, Ansible Platform Collection Contributors
@@ -331,7 +331,7 @@ class Connection(ConnectionBase):
         socket_path = None
         if socket_path_raw:
             socket_path = f"{socket_path_raw}"
-            if type(socket_path) is not str:
+            if not isinstance(socket_path, str):
                 socket_path = str(socket_path)
 
         # Validate socket if found

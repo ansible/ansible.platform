@@ -20,7 +20,7 @@ options:
     organizations:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For associating a user to an organization, please use the ansible.platform.role_user_assignment module.
         - HORIZONTALLINE
         - List of organization names or IDs to associate with the user.
@@ -32,7 +32,7 @@ options:
     is_platform_auditor:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For designating a user as an auditor, please use the ansible.platform.role_user_assignment module.
         - HORIZONTALLINE
         - Designates that this user is a platform auditor.
@@ -73,7 +73,7 @@ options:
     authenticators:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For associating a user with authenticators, please use the associated_authenticators option.
         - HORIZONTALLINE
         - A list of authenticators to associate the user with
@@ -82,7 +82,7 @@ options:
     authenticator_uid:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For specifying UIDs per authenticator, please use the associated_authenticators option.
         - HORIZONTALLINE
         - The UID to associate with this users authenticators
@@ -174,7 +174,7 @@ def main():
         module.deprecate(
             msg="Configuring organizations via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -182,7 +182,7 @@ def main():
         module.deprecate(
             msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -190,7 +190,7 @@ def main():
         module.deprecate(
             msg="The 'authenticator_uid' parameter is deprecated and will be removed in a future version. "
             "Please use 'associated_authenticators' instead to specify UIDs per authenticator.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -198,7 +198,7 @@ def main():
         module.deprecate(
             msg="The 'authenticators' parameter is deprecated and will be removed in a future version. "
             "Please use 'associated_authenticators' instead to specify authenticator associations.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 

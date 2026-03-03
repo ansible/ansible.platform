@@ -35,7 +35,7 @@ if [[ ! -f "$VARS_FILE" ]]; then
   exit 1
 fi
 
-EXTRA_VARS="-e @$VARS_FILE -e benchmark_user_count=$USER_COUNT"
+EXTRA_VARS=(-e "@$VARS_FILE" -e "benchmark_user_count=$USER_COUNT")
 echo "=== Benchmark: create $USER_COUNT users (mode: $MODE) ==="
 echo "Collection root: $COLLECTION_ROOT"
 echo "Report file: $REPORT_FILE"
@@ -43,7 +43,7 @@ echo ""
 
 # Step 1: Remove all users except admin (force local connection - uses uri, not platform)
 echo "--- Step 1: Cleanup all users except admin ---"
-ansible-playbook playbooks/benchmark/01_cleanup_all_except_admin.yml $EXTRA_VARS -e ansible_connection=local
+ansible-playbook playbooks/benchmark/01_cleanup_all_except_admin.yml "${EXTRA_VARS[@]}" -e ansible_connection=local
 echo ""
 
 run_create_and_cleanup() {
@@ -54,7 +54,7 @@ run_create_and_cleanup() {
   export BENCHMARK_STATS_FILE="$STATS_FILE"
   START=$(python3 -c "import time; print(time.time())")
   # Send playbook stdout to stderr so only the duration is captured in TIME_* below
-  ansible-playbook playbooks/benchmark/02_create_users.yml $EXTRA_VARS -e "ansible_platform_persistent=$persistent_flag" 1>&2
+  ansible-playbook playbooks/benchmark/02_create_users.yml "${EXTRA_VARS[@]}" -e "ansible_platform_persistent=$persistent_flag" 1>&2
   END=$(python3 -c "import time; print(time.time())")
   python3 -c "print(round($END - $START, 2))"
 }
@@ -84,19 +84,19 @@ HTTP_PERSISTENT="" TLS_PERSISTENT=""
 
 if [[ "$MODE" == "direct" || "$MODE" == "both" ]]; then
   TIME_DIRECT=$(run_create_and_cleanup "DIRECT mode" "false")
-  read -r HTTP_DIRECT TLS_DIRECT <<< $(read_benchmark_stats "$STATS_FILE")
+  read -r HTTP_DIRECT TLS_DIRECT <<< "$(read_benchmark_stats "$STATS_FILE")"
   echo "Direct mode: ${TIME_DIRECT}s (HTTP sessions: $HTTP_DIRECT, TLS sessions: $TLS_DIRECT)"
   echo "--- Cleanup $USER_COUNT users (after direct run) ---"
-  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml $EXTRA_VARS -e ansible_platform_persistent=false
+  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_platform_persistent=false
   echo ""
 fi
 
 if [[ "$MODE" == "persistent" || "$MODE" == "both" ]]; then
   TIME_PERSISTENT=$(run_create_and_cleanup "PERSISTENT mode" "true")
-  read -r HTTP_PERSISTENT TLS_PERSISTENT <<< $(read_benchmark_stats "$STATS_FILE")
+  read -r HTTP_PERSISTENT TLS_PERSISTENT <<< "$(read_benchmark_stats "$STATS_FILE")"
   echo "Persistent mode: ${TIME_PERSISTENT}s (HTTP sessions: $HTTP_PERSISTENT, TLS sessions: $TLS_PERSISTENT)"
   echo "--- Cleanup $USER_COUNT users (after persistent run) ---"
-  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml $EXTRA_VARS -e ansible_platform_persistent=true
+  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_platform_persistent=true
   echo ""
 fi
 

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # (c) 2025, Ansible Platform Collection Contributors
@@ -335,7 +335,7 @@ class BaseResourceActionPlugin(ActionBase):
         # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
         if socket_path_raw is not None:
             socket_path = f"{socket_path_raw}"  # f-string forces plain str
-            if type(socket_path) is not str:
+            if not isinstance(socket_path, str):
                 socket_path = str(socket_path)
             logger.info("   Found socket path in facts: %s", socket_path)
         else:
@@ -415,7 +415,7 @@ class BaseResourceActionPlugin(ActionBase):
 
                 # CRITICAL: Ensure socket_path is a plain str (Fedora/_AnsibleTaggedStr compatibility)
                 actual_socket_path_str = f"{actual_socket_path}"  # f-string forces plain str
-                if type(actual_socket_path_str) is not str:
+                if not isinstance(actual_socket_path_str, str):
                     actual_socket_path_str = str(actual_socket_path_str)
 
                 client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
