@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from requests import Session
     from ..manager.platform_manager import PlatformService
 
+
 @dataclass
 class EndpointOperation:
     """
@@ -56,6 +57,7 @@ class EndpointOperation:
     required_for: Optional[str] = None
     depends_on: Optional[str] = None
     order: int = 0
+
 
 @dataclass
 class TransformContext:

@@ -21,12 +21,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class ProcessConnectionInfo:
     """Information needed to connect to a manager process."""
     socket_path: str
     authkey: bytes
     authkey_b64: str
+
 
 class ProcessManager:
     """

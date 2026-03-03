@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
+
 class PlatformError(Exception):
     """
     Base exception for all platform-related errors.
@@ -64,6 +65,7 @@ class PlatformError(Exception):
             'details': self.details
         }
 
+
 class AuthenticationError(PlatformError):
     """
     Authentication failures.
@@ -92,6 +94,7 @@ class AuthenticationError(PlatformError):
             return "Verify username and password are correct."
         else:
             return "Check gateway credentials (username/password or token) are valid and have proper permissions."
+
 
 class NetworkError(PlatformError):
     """
@@ -130,6 +133,7 @@ class NetworkError(PlatformError):
         else:
             return "Check network connectivity and gateway availability."
 
+
 class ValidationError(PlatformError):
     """
     Input validation errors (not retryable).
@@ -160,6 +164,7 @@ class ValidationError(PlatformError):
             return f"Check the following fields are valid: {fields_str}"
         else:
             return "Review input parameters and ensure all required fields are provided with valid values."
+
 
 class APIError(PlatformError):
     """
@@ -214,6 +219,7 @@ class APIError(PlatformError):
         else:
             return "Check API response for details and verify input parameters."
 
+
 class TimeoutError(PlatformError):
     """
     Operation timeout errors (retryable).
@@ -241,6 +247,7 @@ class TimeoutError(PlatformError):
             return f"Operation timed out after {self.timeout_seconds}s. Consider increasing gateway_request_timeout or check network/gateway performance."
         else:
             return "Operation timed out. Consider increasing gateway_request_timeout or check network/gateway performance."
+
 
 def classify_exception(
     exception: Exception,

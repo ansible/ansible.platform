@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class CredentialNamespace:
     """
@@ -83,6 +84,7 @@ class CredentialNamespace:
             process_id=process_id
         )
 
+
 @dataclass
 class TokenInfo:
     """Information about an OAuth token."""
@@ -118,6 +120,7 @@ class TokenInfo:
 
         delta = self.expires_at - datetime.now()
         return delta.total_seconds()
+
 
 @dataclass
 class CredentialStore:
@@ -176,6 +179,7 @@ class CredentialStore:
             self.password = None
             self.token_info = None
             logger.info("Credentials cleared for namespace %s", self.namespace.namespace_id)
+
 
 class CredentialManager:
     """
@@ -293,8 +297,10 @@ class CredentialManager:
             logger.info("Cleared all credential stores")
 
 # Global credential manager instance (per-process)
+
 _global_credential_manager: Optional[CredentialManager] = None
 _global_credential_manager_lock = threading.Lock()
+
 
 def get_credential_manager() -> CredentialManager:
     """

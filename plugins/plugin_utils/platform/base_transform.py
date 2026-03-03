@@ -14,6 +14,7 @@ from .types import TransformContext
 logger = logging.getLogger(__name__)
 T = TypeVar('T')
 
+
 class BaseTransformMixin(ABC):
     """
     Base transformation mixin providing bidirectional data transformation.

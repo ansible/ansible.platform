@@ -4,6 +4,7 @@ __metaclass__ = type
 
 from ..module_utils.aap_object import AAPObject
 
+
 class AAPAuthenticatorMap(AAPObject):
     API_ENDPOINT_NAME = "authenticator_maps"
     ITEM_TYPE = "authenticator_map"

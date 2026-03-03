@@ -148,6 +148,7 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_user import AAPUser  # noqa
 
+
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -216,6 +217,7 @@ def main():
 
     module.exit_json(**module.json_output)
 
+
 def process_organizations(module, user_existed_before):
     changed = module.json_output.get('changed', False)
     organizations = module.params.get('organizations')
@@ -273,6 +275,7 @@ def process_organizations(module, user_existed_before):
     if error_msg:
         module.fail_json(msg=error_msg)
 
+
 def cleanup_user(module, user_id):
 
     try:
@@ -281,6 +284,7 @@ def cleanup_user(module, user_id):
         return delete_result.get('status_code') == 204
     except (ConnectionError, TimeoutError):
         return False
+
 
 def audit_user(module):
     try:
@@ -318,6 +322,7 @@ def audit_user(module):
             module.json_output["changed"] = True
         except Exception as e:
             module.fail_json(msg=f"Failed to remove platform auditor role: {str(e)}")
+
 
 if __name__ == "__main__":
     main()

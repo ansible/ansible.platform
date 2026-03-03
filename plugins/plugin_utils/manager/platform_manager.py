@@ -24,6 +24,7 @@ from ..platform.types import TransformContext
 
 logger = logging.getLogger(__name__)
 
+
 class PlatformService(BaseAPIClient):
     """
     Persistent platform service for experimental connection mode.
@@ -1122,6 +1123,7 @@ class PlatformService(BaseAPIClient):
 
         logger.info("PlatformService shutdown complete")
         return {"status": "shutdown", "message": "Manager service shut down gracefully"}
+
 
 class PlatformManager(ThreadingMixIn, BaseManager):
     """

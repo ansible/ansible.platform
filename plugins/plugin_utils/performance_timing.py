@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TimingMetrics:
     """Container for timing metrics."""
@@ -58,6 +59,7 @@ class TimingMetrics:
             'api_call_percent': (self.api_call_time / self.total_time * 100) if self.total_time > 0 else 0,
         }
 
+
 class PerformanceTimer:
     """Context manager for timing operations."""
 
@@ -95,9 +97,11 @@ class PerformanceTimer:
             return time.perf_counter() - self.start_time
         return self.end_time - self.start_time
 
+
 def get_timestamp() -> float:
     """Get current high-resolution timestamp."""
     return time.perf_counter()
+
 
 def log_timing(operation: str, start_time: float, end_time: Optional[float] = None):
     """Log timing information."""

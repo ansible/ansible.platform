@@ -28,6 +28,7 @@ from .types import TransformContext
 
 logger = logging.getLogger(__name__)
 
+
 class DirectHTTPClient(BaseAPIClient):
     """
     Direct HTTP client for standard connection mode.
@@ -286,7 +287,7 @@ class DirectHTTPClient(BaseAPIClient):
                                     'url': url,
                                     'response_body': response_body
                                 },
-                                    status_code=he2.code
+                                status_code=he2.code
                             )
                         raise
                 else:

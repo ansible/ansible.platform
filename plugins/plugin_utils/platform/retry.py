@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
+
 class RetryConfig:
     """
     Configuration for retry behavior.
@@ -70,6 +71,7 @@ class RetryConfig:
         return delay
 
 # Default retry configuration
+
 DEFAULT_RETRY_CONFIG = RetryConfig(
     max_attempts=3,
     initial_delay=1.0,
@@ -77,6 +79,7 @@ DEFAULT_RETRY_CONFIG = RetryConfig(
     exponential_base=2.0,
     jitter=True
 )
+
 
 def retry_on_failure(
     config: Optional[RetryConfig] = None,
@@ -147,6 +150,7 @@ def retry_on_failure(
 
         return wrapper
     return decorator
+
 
 def retry_http_request(
     config: Optional[RetryConfig] = None

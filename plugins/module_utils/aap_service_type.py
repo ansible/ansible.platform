@@ -2,6 +2,7 @@ from ..module_utils.aap_object import AAPObject
 
 __metaclass__ = type
 
+
 class AAPServiceType(AAPObject):
     API_ENDPOINT_NAME = "service_types"
     ITEM_TYPE = "service_type"

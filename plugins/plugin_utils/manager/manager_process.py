@@ -12,6 +12,7 @@ import base64
 import traceback
 from pathlib import Path
 
+
 def main():
     """Main entry point for the manager process."""
     # Write startup marker immediately
@@ -249,6 +250,7 @@ def main():
             f.write(f"\n\nManager startup failed: {e}\n")
             f.write(traceback.format_exc())
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main()

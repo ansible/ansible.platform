@@ -14,6 +14,7 @@ from ..platform.loader import DynamicClassLoader
 
 logger = logging.getLogger(__name__)
 
+
 class BaseAPIClient(ABC):
     """
     Abstract base class for platform API clients.

@@ -10,6 +10,7 @@ from typing import Optional, List, Union, Dict, Any
 
 from ..platform.types import TransformContext
 
+
 @dataclass
 class AnsibleUser:
     """

@@ -40,6 +40,7 @@ except ImportError:
 
     version = type('version', (), {'parse': version_parse})()
 
+
 class APIVersionRegistry:
     """
     Registry that discovers and manages API version information.

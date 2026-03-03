@@ -25,8 +25,10 @@ from ansible.module_utils.urls import ConnectionError, Request, SSLValidationErr
 # import email.mime.multipart
 # import email.mime.application
 
+
 class ItemNotDefined(Exception):
     pass
+
 
 class AAPModuleError(Exception):
     """API request error exception.
@@ -42,6 +44,7 @@ class AAPModuleError(Exception):
     def __str__(self):
         """Return the error message."""
         return self.error_message
+
 
 class AAPModule(AnsibleModule):
     url = None

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class GatewayConfig:
     """Gateway connection configuration.
@@ -50,6 +51,7 @@ class GatewayConfig:
             return f"https://{url}"
 
         return url
+
 
 def extract_gateway_config(
     task_args: Optional[Dict[str, Any]] = None,

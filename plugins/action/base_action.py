@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_url,
                            gateway_username, gateway_password, gateway_token,
                            gateway_validate_certs, gateway_request_timeout, authkey_b64, sys_path):
@@ -169,6 +170,7 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
             f.write(f"\n\nManager startup failed: {e}\n")
             f.write(traceback.format_exc())
         sys.exit(1)
+
 
 class BaseResourceActionPlugin(ActionBase):
     """

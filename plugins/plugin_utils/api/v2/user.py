@@ -22,6 +22,7 @@ from ...platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class APIUser_v2(BaseTransformMixin):
     """API v2 representation of a user (mock)."""
@@ -42,6 +43,7 @@ class APIUser_v2(BaseTransformMixin):
 
     # For organizations - handled separately via associations
     organization_ids: Optional[List[int]] = None
+
 
 class UserTransformMixin_v2(BaseTransformMixin):
     """

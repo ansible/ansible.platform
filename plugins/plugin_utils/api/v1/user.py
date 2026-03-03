@@ -12,6 +12,7 @@ from ...platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class APIUser_v1(BaseTransformMixin):
     """
@@ -37,6 +38,7 @@ class APIUser_v1(BaseTransformMixin):
 
     # For organizations - handled separately via associations
     organization_ids: Optional[List[int]] = None
+
 
 class UserTransformMixin_v1(BaseTransformMixin):
     """
