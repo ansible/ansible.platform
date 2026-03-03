@@ -34,5 +34,8 @@
       loop_control:
         label: "bench_user_{{ '%03d' | format(item) }}"
       register: delete_user_result
-      failed_when: delete_user_result.failed and ('not found' not in (delete_user_result.msg | default('') | lower) and '404' not in (delete_user_result.msg | default('')))
+      failed_when: >
+        delete_user_result.failed and
+        ('not found' not in (delete_user_result.msg | default('') | lower)
+         and '404' not in (delete_user_result.msg | default('')))
 ...
