@@ -71,3 +71,4 @@
       ansible.builtin.debug:
         msg: "Only {{ keep_username }} (or no users) present; nothing to delete."
       when: users_to_delete | length == 0
+...

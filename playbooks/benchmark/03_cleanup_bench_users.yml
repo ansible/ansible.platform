@@ -9,6 +9,7 @@
   gather_facts: false
 
   vars:
+    benchmark_user_count: "{{ benchmark_user_count | default(100) }}"
     gateway_hostname: "{{ base_url }}"
     # Force username/password auth for benchmark (ignore AAP_TOKEN)
     gateway_token: "VWyDj7nbK0aUr0BuzbcMV3rn6Tduvp"

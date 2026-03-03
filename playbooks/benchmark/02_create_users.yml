@@ -9,6 +9,7 @@
   gather_facts: false
 
   vars:
+    benchmark_user_count: "{{ benchmark_user_count | default(100) }}"
     gateway_hostname: "https://3.83.96.107/"
     gateway_username: "admin"
     gateway_password: "Admin!Password!Gw"

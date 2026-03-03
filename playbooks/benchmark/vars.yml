@@ -12,3 +12,4 @@ keep_username: "admin"
 
 # Number of users for create/delete benchmark (e.g. 100)
 benchmark_user_count: 100
+...
