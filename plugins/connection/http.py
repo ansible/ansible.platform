@@ -14,9 +14,9 @@ name: http
 short_description: HTTP connection plugin for Ansible Automation Platform API
 description:
   - This connection plugin provides HTTP connections to the Ansible Automation Platform API.
-  - It supports two connection modes: persistent mode (uses a persistent manager process that maintains
-    HTTP sessions across tasks for better performance) and direct mode (creates new HTTP connections per task,
-    simpler, default).
+  - |
+    It supports two connection modes: persistent (manager process, better performance)
+    and direct (new connections per task, default).
   - Mode is controlled by the C(persistent) connection option.
 version_added: 1.0.0
 options:

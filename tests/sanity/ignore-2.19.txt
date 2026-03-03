@@ -1,0 +1,2 @@
+tests/test_completeness.py pylint!skip # Don't pylint test_completness
+plugins/action/base_action.py action-plugin-docs # base class for resource action plugins, no matching module
