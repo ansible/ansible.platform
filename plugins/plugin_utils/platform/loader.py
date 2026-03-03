@@ -7,7 +7,6 @@ API version without hardcoded imports.
 import importlib
 import inspect
 from typing import Type, Tuple, Optional, Dict
-from pathlib import Path
 import logging
 
 from .base_transform import BaseTransformMixin
@@ -67,17 +66,17 @@ class DynamicClassLoader:
         # Check cache
         cache_key = f"{module_name}_{best_version.replace('.', '_')}"
         if cache_key in self._class_cache:
-            logger.debug(f"Using cached classes for {cache_key}")
+            logger.debug("Using cached classes for %s", cache_key)
             return self._class_cache[cache_key]
 
         # Load classes
-        logger.debug(f"Loading classes for {module_name} (API version {best_version})")
+        logger.debug("Loading classes for %s (API version %s)", module_name, best_version)
         ansible_class = self._load_ansible_class(module_name)
         api_class, mixin_class = self._load_api_classes(module_name, best_version)
 
         # Cache and return
         result = (ansible_class, api_class, mixin_class)
-        logger.debug(f"Loaded classes: {ansible_class.__name__}, {api_class.__name__}, {mixin_class.__name__}")
+        logger.debug("Loaded classes: %s, %s, %s", ansible_class.__name__, api_class.__name__, mixin_class.__name__)
 
         return result
 
@@ -101,7 +100,7 @@ class DynamicClassLoader:
         try:
             module = importlib.import_module(module_path)
         except ImportError as e:
-            logger.error(f"Failed to import Ansible module {module_path}: {e}")
+            logger.error("Failed to import Ansible module %s: %s", module_path, e)
             raise ImportError(
                 f"Failed to import Ansible module {module_path}: {e}"
             ) from e
@@ -151,7 +150,7 @@ class DynamicClassLoader:
         try:
             module = importlib.import_module(module_path)
         except ImportError as e:
-            logger.error(f"Failed to import API module {module_path}: {e}")
+            logger.error("Failed to import API module %s: %s", module_path, e)
             raise ImportError(
                 f"Failed to import API module {module_path}: {e}"
             ) from e
@@ -223,7 +222,5 @@ class DynamicClassLoader:
 
         # Not found
         raise ValueError(
-            f"No {description} found in {module.__name__}. "
-            f"Tried patterns: {patterns}"
+            "No %s found in %s. Tried patterns: %s" % (description, module.__name__, patterns)
         )
-

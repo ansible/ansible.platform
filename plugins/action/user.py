@@ -24,6 +24,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.docs.user import 
 
 logger = logging.getLogger(__name__)
 
+
 class ActionModule(BaseResourceActionPlugin):
     """
     Action plugin for user module.
@@ -32,7 +33,7 @@ class ActionModule(BaseResourceActionPlugin):
     """
 
     MODULE_NAME = 'user'
-    
+
     def __init__(self, *args, **kwargs):
         """Initialize action plugin."""
         super().__init__(*args, **kwargs)
@@ -40,16 +41,15 @@ class ActionModule(BaseResourceActionPlugin):
     def run(self, tmp=None, task_vars=None):
         """
         Execute the user module using persistent manager or direct HTTP client.
-        
+
         Args:
             tmp: Temporary directory (deprecated)
             task_vars: Task variables from Ansible
-            
+
         Returns:
             Result dictionary with user data
         """
         import time
-        
 
         if task_vars is None:
             task_vars = dict()
@@ -86,7 +86,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             # Get or spawn manager (could be persistent or ephemeral)
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            
+
             # Store client reference for cleanup() method
             self._client = manager
 
@@ -96,10 +96,10 @@ class ActionModule(BaseResourceActionPlugin):
                 result['_ansible_facts_cacheable'] = True
 
             # Create dataclass from validated input
-            
+
             # Lazy import AnsibleUser to avoid module-level import crashes
             from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
-            
+
             validated_params = validated_input.validated_parameters
             user_data = {
                 k: v for k, v in validated_params.items()

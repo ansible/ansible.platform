@@ -75,4 +75,3 @@ class TransformContext:
     session: 'Session'
     cache: Dict[str, Any]
     api_version: str
-

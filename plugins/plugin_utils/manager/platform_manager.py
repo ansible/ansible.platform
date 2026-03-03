@@ -6,6 +6,7 @@ connections to the platform API and handles all data transformations.
 
 import base64
 import logging
+import os
 import threading
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
@@ -128,11 +129,15 @@ class PlatformService(BaseAPIClient):
             logger.warning(f"PlatformService: Version detection failed: {e}, defaulting to v1")
             self.api_version = '1'  # CRITICAL: Always default to '1' on failure
         
-        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
-        if self.api_version != '1':
+        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1).
+        # Allow v2 when testing against mock (ANSIBLE_PLATFORM_ALLOW_API_V2=1).
+        allow_v2 = os.environ.get('ANSIBLE_PLATFORM_ALLOW_API_V2', '').strip().lower() in ('1', 'true', 'yes')
+        if self.api_version != '1' and not allow_v2:
             logger.warning(f"PlatformService: Detected version '{self.api_version}' but AAP Gateway only supports v1, forcing to '1'")
             self.api_version = '1'
-        
+        elif self.api_version != '1' and allow_v2:
+            logger.info(f"PlatformService: Allowing API v{self.api_version} (ANSIBLE_PLATFORM_ALLOW_API_V2 set)")
+
         logger.info(f"PlatformService initialized with API v{self.api_version}")
 
         # Performance counters (thread-safe)
