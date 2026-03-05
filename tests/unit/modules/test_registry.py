@@ -20,11 +20,14 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import unittest
+from unittest.mock import patch, MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader import DynamicClassLoader
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 
-class TestUserModule(unittest.TestCase):
+class TestAPIVersioning(unittest.TestCase):
 
     def test_filesystem_version_discovery_and_loading(self):
         """
@@ -44,6 +47,40 @@ class TestUserModule(unittest.TestCase):
         self.assertEqual(APIClass.__name__, 'APIUser_v2')
         self.assertEqual(AnsibleClass.__name__, 'AnsibleUser')
         self.assertTrue(hasattr(MixinClass, 'get_endpoint_operations'))
+
+    def test_loader_unsupported_version(self):
+        """
+        Validates loader gracefully degrades to the closest lower supported version
+        if an unknown futuristic version is explicitly requested.
+        """
+        registry = APIVersionRegistry()
+        loader = DynamicClassLoader(registry)
+        AnsibleClass, APIClass, MixinClass = loader.load_classes_for_module('user', '12')
+        self.assertEqual(APIClass.__name__, 'APIUser_v2')
+        self.assertEqual(AnsibleClass.__name__, 'AnsibleUser')
+
+    @patch('ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager.get_credential_manager')
+    @patch('requests.Session.get')
+    def test_platform_service_version_fallback(self, mock_get, mock_cred_manager):
+        """
+        Validates that if the Gateway API reports an unsupported future version,
+        the PlatformService gracefully falls back to the highest locally supported version.
+        """
+        mock_response = MagicMock()
+        mock_response.headers = {'Content-Type': 'application/json'}
+        mock_response.json.return_value = {
+            "current_version": "/api/gateway/v3/",
+            "available_versions": {"v3": "/api/gateway/v3/"}
+        }
+        mock_get.return_value = mock_response
+        mock_store = MagicMock()
+        mock_store.get_auth_credentials.return_value = ("admin", "admin", None)
+        mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
+        config = GatewayConfig(base_url="https://127.0.0.1", username="admin", password="admin")
+        service = PlatformService(config)
+        registry = APIVersionRegistry()
+        expected_fallback = registry.get_latest_version()
+        self.assertEqual(service.api_version, expected_fallback)
 
 if __name__ == '__main__':
     unittest.main()
