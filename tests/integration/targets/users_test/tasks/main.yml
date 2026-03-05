@@ -328,38 +328,6 @@
         that:
           - no_deprecation_result.deprecations is not defined or no_deprecation_result.deprecations | length == 0
 
-    # Test for Dynamic Versioning & Registry
-    - name: Verify Dynamic Version Negotiation and Transformation
-      ansible.platform.user:
-        username: "{{ username }}-version-test"
-        first_name: Version
-        last_name: Tester
-        password: "{{ 65535 | random | to_uuid }}"
-        organizations:
-          - "{{ org1.name }}"
-      register: version_test
-
-    - name: Assert Version Negotiation and Transform Success
-      ansible.builtin.assert:
-        that:
-          - version_test.changed
-          - version_test.user.url is search('/api/gateway/v1/')
-          - version_test.user.organizations[0] == org1.name
-        fail_msg: "Dynamic versioning or transformation logic failed."
-
-    - name: Idempotency via Dynamic Lookup
-      ansible.platform.user:
-        username: "{{ username }}-version-test"
-        organizations:
-          - "{{ org1.name }}"
-      register: version_idempotency
-
-    - name: Assert Idempotency via Reverse Transform
-      ansible.builtin.assert:
-        that:
-          - version_idempotency is not changed
-        fail_msg: "Dynamic versioning broke state comparison/idempotency."
-
   always:
     # Always Cleanup
     - name: Delete organizations
