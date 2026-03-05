@@ -1,5 +1,12 @@
 # Ansible Platform Collection
 
+## Changelog for v2.5.20260305
+
+* Enhance plugin description for Gateway API.
+* Add conditional check for 'safe to test' label.
+* Expose collection checkout to aap-gateway build.
+* Integration test workflow use GH environment.
+
 ## Changelog for v2.5.20251114
 
 * Ensure idempotent cases are correctly handled in AAPModule create_if_needed() method when auto_exit is disabled.

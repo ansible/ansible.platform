@@ -7,3 +7,5 @@ releases:
     fragments:
     - create_if_needed.yaml
     release_date: '2025-11-14'
+  2.5.20260305:
+    release_date: '2026-03-05'
