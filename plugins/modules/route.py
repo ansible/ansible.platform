@@ -75,6 +75,12 @@ options:
       - Comma separated string
       - Selects which (tagged) nodes receive traffic from this route
       type: str
+    request_timeout_seconds:
+      description:
+      - The request timeout in seconds for this route (max 604800 = 1 week)
+      - This value can only extend the timeout beyond the global default, not reduce it
+      - Leave unset to use the global proxy timeout preference
+      type: int
 
 extends_documentation_fragment:
 - ansible.platform.state
@@ -142,6 +148,7 @@ def main():
         service_path=dict(type="str"),
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
+        request_timeout_seconds=dict(type="int"),
         state=dict(
             choices=["present", "absent", "exists", "enforced"], default="present"
         ),

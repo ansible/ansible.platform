@@ -292,6 +292,40 @@
           - __ui_plugin_route_rename_result.results[0] is not changed
           - __ui_plugin_route_rename_result.results[1] is not changed
 
+    ### Test request_timeout_seconds ###
+    - name: Set request_timeout_seconds on a UI plugin route
+      ansible.platform.ui_plugin_route:
+        name: "{{ hub_admin_plugin_name }}"
+        request_timeout_seconds: 3600
+      register: __ui_plugin_timeout_result
+
+    - name: Assert request_timeout_seconds was set
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_timeout_result is changed
+
+    - name: Set request_timeout_seconds again (idempotency)
+      ansible.platform.ui_plugin_route:
+        name: "{{ hub_admin_plugin_name }}"
+        request_timeout_seconds: 3600
+      register: __ui_plugin_timeout_idempotent_result
+
+    - name: Assert request_timeout_seconds idempotency
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_timeout_idempotent_result is not changed
+
+    - name: Update request_timeout_seconds to a new value
+      ansible.platform.ui_plugin_route:
+        name: "{{ hub_admin_plugin_name }}"
+        request_timeout_seconds: 7200
+      register: __ui_plugin_timeout_update_result
+
+    - name: Assert request_timeout_seconds was updated
+      ansible.builtin.assert:
+        that:
+          - __ui_plugin_timeout_update_result is changed
+
   always:
     ### Delete UI Plugin Routes ###
     - name: Delete UI Plugin Routes
