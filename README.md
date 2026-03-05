@@ -1,5 +1,13 @@
 # Ansible Platform Collection
 
+## Changelog for v2.6.20260305
+
+* Enhance plugin description for Gateway API.
+* Fix for the custom role team assignment.
+* Add conditional check for 'safe to test' label.
+* Expose collection checkout to aap-gateway build.
+* Integration test workflow use GH environment.
+
 ## Changelog for v2.6.20251106
 
 New module Added ca_certificate got added and a new attribute enable_mtls to the route objects and this enable the collection to work with mtls.
