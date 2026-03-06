@@ -232,6 +232,12 @@ class AAPModule(AnsibleModule):
             super(AAPModule, self).warn(warning)
 
     def build_url(self, endpoint, query_params=None):
+        # Remove the host_url part if it is already present
+        if endpoint.startswith(("https://", "http://")):
+            parsed = urlparse(endpoint)
+            endpoint = parsed.path
+            if parsed.query:
+                endpoint = "{0}?{1}".format(endpoint, parsed.query)
         # Make sure we start with /api/vX
         if not endpoint.startswith("/"):
             endpoint = "/{0}".format(endpoint)
