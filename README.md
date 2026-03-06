@@ -1,6 +1,6 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20260305
+## Changelog for v2.5.20260306
 
 * Enhance plugin description for Gateway API.
 * Add conditional check for 'safe to test' label.
