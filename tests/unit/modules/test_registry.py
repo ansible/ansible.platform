@@ -82,5 +82,28 @@ class TestAPIVersioning(unittest.TestCase):
         expected_fallback = registry.get_latest_version()
         self.assertEqual(service.api_version, expected_fallback)
 
+    @patch('ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry.logger')
+    def test_loader_closest_higher_with_warning(self, mock_logger):
+        """
+        Validates the closest higher fallback strategy and ensures a warning is logged.
+        """
+        registry = APIVersionRegistry()
+        registry.module_versions['user'] = ['2', '3']
+        best_version = registry.find_best_version('1', 'user')
+        self.assertEqual(best_version, '2')
+        mock_logger.warning.assert_called()
+        self.assertIn("closest higher version", mock_logger.warning.call_args[0][0])
+
+    def test_loader_fail_when_no_versions(self):
+        """
+        Validates that a ValueError is raised when no compatible version is found.
+        """
+        registry = APIVersionRegistry()
+        registry.module_versions['incomplete_module'] = []
+        loader = DynamicClassLoader(registry)
+        with self.assertRaises(ValueError) as context:
+            loader.load_classes_for_module('incomplete_module', '1')
+        self.assertIn("No compatible API version found for module 'incomplete_module'", str(context.exception))
+
 if __name__ == '__main__':
     unittest.main()
