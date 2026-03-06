@@ -2,6 +2,7 @@ from ..module_utils.aap_object import AAPObject
 
 __metaclass__ = type
 
+
 class AAPServiceKey(AAPObject):
     API_ENDPOINT_NAME = "service_keys"
     ITEM_TYPE = "service_key"

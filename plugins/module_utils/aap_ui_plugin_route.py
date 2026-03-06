@@ -2,6 +2,7 @@ from ..module_utils.aap_service import AAPService
 
 __metaclass__ = type
 
+
 class AAPUIPluginRoute(AAPService):
     API_ENDPOINT_NAME = "ui_plugin_routes"
     ITEM_TYPE = "ui_plugin_route"

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class GatewayConfig:
     """Gateway connection configuration.
@@ -30,8 +31,8 @@ class GatewayConfig:
         original_url = self.base_url
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
-            logger.debug(f"Normalized gateway URL: {original_url} -> {self.base_url}")
-        logger.info(f"GatewayConfig initialized: base_url={self.base_url}, verify_ssl={self.verify_ssl}, timeout={self.request_timeout}")
+            logger.debug("Normalized gateway URL: %s -> %s", original_url, self.base_url)
+        logger.info("GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s", self.base_url, self.verify_ssl, self.request_timeout)
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -50,6 +51,7 @@ class GatewayConfig:
             return f"https://{url}"
 
         return url
+
 
 def extract_gateway_config(
     task_args: Optional[Dict[str, Any]] = None,
@@ -77,7 +79,7 @@ def extract_gateway_config(
     task_args = task_args or {}
     host_vars = host_vars or {}
 
-    logger.debug(f"Extracting gateway config from task_args (keys: {list(task_args.keys())}) and host_vars (keys: {list(host_vars.keys())})")
+    logger.debug("Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)", list(task_args.keys()), list(host_vars.keys()))
 
     # Get gateway URL from task args first, then host_vars
     gateway_url = (
@@ -86,7 +88,7 @@ def extract_gateway_config(
         host_vars.get('gateway_url') or
         host_vars.get('gateway_hostname')
     )
-    logger.debug(f"Gateway URL extracted: {gateway_url}")
+    logger.debug("Gateway URL extracted: %s", gateway_url)
 
     # Get auth parameters from task args first, then host_vars
     gateway_username = (
@@ -130,8 +132,8 @@ def extract_gateway_config(
     # Log auth method being used (without exposing secrets)
     auth_method = "token" if gateway_token else ("username/password" if gateway_username else "none")
     logger.info(
-        f"Gateway config extracted: url={gateway_url}, auth_method={auth_method}, "
-        f"verify_ssl={gateway_validate_certs}, timeout={gateway_request_timeout}"
+        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s",
+        gateway_url, auth_method, gateway_validate_certs, gateway_request_timeout
     )
 
     config = GatewayConfig(
@@ -144,5 +146,5 @@ def extract_gateway_config(
         connection_mode=connection_mode
     )
 
-    logger.debug(f"GatewayConfig created successfully")
+    logger.debug("GatewayConfig created successfully")
     return config

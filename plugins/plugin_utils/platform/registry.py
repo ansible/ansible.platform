@@ -40,6 +40,7 @@ except ImportError:
 
     version = type('version', (), {'parse': version_parse})()
 
+
 class APIVersionRegistry:
     """
     Registry that discovers and manages API version information.
@@ -101,7 +102,7 @@ class APIVersionRegistry:
     def _discover_versions(self) -> None:
         """Scan filesystem to discover API versions and modules."""
         if not self.api_base_path.exists():
-            logger.warning(f"API base path not found: {self.api_base_path}")
+            logger.warning("API base path not found: %s", self.api_base_path)
             return
 
         # Scan api/ directory for version directories (v1/, v2/, etc.)
@@ -138,8 +139,9 @@ class APIVersionRegistry:
             self.module_versions[module_name].sort(key=version.parse)
 
         logger.info(
-            f"Discovered {len(self.versions)} API versions: "
-            f"{sorted(self.versions.keys(), key=version.parse)}"
+            "Discovered %s API versions: %s",
+            len(self.versions),
+            sorted(self.versions.keys(), key=version.parse)
         )
 
     def get_supported_versions(self) -> List[str]:
@@ -209,7 +211,8 @@ class APIVersionRegistry:
 
         if not available:
             logger.error(
-                f"Module '{module_name}' not found in any API version"
+                "Module '%s' not found in any API version",
+                module_name
             )
             return None
 
@@ -228,8 +231,8 @@ class APIVersionRegistry:
         if lower_versions:
             best = max(lower_versions, key=lambda x: x[1])[0]
             logger.warning(
-                f"Using version {best} for {module_name} "
-                f"(requested {requested_version}, closest lower version)"
+                "Using version %s for %s (requested %s, closest lower version)",
+                best, module_name, requested_version
             )
             return best
 
@@ -241,9 +244,8 @@ class APIVersionRegistry:
         if higher_versions:
             best = min(higher_versions, key=lambda x: x[1])[0]
             logger.warning(
-                f"Using version {best} for {module_name} "
-                f"(requested {requested_version}, closest higher version - "
-                f"may have compatibility issues)"
+                "Using version %s for %s (requested %s, closest higher version - may have compatibility issues)",
+                best, module_name, requested_version
             )
             return best
 
@@ -265,4 +267,3 @@ class APIVersionRegistry:
             True if module exists for version
         """
         return api_version in self.get_versions_for_module(module_name)
-

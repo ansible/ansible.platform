@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from requests import Session
     from ..manager.platform_manager import PlatformService
 
+
 @dataclass
 class EndpointOperation:
     """
@@ -57,6 +58,7 @@ class EndpointOperation:
     depends_on: Optional[str] = None
     order: int = 0
 
+
 @dataclass
 class TransformContext:
     """
@@ -75,4 +77,3 @@ class TransformContext:
     session: 'Session'
     cache: Dict[str, Any]
     api_version: str
-

@@ -124,6 +124,7 @@ from ansible.utils.display import Display  # noqa
 
 from ..module_utils.aap_module import AAPModule  # noqa
 
+
 class LookupModule(LookupBase):
     display = Display()
 

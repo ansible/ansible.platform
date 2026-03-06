@@ -8,12 +8,13 @@ transient failures with exponential backoff.
 import logging
 import time
 import functools
-from typing import Callable, TypeVar, Optional, Dict, Any
+from typing import Callable, TypeVar, Optional
 from .exceptions import PlatformError
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
+
 
 class RetryConfig:
     """
@@ -69,7 +70,9 @@ class RetryConfig:
 
         return delay
 
+
 # Default retry configuration
+
 DEFAULT_RETRY_CONFIG = RetryConfig(
     max_attempts=3,
     initial_delay=1.0,
@@ -77,6 +80,7 @@ DEFAULT_RETRY_CONFIG = RetryConfig(
     exponential_base=2.0,
     jitter=True
 )
+
 
 def retry_on_failure(
     config: Optional[RetryConfig] = None,
@@ -122,8 +126,8 @@ def retry_on_failure(
                     # Don't retry if not retryable or last attempt
                     if not is_retryable or attempt == config.max_attempts - 1:
                         logger.debug(
-                            f"Not retrying {func.__name__} (attempt {attempt + 1}/{config.max_attempts}): "
-                            f"retryable={is_retryable}, exception={type(e).__name__}"
+                            "Not retrying %s (attempt %s/%s): retryable=%s, exception=%s",
+                            func.__name__, attempt + 1, config.max_attempts, is_retryable, type(e).__name__
                         )
                         raise
 
@@ -131,8 +135,8 @@ def retry_on_failure(
                     delay = config.calculate_delay(attempt)
 
                     logger.warning(
-                        f"Retrying {func.__name__} (attempt {attempt + 1}/{config.max_attempts}) "
-                        f"after {delay:.2f}s: {type(e).__name__}: {str(e)}"
+                        "Retrying %s (attempt %s/%s) after %.2fs: %s: %s",
+                        func.__name__, attempt + 1, config.max_attempts, delay, type(e).__name__, str(e)
                     )
 
                     # Wait before retry
@@ -147,6 +151,7 @@ def retry_on_failure(
 
         return wrapper
     return decorator
+
 
 def retry_http_request(
     config: Optional[RetryConfig] = None
@@ -205,8 +210,8 @@ def retry_http_request(
                             if error.retryable and attempt < config.max_attempts - 1:
                                 delay = config.calculate_delay(attempt)
                                 logger.warning(
-                                    f"Retrying HTTP request (attempt {attempt + 1}/{config.max_attempts}) "
-                                    f"after {delay:.2f}s: HTTP {status_code}"
+                                    "Retrying HTTP request (attempt %s/%s) after %.2fs: HTTP %s",
+                                    attempt + 1, config.max_attempts, delay, status_code
                                 )
                                 time.sleep(delay)
                                 continue
@@ -220,8 +225,8 @@ def retry_http_request(
                     if attempt < config.max_attempts - 1:
                         delay = config.calculate_delay(attempt)
                         logger.warning(
-                            f"Retrying HTTP request (attempt {attempt + 1}/{config.max_attempts}) "
-                            f"after {delay:.2f}s: Timeout error"
+                            "Retrying HTTP request (attempt %s/%s) after %.2fs: Timeout error",
+                            attempt + 1, config.max_attempts, delay
                         )
                         time.sleep(delay)
                         continue
@@ -239,8 +244,8 @@ def retry_http_request(
                     if attempt < config.max_attempts - 1:
                         delay = config.calculate_delay(attempt)
                         logger.warning(
-                            f"Retrying HTTP request (attempt {attempt + 1}/{config.max_attempts}) "
-                            f"after {delay:.2f}s: Network error"
+                            "Retrying HTTP request (attempt %s/%s) after %.2fs: Network error",
+                            attempt + 1, config.max_attempts, delay
                         )
                         time.sleep(delay)
                         continue
@@ -263,8 +268,8 @@ def retry_http_request(
                     if platform_error.retryable and attempt < config.max_attempts - 1:
                         delay = config.calculate_delay(attempt)
                         logger.warning(
-                            f"Retrying HTTP request (attempt {attempt + 1}/{config.max_attempts}) "
-                            f"after {delay:.2f}s: {type(e).__name__}"
+                            "Retrying HTTP request (attempt %s/%s) after %.2fs: %s",
+                            attempt + 1, config.max_attempts, delay, type(e).__name__
                         )
                         time.sleep(delay)
                         continue

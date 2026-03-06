@@ -1,0 +1,74 @@
+---
+# Step 1: Remove all users except admin (prep for benchmark).
+# Uses ansible.builtin.uri so connection mode does not affect this step.
+# Run from collection root. If inventory sets ansible_connection=ansible.platform.http, add: -e ansible_connection=local
+- name: Cleanup all users except admin (benchmark prep)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gateway_hostname: "{{ base_url }}"
+    gateway_username: "admin"
+    gateway_password: "Admin!Password!Gw"
+    gateway_token: ""
+    gateway_validate_certs: false
+    _has_token: "{{ (gateway_token | default('') | string | trim | length) > 0 }}"
+    _has_password: "{{ (gateway_password | default('') | string | trim | length) > 0 }}"
+    api_headers: "{{ (gateway_token | default('') | string | length > 0)
+                     | ternary({'Authorization': 'Bearer ' ~ (gateway_token | string)}, {}) }}"
+
+  tasks:
+    - name: Require Gateway credentials token or username+password
+      ansible.builtin.fail:
+        msg: >
+          Gateway auth failed (401). Set either AAP_TOKEN or GATEWAY_PASSWORD (and GATEWAY_USERNAME).
+          Example: export AAP_TOKEN=your-token
+          Or: export GATEWAY_USERNAME=admin GATEWAY_PASSWORD=your-password
+      when: not _has_token and not _has_password
+
+    - name: Get all users (single page)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname.rstrip('/') }}/api/gateway/v1/users/?page_size=5000"
+        method: GET
+        validate_certs: "{{ gateway_validate_certs }}"
+        headers: "{{ api_headers }}"
+        url_username: "{{ (gateway_token | default('') | string | length > 0) | ternary(omit, gateway_username) }}"
+        url_password: "{{ (gateway_token | default('') | string | length > 0) | ternary(omit, gateway_password) }}"
+        force_basic_auth: "{{ gateway_token | default('') | string | length == 0 }}"
+        return_content: true
+      register: users_response
+
+    - name: Build list of users to deleteexclude keep_username
+      ansible.builtin.set_fact:
+        users_to_delete: "{{
+          users_response.json.results
+          | rejectattr('username', 'equalto', keep_username)
+          | list
+        }}"
+
+    - name: Show users to delete
+      ansible.builtin.debug:
+        msg: "Will delete {{ users_to_delete | length }} user(s): {{ users_to_delete | map(attribute='username') | list }}"
+      when: users_to_delete | length > 0
+
+    - name: Delete all non-admin users
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname.rstrip('/') }}/api/gateway/v1/users/{{ item.id }}/"
+        method: DELETE
+        validate_certs: "{{ gateway_validate_certs }}"
+        headers: "{{ api_headers }}"
+        url_username: "{{ (gateway_token | default('') | string | length > 0) | ternary(omit, gateway_username) }}"
+        url_password: "{{ (gateway_token | default('') | string | length > 0) | ternary(omit, gateway_password) }}"
+        force_basic_auth: "{{ gateway_token | default('') | string | length == 0 }}"
+        status_code: [204, 404]
+      loop: "{{ users_to_delete }}"
+      loop_control:
+        label: "{{ item.username }}"
+      when: users_to_delete | length > 0
+
+    - name: No users to delete
+      ansible.builtin.debug:
+        msg: "Only {{ keep_username }} (or no users) present; nothing to delete."
+      when: users_to_delete | length == 0
+...

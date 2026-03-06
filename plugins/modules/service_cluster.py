@@ -113,6 +113,7 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_service_cluster import AAPServiceCluster  # noqa
 
+
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -142,6 +143,7 @@ def main():
 
     # Manage objects through API
     AAPServiceCluster(module).manage()
+
 
 if __name__ == "__main__":
     main()
