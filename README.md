@@ -1,11 +1,12 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20251114
+## Changelog for v2.5.20260306
 
-* Ensure idempotent cases are correctly handled in AAPModule create_if_needed() method when auto_exit is disabled.
-* Fix CI issues.
-* fixes to rely on field-specific error messages from the Django REST Framework serializer.
-* updated repository location.
+* Enhance plugin description for Gateway API.
+* Add conditional check for 'safe to test' label.
+* Expose collection checkout to aap-gateway build.
+* Integration test workflow use GH environment.
+
 
 ## Description
 
