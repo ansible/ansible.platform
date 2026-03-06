@@ -7,6 +7,7 @@
 * Expose collection checkout to aap-gateway build.
 * Integration test workflow use GH environment.
 
+
 ## Description
 
 This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
