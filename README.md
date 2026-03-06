@@ -7,13 +7,6 @@
 * Expose collection checkout to aap-gateway build.
 * Integration test workflow use GH environment.
 
-## Changelog for v2.5.20251114
-
-* Ensure idempotent cases are correctly handled in AAPModule create_if_needed() method when auto_exit is disabled.
-* Fix CI issues.
-* fixes to rely on field-specific error messages from the Django REST Framework serializer.
-* updated repository location.
-
 ## Description
 
 This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
