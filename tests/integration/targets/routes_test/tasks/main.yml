@@ -285,39 +285,57 @@
           - __route_rename_result.results[0] is not changed
           - __route_rename_result.results[1] is not changed
 
-    ### Test request_timeout_seconds ###
-    - name: Set request_timeout_seconds on a route
+    ### Test route timeouts (request_timeout_seconds & idle_timeout_seconds) ###
+    - name: Set both timeout fields on a route
       ansible.platform.route:
         name: "{{ test_id }}Gateway Config Route"
         request_timeout_seconds: 3600
-      register: __route_timeout_result
+        idle_timeout_seconds: 60
+      register: __route_timeouts_set_result
 
-    - name: Assert request_timeout_seconds was set
+    - name: Assert timeout fields were set
       ansible.builtin.assert:
         that:
-          - __route_timeout_result is changed
+          - __route_timeouts_set_result is changed
 
-    - name: Set request_timeout_seconds again (idempotency)
+    - name: Set both timeout fields again (idempotency)
       ansible.platform.route:
         name: "{{ test_id }}Gateway Config Route"
         request_timeout_seconds: 3600
-      register: __route_timeout_idempotent_result
+        idle_timeout_seconds: 60
+      register: __route_timeouts_idempotent_result
 
-    - name: Assert request_timeout_seconds idempotency
+    - name: Assert timeout fields idempotency
       ansible.builtin.assert:
         that:
-          - __route_timeout_idempotent_result is not changed
+          - __route_timeouts_idempotent_result is not changed
 
-    - name: Update request_timeout_seconds to a new value
+    - name: Update both timeout fields to new values
       ansible.platform.route:
         name: "{{ test_id }}Gateway Config Route"
         request_timeout_seconds: 7200
-      register: __route_timeout_update_result
+        idle_timeout_seconds: 120
+      register: __route_timeouts_update_result
 
-    - name: Assert request_timeout_seconds was updated
+    - name: Assert timeout fields were updated
       ansible.builtin.assert:
         that:
-          - __route_timeout_update_result is changed
+          - __route_timeouts_update_result is changed
+
+    - name: Set both timeouts below global preference floors (should fail)
+      ansible.platform.route:
+        name: "{{ test_id }}Gateway Config Route"
+        request_timeout_seconds: 1
+        idle_timeout_seconds: 1
+      register: __route_timeouts_below_floor_result
+      failed_when: false
+
+    - name: Assert both timeout floors were enforced
+      ansible.builtin.assert:
+        that:
+          - __route_timeouts_below_floor_result is failed
+          - "'request_timeout' in __route_timeouts_below_floor_result.msg"
+          - "'idle_timeout' in __route_timeouts_below_floor_result.msg"
 
   always:
     ### Delete Routes ###

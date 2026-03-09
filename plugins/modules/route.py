@@ -81,6 +81,13 @@ options:
       - This value can only extend the timeout beyond the global default, not reduce it
       - Leave unset to use the global proxy timeout preference
       type: int
+    idle_timeout_seconds:
+      description:
+      - The idle timeout in seconds for this route (max 86400 = 24 hours)
+      - Connections with no data transmitted within this period are closed
+      - This value can only extend the timeout beyond the global default, not reduce it
+      - Leave unset to use the global proxy idle timeout preference
+      type: int
 
 extends_documentation_fragment:
 - ansible.platform.state
@@ -149,6 +156,7 @@ def main():
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
         request_timeout_seconds=dict(type="int"),
+        idle_timeout_seconds=dict(type="int"),
         state=dict(
             choices=["present", "absent", "exists", "enforced"], default="present"
         ),
