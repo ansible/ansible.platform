@@ -27,6 +27,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader i
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 
+
 class TestAPIVersioning(unittest.TestCase):
 
     def test_filesystem_version_discovery_and_loading(self):
@@ -104,6 +105,7 @@ class TestAPIVersioning(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             loader.load_classes_for_module('incomplete_module', '1')
         self.assertIn("No compatible API version found for module 'incomplete_module'", str(context.exception))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -110,7 +110,7 @@ class DirectHTTPClient(BaseAPIClient):
 
     def _detect_api_version(self) -> str:
         """
-        Detect API version dynamically by querying the platform and negotiating 
+        Detect API version dynamically by querying the platform and negotiating
         with the collection's registry.
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
