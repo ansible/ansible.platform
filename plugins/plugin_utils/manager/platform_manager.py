@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 import threading
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
@@ -117,10 +116,10 @@ class PlatformService(BaseAPIClient):
         # Do NOT use registry-discovered versions - we detect from the actual API
         # Detect API version dynamically
         self.api_version = self._detect_api_version()
-        logger.info(f"PlatformService: API version locked in for execution: v{self.api_version}")
+        logger.info("PlatformService: API version locked in for execution: v%s", self.api_version)
         
         # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)        
-        logger.info(f"PlatformService initialized with API v{self.api_version}")
+        logger.info("PlatformService initialized with API v%s", self.api_version)
 
         # Performance counters (thread-safe)
         self._http_request_count = 0
@@ -443,7 +442,7 @@ class PlatformService(BaseAPIClient):
                         version_match = re.search(r'/v(\d+(?:\.\d+)?)/?$', current_version_path)
                         if version_match:
                             version_str = version_match.group(1)
-                            logger.debug(f"PlatformService: Extracted version '{version_str}' from current_version path")
+                            logger.debug("PlatformService: Extracted version '%s' from current_version path", version_str)
                     
                     # 2. Negotiate highest mutual version from available_versions
                     if not version_str and 'available_versions' in response_data:
@@ -460,15 +459,15 @@ class PlatformService(BaseAPIClient):
                                     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
                                     parse_version = version.parse
                                 version_str = max(mutual_versions, key=parse_version)
-                                logger.debug(f"PlatformService: Negotiated mutual version '{version_str}' from available_versions")
+                                logger.debug("PlatformService: Negotiated mutual version '%s' from available_versions", version_str)
                     
                 except (ValueError, KeyError, AttributeError) as e:
-                    logger.debug(f"PlatformService: Could not parse version from response: {e}")
+                    logger.debug("PlatformService: Could not parse version from response: %s", e)
             
             if version_str and version_str in self.registry.get_supported_versions():
-                logger.info(f"PlatformService: API version locked in: v{version_str}")
+                logger.info("PlatformService: API version locked in: v%s", version_str)
                 return version_str
-            
+
         except requests.RequestException as e:
             # Network/HTTP errors - default to v1
             error_msg = f"PlatformService: Version detection failed (HTTP error): {e}, defaulting to v1"
@@ -485,8 +484,8 @@ class PlatformService(BaseAPIClient):
         latest_supported = self.registry.get_latest_version()
         if not latest_supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-            
-        logger.info(f"PlatformService: Version mismatch or detection failed. Falling back to highest supported: v{latest_supported}")
+
+        logger.info("PlatformService: Version mismatch or detection failed. Falling back to highest supported: v%s", latest_supported)
         return latest_supported
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:

@@ -7,7 +7,8 @@ without a persistent manager process, but shares all the same layers
 """
 
 import base64
-import json, re
+import json
+import re
 import logging
 import threading
 import time
@@ -150,17 +151,17 @@ class DirectHTTPClient(BaseAPIClient):
             
             # Validate negotiated version
             if version_str and version_str in self.registry.get_supported_versions():
-                logger.info(f"DirectHTTPClient: Negotiated mutual API version: v{version_str}")
+                logger.info("DirectHTTPClient: Negotiated mutual API version: v%s", version_str)
                 return version_str
                 
         except Exception as e:
-            logger.warning(f"DirectHTTPClient: Failed to query platform for versions: {e}. Falling back to registry discovery.")
+            logger.warning("DirectHTTPClient: Failed to query platform for versions: %s. Falling back to registry discovery.", e)
 
         latest_supported = self.registry.get_latest_version()
         if not latest_supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
             
-        logger.info(f"DirectHTTPClient: Defaulting to highest collection version: v{latest_supported}")
+        logger.info("DirectHTTPClient: Defaulting to highest collection version: v%s", latest_supported)
         return latest_supported
 
     def _authenticate(self) -> None:
@@ -605,9 +606,9 @@ class DirectHTTPClient(BaseAPIClient):
     ) -> dict:
         """Create resource with transformation."""
         # FORWARD TRANSFORM: Ansible → API
-        logger.info(f"DirectHTTPClient: Forward transform for {mixin_class.__name__}: {ansible_data}")
+        logger.info("DirectHTTPClient: Forward transform for %s: %s", mixin_class.__name__, ansible_data)
         api_data = mixin_class.from_ansible_data(ansible_data, context)
-        logger.info(f"DirectHTTPClient: API data for {mixin_class.__name__}: {api_data}")
+        logger.info("DirectHTTPClient: API data for %s: %s", mixin_class.__name__, api_data)
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
         logger.info("DirectHTTPClient: Operations for %s: %s", mixin_class.__name__, operations)

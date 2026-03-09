@@ -6,9 +6,7 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List, Union, Dict, Any
-
-from ..platform.types import TransformContext
+from typing import Optional, List
 
 
 @dataclass
