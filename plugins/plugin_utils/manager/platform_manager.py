@@ -117,8 +117,8 @@ class PlatformService(BaseAPIClient):
         # Detect API version dynamically
         self.api_version = self._detect_api_version()
         logger.info("PlatformService: API version locked in for execution: v%s", self.api_version)
-        
-        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)        
+
+        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
         logger.info("PlatformService initialized with API v%s", self.api_version)
 
         # Performance counters (thread-safe)
@@ -427,9 +427,9 @@ class PlatformService(BaseAPIClient):
                 verify=self.verify_ssl
             )
             response.raise_for_status()
-            
+
             version_str = None
-            
+
             # Parse JSON response
             if response.headers.get('Content-Type', '').startswith('application/json'):
                 try:
@@ -443,7 +443,7 @@ class PlatformService(BaseAPIClient):
                         if version_match:
                             version_str = version_match.group(1)
                             logger.debug("PlatformService: Extracted version '%s' from current_version path", version_str)
-                    
+
                     # 2. Negotiate highest mutual version from available_versions
                     if not version_str and 'available_versions' in response_data:
                         available = response_data['available_versions']
@@ -451,7 +451,7 @@ class PlatformService(BaseAPIClient):
                             platform_versions = [v.lstrip('v') for v in available.keys()]
                             collection_supported = self.registry.get_supported_versions()
                             mutual_versions = [v for v in platform_versions if v in collection_supported]
-                            
+
                             if mutual_versions:
                                 try:
                                     from packaging.version import parse as parse_version
@@ -460,10 +460,10 @@ class PlatformService(BaseAPIClient):
                                     parse_version = version.parse
                                 version_str = max(mutual_versions, key=parse_version)
                                 logger.debug("PlatformService: Negotiated mutual version '%s' from available_versions", version_str)
-                    
+
                 except (ValueError, KeyError, AttributeError) as e:
                     logger.debug("PlatformService: Could not parse version from response: %s", e)
-            
+
             if version_str and version_str in self.registry.get_supported_versions():
                 logger.info("PlatformService: API version locked in: v%s", version_str)
                 return version_str

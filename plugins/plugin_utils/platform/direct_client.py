@@ -122,17 +122,17 @@ class DirectHTTPClient(BaseAPIClient):
                 validate_certs=self.verify_ssl,
                 timeout=self.request_timeout
             )
-            
+
             response_body = response.read()
             api_data = json.loads(response_body) if response_body else {}
             version_str = None
-            
+
             # Extract from current_version (e.g., "/api/gateway/v1/" -> "1")
             if 'current_version' in api_data:
                 match = re.search(r'/v(\d+(?:\.\d+)?)/?$', api_data['current_version'])
                 if match:
                     version_str = match.group(1)
-            
+
             # Negotiate highest mutual version from available_versions
             if not version_str and 'available_versions' in api_data:
                 available = api_data['available_versions']
@@ -140,7 +140,7 @@ class DirectHTTPClient(BaseAPIClient):
                     platform_versions = [v.lstrip('v') for v in available.keys()]
                     collection_supported = self.registry.get_supported_versions()
                     mutual_versions = [v for v in platform_versions if v in collection_supported]
-                    
+
                     if mutual_versions:
                         try:
                             from packaging.version import parse as parse_version
@@ -148,19 +148,19 @@ class DirectHTTPClient(BaseAPIClient):
                             from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
                             parse_version = version.parse
                         version_str = max(mutual_versions, key=parse_version)
-            
+
             # Validate negotiated version
             if version_str and version_str in self.registry.get_supported_versions():
                 logger.info("DirectHTTPClient: Negotiated mutual API version: v%s", version_str)
                 return version_str
-                
+
         except Exception as e:
             logger.warning("DirectHTTPClient: Failed to query platform for versions: %s. Falling back to registry discovery.", e)
 
         latest_supported = self.registry.get_latest_version()
         if not latest_supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-            
+
         logger.info("DirectHTTPClient: Defaulting to highest collection version: v%s", latest_supported)
         return latest_supported
 
