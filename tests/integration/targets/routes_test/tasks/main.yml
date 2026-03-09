@@ -322,7 +322,7 @@
         that:
           - __route_timeouts_update_result is changed
 
-    - name: Set both timeouts below global preference floors (should fail)
+    - name: Set both timeouts below global setting floors (should fail)
       ansible.platform.route:
         name: "{{ test_id }}Gateway Config Route"
         request_timeout_seconds: 1

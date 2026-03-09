@@ -77,16 +77,16 @@ options:
       type: str
     request_timeout_seconds:
       description:
-      - The request timeout in seconds for this route (max 604800 = 1 week)
-      - This value can only extend the timeout beyond the global default, not reduce it
-      - Leave unset to use the global proxy timeout preference
+      - The request timeout in seconds for this route
+      - Values below the global proxy request_timeout setting are rejected
+      - Leave unset to use the global proxy timeout setting
       type: int
     idle_timeout_seconds:
       description:
-      - The idle timeout in seconds for this route (max 86400 = 24 hours)
+      - The idle timeout in seconds for this route
       - Connections with no data transmitted within this period are closed
-      - This value can only extend the timeout beyond the global default, not reduce it
-      - Leave unset to use the global proxy idle timeout preference
+      - Values below the global proxy idle_timeout setting are rejected
+      - Leave unset to use the global proxy idle timeout setting
       type: int
 
 extends_documentation_fragment:
