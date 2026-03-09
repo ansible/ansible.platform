@@ -11,9 +11,9 @@ from typing import Dict, Any, Optional
 from ..platform.config import GatewayConfig
 from ..platform.registry import APIVersionRegistry
 from ..platform.loader import DynamicClassLoader
-from ..platform.types import TransformContext
 
 logger = logging.getLogger(__name__)
+
 
 class BaseAPIClient(ABC):
     """
@@ -52,7 +52,7 @@ class BaseAPIClient(ABC):
         # Shared: Cache for lookups (org names ↔ IDs, etc.)
         self.cache: Dict[str, Any] = {}
 
-        logger.info(f"BaseAPIClient initialized: base_url={self.base_url}, mode={config.connection_mode}")
+        logger.info("BaseAPIClient initialized: base_url=%s, mode=%s", self.base_url, config.connection_mode)
 
     @abstractmethod
     def _detect_api_version(self) -> str:

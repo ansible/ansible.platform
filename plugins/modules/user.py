@@ -20,7 +20,7 @@ options:
     organizations:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For associating a user to an organization, please use the ansible.platform.role_user_assignment module.
         - HORIZONTALLINE
         - List of organization names or IDs to associate with the user.
@@ -32,7 +32,7 @@ options:
     is_platform_auditor:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For designating a user as an auditor, please use the ansible.platform.role_user_assignment module.
         - HORIZONTALLINE
         - Designates that this user is a platform auditor.
@@ -73,7 +73,7 @@ options:
     authenticators:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For associating a user with authenticators, please use the associated_authenticators option.
         - HORIZONTALLINE
         - A list of authenticators to associate the user with
@@ -82,7 +82,7 @@ options:
     authenticator_uid:
       description:
         - B(Deprecated)
-        - This option is deprecated and will be removed in a release after 2026-01-31.
+        - This option is deprecated and will be removed in a release after 2027-01-31.
         - For specifying UIDs per authenticator, please use the associated_authenticators option.
         - HORIZONTALLINE
         - The UID to associate with this users authenticators
@@ -148,6 +148,7 @@ EXAMPLES = """
 from ..module_utils.aap_module import AAPModule  # noqa
 from ..module_utils.aap_user import AAPUser  # noqa
 
+
 def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
@@ -173,7 +174,7 @@ def main():
         module.deprecate(
             msg="Configuring organizations via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -181,7 +182,7 @@ def main():
         module.deprecate(
             msg="Configuring auditor via `ansible.platform.user` is not the recommended approach. "
             "The preferred method going forward is to use the `ansible.platform.role_user_assignment` module.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -189,7 +190,7 @@ def main():
         module.deprecate(
             msg="The 'authenticator_uid' parameter is deprecated and will be removed in a future version. "
             "Please use 'associated_authenticators' instead to specify UIDs per authenticator.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -197,7 +198,7 @@ def main():
         module.deprecate(
             msg="The 'authenticators' parameter is deprecated and will be removed in a future version. "
             "Please use 'associated_authenticators' instead to specify authenticator associations.",
-            date="2026-01-31",
+            date="2027-01-31",
             collection_name="ansible.platform",
         )
 
@@ -215,6 +216,7 @@ def main():
         audit_user(module)
 
     module.exit_json(**module.json_output)
+
 
 def process_organizations(module, user_existed_before):
     changed = module.json_output.get('changed', False)
@@ -273,6 +275,7 @@ def process_organizations(module, user_existed_before):
     if error_msg:
         module.fail_json(msg=error_msg)
 
+
 def cleanup_user(module, user_id):
 
     try:
@@ -281,6 +284,7 @@ def cleanup_user(module, user_id):
         return delete_result.get('status_code') == 204
     except (ConnectionError, TimeoutError):
         return False
+
 
 def audit_user(module):
     try:
@@ -318,6 +322,7 @@ def audit_user(module):
             module.json_output["changed"] = True
         except Exception as e:
             module.fail_json(msg=f"Failed to remove platform auditor role: {str(e)}")
+
 
 if __name__ == "__main__":
     main()

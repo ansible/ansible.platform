@@ -2,6 +2,7 @@ from ..module_utils.aap_object import AAPObject  # noqa
 
 __metaclass__ = type
 
+
 class AAPRoleDefinition(AAPObject):
     API_ENDPOINT_NAME = "role_definitions"
     ITEM_TYPE = "role_definition"

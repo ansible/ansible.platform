@@ -69,6 +69,7 @@ EXAMPLES = """
 from ..module_utils.aap_http_port import AAPHttpPort  # noqa
 from ..module_utils.aap_module import AAPModule  # noqa
 
+
 def main():
     args_spec = dict(
         name=dict(required=True, type='str'),
@@ -84,6 +85,7 @@ def main():
 
     # Manage objects through API
     AAPHttpPort(module).manage()
+
 
 if __name__ == "__main__":
     main()

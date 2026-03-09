@@ -4,14 +4,12 @@ Provides the client-side interface for action plugins to communicate
 with the persistent Platform Manager service.
 """
 
-from multiprocessing.managers import BaseManager
-from pathlib import Path
-from typing import Dict, Any, Optional
 import logging
-import base64
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
 
 class ManagerRPCClient:
     """
@@ -50,7 +48,7 @@ class ManagerRPCClient:
             # Force conversion to plain Python str using f-string (not a subclass)
             self.socket_path = f"{socket_path}"  # f-string forces plain str
             # Double-check: ensure it's actually a plain str, not a subclass
-            if type(self.socket_path) is not str:
+            if not isinstance(self.socket_path, str):
                 self.socket_path = str(self.socket_path)
         else:
             self.socket_path = socket_path
@@ -67,9 +65,9 @@ class ManagerRPCClient:
         # Use f-string to ensure plain str type
         socket_path_str = f"{self.socket_path}" if self.socket_path is not None else self.socket_path
         # Double-check: ensure it's actually a plain str
-        if socket_path_str is not None and type(socket_path_str) is not str:
+        if socket_path_str is not None and not isinstance(socket_path_str, str):
             socket_path_str = str(socket_path_str)
-        logger.debug(f"Connecting to manager at {socket_path_str} (type: {type(socket_path_str)}, is plain str: {type(socket_path_str) is str})")
+        logger.debug("Connecting to manager at %s (type: %s, is plain str: %s)", socket_path_str, type(socket_path_str), isinstance(socket_path_str, str))
         self.manager = PlatformManager(
             address=socket_path_str,
             authkey=authkey
@@ -137,10 +135,10 @@ class ManagerRPCClient:
         try:
             if hasattr(self, 'service_proxy') and self.service_proxy:
                 result = self.service_proxy.shutdown()
-                logger.debug(f"Manager shutdown response: {result}")
+                logger.debug("Manager shutdown response: %s", result)
                 return result
         except Exception as e:
-            logger.debug(f"Error calling shutdown on manager: {e}")
+            logger.debug("Error calling shutdown on manager: %s", e)
             return {"status": "error", "error": str(e)}
         return {"status": "not_connected"}
 
@@ -149,4 +147,3 @@ class ManagerRPCClient:
         if hasattr(self, 'manager'):
             self.manager.shutdown()
             logger.debug("Disconnected from Platform Manager")
-

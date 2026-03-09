@@ -1,0 +1,41 @@
+---
+# Step 2: Create N users via ansible.platform.user (benchmark measured step).
+# Connection mode: set -e ansible_platform_persistent=true (persistent) or -e ansible_platform_persistent=false (direct).
+# Run from collection root:
+#   ansible-playbook playbooks/benchmark/02_create_users.yml -e @playbooks/benchmark/vars.yml -e ansible_platform_persistent=false
+- name: Create users
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+
+  vars:
+    # Default for lint/syntax-check; override with -e benchmark_user_count=N or -e @vars.yml
+    benchmark_user_count: 100
+    gateway_hostname: "<gateway-ip>"
+    gateway_username: "admin"
+    gateway_password: "Admin!Password!Gw"
+    gateway_validate_certs: false
+    # Force username/password auth for benchmark (ignore AAP_TOKEN so we don't get 401 from stale token)
+    gateway_token: ""
+    # Override with -e ansible_platform_persistent=true|false (default: direct)
+    ansible_platform_persistent: "{{ ansible_platform_persistent | default(false) | bool }}"
+
+  tasks:
+    - name: Show connection mode for this run
+      ansible.builtin.debug:
+        msg: "Connection mode: {{ 'persistent' if ansible_platform_persistent else 'direct' }} (ansible_platform_persistent={{ ansible_platform_persistent }})"
+
+    - name: Create test users
+      ansible.platform.user:
+        gateway_hostname: "{{ base_url }}"
+        gateway_token: "{{ gateway_token | default('', true) }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password | default('', true) }}"
+        username: "bench_user_{{ '%03d' | format(item) }}"
+        email: "bench_user_{{ '%03d' | format(item) }}@example.com"
+        state: present
+      loop: "{{ range(1, (benchmark_user_count | int) + 1) | list }}"
+      loop_control:
+        label: "bench_user_{{ '%03d' | format(item) }}"
+...

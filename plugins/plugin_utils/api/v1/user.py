@@ -12,6 +12,7 @@ from ...platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class APIUser_v1(BaseTransformMixin):
     """
@@ -38,6 +39,7 @@ class APIUser_v1(BaseTransformMixin):
     # For organizations - handled separately via associations
     organization_ids: Optional[List[int]] = None
 
+
 class UserTransformMixin_v1(BaseTransformMixin):
     """
     Transform mixin for User API v1.
@@ -57,7 +59,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
         Returns:
             APIUser_v1 instance
         """
-        logger.info(f"Transforming AnsibleUser to APIUser_v1: username={getattr(ansible_instance, 'username', None)}")
+        logger.info("Transforming AnsibleUser to APIUser_v1: username=%s", getattr(ansible_instance, 'username', None))
         api_data = {}
 
         # Simple field mappings
@@ -71,19 +73,19 @@ class UserTransformMixin_v1(BaseTransformMixin):
             value = getattr(ansible_instance, field, None)
             if value is not None:
                 api_data[field] = value
-                logger.debug(f"Mapped field {field}: {value}")
+                logger.debug("Mapped field %s: %s", field, value)
 
         # Complex transformation: organizations (names -> IDs)
         if ansible_instance.organizations:
-            logger.debug(f"Transforming organizations from names to IDs: {ansible_instance.organizations}")
+            logger.debug("Transforming organizations from names to IDs: %s", ansible_instance.organizations)
             org_ids = cls._names_to_ids(
                 ansible_instance.organizations,
                 context
             )
             api_data['organization_ids'] = org_ids
-            logger.info(f"Organizations transformed: {ansible_instance.organizations} -> {org_ids}")
+            logger.info("Organizations transformed: %s -> %s", ansible_instance.organizations, org_ids)
 
-        logger.debug(f"APIUser_v1 data prepared with {len(api_data)} fields")
+        logger.debug("APIUser_v1 data prepared with %s fields", len(api_data))
         return APIUser_v1(**api_data)
 
     @staticmethod
@@ -109,7 +111,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
             logger.debug("No organization IDs to convert")
             return []
 
-        logger.debug(f"Looking up organization names for IDs: {ids}")
+        logger.debug("Looking up organization names for IDs: %s", ids)
 
         # Use manager to lookup names
         if isinstance(context, TransformContext):
@@ -122,7 +124,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 logger.warning("No manager in context for organization lookup")
                 return []
 
-        logger.info(f"Organization lookup completed: {ids} -> {result}")
+        logger.info("Organization lookup completed: %s -> %s", ids, result)
         return result
 
     # Field mapping: ansible_field -> api_field or complex mapping
@@ -238,8 +240,8 @@ class UserTransformMixin_v1(BaseTransformMixin):
         from ...ansible_models.user import AnsibleUser
 
         username = api_data.get('username', 'unknown')
-        logger.info(f"Transforming APIUser_v1 to Ansible format: username={username}")
-        logger.debug(f"API data keys: {list(api_data.keys())}")
+        logger.info("Transforming APIUser_v1 to Ansible format: username=%s", username)
+        logger.debug("API data keys: %s", list(api_data.keys()))
 
         ansible_data = {}
 
@@ -249,7 +251,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
             if isinstance(mapping, str):
                 if mapping in api_data:
                     ansible_data[ansible_field] = api_data[mapping]
-                    logger.debug(f"Mapped {mapping} -> {ansible_field}: {api_data[mapping]}")
+                    logger.debug("Mapped %s -> %s: %s", mapping, ansible_field, api_data[mapping])
 
             # Complex mapping with reverse transformation
             elif isinstance(mapping, dict):
@@ -260,7 +262,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
                     value = api_data[api_field]
 
                     if transform_name and transform_name in cls._transform_registry:
-                        logger.debug(f"Applying reverse transform '{transform_name}' for {api_field} -> {ansible_field}")
+                        logger.debug("Applying reverse transform '%s' for %s -> %s", transform_name, api_field, ansible_field)
                         transform_func = cls._transform_registry[transform_name]
                         # Normalize context for transform function (base_transform normalizes, but we handle both for safety)
                         if isinstance(context, dict):
@@ -275,11 +277,11 @@ class UserTransformMixin_v1(BaseTransformMixin):
                             normalized_ctx = context
                         transformed_value = transform_func(value, normalized_ctx)
                         ansible_data[ansible_field] = transformed_value
-                        logger.debug(f"Transform completed: {value} -> {transformed_value}")
+                        logger.debug("Transform completed: %s -> %s", value, transformed_value)
                     else:
                         ansible_data[ansible_field] = value
-                        logger.debug(f"Direct mapping {api_field} -> {ansible_field}: {value}")
+                        logger.debug("Direct mapping %s -> %s: %s", api_field, ansible_field, value)
 
-        logger.info(f"Ansible format transformation completed with {len(ansible_data)} fields")
+        logger.info("Ansible format transformation completed with %s fields", len(ansible_data))
         # Return AnsibleUser dataclass instance, not dict
         return AnsibleUser(**ansible_data)

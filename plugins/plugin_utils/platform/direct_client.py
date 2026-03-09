@@ -21,19 +21,13 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 
 from .base_client import BaseAPIClient
 from .config import GatewayConfig
-from .credential_manager import get_credential_manager, CredentialStore
-from .exceptions import (
-    PlatformError,
-    AuthenticationError,
-    NetworkError,
-    APIError,
-    TimeoutError,
-    classify_exception
-)
-from .retry import retry_http_request, RetryConfig
+from .credential_manager import get_credential_manager
+from .exceptions import AuthenticationError, APIError
+from .retry import RetryConfig
 from .types import TransformContext
 
 logger = logging.getLogger(__name__)
+
 
 class DirectHTTPClient(BaseAPIClient):
     """
@@ -172,7 +166,7 @@ class DirectHTTPClient(BaseAPIClient):
     def _authenticate(self) -> None:
         """
         Set authentication headers in session (no test request).
-        
+
         This just configures the session with auth headers.
         Authentication will be validated when actual API calls are made.
 
@@ -236,40 +230,40 @@ class DirectHTTPClient(BaseAPIClient):
         request_kwargs = kwargs.copy()
         timeout = request_kwargs.pop('timeout', self.request_timeout)
         verify = request_kwargs.pop('verify', self.verify_ssl)
-        
+
         # Prepare data for JSON requests
         data = None
         if 'json' in request_kwargs:
             data = json.dumps(request_kwargs.pop('json'))
         elif 'data' in request_kwargs:
             data = request_kwargs.pop('data')
-        
+
         # Parse URL (Ansible's Request.open() expects a parsed URL or string)
         if isinstance(url, str):
             parsed_url = urlparse(url)
         else:
             parsed_url = url
-        
+
         try:
             # Use Ansible's Request.open() - this is compatible with Ansible worker processes
             # Single connection per task - no persistence, just like current collection
-            logger.info(f"DirectHTTPClient: Making {method.upper()} request to {url}")
-            
+            logger.info("DirectHTTPClient: Making %s request to %s", method.upper(), url)
+
             # Ensure session is properly initialized
             if not hasattr(self.session, 'open'):
                 raise RuntimeError("Session does not have 'open' method. Session type: %s" % type(self.session))
-            
+
             # Get URL string - Ansible's Request.open() accepts string URLs
             # Use geturl() if it's a ParseResult, otherwise use the string directly
             if hasattr(parsed_url, 'geturl'):
                 url_str = parsed_url.geturl()
             else:
                 url_str = str(url)
-            
-            logger.info(f"DirectHTTPClient: Calling session.open() with method={method.upper()}, url={url_str}")
-            logger.info(f"DirectHTTPClient: Session type: {type(self.session)}")
-            logger.info(f"DirectHTTPClient: Session has open method: {hasattr(self.session, 'open')}")
-            
+
+            logger.info("DirectHTTPClient: Calling session.open() with method=%s, url=%s", method.upper(), url_str)
+            logger.info("DirectHTTPClient: Session type: %s", type(self.session))
+            logger.info("DirectHTTPClient: Session has open method: %s", hasattr(self.session, 'open'))
+
             # Ansible's Request.open() makes the HTTP request
             # This is the same approach used by current ansible.platform collection
             # Wrap in try-except to catch any exceptions before worker crashes
@@ -283,24 +277,24 @@ class DirectHTTPClient(BaseAPIClient):
                     data=data,
                 )
                 status = getattr(response, 'status', getattr(response, 'code', 'unknown'))
-                logger.info(f"DirectHTTPClient: Response received: status={status}")
+                logger.info("DirectHTTPClient: Response received: status=%s", status)
             except BaseException as open_err:
                 # Catch ALL exceptions including SystemExit, KeyboardInterrupt, etc.
-                logger.error(f"DirectHTTPClient: session.open() raised exception: {type(open_err).__name__}: {open_err}")
+                logger.error("DirectHTTPClient: session.open() raised exception: %s: %s", type(open_err).__name__, open_err)
                 import traceback
-                logger.error(f"DirectHTTPClient: session.open() traceback: {traceback.format_exc()}")
+                logger.error("DirectHTTPClient: session.open() traceback: %s", traceback.format_exc())
                 # Re-raise to let upper-level handlers deal with it
                 raise
         except SSLValidationError as ssl_err:
-            logger.error(f"DirectHTTPClient: SSL validation error: {ssl_err}")
+            logger.error("DirectHTTPClient: SSL validation error: %s", ssl_err)
             raise
         except ConnectionError as con_err:
-            logger.error(f"DirectHTTPClient: Connection error: {con_err}")
+            logger.error("DirectHTTPClient: Connection error: %s", con_err)
             raise
         except HTTPError as he:
             # Ansible's Request.open() raises HTTPError for 4xx/5xx responses
             status = he.code
-            
+
             # Handle 401 separately (authentication recovery)
             if status == 401:
                 # Try to recover authentication
@@ -322,7 +316,7 @@ class DirectHTTPClient(BaseAPIClient):
                             # Still 401 after recovery attempt
                             try:
                                 response_body = he2.read()[:500] if hasattr(he2, 'read') else str(he2)
-                            except:
+                            except Exception:
                                 response_body = str(he2)
                             raise AuthenticationError(
                                 message=f"Authentication failed: HTTP {he2.code}",
@@ -337,10 +331,11 @@ class DirectHTTPClient(BaseAPIClient):
                             )
                         raise
                 else:
+
                     # Authentication recovery failed
                     try:
                         response_body = he.read()[:500] if hasattr(he, 'read') else str(he)
-                    except:
+                    except Exception:
                         response_body = str(he)
                     raise AuthenticationError(
                         message=f"Authentication failed: HTTP {he.code}",
@@ -353,11 +348,11 @@ class DirectHTTPClient(BaseAPIClient):
                         },
                         status_code=he.code
                     )
-            
+
             # For other HTTP errors, raise appropriate exception
             try:
                 response_body = he.read()[:500] if hasattr(he, 'read') else str(he)
-            except:
+            except Exception:
                 response_body = str(he)
             raise APIError(
                 message=f"API request failed: HTTP {he.code}",
@@ -371,9 +366,9 @@ class DirectHTTPClient(BaseAPIClient):
                 status_code=he.code
             )
         except Exception as e:
-            logger.error(f"DirectHTTPClient: HTTP request failed: {e}")
+            logger.error("DirectHTTPClient: HTTP request failed: %s", e)
             import traceback
-            logger.error(f"DirectHTTPClient: Traceback: {traceback.format_exc()}")
+            logger.error("DirectHTTPClient: Traceback: %s", traceback.format_exc())
             raise
 
         # Success - return the response
@@ -396,14 +391,15 @@ class DirectHTTPClient(BaseAPIClient):
             status = response.status
         else:
             return False
-            
+
         if status != 401:
             return False
 
         logger.warning("Received 401 Unauthorized, attempting to recover authentication")
 
         # Try token refresh first (if using OAuth)
-        _, _, oauth_token = self.credential_store.get_auth_credentials()
+        creds = self.credential_store.get_auth_credentials()
+        oauth_token = creds[2] if len(creds) > 2 else None
         if oauth_token:
             if self._refresh_token():
                 return True
@@ -437,7 +433,7 @@ class DirectHTTPClient(BaseAPIClient):
             self._authenticate()
             return True
         except Exception as e:
-            logger.error(f"Re-authentication failed: {e}")
+            logger.error("Re-authentication failed: %s", e)
             return False
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
@@ -469,7 +465,7 @@ class DirectHTTPClient(BaseAPIClient):
         self,
         operation: str,
         module_name: str,
-        ansible_data: Any
+        ansible_data_dict: dict
     ) -> dict:
         """
         Execute a generic operation on any resource.
@@ -480,7 +476,7 @@ class DirectHTTPClient(BaseAPIClient):
         Args:
             operation: Operation type ('create', 'update', 'delete', 'find')
             module_name: Module name (e.g., 'user', 'organization')
-            ansible_data: Ansible dataclass instance or dict
+            ansible_data_dict: Ansible dataclass as dict
 
         Returns:
             Result as dict (Ansible format) with timing information
@@ -491,14 +487,13 @@ class DirectHTTPClient(BaseAPIClient):
         from dataclasses import asdict, is_dataclass
 
         # Convert to dict if dataclass (for consistency with ManagerRPCClient)
-        if is_dataclass(ansible_data):
-            ansible_data_dict = asdict(ansible_data)
-        else:
-            ansible_data_dict = ansible_data
+        if is_dataclass(ansible_data_dict):
+            ansible_data_dict = asdict(ansible_data_dict)
+        # else: already a dict
         # Performance timing: Processing start
         processing_start = time.perf_counter()
 
-        logger.info(f"Executing {operation} on {module_name}")
+        logger.info("Executing %s on %s", operation, module_name)
 
         # Lazy initialization: Authenticate on first request
         if not self._authenticated:
@@ -507,7 +502,7 @@ class DirectHTTPClient(BaseAPIClient):
                 self._authenticated = True
                 logger.info("DirectHTTPClient: Authentication successful")
             except Exception as e:
-                logger.error(f"DirectHTTPClient: Authentication failed: {e}")
+                logger.error("DirectHTTPClient: Authentication failed: %s", e)
                 self._last_auth_error = e
                 raise
 
@@ -515,9 +510,9 @@ class DirectHTTPClient(BaseAPIClient):
         if self.api_version is None:
             try:
                 self.api_version = self._detect_api_version()
-                logger.info(f"DirectHTTPClient: API version detected: v{self.api_version}")
+                logger.info("DirectHTTPClient: API version detected: v%s", self.api_version)
             except Exception as e:
-                logger.warning(f"DirectHTTPClient: Version detection failed: {e}, defaulting to v1")
+                logger.warning("DirectHTTPClient: Version detection failed: %s, defaulting to v1", e)
                 self.api_version = '1'
 
         # Load version-appropriate classes (shared layer)
@@ -525,11 +520,11 @@ class DirectHTTPClient(BaseAPIClient):
             module_name,
             self.api_version
         )
-        logger.info(f"DirectHTTPClient: Loaded classes for {module_name} (API version {self.api_version}): {AnsibleClass}, {APIClass}, {MixinClass}")
+        logger.info("DirectHTTPClient: Loaded classes for %s (API version %s): %s, %s, %s", module_name, self.api_version, AnsibleClass, APIClass, MixinClass)
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
-        logger.info(f"DirectHTTPClient: Reconstructed Ansible dataclass for {module_name}: {ansible_instance}")
+        logger.info("DirectHTTPClient: Reconstructed Ansible dataclass for %s: %s", module_name, ansible_instance)
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
             manager=self,
@@ -537,18 +532,18 @@ class DirectHTTPClient(BaseAPIClient):
             cache=self.cache,
             api_version=self.api_version
         )
-        logger.info(f"DirectHTTPClient: Built transformation context for {module_name}: {context}")
+        logger.info("DirectHTTPClient: Built transformation context for %s: %s", module_name, context)
 
         # Execute operation (shared CRUD logic)
         try:
             if operation == 'create':
-                logger.info(f"DirectHTTPClient: Executing create operation for {module_name}")
+                logger.info("DirectHTTPClient: Executing create operation for %s", module_name)
                 result = self._create_resource(
                     ansible_instance, MixinClass, context
                 )
-                logger.info(f"DirectHTTPClient: Create operation result for {module_name}: {result}")
+                logger.info("DirectHTTPClient: Create operation result for %s: %s", module_name, result)
             elif operation == 'update':
-                logger.info(f"DirectHTTPClient: Executing update operation for {module_name}")
+                logger.info("DirectHTTPClient: Executing update operation for %s", module_name)
                 result = self._update_resource(
                     ansible_instance, MixinClass, context
                 )
@@ -557,11 +552,11 @@ class DirectHTTPClient(BaseAPIClient):
                     ansible_instance, MixinClass, context
                 )
             elif operation == 'find':
-                logger.info(f"DirectHTTPClient: Executing find operation for {module_name}")
+                logger.info("DirectHTTPClient: Executing find operation for %s", module_name)
                 result = self._find_resource(
                     ansible_instance, MixinClass, context
                 )
-                logger.info(f"DirectHTTPClient: Find operation result for {module_name}: {result}")
+                logger.info("DirectHTTPClient: Find operation result for %s: %s", module_name, result)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
 
@@ -595,7 +590,7 @@ class DirectHTTPClient(BaseAPIClient):
             return result
 
         except Exception as e:
-            logger.error(f"Operation {operation} on {module_name} failed: {e}")
+            logger.error("Operation %s on %s failed: %s", operation, module_name, e)
             raise
 
     # CRUD operation methods (shared logic - same as PlatformService)
@@ -615,12 +610,12 @@ class DirectHTTPClient(BaseAPIClient):
         logger.info(f"DirectHTTPClient: API data for {mixin_class.__name__}: {api_data}")
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
-        logger.info(f"DirectHTTPClient: Operations for {mixin_class.__name__}: {operations}")
+        logger.info("DirectHTTPClient: Operations for %s: %s", mixin_class.__name__, operations)
         # Execute operations (potentially multi-endpoint)
         api_result = self._execute_operations(
             operations, api_data, context, required_for='create'
         )
-        logger.info(f"DirectHTTPClient: API result for {mixin_class.__name__}: {api_result}")
+        logger.info("DirectHTTPClient: API result for %s: %s", mixin_class.__name__, api_result)
 
         # REVERSE TRANSFORM: API → Ansible
         if api_result:
@@ -629,7 +624,7 @@ class DirectHTTPClient(BaseAPIClient):
             from dataclasses import asdict
             ansible_result = asdict(ansible_instance)
             ansible_result['changed'] = True
-            logger.info(f"DirectHTTPClient: Ansible result for {mixin_class.__name__}: {ansible_result}")
+            logger.info("DirectHTTPClient: Ansible result for %s: %s", mixin_class.__name__, ansible_result)
             return ansible_result
 
         return {'changed': True}
@@ -718,54 +713,54 @@ class DirectHTTPClient(BaseAPIClient):
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
         list_op = operations.get('list')
-        
+
         if not list_op:
             raise ValueError(f"List operation not defined for {mixin_class.__name__}")
-        
+
         # Get lookup field from mixin
         lookup_field = mixin_class.get_lookup_field()
-        logger.info(f"DirectHTTPClient: Lookup field for {mixin_class.__name__}: {lookup_field}")
+        logger.info("DirectHTTPClient: Lookup field for %s: %s", mixin_class.__name__, lookup_field)
         lookup_value = getattr(ansible_data, lookup_field, None)
-        logger.info(f"DirectHTTPClient: Lookup value for {mixin_class.__name__}: {lookup_value}")
+        logger.info("DirectHTTPClient: Lookup value for %s: %s", mixin_class.__name__, lookup_value)
         if not lookup_value:
             raise ValueError(f"Lookup field '{lookup_field}' not found in data")
         # Build URL with query parameter
         url = self._build_url(list_op.path, {lookup_field: lookup_value})
-        logger.info(f"DirectHTTPClient: URL for {mixin_class.__name__}: {url}")
+        logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
         # Execute list request
-        logger.info(f"DirectHTTPClient: About to call _make_request for find: method={list_op.method}, url={url}")
+        logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
         try:
             # Increment HTTP request counter (thread-safe)
             with self._lock:
                 self._http_request_count += 1
-            logger.info(f"DirectHTTPClient: HTTP request counter incremented for find: {self._http_request_count}")
+            logger.info("DirectHTTPClient: HTTP request counter incremented for find: %s", self._http_request_count)
             response = self._make_request(
                 list_op.method,
                 url,
                 operation='find',
                 resource=mixin_class.__name__
             )
-            logger.info(f"DirectHTTPClient: Response for {mixin_class.__name__}: {response}")
+            logger.info("DirectHTTPClient: Response for %s: %s", mixin_class.__name__, response)
         except Exception as req_e:
-            logger.error(f"DirectHTTPClient: _make_request for find raised exception: {req_e}")
+            logger.error("DirectHTTPClient: _make_request for find raised exception: %s", req_e)
             import traceback
-            logger.error(f"DirectHTTPClient: _make_request for find traceback: {traceback.format_exc()}")
+            logger.error("DirectHTTPClient: _make_request for find traceback: %s", traceback.format_exc())
             raise
         # Parse response - Ansible's Request response uses .read() to get body
         try:
             response_body = response.read()
             response_data = json.loads(response_body) if response_body else {}
         except Exception as e:
-            logger.error(f"DirectHTTPClient: Failed to parse response: {e}")
+            logger.error("DirectHTTPClient: Failed to parse response: %s", e)
             response_data = {}
         results = response_data.get('results', [])
-        logger.info(f"DirectHTTPClient: Results for {mixin_class.__name__}: {results}")
+        logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
         if results:
             # Return first match
             api_data = results[0]
             # from_api returns AnsibleUser dataclass, convert to dict for return
             ansible_instance = mixin_class.from_api(api_data, context)
-            logger.info(f"DirectHTTPClient: Ansible instance for {mixin_class.__name__}: {ansible_instance}")
+            logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
             from dataclasses import asdict
             return asdict(ansible_instance)
 
@@ -786,14 +781,14 @@ class DirectHTTPClient(BaseAPIClient):
         (e.g., create user, then associate organizations).
         """
         results = {}
-        logger.info(f"DirectHTTPClient: Executing operations for {operations}: {api_data}")
+        logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
 
         # Filter operations by required_for
         relevant_ops = {
             name: op for name, op in operations.items()
             if op.required_for == required_for or required_for is None
         }
-        logger.info(f"DirectHTTPClient: Relevant operations for {operations}: {relevant_ops}")
+        logger.info("DirectHTTPClient: Relevant operations for %s: %s", operations, relevant_ops)
         # Sort by order
         sorted_ops = sorted(relevant_ops.items(), key=lambda x: x[1].order)
 
@@ -801,19 +796,19 @@ class DirectHTTPClient(BaseAPIClient):
             # Check dependencies
             if endpoint_op.depends_on and endpoint_op.depends_on not in results:
                 continue
-            logger.info(f"DirectHTTPClient: Checking dependencies for {endpoint_op}: {endpoint_op.depends_on}")
+            logger.info("DirectHTTPClient: Checking dependencies for %s: %s", endpoint_op, endpoint_op.depends_on)
             # Build URL
             url = endpoint_op.path
-            logger.info(f"DirectHTTPClient: Building URL for {endpoint_op}: {url}")
+            logger.info("DirectHTTPClient: Building URL for %s: %s", endpoint_op, url)
             if endpoint_op.path_params:
                 # Replace path parameters
                 for param in endpoint_op.path_params:
                     param_value = results.get('id') or getattr(api_data, 'id', None)
                     if param_value:
                         url = url.replace(f'{{{param}}}', str(param_value))
-            logger.info(f"DirectHTTPClient: URL after replacing path parameters: {url}")
+            logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
             url = self._build_url(url)
-            logger.info(f"DirectHTTPClient: URL after building URL: {url}")
+            logger.info("DirectHTTPClient: URL after building URL: %s", url)
             # Prepare request data
             request_data = {}
             if endpoint_op.fields:
@@ -824,13 +819,13 @@ class DirectHTTPClient(BaseAPIClient):
 
             # Performance timing: API call start
             api_start = time.perf_counter()
-            logger.info(f"DirectHTTPClient: API call start for {endpoint_op}: {api_start}")
+            logger.info("DirectHTTPClient: API call start for %s: %s", endpoint_op, api_start)
             try:
                 # Increment HTTP request counter (thread-safe)
                 with self._lock:
                     self._http_request_count += 1
-                logger.info(f"DirectHTTPClient: HTTP request counter incremented: {self._http_request_count}")
-                logger.info(f"DirectHTTPClient: About to call _make_request: method={endpoint_op.method}, url={url}, request_data={request_data}")
+                logger.info("DirectHTTPClient: HTTP request counter incremented: %s", self._http_request_count)
+                logger.info("DirectHTTPClient: About to call _make_request: method=%s, url=%s, request_data=%s", endpoint_op.method, url, request_data)
                 try:
                     response = self._make_request(
                         endpoint_op.method,
@@ -839,16 +834,16 @@ class DirectHTTPClient(BaseAPIClient):
                         operation=op_name,
                         resource=endpoint_op.path.split('/')[-2] if '/' in endpoint_op.path else 'unknown'
                     )
-                    logger.info(f"DirectHTTPClient: Response for {endpoint_op}: {response}")
+                    logger.info("DirectHTTPClient: Response for %s: %s", endpoint_op, response)
                 except Exception as req_e:
-                    logger.error(f"DirectHTTPClient: _make_request raised exception: {req_e}")
+                    logger.error("DirectHTTPClient: _make_request raised exception: %s", req_e)
                     import traceback
-                    logger.error(f"DirectHTTPClient: _make_request traceback: {traceback.format_exc()}")
+                    logger.error("DirectHTTPClient: _make_request traceback: %s", traceback.format_exc())
                     raise
                 # Performance timing: API call end
                 api_end = time.perf_counter()
                 api_elapsed = api_end - api_start
-                logger.info(f"DirectHTTPClient: API call elapsed for {endpoint_op}: {api_elapsed}")
+                logger.info("DirectHTTPClient: API call elapsed for %s: %s", endpoint_op, api_elapsed)
                 # Store timing in context
                 if hasattr(context, 'timing'):
                     context.timing['api_call_time'] = api_elapsed
@@ -860,12 +855,12 @@ class DirectHTTPClient(BaseAPIClient):
                     context['timing']['api_call_end'] = api_end
 
             except Exception as e:
-                logger.error(f"DirectHTTPClient: API call failed: {e}")
+                logger.error("DirectHTTPClient: API call failed: %s", e)
                 if hasattr(e, 'code'):
-                    logger.error(f"Response status: {e.code}")
+                    logger.error("Response status: %s", e.code)
                 elif hasattr(e, 'response') and e.response is not None:
                     status = getattr(e.response, 'status', getattr(e.response, 'code', 'unknown'))
-                    logger.error(f"Response status: {status}")
+                    logger.error("Response status: %s", status)
                 raise
 
             # Store result - Ansible's Request response uses .read() to get body
@@ -873,7 +868,7 @@ class DirectHTTPClient(BaseAPIClient):
                 response_body = response.read()
                 result_data = json.loads(response_body) if response_body else {}
             except Exception as e:
-                logger.warning(f"DirectHTTPClient: Failed to parse response JSON: {e}")
+                logger.warning("DirectHTTPClient: Failed to parse response JSON: %s", e)
                 result_data = {}
             results[op_name] = result_data
 

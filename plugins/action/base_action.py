@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # (c) 2025, Ansible Platform Collection Contributors
@@ -15,13 +15,9 @@ __metaclass__ = type
 
 import base64
 import fcntl
-import importlib.util
 import json
 import logging
-import os
-import secrets
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Tuple, Union, Optional, Dict, Any
@@ -30,7 +26,6 @@ import yaml
 
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
-from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
 
 if TYPE_CHECKING:
@@ -38,6 +33,7 @@ if TYPE_CHECKING:
     from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
 logger = logging.getLogger(__name__)
+
 
 def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_url,
                            gateway_username, gateway_password, gateway_token,
@@ -175,6 +171,7 @@ def _manager_process_entry(socket_path, socket_dir, inventory_hostname, gateway_
             f.write(traceback.format_exc())
         sys.exit(1)
 
+
 class BaseResourceActionPlugin(ActionBase):
     """
     Base action plugin for all platform resources.
@@ -214,7 +211,7 @@ class BaseResourceActionPlugin(ActionBase):
     _task_to_manager = {}  # type: dict
 
     def _get_or_spawn_manager(
-        self, 
+        self,
         task_vars: dict
     ) -> Tuple[Union['DirectHTTPClient', 'ManagerRPCClient'], Optional[Dict[str, Any]]]:
         """
@@ -256,11 +253,11 @@ class BaseResourceActionPlugin(ActionBase):
         try:
             if hasattr(self._connection, 'get_client'):
                 logger.debug("Dispatching to connection plugin's get_client() method")
-                logger.debug(f"Connection plugin type: {type(self._connection)}")
-                logger.debug(f"Gateway config: {gateway_config}")
-                
+                logger.debug("Connection plugin type: %s", type(self._connection))
+                logger.debug("Gateway config: %s", gateway_config)
+
                 client, facts_to_set = self._connection.get_client(task_vars, gateway_config)
-                logger.debug(f"Got client from connection plugin: {type(client)}")
+                logger.debug("Got client from connection plugin: %s", type(client))
                 return client, facts_to_set
             else:
                 # Fallback: Connection plugin doesn't implement get_client()
@@ -269,26 +266,26 @@ class BaseResourceActionPlugin(ActionBase):
                     "Ensure you are using 'connection: ansible.platform.http' in your playbook."
                 )
         except Exception as e:
-            logger.error(f"Failed in _get_or_spawn_manager dispatcher: {type(e).__name__}: {e}")
+            logger.error("Failed in _get_or_spawn_manager dispatcher: %s: %s", type(e).__name__, e)
             import traceback
             tb = traceback.format_exc()
-            logger.error(f"Traceback: {tb}")
-            
+            logger.error("Traceback: %s", tb)
+
             # Write full traceback to file for debugging
             try:
                 with open('/tmp/ansible_platform_error.log', 'w') as f:
                     f.write(f"Error: {type(e).__name__}: {e}\n\n")
                     f.write(f"Full Traceback:\n{tb}\n")
-            except:
+            except OSError:
                 pass
-            
+
             raise
 
     # NOTE: _get_direct_client() method removed - now handled by connection plugin's get_client()
 
     def _get_or_spawn_persistent_manager(
-        self, 
-        task_vars: dict, 
+        self,
+        task_vars: dict,
         gateway_config: Any
     ) -> Tuple['ManagerRPCClient', Optional[Dict[str, Any]]]:
         """
@@ -327,7 +324,7 @@ class BaseResourceActionPlugin(ActionBase):
         inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
         host_vars = hostvars.get(inventory_hostname, {})
 
-        logger.info(f"Checking for existing persistent manager for host: {inventory_hostname}")
+        logger.info("Checking for existing persistent manager for host: %s", inventory_hostname)
 
         # Check both hostvars and top-level task_vars (facts might be in either location)
         socket_path_from_hostvars = host_vars.get('platform_manager_socket')
@@ -338,22 +335,22 @@ class BaseResourceActionPlugin(ActionBase):
         # BaseManager expects a plain str type, not _AnsibleTaggedStr (which is a str subclass)
         if socket_path_raw is not None:
             socket_path = f"{socket_path_raw}"  # f-string forces plain str
-            if type(socket_path) is not str:
+            if not isinstance(socket_path, str):
                 socket_path = str(socket_path)
-            logger.info(f"   Found socket path in facts: {socket_path}")
+            logger.info("   Found socket path in facts: %s", socket_path)
         else:
             socket_path = None
-            logger.info(f"   No socket path found in facts (will spawn new manager)")
+            logger.info("   No socket path found in facts (will spawn new manager)")
 
         # Get authkey from facts
         authkey_from_hostvars = host_vars.get('platform_manager_authkey')
         authkey_from_taskvars = task_vars.get('platform_manager_authkey')
         authkey_b64 = authkey_from_hostvars or authkey_from_taskvars
-        
+
         if authkey_b64:
-            logger.info(f"   Found authkey in facts")
+            logger.info("   Found authkey in facts")
         else:
-            logger.info(f"   No authkey found in facts")
+            logger.info("   No authkey found in facts")
 
         # Validate socket file if found
         if socket_path:
@@ -361,12 +358,12 @@ class BaseResourceActionPlugin(ActionBase):
             socket_exists = socket_file.exists()
             if socket_exists:
                 if socket_file.is_socket():
-                    logger.info(f"   ✅ Socket file exists and is valid: {socket_path}")
+                    logger.info("   ✅ Socket file exists and is valid: %s", socket_path)
                 else:
-                    logger.warning(f"   ⚠️  Socket path exists but is not a valid socket: {socket_path}")
+                    logger.warning("   ⚠️  Socket path exists but is not a valid socket: %s", socket_path)
                     socket_exists = False
             else:
-                logger.info(f"   ⚠️  Socket path from facts does not exist: {socket_path}")
+                logger.info("   ⚠️  Socket path from facts does not exist: %s", socket_path)
         else:
             socket_exists = False
 
@@ -381,7 +378,7 @@ class BaseResourceActionPlugin(ActionBase):
             gateway_config=gateway_config
         )
         expected_socket_path = expected_conn_info.socket_path
-        logger.info(f"   Expected socket path (for current credentials): {expected_socket_path}")
+        logger.info("   Expected socket path (for current credentials): %s", expected_socket_path)
 
         # Check if manager with matching credentials already exists
         manager_found = False
@@ -396,29 +393,29 @@ class BaseResourceActionPlugin(ActionBase):
                     manager_found = True
                     actual_socket_path = socket_path
                     actual_authkey_b64 = authkey_b64
-                    logger.info(f"   ✅ Found existing manager with matching credentials: {socket_path}")
+                    logger.info("   ✅ Found existing manager with matching credentials: %s", socket_path)
                 else:
-                    logger.info(f"   ⚠️  Credentials changed (socket path mismatch), will spawn new manager")
-                    logger.info(f"      Stored: {socket_path}")
-                    logger.info(f"      Expected: {expected_socket_path}")
+                    logger.info("   ⚠️  Credentials changed (socket path mismatch), will spawn new manager")
+                    logger.info("      Stored: %s", socket_path)
+                    logger.info("      Expected: %s", expected_socket_path)
 
         # Also check if expected socket path exists (in case facts weren't updated)
         if not manager_found and Path(expected_socket_path).exists() and authkey_b64:
             manager_found = True
             actual_socket_path = expected_socket_path
             actual_authkey_b64 = authkey_b64
-            logger.debug(f"Found manager at expected path: {expected_socket_path}")
+            logger.debug("Found manager at expected path: %s", expected_socket_path)
 
         # If manager already running with matching credentials, try to connect
         if manager_found and actual_socket_path and actual_authkey_b64:
-            logger.info(f"Reusing existing persistent manager (host: {inventory_hostname}, gateway: {gateway_config.base_url})")
+            logger.info("Reusing existing persistent manager (host: %s, gateway: %s)", inventory_hostname, gateway_config.base_url)
 
             try:
                 authkey = base64.b64decode(actual_authkey_b64)
 
                 # CRITICAL: Ensure socket_path is a plain str (Fedora/_AnsibleTaggedStr compatibility)
                 actual_socket_path_str = f"{actual_socket_path}"  # f-string forces plain str
-                if type(actual_socket_path_str) is not str:
+                if not isinstance(actual_socket_path_str, str):
                     actual_socket_path_str = str(actual_socket_path_str)
 
                 client = ManagerRPCClient(gateway_config.base_url, actual_socket_path_str, authkey)
@@ -437,18 +434,18 @@ class BaseResourceActionPlugin(ActionBase):
                         tracking['socket_paths'].add(actual_socket_path_str)
                         self._write_tracking_file(play_id, tracking)
 
-                logger.debug(f"Successfully connected to existing persistent manager: {actual_socket_path_str}")
+                logger.debug("Successfully connected to existing persistent manager: %s", actual_socket_path_str)
 
                 return client, {
                     'platform_manager_socket': actual_socket_path_str,
                     'platform_manager_authkey': actual_authkey_b64
                 }
             except Exception as e:
-                logger.warning(f"Failed to connect to existing manager: {e}, spawning new one")
+                logger.warning("Failed to connect to existing manager: %s, spawning new one", e)
                 # Fall through to spawn new one
 
         # Spawn new manager
-        logger.info(f"Spawning new persistent manager (host: {inventory_hostname}, gateway: {gateway_config.base_url})")
+        logger.info("Spawning new persistent manager (host: %s, gateway: %s)", inventory_hostname, gateway_config.base_url)
 
         # Generate connection info using platform SDK (with credentials)
         conn_info = ProcessManager.generate_connection_info(
@@ -460,7 +457,7 @@ class BaseResourceActionPlugin(ActionBase):
         authkey = conn_info.authkey
         authkey_b64 = conn_info.authkey_b64
 
-        logger.debug(f"Generated socket path: {socket_path}")
+        logger.debug("Generated socket path: %s", socket_path)
 
         # Clean up old socket if exists
         ProcessManager.cleanup_old_socket(socket_path)
@@ -482,19 +479,19 @@ class BaseResourceActionPlugin(ActionBase):
             sys_path=parent_sys_path
         )
 
-        logger.info(f"✅ Manager process spawned successfully")
-        logger.info(f"   Process PID: {process.pid}")
-        logger.info(f"   Socket Path: {socket_path}")
-        logger.info(f"   Future tasks with same credentials will reuse this manager")
-        
+        logger.info("✅ Manager process spawned successfully")
+        logger.info("   Process PID: %s", process.pid)
+        logger.info("   Socket Path: %s", socket_path)
+        logger.info("   Future tasks with same credentials will reuse this manager")
+
         # Log where to find manager process logs (for debugging version detection, etc.)
         import tempfile
         socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
         error_log = socket_dir / f'manager_error_{inventory_hostname}.log'
         stderr_log = socket_dir / f'manager_stderr_{inventory_hostname}.log'
-        logger.info(f"   📋 Manager process logs (version detection, etc.):")
-        logger.info(f"      - Error log: {error_log}")
-        logger.info(f"      - Stderr log: {stderr_log}")
+        logger.info("   📋 Manager process logs (version detection, etc.):")
+        logger.info("      - Error log: %s", error_log)
+        logger.info("      - Stderr log: %s", stderr_log)
 
         # Wait for process startup
         ProcessManager.wait_for_process_startup(
@@ -530,9 +527,9 @@ class BaseResourceActionPlugin(ActionBase):
             tracking['socket_paths'].add(socket_path_str)
             self._write_tracking_file(play_id, tracking)
 
-        logger.info(f"✅ Connected to new persistent manager")
-        logger.info(f"   Socket: {socket_path_str}")
-        logger.info(f"   PID: {process.pid}")
+        logger.info("✅ Connected to new persistent manager")
+        logger.info("   Socket: %s", socket_path_str)
+        logger.info("   PID: %s", process.pid)
         logger.info("=" * 80)
 
         return client, {
@@ -631,11 +628,11 @@ class BaseResourceActionPlugin(ActionBase):
                             fragment_data = yaml.safe_load(fragment_doc)
                             return fragment_data.get('options', {})
 
-            logger.debug(f"Documentation fragment '{fragment_name}' not found, skipping")
+            logger.debug("Documentation fragment '%s' not found, skipping", fragment_name)
             return {}
 
         except Exception as e:
-            logger.warning(f"Failed to load documentation fragment '{fragment_name}': {e}")
+            logger.warning("Failed to load documentation fragment '%s': %s", fragment_name, e)
             return {}
 
     def _validate_data(
@@ -661,7 +658,7 @@ class BaseResourceActionPlugin(ActionBase):
         Raises:
             AnsibleError: If validation fails
         """
-        logger.debug(f"Creating ArgumentSpecValidator with argspec keys: {list(argspec.keys())}")
+        logger.debug("Creating ArgumentSpecValidator with argspec keys: %s", list(argspec.keys()))
 
         # Create validator - pass all parameters as kwargs
         validator = ArgumentSpecValidator(
@@ -673,7 +670,7 @@ class BaseResourceActionPlugin(ActionBase):
             required_by=argspec.get('required_by')
         )
 
-        logger.debug(f"Validating {direction} data with keys: {list(data.keys())}")
+        logger.debug("Validating %s data with keys: %s", direction, list(data.keys()))
 
         # Validate
         result = validator.validate(data)
@@ -686,7 +683,7 @@ class BaseResourceActionPlugin(ActionBase):
             )
             raise AnsibleError(error_msg)
 
-        logger.debug(f"Validation successful for {direction}")
+        logger.debug("Validation successful for %s", direction)
         return result
 
     def _get_play_id(self):
@@ -762,7 +759,7 @@ class BaseResourceActionPlugin(ActionBase):
                     finally:
                         fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             except (IOError, json.JSONDecodeError) as e:
-                logger.warning(f"Error reading tracking file {file_path}: {e}")
+                logger.warning("Error reading tracking file %s: %s", file_path, e)
                 return None
         return None
 
@@ -789,7 +786,7 @@ class BaseResourceActionPlugin(ActionBase):
                 finally:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         except IOError as e:
-            logger.warning(f"Error writing tracking file {file_path}: {e}")
+            logger.warning("Error writing tracking file %s: %s", file_path, e)
 
     def _delete_tracking_file(self, play_id):
         """
@@ -802,9 +799,9 @@ class BaseResourceActionPlugin(ActionBase):
         try:
             if file_path.exists():
                 file_path.unlink()
-                logger.debug(f"Deleted tracking file: {file_path}")
+                logger.debug("Deleted tracking file: %s", file_path)
         except Exception as e:
-            logger.debug(f"Could not delete tracking file {file_path}: {e}")
+            logger.debug("Could not delete tracking file %s: %s", file_path, e)
 
     def _initialize_playbook_tracking(self):
         """
@@ -818,7 +815,7 @@ class BaseResourceActionPlugin(ActionBase):
         # Check if already initialized (process-safe file read)
         existing_tracking = self._read_tracking_file(play_id)
         if existing_tracking is not None:
-            logger.debug(f"Playbook tracking already initialized for play '{play_id}'")
+            logger.debug("Playbook tracking already initialized for play '%s'", play_id)
             return
 
         # Initialize tracking (process-safe)
@@ -863,8 +860,8 @@ class BaseResourceActionPlugin(ActionBase):
         self._write_tracking_file(play_id, tracking_data)
 
         logger.info(
-            f"Initialized playbook tracking for play '{play_id}': "
-            f"{total_tasks} total tasks (file-based, process-safe)"
+            "Initialized playbook tracking for play '%s': %s total tasks (file-based, process-safe)",
+            play_id, total_tasks
         )
 
     def cleanup(self, force=False):
@@ -885,7 +882,7 @@ class BaseResourceActionPlugin(ActionBase):
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
             ProcessManager
         )
-        
+
         # Check if we have an ephemeral manager (direct mode) that should be shut down immediately
         if hasattr(self, '_client') and hasattr(self._client, '_ephemeral') and self._client._ephemeral:
             logger.info("Shutting down ephemeral manager (direct mode)")
@@ -893,9 +890,9 @@ class BaseResourceActionPlugin(ActionBase):
                 socket_path = getattr(self._client, 'socket_path', None)
                 if socket_path:
                     self._shutdown_manager_process(socket_path, ProcessManager)
-                    logger.info(f"Ephemeral manager shut down: {socket_path}")
+                    logger.info("Ephemeral manager shut down: %s", socket_path)
             except Exception as e:
-                logger.warning(f"Failed to shutdown ephemeral manager: {e}")
+                logger.warning("Failed to shutdown ephemeral manager: %s", e)
             # Don't process persistent manager tracking for ephemeral managers
             return
 
@@ -903,13 +900,13 @@ class BaseResourceActionPlugin(ActionBase):
         try:
             play_id = self._get_play_id()
         except Exception as e:
-            logger.debug(f"Could not determine play ID for cleanup: {e}")
+            logger.debug("Could not determine play ID for cleanup: %s", e)
             return
 
         # Read tracking data (process-safe)
         tracking = self._read_tracking_file(play_id)
         if tracking is None:
-            logger.debug(f"Play '{play_id}' not in tracking (may not have platform tasks)")
+            logger.debug("Play '%s' not in tracking (may not have platform tasks)", play_id)
             return
 
         # Increment completed tasks counter (process-safe with file locking)
@@ -925,8 +922,8 @@ class BaseResourceActionPlugin(ActionBase):
                 tracking['socket_paths'] = set(tracking['socket_paths'])
 
         logger.debug(
-            f"Task completed for play '{play_id}': "
-            f"{completed_tasks}/{total_tasks} tasks completed (process-safe)"
+            "Task completed for play '%s': %s/%s tasks completed (process-safe)",
+            play_id, completed_tasks, total_tasks
         )
 
         # Write updated tracking (process-safe)
@@ -935,8 +932,8 @@ class BaseResourceActionPlugin(ActionBase):
         # Check if all tasks are done
         if completed_tasks >= total_tasks:
             logger.info(
-                f"All tasks completed for play '{play_id}' "
-                f"({completed_tasks}/{total_tasks}), shutting down manager processes..."
+                "All tasks completed for play '%s' (%s/%s), shutting down manager processes...",
+                play_id, completed_tasks, total_tasks
             )
 
             # Shutdown all managers used by this play
@@ -946,11 +943,11 @@ class BaseResourceActionPlugin(ActionBase):
 
             # Clean up tracking file
             self._delete_tracking_file(play_id)
-            logger.info(f"Cleanup complete for play '{play_id}'")
+            logger.info("Cleanup complete for play '%s'", play_id)
         else:
             logger.debug(
-                f"Play '{play_id}' still has {total_tasks - completed_tasks} "
-                f"task(s) remaining, keeping managers alive"
+                "Play '%s' still has %s task(s) remaining, keeping managers alive",
+                play_id, total_tasks - completed_tasks
             )
 
     def _shutdown_manager_process(self, socket_path, ProcessManager):
@@ -963,7 +960,7 @@ class BaseResourceActionPlugin(ActionBase):
         """
         process_info = BaseResourceActionPlugin._spawned_processes.get(socket_path)
         if not process_info:
-            logger.debug(f"Manager {socket_path} not found in spawned processes")
+            logger.debug("Manager %s not found in spawned processes", socket_path)
             return
 
         process = process_info['process']
@@ -971,7 +968,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         # Check if process is still running
         if process.poll() is None:
-            logger.debug(f"Manager process still running at {socket_path}, shutting down...")
+            logger.debug("Manager process still running at %s, shutting down...", socket_path)
 
             try:
                 # Try graceful shutdown via RPC
@@ -985,27 +982,27 @@ class BaseResourceActionPlugin(ActionBase):
                         # Call shutdown method
                         try:
                             shutdown_result = client.shutdown_manager()
-                            logger.debug(f"Sent shutdown signal to manager at {socket_path}: {shutdown_result}")
+                            logger.debug("Sent shutdown signal to manager at %s: %s", socket_path, shutdown_result)
                         except Exception as e:
-                            logger.debug(f"Shutdown RPC failed (manager may have already shut down): {e}")
+                            logger.debug("Shutdown RPC failed (manager may have already shut down): %s", e)
                         finally:
                             client.close()
                     except Exception as e:
-                        logger.debug(f"Could not connect for graceful shutdown: {e}")
+                        logger.debug("Could not connect for graceful shutdown: %s", e)
 
                 # Wait for graceful shutdown (max 5 seconds)
                 try:
                     process.wait(timeout=5)
-                    logger.debug(f"Manager process at {socket_path} shut down gracefully")
+                    logger.debug("Manager process at %s shut down gracefully", socket_path)
                 except subprocess.TimeoutExpired:
-                    logger.warning(f"Manager process at {socket_path} did not shut down gracefully, forcing termination")
+                    logger.warning("Manager process at %s did not shut down gracefully, forcing termination", socket_path)
                     process.terminate()
                     time.sleep(1)
                     if process.poll() is None:
                         process.kill()
                         process.wait()
             except Exception as e:
-                logger.warning(f"Error shutting down manager at {socket_path}: {e}")
+                logger.warning("Error shutting down manager at %s: %s", socket_path, e)
                 # Force kill as fallback
                 try:
                     if process.poll() is None:
@@ -1017,9 +1014,9 @@ class BaseResourceActionPlugin(ActionBase):
         # Clean up socket file
         try:
             ProcessManager.cleanup_old_socket(socket_path)
-            logger.debug(f"Cleaned up socket file: {socket_path}")
+            logger.debug("Cleaned up socket file: %s", socket_path)
         except Exception as e:
-            logger.debug(f"Could not clean up socket file {socket_path}: {e}")
+            logger.debug("Could not clean up socket file %s: %s", socket_path, e)
 
         # Remove from tracking
         BaseResourceActionPlugin._spawned_processes.pop(socket_path, None)

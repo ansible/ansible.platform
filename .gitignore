@@ -113,3 +113,6 @@ venv.bak/
 .DS_Store
 
 changelogs/.plugin-cache.yaml
+
+# Integration test config (contains gateway password)
+tests/integration/integration_config.yml
