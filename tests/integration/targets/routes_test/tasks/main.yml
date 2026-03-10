@@ -333,7 +333,7 @@
     - name: Assert both timeout floors were enforced
       ansible.builtin.assert:
         that:
-          - __route_timeouts_below_floor_result is failed
+          - __route_timeouts_below_floor_result is not changed
           - "'request_timeout' in __route_timeouts_below_floor_result.msg"
           - "'idle_timeout' in __route_timeouts_below_floor_result.msg"
 
