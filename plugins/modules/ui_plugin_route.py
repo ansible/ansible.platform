@@ -68,9 +68,16 @@ options:
       type: int
     request_timeout_seconds:
       description:
-      - The request timeout in seconds for this route (max 604800 = 1 week)
-      - This value can only extend the timeout beyond the global default, not reduce it
-      - Leave unset to use the global proxy timeout preference
+      - The request timeout in seconds for this route
+      - Values below the global proxy request_timeout setting are rejected
+      - Leave unset to use the global proxy timeout setting
+      type: int
+    idle_timeout_seconds:
+      description:
+      - The idle timeout in seconds for this route
+      - Connections with no data transmitted within this period are closed
+      - Values below the global proxy idle_timeout setting are rejected
+      - Leave unset to use the global proxy idle timeout setting
       type: int
 notes:
     - The gateway_path, service_path, enable_gateway_auth, and is_internal_route fields are read-only and auto-generated.
@@ -137,6 +144,7 @@ def main():
         node_tags=dict(type="str"),
         order=dict(type="int"),
         request_timeout_seconds=dict(type="int"),
+        idle_timeout_seconds=dict(type="int"),
         # NOTE: gateway_path, service_path, enable_gateway_auth, is_internal_route are read-only
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )

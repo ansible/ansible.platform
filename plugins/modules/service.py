@@ -81,9 +81,16 @@ options:
       type: int
     request_timeout_seconds:
       description:
-      - The request timeout in seconds for this route (max 604800 = 1 week)
-      - This value can only extend the timeout beyond the global default, not reduce it
-      - Leave unset to use the global proxy timeout preference
+      - The request timeout in seconds for this route
+      - Values below the global proxy request_timeout setting are rejected
+      - Leave unset to use the global proxy timeout setting
+      type: int
+    idle_timeout_seconds:
+      description:
+      - The idle timeout in seconds for this route
+      - Connections with no data transmitted within this period are closed
+      - Values below the global proxy idle_timeout setting are rejected
+      - Leave unset to use the global proxy idle timeout setting
       type: int
 
 extends_documentation_fragment:
@@ -142,6 +149,7 @@ def main():
         node_tags=dict(type="str"),
         order=dict(type="int"),
         request_timeout_seconds=dict(type="int"),
+        idle_timeout_seconds=dict(type="int"),
         state=dict(
             choices=["present", "absent", "exists", "enforced"], default="present"
         ),

@@ -101,6 +101,10 @@ class AAPService(AAPObject):
         if request_timeout_seconds is not None:
             self.new_fields['request_timeout_seconds'] = request_timeout_seconds
 
+        idle_timeout_seconds = self.params.get('idle_timeout_seconds')
+        if idle_timeout_seconds is not None:
+            self.new_fields['idle_timeout_seconds'] = idle_timeout_seconds
+
     def get_gateway_path(self):
         if self.data:
             gateway_path = self.data['gateway_path']
