@@ -105,8 +105,86 @@ class ActionModule(BaseResourceActionPlugin):
             }
             user = AnsibleUser(**user_data)
 
+            # Before/after state for return (set by merged/replaced/delete paths)
+            before_state = None
+
             # Detect operation
             operation = self._detect_operation(validated_params)
+
+            # ----- Gathered: read-only, return current state -----
+            if operation == 'find':
+                find_result = manager.execute(
+                    operation='find',
+                    module_name=self.MODULE_NAME,
+                    ansible_data={'username': user.username}
+                )
+                read_only_fields = {'id', 'created', 'modified', 'url'}
+                argspec_fields = set(argspec.get('argument_spec', {}).keys())
+                filtered = {k: v for k, v in (find_result or {}).items()
+                            if k in argspec_fields or k in read_only_fields}
+                try:
+                    validated_output = self._validate_data(
+                        {k: v for k, v in filtered.items() if k in argspec_fields},
+                        argspec, 'output'
+                    )
+                    for f in read_only_fields:
+                        if f in filtered:
+                            validated_output[f] = filtered[f]
+                except Exception:
+                    validated_output = filtered
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: validated_output,
+                    'id': validated_output.get('id'),
+                    'before': validated_output,
+                })
+                return result
+
+            # ----- Merged: ensure exists, merge task keys into existing -----
+            if operation == 'merged':
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data={'username': user.username}
+                    )
+                    if find_result:
+                        before_state = {k: v for k, v in find_result.items()
+                                        if k in argspec.get('argument_spec', {}) or k in {'id', 'created', 'modified', 'url'}}
+                        user.id = find_result.get('id')
+                        # Merge: existing state + task params (task wins)
+                        for k, v in find_result.items():
+                            if hasattr(user, k) and (k not in validated_params or validated_params.get(k) is None):
+                                setattr(user, k, v)
+                        for k, v in validated_params.items():
+                            if v is not None and k not in auth_params and hasattr(user, k):
+                                setattr(user, k, v)
+                        operation = 'update'
+                except Exception:
+                    pass
+                if operation == 'merged':
+                    operation = 'create'
+
+            # ----- Replaced: task dict is source of truth; replace entire resource -----
+            if operation == 'replaced':
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data={'username': user.username}
+                    )
+                    if find_result and find_result.get('id'):
+                        before_state = {k: v for k, v in find_result.items()
+                                        if k in argspec.get('argument_spec', {}) or k in {'id', 'created', 'modified', 'url'}}
+                        manager.execute(
+                            operation='delete',
+                            module_name=self.MODULE_NAME,
+                            ansible_data={'username': user.username, 'id': find_result['id']}
+                        )
+                except Exception:
+                    pass
+                operation = 'create'
 
             # For 'create' with state='present', check if user exists first (idempotency)
             if operation == 'create' and validated_params.get('state') == 'present':
@@ -133,6 +211,9 @@ class ActionModule(BaseResourceActionPlugin):
                     )
                     if find_result and find_result.get('id'):
                         user.id = find_result.get('id')
+                        _ro = {'id', 'created', 'modified', 'url'}
+                        _af = set(argspec.get('argument_spec', {}).keys())
+                        before_state = {k: v for k, v in find_result.items() if k in _af or k in _ro}
                     else:
                         # User doesn't exist, skip delete (idempotent)
                         result.update({
@@ -185,6 +266,12 @@ class ActionModule(BaseResourceActionPlugin):
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
             })
+            if before_state is not None:
+                result['before'] = before_state
+                result['after'] = validated_output if operation != 'delete' else {}
+            elif result.get('changed'):
+                # Create path: no "before" (resource did not exist), but return "after" when a change was made
+                result['after'] = validated_output
 
             # Performance timing: Action plugin end
             action_end = time.perf_counter()
