@@ -181,26 +181,6 @@ class UserTransformMixin_v2(BaseTransformMixin):
     def get_lookup_field(cls) -> str:
         return "username"
 
-    def to_api(self, context: Union[TransformContext, Dict[str, Any]]) -> "APIUser_v2":
-        # Reuse BaseTransformMixin behavior via the v1-style mapping pattern.
-        api_data: Dict[str, Any] = {}
-        for ansible_field, mapping in self._field_mapping.items():
-            if not hasattr(self, ansible_field):
-                continue
-            value = getattr(self, ansible_field)
-            if value is None:
-                continue
-            if isinstance(mapping, str):
-                api_data[mapping] = value
-            elif isinstance(mapping, dict):
-                api_field = mapping["api_field"]
-                transform_name = mapping.get("forward_transform")
-                if transform_name and transform_name in self._transform_registry:
-                    api_data[api_field] = self._transform_registry[transform_name](value, context)
-                else:
-                    api_data[api_field] = value
-        return APIUser_v2(**api_data)
-
     @classmethod
     def from_api(
         cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]

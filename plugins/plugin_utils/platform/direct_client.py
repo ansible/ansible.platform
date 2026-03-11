@@ -8,6 +8,7 @@ without a persistent manager process, but shares all the same layers
 
 import base64
 import json
+import re
 import logging
 import threading
 import time
@@ -109,19 +110,59 @@ class DirectHTTPClient(BaseAPIClient):
 
     def _detect_api_version(self) -> str:
         """
-        Detect API version (simplified - just return default).
-
-        In standard mode, we default to v1 without making an HTTP request.
-        This avoids worker process crashes from HTTP requests during init.
-
-        Returns:
-            API version string (always '1' for now)
+        Detect API version dynamically by querying the platform and negotiating
+        with the collection's registry.
         """
-        # Default to v1 - this is safe for AAP Gateway
-        # If we need dynamic version detection, it should be done
-        # after the first successful API call, not before
-        logger.info("DirectHTTPClient: Using default API version v1")
-        return '1'
+        logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
+        try:
+            url = f"{self.base_url.rstrip('/')}/api/gateway/"
+            response = self.session.open(
+                'GET',
+                url,
+                validate_certs=self.verify_ssl,
+                timeout=self.request_timeout
+            )
+
+            response_body = response.read()
+            api_data = json.loads(response_body) if response_body else {}
+            version_str = None
+
+            # Extract from current_version (e.g., "/api/gateway/v1/" -> "1")
+            if 'current_version' in api_data:
+                match = re.search(r'/v(\d+(?:\.\d+)?)/?$', api_data['current_version'])
+                if match:
+                    version_str = match.group(1)
+
+            # Negotiate highest mutual version from available_versions
+            if not version_str and 'available_versions' in api_data:
+                available = api_data['available_versions']
+                if isinstance(available, dict) and available:
+                    platform_versions = [v.lstrip('v') for v in available.keys()]
+                    collection_supported = self.registry.get_supported_versions()
+                    mutual_versions = [v for v in platform_versions if v in collection_supported]
+
+                    if mutual_versions:
+                        try:
+                            from packaging.version import parse as parse_version
+                        except ImportError:
+                            from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
+                            parse_version = version.parse
+                        version_str = max(mutual_versions, key=parse_version)
+
+            # Validate negotiated version
+            if version_str and version_str in self.registry.get_supported_versions():
+                logger.info("DirectHTTPClient: Negotiated mutual API version: v%s", version_str)
+                return version_str
+
+        except Exception as e:
+            logger.warning("DirectHTTPClient: Failed to query platform for versions: %s. Falling back to registry discovery.", e)
+
+        latest_supported = self.registry.get_latest_version()
+        if not latest_supported:
+            raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
+
+        logger.info("DirectHTTPClient: Defaulting to highest collection version: v%s", latest_supported)
+        return latest_supported
 
     def _authenticate(self) -> None:
         """
@@ -566,7 +607,7 @@ class DirectHTTPClient(BaseAPIClient):
         """Create resource with transformation."""
         # FORWARD TRANSFORM: Ansible → API
         logger.info("DirectHTTPClient: Forward transform for %s: %s", mixin_class.__name__, ansible_data)
-        api_data = ansible_data.to_api(context)
+        api_data = mixin_class.from_ansible_data(ansible_data, context)
         logger.info("DirectHTTPClient: API data for %s: %s", mixin_class.__name__, api_data)
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
@@ -608,7 +649,7 @@ class DirectHTTPClient(BaseAPIClient):
             current_data = {}
 
         # FORWARD TRANSFORM: Ansible → API
-        api_data = ansible_data.to_api(context)
+        api_data = mixin_class.from_ansible_data(ansible_data, context)
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
