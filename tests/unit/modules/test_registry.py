@@ -62,10 +62,27 @@ class TestAPIVersioning(unittest.TestCase):
 
     @patch('ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager.get_credential_manager')
     @patch('requests.Session.get')
+    def test_platform_service_version_from_header(self, mock_get, mock_cred_manager):
+        """
+        Validates that the PlatformService correctly prioritizes and reads the
+        API version from the X-API-Version header.
+        """
+        mock_response = MagicMock()
+        mock_response.headers = {'X-API-Version': 'v2'}
+        mock_get.return_value = mock_response
+        mock_store = MagicMock()
+        mock_store.get_auth_credentials.return_value = ("admin", "admin", None)
+        mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
+        config = GatewayConfig(base_url="https://127.0.0.1", username="admin", password="admin")
+        service = PlatformService(config)
+        self.assertEqual(service.api_version, '2')
+
+    @patch('ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager.get_credential_manager')
+    @patch('requests.Session.get')
     def test_platform_service_version_fallback(self, mock_get, mock_cred_manager):
         """
         Validates that if the Gateway API reports an unsupported future version,
-        the PlatformService gracefully falls back to the highest locally supported version.
+        the PlatformService gracefully defaults to '1'.
         """
         mock_response = MagicMock()
         mock_response.headers = {'Content-Type': 'application/json'}
@@ -79,9 +96,7 @@ class TestAPIVersioning(unittest.TestCase):
         mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
         config = GatewayConfig(base_url="https://127.0.0.1", username="admin", password="admin")
         service = PlatformService(config)
-        registry = APIVersionRegistry()
-        expected_fallback = registry.get_latest_version()
-        self.assertEqual(service.api_version, expected_fallback)
+        self.assertEqual(service.api_version, '1')
 
     @patch('ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry.logger')
     def test_loader_closest_higher_with_warning(self, mock_logger):
