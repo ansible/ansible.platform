@@ -51,10 +51,14 @@ options:
       type: str
     scope:
       description:
-        - Allowed scopes, further restricts user's permissions. Must be a simple space-separated string with allowed scopes ['read', 'write'].
+        - Allowed scopes, further restricts user's permissions.
+        - "Acceptable values are: 'read', 'write', 'openid', 'roles'."
+        - Multiple scopes can be provided as a list to combine them (e.g. openid + roles for OIDC identity and role claims).
+        - A single scope can also be provided as a string for convenience.
       required: False
-      type: str
-      choices: ["read", "write"]
+      type: list
+      elements: str
+      choices: ["read", "write", "openid", "roles"]
     state:
       description:
         - Desired state of the resource.
@@ -99,6 +103,14 @@ EXAMPLES = """
         state: absent
       when: token is defined
 
+- name: Create a token with openid and roles scopes for OIDC
+  ansible.platform.token:
+    description: 'OIDC token'
+    scope:
+      - openid
+      - roles
+    state: present
+
 - name: Delete a token by its id
   ansible.platform.token:
     existing_token_id: 4
@@ -140,7 +152,7 @@ def main():
         description=dict(),
         application=dict(),
         organization=dict(),
-        scope=dict(choices=['read', 'write']),
+        scope=dict(type='list', elements='str', choices=['read', 'write', 'openid', 'roles']),
         existing_token=dict(type='dict', no_log=False),
         existing_token_id=dict(),
         state=dict(choices=['present', 'absent'], default='present'),
@@ -202,7 +214,7 @@ def main():
     if application_id is not None:
         new_fields['application'] = application_id
     if scope is not None:
-        new_fields['scope'] = scope
+        new_fields['scope'] = ' '.join(scope)
 
     # If the state was present and we can let the module build or update the existing item, this will return on its own
     module.create_or_update_if_needed(
