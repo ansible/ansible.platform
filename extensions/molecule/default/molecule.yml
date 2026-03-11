@@ -1,0 +1,11 @@
+# Minimal default scenario so Molecule does not error on "default not found".
+# We do not use shared state; the real scenario is "users".
+---
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+scenario:
+  test_sequence: []
