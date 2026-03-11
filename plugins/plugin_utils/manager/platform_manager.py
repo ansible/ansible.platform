@@ -393,6 +393,10 @@ class PlatformService(BaseAPIClient):
         3. Parses the JSON response to extract current_version
         4. Negotiates the highest mutual version from available_versions
         5. Dynamically falls back to highest collection version if detection fails.
+        2. Checks X-API-Version header first, then falls back to JSON body.
+        3. Parses the JSON response to extract current_version
+        4. Negotiates the highest mutual version from available_versions
+        5. Dynamically falls back to highest collection version if detection fails.
 
         Returns:
             Version string (e.g., '1', '2.1')
@@ -434,7 +438,7 @@ class PlatformService(BaseAPIClient):
             if 'X-API-Version' in response.headers:
                 version_str = response.headers['X-API-Version'].lstrip('v')
                 logger.debug("PlatformService: Extracted version '%s' from X-API-Version header", version_str)
-
+                
             # Parse JSON response
             elif response.headers.get('Content-Type', '').startswith('application/json'):
                 try:
