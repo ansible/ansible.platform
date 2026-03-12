@@ -284,6 +284,59 @@
         that:
           - __route_rename_result.results[0] is not changed
           - __route_rename_result.results[1] is not changed
+
+    ### Test route timeouts (request_timeout_seconds & idle_timeout_seconds) ###
+    - name: Set both timeout fields on a route
+      ansible.platform.route:
+        name: "{{ test_id }}Gateway Config Route"
+        request_timeout_seconds: 3600
+        idle_timeout_seconds: 60
+      register: __route_timeouts_set_result
+
+    - name: Assert timeout fields were set
+      ansible.builtin.assert:
+        that:
+          - __route_timeouts_set_result is changed
+
+    - name: Set both timeout fields again (idempotency)
+      ansible.platform.route:
+        name: "{{ test_id }}Gateway Config Route"
+        request_timeout_seconds: 3600
+        idle_timeout_seconds: 60
+      register: __route_timeouts_idempotent_result
+
+    - name: Assert timeout fields idempotency
+      ansible.builtin.assert:
+        that:
+          - __route_timeouts_idempotent_result is not changed
+
+    - name: Update both timeout fields to new values
+      ansible.platform.route:
+        name: "{{ test_id }}Gateway Config Route"
+        request_timeout_seconds: 7200
+        idle_timeout_seconds: 120
+      register: __route_timeouts_update_result
+
+    - name: Assert timeout fields were updated
+      ansible.builtin.assert:
+        that:
+          - __route_timeouts_update_result is changed
+
+    - name: Set both timeouts below global setting floors (should fail)
+      ansible.platform.route:
+        name: "{{ test_id }}Gateway Config Route"
+        request_timeout_seconds: 1
+        idle_timeout_seconds: 1
+      register: __route_timeouts_below_floor_result
+      failed_when: false
+
+    - name: Assert both timeout floors were enforced
+      ansible.builtin.assert:
+        that:
+          - __route_timeouts_below_floor_result is not changed
+          - "'request_timeout' in __route_timeouts_below_floor_result.msg"
+          - "'idle_timeout' in __route_timeouts_below_floor_result.msg"
+
   always:
     ### Delete Routes ###
     - name: Delete Routes

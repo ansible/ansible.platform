@@ -75,6 +75,19 @@ options:
       - Comma separated string
       - Selects which (tagged) nodes receive traffic from this route
       type: str
+    request_timeout_seconds:
+      description:
+      - The request timeout in seconds for this route
+      - Values below the global proxy request_timeout setting are rejected
+      - Leave unset to use the global proxy timeout setting
+      type: int
+    idle_timeout_seconds:
+      description:
+      - The idle timeout in seconds for this route
+      - Connections with no data transmitted within this period are closed
+      - Values below the global proxy idle_timeout setting are rejected
+      - Leave unset to use the global proxy idle timeout setting
+      type: int
 
 extends_documentation_fragment:
 - ansible.platform.state
@@ -142,6 +155,8 @@ def main():
         service_path=dict(type="str"),
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
+        request_timeout_seconds=dict(type="int"),
+        idle_timeout_seconds=dict(type="int"),
         state=dict(
             choices=["present", "absent", "exists", "enforced"], default="present"
         ),

@@ -66,6 +66,19 @@ options:
       - The order to apply the routes in; lower numbers are first. Items with the same value have no guaranteed order
       - Defaults to 50 when created
       type: int
+    request_timeout_seconds:
+      description:
+      - The request timeout in seconds for this route
+      - Values below the global proxy request_timeout setting are rejected
+      - Leave unset to use the global proxy timeout setting
+      type: int
+    idle_timeout_seconds:
+      description:
+      - The idle timeout in seconds for this route
+      - Connections with no data transmitted within this period are closed
+      - Values below the global proxy idle_timeout setting are rejected
+      - Leave unset to use the global proxy idle timeout setting
+      type: int
 notes:
     - The gateway_path, service_path, enable_gateway_auth, and is_internal_route fields are read-only and auto-generated.
     - UI plugin routes always have enable_gateway_auth=False and is_internal_route=False.
@@ -130,6 +143,8 @@ def main():
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
         order=dict(type="int"),
+        request_timeout_seconds=dict(type="int"),
+        idle_timeout_seconds=dict(type="int"),
         # NOTE: gateway_path, service_path, enable_gateway_auth, is_internal_route are read-only
         state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )
