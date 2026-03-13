@@ -1,8 +1,16 @@
 # Ansible Platform Collection
 
-## Changelog for v2.5.20250326
+## Changelog for v2.7.20260313
 
-* Added support for setting URL for applications
+* Added OIDC User Identity support for Ansible Automation Platform Gateway
+* New modules: feature_flag, ca_certificates, role_team_assignment, role_definition
+* Add request_timeout_seconds and idle_timeout_seconds to route modules
+* Add enable_mtls attribute to route module for mutual TLS support
+* Add associated_authenticators parameter to users module
+* Add Gateway UI plugin Route Collection Module
+* Enhanced organization association logic and auditor user support
+* Multiple bug fixes for role assignment, object deletion, and URL handling
+* Deprecated authenticator_uid and authenticators fields
 
 ## Description
 
