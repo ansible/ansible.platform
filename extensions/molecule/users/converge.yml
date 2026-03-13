@@ -21,6 +21,11 @@
         password: "{{ molecule_password }}"
       register: create_result
 
+    - name: Show create result
+      ansible.builtin.debug:
+        var: create_result
+        verbosity: 0
+
     - name: Assert create changed
       ansible.builtin.assert:
         that: create_result is changed
@@ -33,6 +38,11 @@
         state: present
       register: idem_result
 
+    - name: Show idempotency result
+      ansible.builtin.debug:
+        var: idem_result
+        verbosity: 0
+
     - name: Assert idempotent run did not change
       ansible.builtin.assert:
         that: idem_result is not changed
@@ -43,6 +53,11 @@
         first_name: MoleculeUpdated
         is_superuser: true
       register: update_result
+
+    - name: Show update result
+      ansible.builtin.debug:
+        var: update_result
+        verbosity: 0
 
     - name: Assert update changed
       ansible.builtin.assert:

@@ -68,14 +68,13 @@ options:
 
   state:
     description:
-      - Desired state of the user.
-      - C(present) and C(absent) are the classic create/update and delete.
-      - C(gathered) reads and returns the current user (no change).
-      - C(merged) ensures the user exists and merges task keys into existing (create if missing, else PATCH).
-      - C(replaced) makes the task dict the full source of truth (delete then create if existed, else create).
-      - C(deleted) removes the user (same as C(absent)).
+      - Desired state of the user (CRUD-aligned).
+      - C(present) ensures the user exists (create or update); idempotent.
+      - C(absent) removes the user; idempotent if already absent.
+      - C(exists) reads and returns the current user (no change).
+      - C(enforced) ensures the user exists and merges task keys into existing, defaulting any option not provided.
     type: str
-    choices: ['present', 'absent', 'gathered', 'merged', 'replaced', 'deleted']
+    choices: ['present', 'absent', 'exists', 'enforced']
     default: 'present'
 
 extends_documentation_fragment:
@@ -86,15 +85,14 @@ notes:
   - This module uses a persistent connection manager for improved performance
   - Multiple tasks in a playbook will reuse the same connection
   - The organizations and is_platform_auditor fields are deprecated
-  - For C(gathered), only I(username) is required to identify the user; returns current state (no change)
-  - For C(merged), only provided fields are updated; omitted fields are left unchanged on the server
-  - For C(replaced), the user is recreated from the task dict; any server-side-only fields are reset
+  - For C(exists), only I(username) is required; returns current state (read-only, no change)
+  - For C(enforced), omitted fields are left unchanged on the server (merge semantics)
 
 return:
   user:
-    description: User resource (when state is not C(absent)/C(deleted)); matches argspec + read-only fields (id, url, created, modified).
+    description: User resource (when state is not C(absent)); matches argspec + read-only fields (id, url, created, modified).
   before:
-    description: State before the operation (when state is C(merged), C(replaced), C(absent), or C(deleted) and resource existed).
+    description: State before the operation (when state is C(enforced) or C(absent) and resource existed).
   after:
     description: State after the operation (when a change was made).
   changed:

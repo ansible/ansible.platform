@@ -1,6 +1,7 @@
 # Example: ansible-playbook -e base_url=https://your-gateway/ ...
 ---
-base_url: "{{ lookup('env', 'BENCHMARK_BASE_URL') | default('https://<GATEWAY-IP>/', true) }}"
+# REQUIRED: set env BENCHMARK_BASE_URL or pass -e "base_url=https://your-gateway/"
+base_url: "{{ lookup('env', 'BENCHMARK_BASE_URL') | default('https://34.238.38.25/', true) }}"
 gateway_username: "{{ lookup('env', 'GATEWAY_USERNAME') | default('admin', true) }}"
 gateway_password: "{{ lookup('env', 'GATEWAY_PASSWORD') | default('Admin!Password!Gw', true) }}"
 

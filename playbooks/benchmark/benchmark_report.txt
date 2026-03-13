@@ -1,10 +1,11 @@
 ==============================================
 Benchmark report: create 20 users (mode=both)
 ==============================================
-Direct mode (ephemeral manager per task): --- Create 20 users (DIRECT mode) ---
-47.91s
-  HTTP sessions: 20  TLS sessions: 20
-Persistent mode (reused manager):         --- Create 20 users (PERSISTENT mode) ---
-22.59s
-  HTTP sessions: 1  TLS sessions: 1
+Direct mode (ephemeral manager per task): 54.69s
+  HTTP sessions: 27  TLS sessions: 27
+Persistent mode (reused manager):         30.29s
+  HTTP sessions: 2  TLS sessions: 2
 
+Speedup (direct / persistent): 1.81x
+Time saved with persistent:    24.4s
+==============================================

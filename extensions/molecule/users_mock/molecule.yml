@@ -1,0 +1,32 @@
+---
+# Scenario: test ansible.platform.user against the mock Gateway server (no real AAP).
+# Requires the mock to be running: use "molecule test --all" (default starts mock) or start
+# tools/mock_gateway_server.py manually on port 8000.
+# Inherits config.yml (shared_state, test_sequence).
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      collections_path: "${ANSIBLE_COLLECTIONS_PATH:-../../..}"
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup

@@ -4,13 +4,15 @@
 
 This directory holds Molecule scenarios for the ansible.platform collection.
 
-**Important:** `extensions/molecule/` must be **tracked in git** for tox integration to run these tests. Tox copies only `git ls-files` into the collection build; if this directory is untracked, no scenarios are found and you get "got empty parameter set for (molecule_scenario)". Run `git add extensions/molecule/` (and commit) so the **users** scenario runs in `tox -e integration-*`. Tests run against an AAP Gateway; connection is configured via environment variables or inventory.
+**Important:** For tox integration to run these tests, (1) track in git: `extensions/molecule/` and `tests/integration/test_integration.py`. (2) Our tox integration runs pytest with `--rootdir={toxinidir}` so pytest-ansible’s scenario discovery (which runs `git ls-files` from `config.rootpath`) uses the repo; otherwise rootpath can be wrong and no scenarios are found. Tox copies only `git ls-files` into the collection build; if this directory is untracked, no scenarios are found and you get "got empty parameter set for (molecule_scenario)". Run `git add extensions/molecule/` (and commit) so the **users** scenario runs in `tox -e integration-*`. Our `tox-ansible.ini` overrides integration envs to run pytest from the **collection_build** directory (which has `galaxy.yml` and `extensions/molecule`); the installed collection tarball does not include `galaxy.yml`, so discovery would otherwise find no scenarios. Tests run against an AAP Gateway; connection is configured via environment variables or inventory.
 
-## Layout
+## Layout (meraki_rm–inspired)
 
-- **config.yml** – Base config (optional; scenarios can inherit).
-- **inventory.yml** – Shared inventory: `localhost` with `gateway_*` vars from env.
-- **users/** – Scenario for `ansible.platform.user`: create, update, idempotency, verify, cleanup.
+- **config.yml** – Base config: `shared_state: true`, `prerun: false`, so the **default** scenario runs create first and destroy last when using `molecule test --all`. Other scenarios share the mock server.
+- **inventory.yml** – Shared inventory: `localhost` with `gateway_*` vars.
+- **default/** – Lifecycle scenario: **create** (start mock Gateway server) and **destroy** (stop it). No converge. With `molecule test --all`, default runs create first, then other scenarios, then default destroy. See [docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md](../docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md).
+- **users/** – Scenario for `ansible.platform.user` against a **real AAP Gateway**: create, update, idempotency, verify, cleanup. Requires a running Gateway (or skip in CI when none).
+- **users_mock/** – Scenario for `ansible.platform.user` against the **mock** server (`http://127.0.0.1:8000`). No real AAP required. Use with `molecule test --all` (mock started by default) or start `python3 tools/mock_gateway_server.py` manually.
 
 ## Gateway configuration
 
@@ -45,19 +47,37 @@ tox -f integration --ansible -p auto --conf tox-ansible.ini
 From the **collection root** (where `galaxy.yml` and `extensions/` live):
 
 ```bash
-export GATEWAY_PASSWORD='your-gateway-password'
-# Optional: export GATEWAY_HOSTNAME GATEWAY_USERNAME
-
-# Use only this repo's collections (avoids loading cisco.ios, iosxr, etc. from venv/site-packages)
-# From collection root .../ansible_collections/ansible/platform, parent of ansible_collections is ../..
+# Use only this repo's collections
 export ANSIBLE_COLLECTIONS_PATH="$(cd ../.. && pwd)"
-
-# Run the users scenario
-molecule test -s users --all
-# Or: molecule converge -s users && molecule verify -s users
 ```
 
-Ensure the Gateway is running and reachable at `GATEWAY_HOSTNAME` before running tests.
+**Option A — All scenarios with mock (no real AAP):**  
+Default starts the mock, then runs `users_mock` (and optionally `users` if you have a Gateway). Default destroy stops the mock at the end.
+
+```bash
+molecule test --all
+```
+
+To see detailed Ansible output (task args, module I/O): `ANSIBLE_VERBOSITY=2 molecule test --all` (use 1–4 for -v through -vvvv). See [docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md](../../docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md).
+
+**Option B — Only mock-based user tests:**  
+Start the mock yourself, then run the scenario:
+
+```bash
+python3 tools/mock_gateway_server.py --port 8000 &
+molecule test -s users_mock --all
+# Stop mock when done: pkill -f mock_gateway_server
+```
+
+**Option C — Real Gateway (users scenario):**
+
+```bash
+export GATEWAY_PASSWORD='your-gateway-password'
+# Optional: export GATEWAY_HOSTNAME GATEWAY_USERNAME
+molecule test -s users --all
+```
+
+Ensure the Gateway is running and reachable before running the **users** scenario.
 
 ### Why you see “Another version of …” (networking / ansible.platform) warnings
 

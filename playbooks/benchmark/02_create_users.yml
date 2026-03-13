@@ -17,8 +17,8 @@
     gateway_validate_certs: false
     # Force username/password auth for benchmark (ignore AAP_TOKEN so we don't get 401 from stale token)
     gateway_token: ""
-    # Override with -e ansible_platform_persistent=true|false (default: direct)
-    ansible_platform_persistent: "{{ ansible_platform_persistent | default(false) | bool }}"
+    # Override with -e ansible_platform_persistent=true|false (default: direct). String "false" must be false.
+    ansible_platform_persistent: "{{ (ansible_platform_persistent | default(false) | string | lower) in ['true', 'yes', '1'] }}"
 
   tasks:
     - name: Show connection mode for this run

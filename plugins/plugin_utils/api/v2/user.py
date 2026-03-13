@@ -101,10 +101,24 @@ class UserTransformMixin_v2(BaseTransformMixin):
             "modified",
             "url",
         ]
+        read_only = {"id", "created", "modified", "url"}
+        # Only send null for these on enforced update; many APIs reject null for password/booleans
+        clearable_string_fields = {"email", "first_name", "last_name"}
+        op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
+        include_nulls = getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+
         for field in simple_fields:
             value = getattr(ansible_instance, field, None)
+            if field == "password" and op == "update":
+                # Never send password on update unless user set a new one (API rejects placeholder/read-only)
+                if value and str(value).strip() and str(value) != "Password Disabled":
+                    api_data[field] = value
+                continue
             if value is not None:
                 api_data[field] = value
+            elif op == "update" and include_nulls and field not in read_only and field in clearable_string_fields:
+                # Enforced update only: send empty string to clear (Gateway API expects "" not null, per UI payload)
+                api_data[field] = ""
 
         # organizations (names -> IDs)
         if getattr(ansible_instance, "organizations", None):
@@ -139,8 +153,8 @@ class UserTransformMixin_v2(BaseTransformMixin):
             "update": EndpointOperation(
                 path="/api/gateway/v2/users/{id}/",
                 method="PATCH",
+                # Omit username from body; resource is identified by URL
                 fields=[
-                    "username",
                     "email",
                     "first_name",
                     "last_name",

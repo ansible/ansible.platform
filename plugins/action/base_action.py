@@ -1021,30 +1021,26 @@ class BaseResourceActionPlugin(ActionBase):
 
     def _detect_operation(self, args: dict) -> str:
         """
-        Detect operation type from arguments.
+        Detect operation type from arguments (CRUD-aligned state).
 
         Args:
             args: Module arguments
 
         Returns:
-            Operation name ('create', 'update', 'delete', 'find', 'merged', 'replaced').
-            'merged' and 'replaced' are handled by the action plugin (find then create/update or replace).
+            Operation name ('create', 'update', 'delete', 'find', 'enforced').
+            'enforced' is handled by the action plugin (find then merge and create/update).
         """
         state = args.get('state', 'present')
 
         if state in ('absent', 'deleted'):
             return 'delete'
         elif state == 'present':
-            # Check if ID is provided (update) or not (create)
             if args.get('id'):
                 return 'update'
-            else:
-                return 'create'
-        elif state in ('find', 'gathered'):
+            return 'create'
+        elif state in ('exists', 'find', 'gathered'):
             return 'find'
-        elif state == 'merged':
-            return 'merged'
-        elif state == 'replaced':
-            return 'replaced'
+        elif state in ('enforced', 'merged'):
+            return 'enforced'
         else:
             raise AnsibleError(f"Unknown state: {state}")

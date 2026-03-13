@@ -13,6 +13,6 @@ def test_molecule_scenario(molecule_scenario: MoleculeScenario) -> None:
     """
     proc = molecule_scenario.test()
     assert proc.returncode == 0, (
-        f"molecule test failed for scenario {molecule_scenario.scenario_name!r}: "
+        f"molecule test failed for scenario {molecule_scenario.name!r}: "
         f"returncode={proc.returncode}"
     )

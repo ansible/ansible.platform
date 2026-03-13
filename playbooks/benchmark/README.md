@@ -39,13 +39,18 @@ export GATEWAY_PASSWORD="your-password"
 # Default: 100 users, both modes (direct then persistent)
 ./playbooks/benchmark/run_benchmark.sh
 
-# Optional arguments: [user_count] [mode]
+# Optional arguments: [user_count] [mode] [verbose]
 ./playbooks/benchmark/run_benchmark.sh 50              # 50 users, both modes
-./playbooks/benchmark/run_benchmark.sh 100 direct     # 100 users, direct only
-./playbooks/benchmark/run_benchmark.sh 100 persistent  # 100 users, persistent only
+./playbooks/benchmark/run_benchmark.sh 100 direct       # 100 users, direct only
+./playbooks/benchmark/run_benchmark.sh 100 persistent   # 100 users, persistent only
+./playbooks/benchmark/run_benchmark.sh 10 both -vv     # 10 users, both modes, verbose (-v, -vv, -vvv)
+# Or use env for verbose:
+BENCHMARK_VERBOSE=-vv ./playbooks/benchmark/run_benchmark.sh 10
 ```
 
 **Mode:** `direct` | `persistent` | `both` (default: `both`). Use `direct` or `persistent` to run and time only that mode.
+
+**Verbose:** Optional third argument `-v`, `-vv`, or `-vvv` (passed to `ansible-playbook`). Or set `BENCHMARK_VERBOSE=-v` (or `-vv`, `-vvv`) in the environment.
 
 The script writes a summary to `playbooks/benchmark/benchmark_report.txt` (override with `BENCHMARK_REPORT_FILE`).
 
@@ -93,6 +98,10 @@ The connection plugin uses the **`ansible_platform_persistent`** variable (per h
    In the playbook, `vars: ansible_platform_persistent: true`
 
 Playbooks 02 and 03 default to `false` (direct) if not set and print **"Connection mode: direct"** or **"Connection mode: persistent"** at the start so the run output is clear.
+
+## Notes on cleanup and "already absent"
+
+- **Credentials:** Create (02) and cleanup (03) must use the same Gateway credentials. Both playbooks use `vars.yml` (and env) for `gateway_username`, `gateway_password`, `gateway_token`, and `base_url`. If cleanup used different auth (e.g. a wrong or empty token), the API can return an error that the user module reports as "User 'bench_user_XXX' does not exist (already absent)" even though the users exist—so you would see all 10 (or N) users reported "already absent" on the first cleanup. With matching credentials, the first cleanup after create will delete the users (changed or ok); "already absent" is then normal only when users were already removed (e.g. running cleanup twice, or the second cleanup run in `both` mode).
 
 ## Variables
 
