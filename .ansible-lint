@@ -2,5 +2,8 @@
 profile: production
 exclude_paths:
   - 'changelogs/'
+  # Molecule inventory files are dicts, not playbooks; avoid syntax-check playbook rule
+  - 'extensions/molecule/default/inventory.yml'
+  - 'extensions/molecule/inventory.yml'
 use_default_rules: true
 ...

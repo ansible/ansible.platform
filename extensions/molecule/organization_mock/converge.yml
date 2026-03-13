@@ -45,3 +45,4 @@
     - name: Assert update changed
       ansible.builtin.assert:
         that: update_result is changed
+...

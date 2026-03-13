@@ -43,3 +43,4 @@ jobs:
       - name: Stop mock Gateway (default scenario destroy)
         if: always()
         run: molecule destroy -s default
+...

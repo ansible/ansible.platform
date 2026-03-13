@@ -12,7 +12,7 @@
     - name: Kill any stale mock server (so port is free)
       ansible.builtin.shell: pkill -f "mock_gateway_server" || true
       changed_when: false
-      ignore_errors: true
+      failed_when: false
 
     - name: Start mock server in background (daemon)
       ansible.builtin.command:
@@ -21,7 +21,8 @@
           --port {{ mock_server_port }}
           --daemon
       args:
-        chdir: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+        # Repo/collection root (create.yml lives in extensions/molecule/default/)
+        chdir: "{{ playbook_dir }}/../.."
       changed_when: true
       register: server_start
 
@@ -34,3 +35,4 @@
       retries: 30
       delay: 2
       until: health_check.status == 200
+...

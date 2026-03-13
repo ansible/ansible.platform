@@ -21,3 +21,4 @@
       ansible.builtin.assert:
         that: delete_result is not failed
         fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name }}."
+...

@@ -28,3 +28,4 @@
       ansible.builtin.assert:
         that: exists_result.organization.description == "Updated by Molecule organization_mock"
         fail_msg: "Verify: organization description was not updated."
+...

@@ -23,3 +23,4 @@
           - exists_result.get('exists') | default(false) | bool
           - exists_result.get('user') is defined
         fail_msg: "Verify: could not find user {{ molecule_user }} (mock unreachable or user missing)."
+...
