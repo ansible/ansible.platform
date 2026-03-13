@@ -17,6 +17,7 @@ Overview and index for the ansible.platform collection (ANSTRAT-1640). Docs are 
 | **Migration** | [migration/](migration/) | Playbook migration |
 | **Demo** | [demo/](demo/) | Demo script, Q&A |
 | **Reusables** | [reusables/](reusables/) | Shared variables, snippets |
+| **Reference (meraki_rm)** | [REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md) | What we can learn from Brad’s action plugin & resource module approach |
 
 ---
 
@@ -53,7 +54,7 @@ How to run and extend tests; CI and references.
 | Test type | Command |
 |-----------|--------|
 | **Unit** | `tox -f unit --ansible -p auto --conf tox-ansible.ini` or `ansible-test units --venv -v` or `pytest tests/unit/ -v` (from collection root; see [RUN_UNIT_TESTS.md](testing/RUN_UNIT_TESTS.md) for pytest path). |
-| **Integration (Molecule)** | `ANSIBLE_COLLECTIONS_PATH="$(cd ../.. && pwd)" molecule test --all` |
+| **Integration (Molecule)** | `ANSIBLE_COLLECTIONS_PATH="$(cd ../.. && pwd)" molecule test --all` (or mock-only: `molecule create -s default` then `molecule test -s users_mock --all` and `molecule test -s organization_mock --all`). CI runs mock scenarios via `.github/workflows/molecule-mock.yml`. |
 
 Unit tests live under **`tests/unit/`** (connection plugin, registry, loader). Integration tests use **Molecule** (see `extensions/molecule/` and [MOLECULE_TEST_ALL-HOW-IT-WORKS.md](testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md)).
 
@@ -92,6 +93,7 @@ Incident and root-cause notes.
 Playbook and usage migration.
 
 - **PLAYBOOK_MIGRATION.md** — Migrating playbooks to the new path
+- **MIGRATE-MODULES-TO-PERSISTENT-MANAGER.md** — Migrating modules (organization, team, etc.) to the action plugin + persistent manager path (user as reference)
 
 ### [demo/](demo/)
 
@@ -105,6 +107,11 @@ Demos and FAQ.
 Shared content (e.g. variables, snippets).
 
 - **variables.md**
+
+### Reference: meraki_rm (Brad’s approach)
+
+- **[REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md)** — Action plugin & resource module pattern, data-driven base, User Models, identity categories, adding resources. Use when evolving our action plugin design or adding new resources.
+- **Testing/mock:** [testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md](testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md) — Molecule and mock server.
 
 ---
 

@@ -1,0 +1,47 @@
+---
+# Converge: organization create, idempotency, update, delete against mock Gateway.
+- name: Converge — organization integration tests (mock)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    molecule_org_name: "Molecule Test Org"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        description: "Created by Molecule organization_mock"
+      register: create_result
+
+    - name: Show create result
+      ansible.builtin.debug:
+        var: create_result
+        verbosity: 3
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+
+    - name: Run again (idempotency)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        description: "Created by Molecule organization_mock"
+        state: present
+      register: idem_result
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+
+    - name: Update organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        description: "Updated by Molecule organization_mock"
+      register: update_result
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed

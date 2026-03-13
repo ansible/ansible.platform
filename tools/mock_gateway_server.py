@@ -12,8 +12,8 @@ This server implements a minimal subset of endpoints used by the POC:
   - GET /api/gateway/v2/ping/
   - GET/POST /api/gateway/v{1,2}/users/
   - GET/PATCH/DELETE /api/gateway/v{1,2}/users/{id}/
-  - GET /api/gateway/v{1,2}/organizations/?name=<name>
-  - GET /api/gateway/v{1,2}/organizations/{id}/
+  - GET/POST /api/gateway/v{1,2}/organizations/
+  - GET/PATCH/DELETE /api/gateway/v{1,2}/organizations/{id}/
 
 Notes
 -----
@@ -43,8 +43,9 @@ def _now_iso() -> str:
 class Store:
     lock: threading.Lock = field(default_factory=threading.Lock)
     next_user_id: int = 1000
+    next_org_id: int = 1000
     users: Dict[int, Dict[str, Any]] = field(default_factory=dict)
-    # Pre-seed orgs used by lookup logic (name -> id)
+    # Pre-seed orgs used by lookup logic (name -> id); dynamic orgs added here too
     orgs_by_id: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     orgs_by_name: Dict[str, int] = field(default_factory=dict)
 
@@ -136,12 +137,72 @@ class Store:
                 return {"count": 0, "results": []}
             return {"count": 1, "results": [self.orgs_by_id[org_id]]}
 
+    def list_orgs(self, name: Optional[str] = None) -> Dict[str, Any]:
+        self.seed_defaults()
+        with self.lock:
+            if name:
+                org_id = self.orgs_by_name.get(name)
+                if not org_id:
+                    return {"count": 0, "results": []}
+                return {"count": 1, "results": [self.orgs_by_id[org_id]]}
+            return {"count": len(self.orgs_by_id), "results": list(self.orgs_by_id.values())}
+
     def get_org(self, org_id: int) -> Dict[str, Any]:
         self.seed_defaults()
         with self.lock:
             if org_id not in self.orgs_by_id:
                 raise KeyError("not found")
             return self.orgs_by_id[org_id]
+
+    def create_org(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self.seed_defaults()
+        with self.lock:
+            org_name = payload.get("name")
+            if not org_name:
+                raise ValueError("name is required")
+            if org_name in self.orgs_by_name:
+                raise ValueError(f"Organization with name '{org_name}' already exists")
+            org_id = self.next_org_id
+            self.next_org_id += 1
+            org = {
+                "id": org_id,
+                "name": org_name,
+                "description": payload.get("description") or "",
+                "created": _now_iso(),
+                "modified": _now_iso(),
+                "url": f"/api/gateway/v{version}/organizations/{org_id}/",
+            }
+            self.orgs_by_id[org_id] = org
+            self.orgs_by_name[org_name] = org_id
+            return org
+
+    def patch_org(self, org_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self.seed_defaults()
+        with self.lock:
+            if org_id not in self.orgs_by_id:
+                raise KeyError("not found")
+            org = dict(self.orgs_by_id[org_id])
+            old_name = org["name"]
+            for k in ("name", "description"):
+                if k in payload:
+                    org[k] = payload[k] if payload[k] is not None else ""
+            if org["name"] != old_name:
+                del self.orgs_by_name[old_name]
+                self.orgs_by_name[org["name"]] = org_id
+            org["modified"] = _now_iso()
+            self.orgs_by_id[org_id] = org
+            return org
+
+    def delete_org(self, org_id: int) -> None:
+        self.seed_defaults()
+        with self.lock:
+            if org_id not in self.orgs_by_id:
+                raise KeyError("not found")
+            org = self.orgs_by_id[org_id]
+            name = org.get("name")
+            if name:
+                self.orgs_by_name.pop(name, None)
+            del self.orgs_by_id[org_id]
 
 
 class MockGatewayHandler(BaseHTTPRequestHandler):
@@ -270,26 +331,47 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return
 
         # /api/gateway/vX/organizations/
-        if len(parts) == 4 and parts[3] == "organizations" and self.command == "GET":
-            name = (qs.get("name") or [None])[0]
-            if not name:
-                self._send_json(200, {"count": 0, "results": []})
+        if len(parts) == 4 and parts[3] == "organizations":
+            if self.command == "GET":
+                name = (qs.get("name") or [None])[0]
+                self._send_json(200, self.store.list_orgs(name=name))
                 return
-            self._send_json(200, self.store.find_orgs_by_name(name))
-            return
+            if self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                    created = self.store.create_org(version=version, payload=payload)
+                    self._send_json(201, created)
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                return
 
         # /api/gateway/vX/organizations/{id}/
-        if len(parts) == 5 and parts[3] == "organizations" and self.command == "GET":
+        if len(parts) == 5 and parts[3] == "organizations":
             try:
                 org_id = int(parts[4])
             except ValueError:
                 self._send_json(404, {"detail": "Not Found"})
                 return
-            try:
-                self._send_json(200, self.store.get_org(org_id))
-            except KeyError:
-                self._send_json(404, {"detail": "Not Found"})
-            return
+            if self.command == "GET":
+                try:
+                    self._send_json(200, self.store.get_org(org_id))
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return
+            if self.command == "PATCH":
+                try:
+                    payload = self._parse_json_body()
+                    self._send_json(200, self.store.patch_org(org_id, payload))
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return
+            if self.command == "DELETE":
+                try:
+                    self.store.delete_org(org_id)
+                    self._send_empty(204)
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return
 
         self._send_json(404, {"detail": "Not Found"})
 

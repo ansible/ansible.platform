@@ -13,6 +13,7 @@ This directory holds Molecule scenarios for the ansible.platform collection.
 - **default/** – Lifecycle scenario: **create** (start mock Gateway server) and **destroy** (stop it). No converge. With `molecule test --all`, default runs create first, then other scenarios, then default destroy. See [docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md](../docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md).
 - **users/** – Scenario for `ansible.platform.user` against a **real AAP Gateway**: create, update, idempotency, verify, cleanup. Requires a running Gateway (or skip in CI when none).
 - **users_mock/** – Scenario for `ansible.platform.user` against the **mock** server (`http://127.0.0.1:8000`). No real AAP required. Use with `molecule test --all` (mock started by default) or start `python3 tools/mock_gateway_server.py` manually.
+- **organization_mock/** – Scenario for `ansible.platform.organization` against the **mock** server. Create, idempotency, update, verify, cleanup. No real AAP required.
 
 ## Gateway configuration
 
@@ -60,14 +61,17 @@ molecule test --all
 
 To see detailed Ansible output (task args, module I/O): `ANSIBLE_VERBOSITY=2 molecule test --all` (use 1–4 for -v through -vvvv). See [docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md](../../docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md).
 
-**Option B — Only mock-based user tests:**  
-Start the mock yourself, then run the scenario:
+**Option B — Only mock-based tests (user + organization):**  
+Start the mock yourself, then run the scenarios:
 
 ```bash
 python3 tools/mock_gateway_server.py --port 8000 &
 molecule test -s users_mock --all
+molecule test -s organization_mock --all
 # Stop mock when done: pkill -f mock_gateway_server
 ```
+
+Or let CI run them: the **molecule (mock)** workflow (`.github/workflows/molecule-mock.yml`) runs `users_mock` and `organization_mock` on every PR and push to `devel`; no real Gateway required.
 
 **Option C — Real Gateway (users scenario):**
 

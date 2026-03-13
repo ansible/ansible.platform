@@ -1,0 +1,45 @@
+---
+# Run Molecule integration tests against the mock Gateway (no real AAP).
+# Covers ansible.platform.user and ansible.platform.organization.
+name: molecule (mock)
+
+on:
+  pull_request:
+  push:
+    branches: [devel]
+
+env:
+  MOLECULE_CONFIG: extensions/molecule/config.yml
+  ANSIBLE_FORCE_COLOR: "1"
+  PY_COLORS: "1"
+
+jobs:
+  molecule-mock:
+    name: Molecule user + organization (mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-core and molecule
+        run: pip install ansible-core molecule
+
+      - name: Install collection
+        run: ansible-galaxy collection install . --force
+
+      - name: Start mock Gateway (default scenario create)
+        run: molecule create -s default
+
+      - name: Run user integration tests (mock)
+        run: molecule test -s users_mock --all
+
+      - name: Run organization integration tests (mock)
+        run: molecule test -s organization_mock --all
+
+      - name: Stop mock Gateway (default scenario destroy)
+        if: always()
+        run: molecule destroy -s default

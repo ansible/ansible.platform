@@ -1,0 +1,30 @@
+---
+# Scenario: test ansible.platform.organization against the mock Gateway server (no real AAP).
+# Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      collections_path: "${ANSIBLE_COLLECTIONS_PATH:-../../..}"
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup

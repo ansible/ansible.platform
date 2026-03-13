@@ -1,0 +1,75 @@
+---
+# Run unit tests via tox-ansible (ANSTRAT-1640 P1R14: pytest/tox-ansible for unit tests).
+# Requires tox-ansible.ini in the repo root.
+name: unit tests
+
+on:
+  pull_request:
+  push:
+    branches: [devel]
+
+env:
+  LC_ALL: "C.UTF-8"
+
+jobs:
+  unit-matrix:
+    name: Unit matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tox-ansible
+        run: python -m pip install tox-ansible 'tox!=4.47.1,!=4.47.2'
+
+      - name: Ensure tox-ansible.ini exists
+        uses: ansible/ansible-content-actions/.github/actions/add_tox_ansible@main
+
+      - name: Generate unit test matrix
+        id: matrix
+        run: |
+          envlist=$(python -m tox --ansible --gh-matrix --matrix-scope unit --conf tox-ansible.ini 2>/dev/null || echo "[]")
+          echo "envlist<<EOFMATRIX" >> "$GITHUB_OUTPUT"
+          echo "$envlist" >> "$GITHUB_OUTPUT"
+          echo "EOFMATRIX" >> "$GITHUB_OUTPUT"
+          echo "Generated matrix: $envlist"
+
+    outputs:
+      envlist: ${{ steps.matrix.outputs.envlist }}
+
+  unit:
+    name: "${{ matrix.entry.name }}"
+    needs: unit-matrix
+    runs-on: ubuntu-latest
+    if: needs.unit-matrix.outputs.envlist != '[]' && needs.unit-matrix.outputs.envlist != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJson(needs.unit-matrix.outputs.envlist) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.entry.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ matrix.entry.python }}"
+
+      - name: Install tox-ansible
+        run: python -m pip install tox-ansible 'tox!=4.47.1,!=4.47.2'
+
+      - name: Ensure tox-ansible.ini exists
+        uses: ansible/ansible-content-actions/.github/actions/add_tox_ansible@main
+
+      - name: Install system deps (Linux)
+        if: matrix.entry.python >= '3.12'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libssl-dev libssh-dev || true
+
+      - name: Run unit tests
+        run: python -m tox --ansible -e ${{ matrix.entry.name }} --conf tox-ansible.ini

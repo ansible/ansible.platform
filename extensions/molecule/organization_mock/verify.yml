@@ -1,0 +1,30 @@
+---
+# Verify: organization exists and has expected data (mock).
+- name: Verify — organization in expected state (mock)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    molecule_org_name: "Molecule Test Org"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get organization (state exists)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: exists
+      register: exists_result
+
+    - name: Assert organization was found
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('organization') is defined
+        fail_msg: "Verify: organization {{ molecule_org_name }} not found (mock unreachable or org missing)."
+
+    - name: Assert description updated
+      ansible.builtin.assert:
+        that: exists_result.organization.description == "Updated by Molecule organization_mock"
+        fail_msg: "Verify: organization description was not updated."
