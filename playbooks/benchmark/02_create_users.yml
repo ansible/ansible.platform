@@ -24,8 +24,8 @@
     - name: Show connection mode for this run
       ansible.builtin.debug:
         msg: >
-        Connection mode: {{ 'persistent' if ansible_platform_use_persistent_connection
-        else 'direct' }} (ansible_platform_use_persistent_connection={{ ansible_platform_use_persistent_connection }})
+          Connection mode: {{ 'persistent' if ansible_platform_use_persistent_connection else 'direct' }}
+          (ansible_platform_use_persistent_connection={{ ansible_platform_use_persistent_connection }})
 
     - name: Create test users
       ansible.platform.user:
