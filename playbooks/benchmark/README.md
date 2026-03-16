@@ -61,19 +61,19 @@ V="-e @playbooks/benchmark/vars.yml"
 ansible-playbook playbooks/benchmark/01_cleanup_all_except_admin.yml $V -e ansible_connection=local
 
 # 2) Create 100 users - direct mode
-ansible-playbook playbooks/benchmark/02_create_users.yml $V -e ansible_platform_persistent=false
+ansible-playbook playbooks/benchmark/02_create_users.yml $V -e ansible_platform_use_persistent_connection=false
 
 # 3) Cleanup the 100 users
-ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml $V -e ansible_platform_persistent=false
+ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml $V -e ansible_platform_use_persistent_connection=false
 
 # Same with persistent mode
-ansible-playbook playbooks/benchmark/02_create_users.yml $V -e ansible_platform_persistent=true
-ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml $V -e ansible_platform_persistent=true
+ansible-playbook playbooks/benchmark/02_create_users.yml $V -e ansible_platform_use_persistent_connection=true
+ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml $V -e ansible_platform_use_persistent_connection=true
 ```
 
 ## How the connection mode is set
 
-The connection plugin uses the **`ansible_platform_persistent`** variable (per host):
+The connection plugin uses the **`ansible_platform_use_persistent_connection`** variable (per host):
 
 | Value | Mode | Behavior |
 |-------|------|----------|
@@ -83,14 +83,14 @@ The connection plugin uses the **`ansible_platform_persistent`** variable (per h
 **Ways to set it:**
 
 1. **Extra vars (recommended for benchmark):**  
-   `-e ansible_platform_persistent=false` or `-e ansible_platform_persistent=true`  
+   `-e ansible_platform_use_persistent_connection=false` or `-e ansible_platform_use_persistent_connection=true`  
    The runner script uses this for each playbook run.
 
 2. **Inventory:**  
-   e.g. `127.0.0.1 ansible_connection=ansible.platform.http ansible_platform_persistent=true`
+   e.g. `127.0.0.1 ansible_connection=ansible.platform.http ansible_platform_use_persistent_connection=true`
 
 3. **Play vars:**  
-   In the playbook, `vars: ansible_platform_persistent: true`
+   In the playbook, `vars: ansible_platform_use_persistent_connection: true`
 
 Playbooks 02 and 03 default to `false` (direct) if not set and print **"Connection mode: direct"** or **"Connection mode: persistent"** at the start so the run output is clear.
 

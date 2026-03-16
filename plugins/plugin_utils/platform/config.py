@@ -118,8 +118,8 @@ def extract_gateway_config(
     )
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
     connection_mode = (
-        task_args.get('platform_connection_mode') or
-        host_vars.get('platform_connection_mode') or
+        task_args.get('ansible_platform_use_persistent_connection') or
+        host_vars.get('ansible_platform_use_persistent_connection') or
         'standard'
     )
 

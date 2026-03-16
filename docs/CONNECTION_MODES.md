@@ -82,7 +82,7 @@ Direct mode uses short socket paths to avoid Unix domain socket length limits:
 - hosts: localhost
   connection: ansible.platform.http
   vars:
-    ansible_platform_persistent: true
+    ansible_platform_use_persistent_connection: true
   tasks:
     - ansible.platform.user:
         username: demo1
@@ -106,7 +106,7 @@ Direct mode uses short socket paths to avoid Unix domain socket length limits:
 **Via Inventory:**
 ```ini
 [platform_hosts]
-localhost ansible_connection=ansible.platform.http ansible_platform_persistent=true
+localhost ansible_connection=ansible.platform.http ansible_platform_use_persistent_connection=true
 ```
 
 ### How It Works

@@ -54,7 +54,7 @@ run_create_and_cleanup() {
   export BENCHMARK_STATS_FILE="$STATS_FILE"
   START=$(python3 -c "import time; print(time.time())")
   # Send playbook stdout to stderr so only the duration is captured in TIME_* below
-  ansible-playbook playbooks/benchmark/02_create_users.yml "${EXTRA_VARS[@]}" -e "ansible_platform_persistent=$persistent_flag" 1>&2
+  ansible-playbook playbooks/benchmark/02_create_users.yml "${EXTRA_VARS[@]}" -e "ansible_platform_use_persistent_connection=$persistent_flag" 1>&2
   END=$(python3 -c "import time; print(time.time())")
   python3 -c "print(round($END - $START, 2))"
 }
@@ -87,7 +87,7 @@ if [[ "$MODE" == "direct" || "$MODE" == "both" ]]; then
   read -r HTTP_DIRECT TLS_DIRECT <<< "$(read_benchmark_stats "$STATS_FILE")"
   echo "Direct mode: ${TIME_DIRECT}s (HTTP sessions: $HTTP_DIRECT, TLS sessions: $TLS_DIRECT)"
   echo "--- Cleanup $USER_COUNT users (after direct run) ---"
-  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_platform_persistent=false
+  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_platform_use_persistent_connection=false
   echo ""
 fi
 
@@ -96,7 +96,7 @@ if [[ "$MODE" == "persistent" || "$MODE" == "both" ]]; then
   read -r HTTP_PERSISTENT TLS_PERSISTENT <<< "$(read_benchmark_stats "$STATS_FILE")"
   echo "Persistent mode: ${TIME_PERSISTENT}s (HTTP sessions: $HTTP_PERSISTENT, TLS sessions: $TLS_PERSISTENT)"
   echo "--- Cleanup $USER_COUNT users (after persistent run) ---"
-  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_platform_persistent=true
+  ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_platform_use_persistent_connection=true
   echo ""
 fi
 

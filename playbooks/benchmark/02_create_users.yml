@@ -1,8 +1,8 @@
 ---
 # Step 2: Create N users via ansible.platform.user (benchmark measured step).
-# Connection mode: set -e ansible_platform_persistent=true (persistent) or -e ansible_platform_persistent=false (direct).
+# Connection mode: set -e ansible_platform_use_persistent_connection=true (persistent) or -e ansible_platform_use_persistent_connection=false (direct).
 # Run from collection root:
-#   ansible-playbook playbooks/benchmark/02_create_users.yml -e @playbooks/benchmark/vars.yml -e ansible_platform_persistent=false
+#   ansible-playbook playbooks/benchmark/02_create_users.yml -e @playbooks/benchmark/vars.yml -e ansible_platform_use_persistent_connection=false
 - name: Create users
   hosts: localhost
   connection: ansible.platform.http
@@ -17,13 +17,13 @@
     gateway_validate_certs: false
     # Force username/password auth for benchmark (ignore AAP_TOKEN so we don't get 401 from stale token)
     gateway_token: ""
-    # Override with -e ansible_platform_persistent=true|false (default: direct)
-    ansible_platform_persistent: "{{ ansible_platform_persistent | default(false) | bool }}"
+    # Override with -e ansible_platform_use_persistent_connection=true|false (default: direct)
+    ansible_platform_use_persistent_connection: "{{ ansible_platform_use_persistent_connection | default(false) | bool }}"
 
   tasks:
     - name: Show connection mode for this run
       ansible.builtin.debug:
-        msg: "Connection mode: {{ 'persistent' if ansible_platform_persistent else 'direct' }} (ansible_platform_persistent={{ ansible_platform_persistent }})"
+        msg: "Connection mode: {{ 'persistent' if ansible_platform_use_persistent_connection else 'direct' }} (ansible_platform_use_persistent_connection={{ ansible_platform_use_persistent_connection }})"
 
     - name: Create test users
       ansible.platform.user:

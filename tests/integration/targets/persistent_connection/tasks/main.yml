@@ -1,0 +1,69 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    username: "GW-Collection-Test-PersistentConnection-{{ test_id }}"
+
+- name: Run Tests
+  vars:
+    ansible_connection: ansible.platform.http
+    ansible_platform_use_persistent_connection: true
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Persistent Connection Tests> -------------------
+    - name: Create User 1 (Spawns the persistent manager)
+      ansible.platform.user:
+        username: "{{ username }}--User-1"
+        state: present
+      register: user1
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - user1 is changed
+          - user1.user.username == "{{ username }}--User-1"
+
+    - name: Create User 2 (Reuses the existing persistent manager)
+      ansible.platform.user:
+        username: "{{ username }}--User-2"
+        state: present
+      register: user2
+
+    - name: Assert a creation changes the system
+      ansible.builtin.assert:
+        that:
+          - user2 is changed
+          - user2.user.username == "{{ username }}--User-2"
+
+    - name: Create User 1 again (Idempotent check over persistent socket)
+      ansible.platform.user:
+        username: "{{ username }}--User-1"
+        state: present
+      register: user1_check
+
+    - name: Assert that user1_check is not changed
+      ansible.builtin.assert:
+        that:
+          - user1_check is not changed
+    # </Persistent Connection Tests> -------------------
+
+  # <Cleanup> -------------------
+  always:
+    - name: Delete users
+      ansible.platform.user:
+        username: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ username }}--User-1"
+        - "{{ username }}--User-2"
+...

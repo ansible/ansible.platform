@@ -29,12 +29,12 @@ options:
     type: boolean
     default: false
     vars:
-      - name: ansible_platform_persistent
+      - name: ansible_platform_use_persistent_connection
     ini:
       - section: platform_connection
         key: persistent
     env:
-      - name: ANSIBLE_PLATFORM_PERSISTENT
+      - name: ANSIBLE_PLATFORM_USE_PERSISTENT_CONNECTION
 """
 
 import base64
@@ -123,7 +123,7 @@ class Connection(ConnectionBase):
 
         Dispatch Logic:
         1. Check connection option 'persistent' (if set)
-        2. Check variable 'ansible_platform_persistent' (if set)
+        2. Check variable 'ansible_platform_use_persistent_connection' (if set)
         3. Default: False (direct mode)
         4. Route to:
            - persistent: true → _get_persistent_client() → ManagerRPCClient
@@ -150,7 +150,7 @@ class Connection(ConnectionBase):
             hostvars = task_vars.get('hostvars', {})
             inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
             host_vars = hostvars.get(inventory_hostname, {})
-            persistent = host_vars.get('ansible_platform_persistent') or task_vars.get('ansible_platform_persistent') or False
+            persistent = host_vars.get('ansible_platform_use_persistent_connection') or task_vars.get('ansible_platform_use_persistent_connection') or False
 
         # Route to appropriate client implementation
         if persistent:

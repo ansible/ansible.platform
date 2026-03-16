@@ -1,8 +1,8 @@
 ---
 # Step 3: Remove the N benchmark users (cleanup after benchmark).
-# Use the same -e ansible_platform_persistent=... as in 02 for consistency.
+# Use the same -e ansible_platform_use_persistent_connection=... as in 02 for consistency.
 # Run from collection root:
-#   ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml -e @playbooks/benchmark/vars.yml -e ansible_platform_persistent=false
+#   ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml -e @playbooks/benchmark/vars.yml -e ansible_platform_use_persistent_connection=false
 - name: Delete benchmark users (count {{ benchmark_user_count }})
   hosts: localhost
   connection: ansible.platform.http
@@ -14,12 +14,14 @@
     gateway_hostname: "{{ base_url }}"
     # Force username/password auth for benchmark (ignore AAP_TOKEN)
     gateway_token: "<token>"
-    ansible_platform_persistent: "{{ ansible_platform_persistent | default(false) | bool }}"
+    ansible_platform_use_persistent_connection: "{{ ansible_platform_use_persistent_connection | default(false) | bool }}"
 
   tasks:
     - name: Show connection mode for this run
       ansible.builtin.debug:
-        msg: "Connection mode: {{ 'persistent' if ansible_platform_persistent else 'direct' }} (ansible_platform_persistent={{ ansible_platform_persistent }})"
+        msg: >
+          Connection mode: {{ 'persistent' if ansible_platform_use_persistent_connection else 'direct' }}
+          (ansible_platform_use_persistent_connection={{ ansible_platform_use_persistent_connection }})
 
     - name: Delete benchmark
       ansible.platform.user:
