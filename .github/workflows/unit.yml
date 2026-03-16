@@ -1,7 +1,9 @@
 ---
-name: unit tests
+name: Collection Unit Tests
 
 on:
+  push:
+    branches: [main]
   pull_request:
   push:
     branches: [devel, ANSTRAT-1640]
@@ -10,30 +12,23 @@ env:
   LC_ALL: "C.UTF-8"
 
 jobs:
-  unit:
-    name: Unit (pytest)
+  unit-tests:
+    name: Run Unit Tests
     runs-on: ubuntu-latest
-    steps:
-      # Check out into ansible_collections/ansible/platform/ so that
-      # "import ansible_collections.ansible.platform.*" resolves correctly.
-      # conftest.py walks up 4 levels from the collection root to reach the
-      # workspace root (which contains ansible_collections/), matching the
-      # same structure used in local development.
-      - uses: actions/checkout@v4
-        with:
-          path: ansible_collections/ansible/platform
 
-      - name: Set up Python
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install ansible-core pytest
-          python -m pip install -r ansible_collections/ansible/platform/test-requirements.txt
+      - name: Install tox-ansible
+        run: python -m pip install tox-ansible
 
-      - name: Run unit tests
-        working-directory: ansible_collections/ansible/platform
-        run: python -m pytest tests/unit/ -v
+      - name: Run Unit Tests
+        run: python -m tox --ansible -f unit
 ...
