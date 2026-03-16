@@ -13,7 +13,7 @@ env:
   LC_ALL: "C.UTF-8"
 
 jobs:
-  # Always-run unit tests (pytest) so CI always shows unit test results.
+  # Always-run unit tests via tox-ansible (same pattern as networking collections: pytest via tox).
   unit-direct:
     name: Unit (pytest)
     runs-on: ubuntu-latest
@@ -25,16 +25,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install ansible-core pytest requests
+      - name: Check for tox-ansible.ini file, else add default
+        uses: ansible/ansible-content-actions/.github/actions/add_tox_ansible@main
 
-      - name: Install collection
-        run: ansible-galaxy collection install . --force
+      - name: Install tox-ansible, includes tox
+        run: python -m pip install tox-ansible 'tox!=4.47.1,!=4.47.2'
 
-      - name: Run unit tests
-        run: |
-          cd "$GITHUB_WORKSPACE"
-          ANSIBLE_COLLECTIONS_PATH="$HOME/.ansible/collections" python -m pytest tests/unit/ -v --tb=short
+      - name: Run tox unit tests
+        run: python -m tox --ansible -f unit --conf tox-ansible.ini
 
   unit-matrix:
     name: Unit matrix
@@ -88,12 +86,6 @@ jobs:
 
       - name: Ensure tox-ansible.ini exists
         uses: ansible/ansible-content-actions/.github/actions/add_tox_ansible@main
-
-      - name: Install system deps (Linux)
-        if: matrix.entry.python >= '3.12'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libssl-dev libssh-dev || true
 
       - name: Run unit tests
         run: python -m tox --ansible -e ${{ matrix.entry.name }} --conf tox-ansible.ini
