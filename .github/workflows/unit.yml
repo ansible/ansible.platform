@@ -1,6 +1,7 @@
 ---
 # Run unit tests via tox-ansible (ANSTRAT-1640 P1R14: pytest/tox-ansible for unit tests).
 # Requires tox-ansible.ini in the repo root.
+# Fallback: unit-direct job always runs pytest so unit tests are visible in CI even if matrix is empty.
 name: unit tests
 
 on:
@@ -12,6 +13,29 @@ env:
   LC_ALL: "C.UTF-8"
 
 jobs:
+  # Always-run unit tests (pytest) so CI always shows unit test results.
+  unit-direct:
+    name: Unit (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install ansible-core pytest requests
+
+      - name: Install collection
+        run: ansible-galaxy collection install . --force
+
+      - name: Run unit tests
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          ANSIBLE_COLLECTIONS_PATH="$HOME/.ansible/collections" python -m pytest tests/unit/ -v --tb=short
+
   unit-matrix:
     name: Unit matrix
     runs-on: ubuntu-latest

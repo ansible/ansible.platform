@@ -61,8 +61,8 @@ class TestAPIVersioning(unittest.TestCase):
         self.assertEqual(AnsibleClass.__name__, 'AnsibleUser')
 
     @patch('ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager.get_credential_manager')
-    @patch('requests.Session.get')
-    def test_platform_service_version_fallback(self, mock_get, mock_cred_manager):
+    @patch('ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager._get_requests')
+    def test_platform_service_version_fallback(self, mock_get_requests, mock_cred_manager):
         """
         Validates that if the Gateway API reports an unsupported future version,
         the PlatformService gracefully falls back to the highest locally supported version.
@@ -73,7 +73,11 @@ class TestAPIVersioning(unittest.TestCase):
             "current_version": "/api/gateway/v3/",
             "available_versions": {"v3": "/api/gateway/v3/"}
         }
-        mock_get.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_response
+        mock_requests = MagicMock()
+        mock_requests.Session.return_value = mock_session
+        mock_get_requests.return_value = mock_requests
         mock_store = MagicMock()
         mock_store.get_auth_credentials.return_value = ("admin", "admin", None)
         mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
