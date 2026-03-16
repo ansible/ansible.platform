@@ -162,7 +162,11 @@ class Connection(ConnectionBase):
             hostvars = task_vars.get('hostvars', {})
             inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
             host_vars = hostvars.get(inventory_hostname, {})
-            persistent = host_vars.get('ansible_platform_persistent') or task_vars.get('ansible_platform_persistent') or False
+            raw = (
+                host_vars.get('ansible_platform_use_persistent_connection') or task_vars.get('ansible_platform_use_persistent_connection')
+                or host_vars.get('ansible_platform_persistent') or task_vars.get('ansible_platform_persistent')
+            )
+            persistent = _truthy(raw)
 
         # Route to appropriate client implementation
         if persistent:
