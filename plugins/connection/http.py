@@ -17,7 +17,12 @@ description:
   - |
     It supports two connection modes: persistent (manager process, better performance)
     and direct (new connections per task, default).
-  - Mode is controlled by the C(persistent) connection option.
+  - Mode is controlled by the C(persistent) connection option or
+    C(ansible_platform_use_persistent_connection) variable (P3).
+  - |
+    Connection parameters that define tenancy (when a new persistent manager is created vs reused):
+    C(gateway_hostname) (or C(gateway_url)), credentials (C(gateway_username)/password/token), and host.
+    One persistent manager per (play, host, connection params); no sharing across different params.
 version_added: 1.0.0
 options:
   persistent:
@@ -29,6 +34,7 @@ options:
     type: boolean
     default: false
     vars:
+      - name: ansible_platform_use_persistent_connection
       - name: ansible_platform_persistent
     ini:
       - section: platform_connection
@@ -123,7 +129,7 @@ class Connection(ConnectionBase):
 
         Dispatch Logic:
         1. Check connection option 'persistent' (if set)
-        2. Check variable 'ansible_platform_persistent' (if set)
+        2. Check variable 'ansible_platform_use_persistent_connection' or 'ansible_platform_persistent' (if set)
         3. Default: False (direct mode)
         4. Route to:
            - persistent: true → _get_persistent_client() → ManagerRPCClient
@@ -143,14 +149,25 @@ class Connection(ConnectionBase):
         # In direct mode, action plugin should delegate to regular module (which can use Request())
         persistent = False  # Default to direct mode
 
+        def _truthy(val):
+            if val is None:
+                return False
+            if isinstance(val, bool):
+                return val
+            return str(val).lower() in ('true', 'yes', '1')
+
         try:
-            persistent = self.get_option('persistent') or False
+            persistent = _truthy(self.get_option('persistent'))
         except (AttributeError, KeyError):
-            # Option not defined, check variables
+            # Option not defined, check variables (P3: ansible_platform_use_persistent_connection; alias ansible_platform_persistent)
             hostvars = task_vars.get('hostvars', {})
             inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
             host_vars = hostvars.get(inventory_hostname, {})
-            persistent = host_vars.get('ansible_platform_persistent') or task_vars.get('ansible_platform_persistent') or False
+            raw = (
+                host_vars.get('ansible_platform_use_persistent_connection') or task_vars.get('ansible_platform_use_persistent_connection')
+                or host_vars.get('ansible_platform_persistent') or task_vars.get('ansible_platform_persistent')
+            )
+            persistent = _truthy(raw)
 
         # Route to appropriate client implementation
         if persistent:

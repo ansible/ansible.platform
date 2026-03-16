@@ -72,8 +72,13 @@ class TransformContext:
         session: HTTP session for making requests
         cache: Lookup cache (e.g., org names ↔ IDs)
         api_version: Current API version string
+        operation: Optional operation name ('create', 'update', etc.).
+        include_nulls_for_update: When True and operation is 'update', transforms include null
+            for optional fields so the API can clear them (enforced state only; present must not send nulls).
     """
     manager: 'PlatformService'
     session: 'Session'
     cache: Dict[str, Any]
     api_version: str
+    operation: Optional[str] = None
+    include_nulls_for_update: bool = False

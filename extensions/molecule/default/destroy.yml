@@ -1,0 +1,31 @@
+---
+# Stop the mock Gateway server after all scenarios complete.
+# connection: local required so tasks run on controller (shared inventory sets ansible.platform.http).
+- name: Destroy — Stop mock Gateway server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    mock_server_port: 8000
+  tasks:
+    - name: Find mock server process
+      ansible.builtin.shell:
+        cmd: pgrep -f "mock_gateway_server" || true
+      register: mock_pids
+      changed_when: false
+
+    - name: Stop mock server
+      ansible.builtin.command:
+        cmd: "kill {{ item }}"
+      loop: "{{ mock_pids.stdout_lines }}"
+      when: mock_pids.stdout_lines | length > 0
+      changed_when: true
+      failed_when: false
+
+    - name: Wait for mock server port to close
+      ansible.builtin.wait_for:
+        port: "{{ mock_server_port }}"
+        state: stopped
+        timeout: 10
+      failed_when: false
+...

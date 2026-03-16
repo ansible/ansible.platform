@@ -39,7 +39,7 @@
         return_content: true
       register: users_response
 
-    - name: Build list of users to deleteexclude keep_username
+    - name: Build list of users to delete (exclude keep_username)
       ansible.builtin.set_fact:
         users_to_delete: "{{
           users_response.json.results

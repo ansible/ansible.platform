@@ -17,7 +17,7 @@ __metaclass__ = type
 import logging
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-# Lazy import: AnsibleUser imported inside run() to avoid worker crashes
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
 from ansible_collections.ansible.platform.plugins.plugin_utils.docs.user import DOCUMENTATION
 
 logger = logging.getLogger(__name__)
@@ -94,10 +94,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result['_ansible_facts_cacheable'] = True
 
             # Create dataclass from validated input
-
-            # Lazy import AnsibleUser to avoid module-level import crashes
-            from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
-
             validated_params = validated_input.validated_parameters
             user_data = {
                 k: v for k, v in validated_params.items()
@@ -138,7 +134,7 @@ class ActionModule(BaseResourceActionPlugin):
                         result.update({
                             'changed': False,
                             'failed': False,
-                            self.MODULE_NAME: {},
+                            self.MODULE_NAME: {'state': 'absent'},
                             'msg': f"User '{user.username}' does not exist (already absent)"
                         })
                         return result
@@ -147,17 +143,71 @@ class ActionModule(BaseResourceActionPlugin):
                     result.update({
                         'changed': False,
                         'failed': False,
-                        self.MODULE_NAME: {},
+                        self.MODULE_NAME: {'state': 'absent'},
                         'msg': f"User '{user.username}' does not exist (already absent)"
                     })
                     return result
 
-            # Execute via manager
-            manager_result = manager.execute(
-                operation=operation,
-                module_name=self.MODULE_NAME,
-                ansible_data=user.__dict__
-            )
+            # Handle 'enforced': find then merge (task + defaults for omitted), then create or update
+            if operation == 'enforced':
+                read_only_fields = {'id', 'created', 'modified', 'url'}
+                argspec_fields = set(argspec.get('argument_spec', {}).keys())
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data={'username': user.username}
+                    )
+                except ValueError:
+                    find_result = None
+                if find_result and find_result.get('id'):
+                    # User exists: build merged state (task wins; omitted optional fields default to None so API can clear them)
+                    required_fields = {'username'}  # required by AnsibleUser
+                    merged = {}
+                    for k in argspec_fields:
+                        if k in auth_params:
+                            continue
+                        if k in validated_params:
+                            merged[k] = validated_params[k]
+                        elif k in required_fields:
+                            merged[k] = find_result.get(k) or getattr(user, k, None)
+                        else:
+                            merged[k] = None  # omitted optional -> default None so API can clear
+                    for ro in read_only_fields:
+                        if ro in find_result:
+                            merged[ro] = find_result[ro]
+                    # Ensure required fields are never missing (argspec/validator may not include them)
+                    merged.setdefault('username', user.username or find_result.get('username'))
+                    user_data = {k: v for k, v in merged.items() if hasattr(AnsibleUser, k)}
+                    user_data.setdefault('username', user.username)
+                    user = AnsibleUser(**user_data)
+                    operation = 'update'
+                else:
+                    # User does not exist: create with task params
+                    operation = 'create'
+
+            # Execute via manager (find may raise ValueError when resource not found)
+            # For enforced update, pass flag so transform sends null for omitted fields (API can clear them)
+            ansible_data = dict(user.__dict__)
+            if operation == 'update' and validated_params.get('state') == 'enforced':
+                ansible_data['_platform_enforced'] = True
+            try:
+                manager_result = manager.execute(
+                    operation=operation,
+                    module_name=self.MODULE_NAME,
+                    ansible_data=ansible_data
+                )
+            except ValueError as e:
+                if operation == 'find' and ('not found' in str(e).lower() or 'resource with' in str(e).lower()):
+                    result.update({
+                        'changed': False,
+                        'failed': False,
+                        self.MODULE_NAME: {},
+                        'exists': False,
+                        'msg': f"User '{user.username}' does not exist"
+                    })
+                    return result
+                raise
 
             # Validate output
             read_only_fields = {'id', 'created', 'modified', 'url'}
@@ -185,6 +235,10 @@ class ActionModule(BaseResourceActionPlugin):
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
             })
+            if operation == 'find':
+                result['exists'] = bool(validated_output.get('id'))
+            elif operation == 'delete':
+                result[self.MODULE_NAME]['state'] = 'absent'
 
             # Performance timing: Action plugin end
             action_end = time.perf_counter()

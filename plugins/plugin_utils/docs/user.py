@@ -68,9 +68,13 @@ options:
 
   state:
     description:
-      - Desired state of the user
+      - Desired state of the user (CRUD-aligned).
+      - C(present) ensures the user exists (create or update); idempotent.
+      - C(absent) removes the user; idempotent if already absent.
+      - C(exists) reads and returns the current user (no change).
+      - C(enforced) ensures the user exists and merges task keys into existing, defaulting any option not provided.
     type: str
-    choices: ['present', 'absent']
+    choices: ['present', 'absent', 'exists', 'enforced']
     default: 'present'
 
 extends_documentation_fragment:
@@ -81,4 +85,16 @@ notes:
   - This module uses a persistent connection manager for improved performance
   - Multiple tasks in a playbook will reuse the same connection
   - The organizations and is_platform_auditor fields are deprecated
+  - For C(exists), only I(username) is required; returns current state (read-only, no change)
+  - For C(enforced), omitted fields are left unchanged on the server (merge semantics)
+
+return:
+  user:
+    description: User resource (when state is not C(absent)); matches argspec + read-only fields (id, url, created, modified).
+  before:
+    description: State before the operation (when state is C(enforced) or C(absent) and resource existed).
+  after:
+    description: State after the operation (when a change was made).
+  changed:
+    description: Whether a change was made.
 """

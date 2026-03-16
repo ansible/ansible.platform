@@ -68,12 +68,30 @@ class UserTransformMixin_v1(BaseTransformMixin):
             'password', 'is_superuser', 'is_platform_auditor',
             'id', 'created', 'modified', 'url'
         ]
+        read_only = {'id', 'created', 'modified', 'url'}
+        # Only send null for these on enforced update; many APIs reject null for password/booleans
+        clearable_string_fields = {'email', 'first_name', 'last_name'}
+        op = (getattr(context, 'operation', None) if isinstance(context, TransformContext)
+              else context.get('operation'))
+        include_nulls = (getattr(context, 'include_nulls_for_update', False)
+                         if isinstance(context, TransformContext)
+                         else context.get('include_nulls_for_update', False))
 
         for field in simple_fields:
             value = getattr(ansible_instance, field, None)
+            if field == 'password' and op == 'update':
+                # Never send password on update unless user set a new one (API rejects placeholder/read-only)
+                if value and str(value).strip() and str(value) != 'Password Disabled':
+                    api_data[field] = value
+                    logger.debug("Mapped field %s: (new password)", field)
+                continue
             if value is not None:
                 api_data[field] = value
                 logger.debug("Mapped field %s: %s", field, value)
+            elif op == 'update' and include_nulls and field not in read_only and field in clearable_string_fields:
+                # Enforced update only: send empty string to clear (Gateway API expects "" not null, per UI payload)
+                api_data[field] = ''
+                logger.debug("Mapped field %s: '' (enforced clear)", field)
 
         # Complex transformation: organizations (names -> IDs)
         if ansible_instance.organizations:
@@ -175,7 +193,8 @@ class UserTransformMixin_v1(BaseTransformMixin):
             'update': EndpointOperation(
                 path='/api/gateway/v1/users/{id}/',
                 method='PATCH',
-                fields=['username', 'email', 'first_name', 'last_name', 'password', 'is_superuser', 'is_platform_auditor'],
+                # Omit username from body; resource is identified by URL (many APIs reject username in PATCH)
+                fields=['email', 'first_name', 'last_name', 'password', 'is_superuser', 'is_platform_auditor'],
                 path_params=['id'],
                 required_for='update',
                 order=1
@@ -224,51 +243,6 @@ class UserTransformMixin_v1(BaseTransformMixin):
             Field name for lookups (e.g., 'username', 'name')
         """
         return 'username'
-
-    def to_api(self, context: Union[TransformContext, Dict[str, Any]]) -> 'APIUser_v1':
-        """
-        Transform from Ansible format to API format.
-
-        Args:
-            context: TransformContext or dict with manager and other runtime info
-
-        Returns:
-            APIUser_v1 instance ready for API submission
-        """
-        logger.info("Transforming to API format: username=%s", getattr(self, 'username', None))
-        api_data = {}
-
-        # Apply field mappings
-        for ansible_field, mapping in self._field_mapping.items():
-            if not hasattr(self, ansible_field):
-                continue
-
-            value = getattr(self, ansible_field)
-            if value is None:
-                continue
-
-            # Simple 1:1 mapping
-            if isinstance(mapping, str):
-                api_data[mapping] = value
-                logger.debug("Mapped %s -> %s: %s", ansible_field, mapping, value)
-
-            # Complex mapping with transformation
-            elif isinstance(mapping, dict):
-                api_field = mapping['api_field']
-                transform_name = mapping.get('forward_transform')
-
-                if transform_name and transform_name in self._transform_registry:
-                    logger.debug("Applying forward transform '%s' for %s -> %s", transform_name, ansible_field, api_field)
-                    transform_func = self._transform_registry[transform_name]
-                    transformed_value = transform_func(value, context)
-                    api_data[api_field] = transformed_value
-                    logger.debug("Transform completed: %s -> %s", value, transformed_value)
-                else:
-                    api_data[api_field] = value
-                    logger.debug("Direct mapping %s -> %s: %s", ansible_field, api_field, value)
-
-        logger.info("APIUser_v1 transformation completed with %s fields", len(api_data))
-        return APIUser_v1(**api_data)
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> 'AnsibleUser':
