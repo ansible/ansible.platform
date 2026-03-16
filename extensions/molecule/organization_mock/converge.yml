@@ -10,6 +10,16 @@
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
+    - name: Ensure mock Gateway is reachable
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 6
+      delay: 5
+      until: health.status == 200
+
     - name: Create organization
       ansible.platform.organization:
         name: "{{ molecule_org_name }}"

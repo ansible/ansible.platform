@@ -107,8 +107,8 @@ class UserTransformMixin_v2(BaseTransformMixin):
         op = (getattr(context, "operation", None) if isinstance(context, TransformContext)
               else context.get("operation"))
         include_nulls = (getattr(context, "include_nulls_for_update", False)
-                        if isinstance(context, TransformContext)
-                        else context.get("include_nulls_for_update", False))
+                         if isinstance(context, TransformContext)
+                         else context.get("include_nulls_for_update", False))
 
         for field in simple_fields:
             value = getattr(ansible_instance, field, None)

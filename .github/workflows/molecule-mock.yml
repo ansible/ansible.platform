@@ -17,6 +17,9 @@ jobs:
   molecule-mock:
     name: Molecule user + organization (mock)
     runs-on: ubuntu-latest
+    env:
+      # Use installed collection (galaxy install puts it here); else Molecule's ../../.. points at repo root and collection is not found
+      ANSIBLE_COLLECTIONS_PATH: $HOME/.ansible/collections
     steps:
       - uses: actions/checkout@v4
 
