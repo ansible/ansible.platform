@@ -3,10 +3,13 @@
 # Covers ansible.platform.user and ansible.platform.organization.
 name: molecule (mock)
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
-    branches: [devel]
+    branches: [devel, ANSTRAT-1640]
 
 env:
   MOLECULE_CONFIG: extensions/molecule/config.yml

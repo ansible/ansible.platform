@@ -6,7 +6,7 @@ env:
 on:
   pull_request:
   push:
-    branches: [devel]
+    branches: [devel, ANSTRAT-1640]
 jobs:
   common-tests:
     name: ${{ matrix.tests.name }}

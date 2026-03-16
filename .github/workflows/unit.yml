@@ -3,10 +3,13 @@
 # Single job runs tox -f unit (all unit envs). No matrix — matrix generation was empty and caused a skipped job.
 name: unit tests
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
-    branches: [devel]
+    branches: [devel, ANSTRAT-1640]
 
 env:
   LC_ALL: "C.UTF-8"
