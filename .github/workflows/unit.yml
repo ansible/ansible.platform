@@ -2,10 +2,9 @@
 name: Collection Unit Tests
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+  push:
+    branches: [devel]
   workflow_dispatch:
 
 jobs:
