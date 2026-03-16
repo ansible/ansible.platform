@@ -530,6 +530,9 @@ class DirectHTTPClient(BaseAPIClient):
         )
         logger.info("DirectHTTPClient: Loaded classes for %s (API version %s): %s, %s, %s", module_name, self.api_version, AnsibleClass, APIClass, MixinClass)
 
+        # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
+        include_nulls = ansible_data_dict.pop('_platform_enforced', False)
+
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
         logger.info("DirectHTTPClient: Reconstructed Ansible dataclass for %s: %s", module_name, ansible_instance)
@@ -538,7 +541,9 @@ class DirectHTTPClient(BaseAPIClient):
             manager=self,
             session=self.session,
             cache=self.cache,
-            api_version=self.api_version
+            api_version=self.api_version,
+            operation=operation,
+            include_nulls_for_update=include_nulls
         )
         logger.info("DirectHTTPClient: Built transformation context for %s: %s", module_name, context)
 
@@ -817,13 +822,14 @@ class DirectHTTPClient(BaseAPIClient):
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
             url = self._build_url(url)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
-            # Prepare request data
+            # Prepare request data; include "" on update so enforced can clear e.g. email
             request_data = {}
             if endpoint_op.fields:
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
-                    if value is not None:
-                        request_data[field] = value
+                    if value is None:
+                        continue
+                    request_data[field] = value
 
             # Performance timing: API call start
             api_start = time.perf_counter()

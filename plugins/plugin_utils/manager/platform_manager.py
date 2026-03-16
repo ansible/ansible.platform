@@ -548,6 +548,9 @@ class PlatformService(BaseAPIClient):
 
         logger.info("Executing %s on %s", operation, module_name)
 
+        # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
+        include_nulls = ansible_data_dict.pop('_platform_enforced', False)
+
         # Load version-appropriate classes
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(
             module_name,
@@ -562,7 +565,9 @@ class PlatformService(BaseAPIClient):
             manager=self,
             session=self.session,
             cache=self.cache,
-            api_version=self.api_version
+            api_version=self.api_version,
+            operation=operation,
+            include_nulls_for_update=include_nulls
         )
 
         # Execute operation
@@ -898,10 +903,15 @@ class PlatformService(BaseAPIClient):
             endpoint_op = relevant_ops[op_name]
 
             # Extract fields for this endpoint
+            # For update: send non-None values including "" (empty string) so enforced can clear e.g. email
             request_data = {}
             for field in endpoint_op.fields:
-                if field in api_data_dict and api_data_dict[field] is not None:
-                    request_data[field] = api_data_dict[field]
+                if field not in api_data_dict:
+                    continue
+                val = api_data_dict[field]
+                if val is None:
+                    continue
+                request_data[field] = val
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)

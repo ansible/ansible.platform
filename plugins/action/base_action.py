@@ -559,19 +559,17 @@ class BaseResourceActionPlugin(ActionBase):
         except yaml.YAMLError as e:
             raise ValueError(f"Failed to parse DOCUMENTATION: {e}") from e
 
-        # Start with module's own options
-        options = doc_data.get('options', {}).copy()
-
-        # Merge documentation fragments if specified
+        # Merge fragments first, then module options so module's own options take precedence
+        # (e.g. user module state choices merged/replaced/gathered/deleted override fragment's state)
+        options = {}
         extends_fragments = doc_data.get('extends_documentation_fragment', [])
         if not isinstance(extends_fragments, list):
             extends_fragments = [extends_fragments]
-
         for fragment_name in extends_fragments:
             fragment_options = self._load_documentation_fragment(fragment_name)
             if fragment_options:
-                # Merge fragment options into module options
                 options.update(fragment_options)
+        options.update(doc_data.get('options', {}))
 
         # Build argspec in Ansible format
         # ArgumentSpecValidator expects 'argument_spec' key, not 'options'
@@ -1023,25 +1021,26 @@ class BaseResourceActionPlugin(ActionBase):
 
     def _detect_operation(self, args: dict) -> str:
         """
-        Detect operation type from arguments.
+        Detect operation type from arguments (CRUD-aligned state).
 
         Args:
             args: Module arguments
 
         Returns:
-            Operation name ('create', 'update', 'delete', 'find')
+            Operation name ('create', 'update', 'delete', 'find', 'enforced').
+            'enforced' is handled by the action plugin (find then merge and create/update).
         """
         state = args.get('state', 'present')
 
-        if state == 'absent':
+        if state in ('absent', 'deleted'):
             return 'delete'
         elif state == 'present':
-            # Check if ID is provided (update) or not (create)
             if args.get('id'):
                 return 'update'
-            else:
-                return 'create'
-        elif state == 'find':
+            return 'create'
+        elif state in ('exists', 'find', 'gathered'):
             return 'find'
+        elif state in ('enforced', 'merged'):
+            return 'enforced'
         else:
             raise AnsibleError(f"Unknown state: {state}")

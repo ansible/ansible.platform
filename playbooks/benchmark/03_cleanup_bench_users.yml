@@ -23,13 +23,13 @@
           Connection mode: {{ 'persistent' if ansible_platform_use_persistent_connection else 'direct' }}
           (ansible_platform_use_persistent_connection={{ ansible_platform_use_persistent_connection }})
 
-    - name: Delete benchmark
+    - name: Delete benchmark users
       ansible.platform.user:
         gateway_hostname: "{{ base_url }}"
-        gateway_token: "token"
-        gateway_validate_certs: false
-        gateway_username: "admin"
-        gateway_password: "Admin!Password!Gw"
+        gateway_token: "{{ gateway_token | default('', true) }}"
+        gateway_validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password | default('', true) }}"
         username: "bench_user_{{ '%03d' | format(item) }}"
         state: absent
       loop: "{{ range(1, (benchmark_user_count | int) + 1) | list }}"

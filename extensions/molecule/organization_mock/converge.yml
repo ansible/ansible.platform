@@ -1,0 +1,87 @@
+---
+# Converge: organization create, idempotency, update, delete against mock Gateway.
+# Play 1: health check runs on controller (connection: local); platform connection cannot run uri.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+# Play 2: organization tasks require platform connection (overrides scenario inventory's local).
+- name: Converge — organization integration tests (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name: "Molecule Test Org"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        description: "Created by Molecule organization_mock"
+      register: create_result
+      vars:
+        ansible_connection: ansible.platform.http
+
+    - name: Show create result
+      ansible.builtin.debug:
+        var: create_result
+        verbosity: 3
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        description: "Created by Molecule organization_mock"
+        state: present
+      register: idem_result
+      vars:
+        ansible_connection: ansible.platform.http
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        description: "Updated by Molecule organization_mock"
+      register: update_result
+      vars:
+        ansible_connection: ansible.platform.http
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed. update_result={{ update_result }}"
+      vars:
+        ansible_connection: local
+...

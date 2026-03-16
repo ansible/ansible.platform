@@ -1,0 +1,18 @@
+---
+# Clean up test user after idempotence check.
+- name: Cleanup – delete test user
+  hosts: localhost
+  gather_facts: false
+  vars:
+    molecule_user: "molecule-user-integration-test"
+    gateway_hostname: "https://34.238.38.25/"
+    gateway_username: "admin"
+    gateway_password: "Admin!Password!Gw"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete test user (best-effort; user may already be absent)
+      ansible.platform.user:
+        username: "{{ molecule_user }}"
+        state: absent
+      failed_when: false
+...

@@ -1,0 +1,18 @@
+---
+# Clean up test user from mock.
+- name: Cleanup — delete test user (mock)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    molecule_user: "molecule-mock-user"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete test user
+      ansible.platform.user:
+        username: "{{ molecule_user }}"
+        state: absent
+      failed_when: false
+...

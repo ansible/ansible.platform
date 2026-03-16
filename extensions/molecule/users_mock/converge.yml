@@ -1,0 +1,58 @@
+---
+# Converge: user create and update against mock Gateway (http://127.0.0.1:8000).
+# Mock accepts any Authorization; no real AAP required.
+- name: Converge — user integration tests (mock)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    molecule_user: "molecule-mock-user"
+    molecule_password: "MockPass1!"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create user
+      ansible.platform.user:
+        username: "{{ molecule_user }}"
+        first_name: MoleculeMock
+        password: "{{ molecule_password }}"
+      register: create_result
+
+    - name: Show create result
+      ansible.builtin.debug:
+        var: create_result
+        verbosity: 3
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+
+    - name: Run again (idempotency)
+      ansible.platform.user:
+        username: "{{ molecule_user }}"
+        first_name: MoleculeMock
+        password: "{{ molecule_password }}"
+        state: present
+      register: idem_result
+
+    - name: Show idempotency result
+      ansible.builtin.debug:
+        var: idem_result
+        verbosity: 3
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+
+    - name: Update user
+      ansible.platform.user:
+        username: "{{ molecule_user }}"
+        first_name: MoleculeMockUpdated
+        is_superuser: true
+      register: update_result
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed
+...

@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Run benchmark: create N users in direct vs persistent mode and report timings.
+# Also runs 06_test_all_operations.yml to verify all user operations:
+#   present (create/update, idempotent), absent (delete, idempotent),
+#   exists (read-only find), enforced (merge + update, can clear optional fields).
 # Usage (from ansible/platform collection root):
-#   ./playbooks/benchmark/run_benchmark.sh [user_count] [mode]
+#   ./playbooks/benchmark/run_benchmark.sh [user_count] [mode] [verbose]
 #   mode: direct | persistent | both (default: both)
+#   verbose: optional -v, -vv, -vvv, or set BENCHMARK_VERBOSE=-v (or -vv, -vvv)
 # Examples:
-#   ./playbooks/benchmark/run_benchmark.sh              # 100 users, both modes
+#   ./playbooks/benchmark/run_benchmark.sh              # 20 users, both modes
 #   ./playbooks/benchmark/run_benchmark.sh 50            # 50 users, both modes
-#   ./playbooks/benchmark/run_benchmark.sh 100 direct     # 100 users, direct only
-#   ./playbooks/benchmark/run_benchmark.sh 100 persistent
+#   ./playbooks/benchmark/run_benchmark.sh 100 direct    # 100 users, direct only
+#   ./playbooks/benchmark/run_benchmark.sh 10 both -vv   # 10 users, both modes, verbose
+#   BENCHMARK_VERBOSE=-vv ./playbooks/benchmark/run_benchmark.sh 10
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,6 +20,14 @@ COLLECTION_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 VARS_FILE="$SCRIPT_DIR/vars.yml"
 USER_COUNT="${1:-20}"
 MODE="${2:-both}"
+# Verbose: third arg (-v, -vv, -vvv) or BENCHMARK_VERBOSE env
+if [[ "$3" == -v || "$3" == -vv || "$3" == -vvv ]]; then
+  VERBOSE_OPT=("$3")
+elif [[ -n "${BENCHMARK_VERBOSE}" ]]; then
+  VERBOSE_OPT=("${BENCHMARK_VERBOSE}")
+else
+  VERBOSE_OPT=()
+fi
 REPORT_FILE="${BENCHMARK_REPORT_FILE:-$SCRIPT_DIR/benchmark_report.txt}"
 # Stats file written by connection plugin when BENCHMARK_STATS_FILE is set (POC session counts)
 STATS_FILE="${BENCHMARK_STATS_FILE:-$SCRIPT_DIR/benchmark_stats.json}"
@@ -24,7 +37,8 @@ MODE="$(echo "$MODE" | tr '[:upper:]' '[:lower:]')"
 
 if [[ "$MODE" != "direct" && "$MODE" != "persistent" && "$MODE" != "both" ]]; then
   echo "ERROR: mode must be 'direct', 'persistent', or 'both' (got: $MODE)"
-  echo "Usage: $0 [user_count] [mode]"
+  echo "Usage: $0 [user_count] [mode] [verbose]"
+  echo "  verbose: optional -v, -vv, -vvv (or set BENCHMARK_VERBOSE)"
   exit 1
 fi
 
@@ -43,19 +57,22 @@ echo ""
 
 # Step 1: Remove all users except admin (force local connection - uses uri, not platform)
 echo "--- Step 1: Cleanup all users except admin ---"
-ansible-playbook playbooks/benchmark/01_cleanup_all_except_admin.yml "${EXTRA_VARS[@]}" -e ansible_connection=local
+ansible-playbook playbooks/benchmark/01_cleanup_all_except_admin.yml "${EXTRA_VARS[@]}" -e ansible_connection=local "${VERBOSE_OPT[@]}"
 echo ""
 
 run_create_and_cleanup() {
   local mode_name="$1"
   local persistent_flag="$2"
-  echo "--- Create $USER_COUNT users ($mode_name) ---"
+  # Echo to stderr so only the numeric duration is captured when we assign TIME_*=$(run_create_and_cleanup ...)
+  echo "--- Create $USER_COUNT users ($mode_name) ---" >&2
   echo '{"http_sessions":0,"tls_sessions":0}' > "$STATS_FILE"
   export BENCHMARK_STATS_FILE="$STATS_FILE"
   START=$(python3 -c "import time; print(time.time())")
   # Send playbook stdout to stderr so only the duration is captured in TIME_* below
   ansible-playbook playbooks/benchmark/02_create_users.yml "${EXTRA_VARS[@]}" -e "ansible_platform_use_persistent_connection=$persistent_flag" 1>&2
   END=$(python3 -c "import time; print(time.time())")
+  echo "--- Test all operations: present, absent, exists, enforced ($mode_name) ---" >&2
+  ansible-playbook playbooks/benchmark/06_test_all_operations.yml "${EXTRA_VARS[@]}" -e "ansible_platform_persistent=$persistent_flag" "${VERBOSE_OPT[@]}" 1>&2
   python3 -c "print(round($END - $START, 2))"
 }
 

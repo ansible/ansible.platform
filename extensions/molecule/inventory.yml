@@ -1,0 +1,17 @@
+# Inventory for Molecule integration tests.
+# Gateway connection: set GATEWAY_HOSTNAME, GATEWAY_USERNAME, GATEWAY_PASSWORD before molecule test.
+# Playbooks resolve these from env in play vars (inventory uses static defaults to avoid raw Jinja in merged inventory).
+---
+all:
+  vars:
+    ansible_connection: ansible.platform.http
+    ansible_python_interpreter: auto
+    gateway_hostname: "https://34.238.38.25/"
+    gateway_username: "admin"
+    gateway_password: "Admin!Password!Gw"
+    gateway_validate_certs: false
+  children:
+    gateway_under_test:
+      hosts:
+        localhost: {}
+...
