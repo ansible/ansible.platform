@@ -1,7 +1,6 @@
 ---
 # Run unit tests via tox-ansible (ANSTRAT-1640 P1R14: pytest/tox-ansible for unit tests).
-# Requires tox-ansible.ini in the repo root.
-# Fallback: unit-direct job always runs pytest so unit tests are visible in CI even if matrix is empty.
+# Single job runs tox -f unit (all unit envs). No matrix — matrix generation was empty and caused a skipped job.
 name: unit tests
 
 on:
@@ -13,8 +12,7 @@ env:
   LC_ALL: "C.UTF-8"
 
 jobs:
-  # Always-run unit tests via tox-ansible (same pattern as networking collections: pytest via tox).
-  unit-direct:
+  unit:
     name: Unit (pytest)
     runs-on: ubuntu-latest
     steps:
@@ -33,60 +31,4 @@ jobs:
 
       - name: Run tox unit tests
         run: python -m tox --ansible -f unit --conf tox-ansible.ini
-
-  unit-matrix:
-    name: Unit matrix
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install tox-ansible
-        run: python -m pip install tox-ansible 'tox!=4.47.1,!=4.47.2'
-
-      - name: Ensure tox-ansible.ini exists
-        uses: ansible/ansible-content-actions/.github/actions/add_tox_ansible@main
-
-      - name: Generate unit test matrix
-        id: matrix
-        run: |
-          envlist=$(python -m tox --ansible --gh-matrix --matrix-scope unit --conf tox-ansible.ini 2>/dev/null || echo "[]")
-          echo "envlist<<EOFMATRIX" >> "$GITHUB_OUTPUT"
-          echo "$envlist" >> "$GITHUB_OUTPUT"
-          echo "EOFMATRIX" >> "$GITHUB_OUTPUT"
-          echo "Generated matrix: $envlist"
-
-    outputs:
-      envlist: ${{ steps.matrix.outputs.envlist }}
-
-  unit:
-    name: "${{ matrix.entry.name }}"
-    needs: unit-matrix
-    runs-on: ubuntu-latest
-    if: needs.unit-matrix.outputs.envlist != '[]' && needs.unit-matrix.outputs.envlist != ''
-    strategy:
-      fail-fast: false
-      matrix:
-        entry: ${{ fromJson(needs.unit-matrix.outputs.envlist) }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.entry.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "${{ matrix.entry.python }}"
-
-      - name: Install tox-ansible
-        run: python -m pip install tox-ansible 'tox!=4.47.1,!=4.47.2'
-
-      - name: Ensure tox-ansible.ini exists
-        uses: ansible/ansible-content-actions/.github/actions/add_tox_ansible@main
-
-      - name: Run unit tests
-        run: python -m tox --ansible -e ${{ matrix.entry.name }} --conf tox-ansible.ini
 ...
