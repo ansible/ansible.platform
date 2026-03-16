@@ -40,6 +40,9 @@ jobs:
       - name: Run user integration tests (mock)
         run: molecule test -s users_mock --all
 
+      - name: Restart mock Gateway for organization tests
+        run: ansible-playbook -i extensions/molecule/default/inventory.yml extensions/molecule/default/create.yml
+
       - name: Run organization integration tests (mock)
         run: molecule test -s organization_mock --all
 

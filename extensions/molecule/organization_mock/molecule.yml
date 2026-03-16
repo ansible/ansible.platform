@@ -7,11 +7,12 @@ driver:
 platforms:
   - name: localhost
 
+# Use scenario inventory (connection: local + gateway vars); second play overrides to ansible.platform.http.
 ansible:
   executor:
     args:
       ansible_playbook:
-        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/inventory.yml
 
 provisioner:
   name: ansible

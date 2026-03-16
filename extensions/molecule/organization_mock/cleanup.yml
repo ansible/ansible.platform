@@ -2,6 +2,7 @@
 # Cleanup: delete organization created by converge (mock).
 - name: Cleanup — delete organization (mock)
   hosts: localhost
+  connection: ansible.platform.http
   gather_facts: false
   vars:
     molecule_org_name: "Molecule Test Org"
@@ -16,9 +17,13 @@
         state: absent
       register: delete_result
       failed_when: false
+      vars:
+        ansible_connection: ansible.platform.http
 
     - name: Assert organization removed or already absent
       ansible.builtin.assert:
         that: delete_result is not failed
         fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name }}."
+      vars:
+        ansible_connection: local
 ...
