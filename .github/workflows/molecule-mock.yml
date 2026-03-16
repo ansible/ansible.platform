@@ -41,7 +41,17 @@ jobs:
         run: molecule test -s users_mock --all
 
       - name: Restart mock Gateway for organization tests
+        working-directory: ${{ github.workspace }}
         run: ansible-playbook -i extensions/molecule/default/inventory.yml extensions/molecule/default/create.yml
+
+      - name: Verify mock is up before organization tests
+        working-directory: ${{ github.workspace }}
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/health
 
       - name: Run organization integration tests (mock)
         run: molecule test -s organization_mock --all
