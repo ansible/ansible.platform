@@ -730,8 +730,13 @@ class DirectHTTPClient(BaseAPIClient):
         logger.info("DirectHTTPClient: Lookup value for %s: %s", mixin_class.__name__, lookup_value)
         if not lookup_value:
             raise ValueError(f"Lookup field '{lookup_field}' not found in data")
-        # Build URL with query parameter
-        url = self._build_url(list_op.path, {lookup_field: lookup_value})
+        query_params = {lookup_field: lookup_value}
+        if hasattr(mixin_class, 'get_find_list_query_params'):
+            extra = mixin_class.get_find_list_query_params(ansible_data)
+            if extra:
+                query_params.update(extra)
+        # Build URL with query parameter(s)
+        url = self._build_url(list_op.path, query_params)
         logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
         # Execute list request
         logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)

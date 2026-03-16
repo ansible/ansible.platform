@@ -13,6 +13,8 @@ This server implements a minimal subset of endpoints used by the POC:
   - GET/PATCH/DELETE /api/gateway/v{1,2}/users/{id}/
   - GET/POST /api/gateway/v{1,2}/organizations/
   - GET/PATCH/DELETE /api/gateway/v{1,2}/organizations/{id}/
+  - GET/POST /api/gateway/v{1,2}/teams/
+  - GET/PATCH/DELETE /api/gateway/v{1,2}/teams/{id}/
 
 Notes
 -----
@@ -43,10 +45,12 @@ class Store:
     lock: threading.Lock = field(default_factory=threading.Lock)
     next_user_id: int = 1000
     next_org_id: int = 1000
+    next_team_id: int = 1000
     users: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     # Pre-seed orgs used by lookup logic (name -> id); dynamic orgs added here too
     orgs_by_id: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     orgs_by_name: Dict[str, int] = field(default_factory=dict)
+    teams_by_id: Dict[int, Dict[str, Any]] = field(default_factory=dict)
 
     def seed_defaults(self) -> None:
         with self.lock:
@@ -202,6 +206,66 @@ class Store:
             if name:
                 self.orgs_by_name.pop(name, None)
             del self.orgs_by_id[org_id]
+
+    def create_team(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self.seed_defaults()
+        with self.lock:
+            team_name = payload.get("name")
+            org_id = payload.get("organization")
+            if not team_name:
+                raise ValueError("name is required")
+            if org_id is None:
+                raise ValueError("organization is required")
+            if org_id not in self.orgs_by_id:
+                raise ValueError("organization does not exist")
+            team_id = self.next_team_id
+            self.next_team_id += 1
+            team = {
+                "id": team_id,
+                "name": team_name,
+                "description": payload.get("description") or "",
+                "organization": org_id,
+                "created": _now_iso(),
+                "modified": _now_iso(),
+                "url": f"/api/gateway/v{version}/teams/{team_id}/",
+            }
+            self.teams_by_id[team_id] = team
+            return team
+
+    def list_teams(
+        self, name: Optional[str] = None, organization: Optional[int] = None
+    ) -> Dict[str, Any]:
+        with self.lock:
+            items = list(self.teams_by_id.values())
+            if name is not None:
+                items = [t for t in items if t.get("name") == name]
+            if organization is not None:
+                items = [t for t in items if t.get("organization") == organization]
+            return {"count": len(items), "results": items}
+
+    def get_team(self, team_id: int) -> Dict[str, Any]:
+        with self.lock:
+            if team_id not in self.teams_by_id:
+                raise KeyError("not found")
+            return self.teams_by_id[team_id]
+
+    def patch_team(self, team_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
+        with self.lock:
+            if team_id not in self.teams_by_id:
+                raise KeyError("not found")
+            team = dict(self.teams_by_id[team_id])
+            for k in ("name", "description", "organization"):
+                if k in payload and payload[k] is not None:
+                    team[k] = payload[k]
+            team["modified"] = _now_iso()
+            self.teams_by_id[team_id] = team
+            return team
+
+    def delete_team(self, team_id: int) -> None:
+        with self.lock:
+            if team_id not in self.teams_by_id:
+                raise KeyError("not found")
+            del self.teams_by_id[team_id]
 
 
 class MockGatewayHandler(BaseHTTPRequestHandler):
@@ -372,6 +436,51 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     self._send_json(404, {"detail": "Not Found"})
                 return
 
+        # /api/gateway/vX/teams/
+        if len(parts) == 4 and parts[3] == "teams":
+            if self.command == "GET":
+                name = (qs.get("name") or [None])[0]
+                org_q = (qs.get("organization") or [None])[0]
+                org_id = int(org_q) if org_q is not None and str(org_q).isdigit() else None
+                self._send_json(200, self.store.list_teams(name=name, organization=org_id))
+                return
+            if self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                    created = self.store.create_team(version=version, payload=payload)
+                    self._send_json(201, created)
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                return
+
+        # /api/gateway/vX/teams/{id}/
+        if len(parts) == 5 and parts[3] == "teams":
+            try:
+                team_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            if self.command == "GET":
+                try:
+                    self._send_json(200, self.store.get_team(team_id))
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return
+            if self.command == "PATCH":
+                try:
+                    payload = self._parse_json_body()
+                    self._send_json(200, self.store.patch_team(team_id, payload))
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return
+            if self.command == "DELETE":
+                try:
+                    self.store.delete_team(team_id)
+                    self._send_empty(204)
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return
+
         self._send_json(404, {"detail": "Not Found"})
 
     def do_GET(self) -> None:  # noqa: N802
@@ -436,7 +545,7 @@ def main() -> int:
         return 0
 
     print(f"Mock Gateway listening on http://{args.host}:{args.port} (reported_api_version={args.reported_api_version})")
-    print("Endpoints: /health, /api/gateway/v{1,2}/ping/, /api/gateway/v{1,2}/users/, /api/gateway/v{1,2}/organizations/")
+    print("Endpoints: /health, /api/gateway/v{1,2}/ping/, /api/gateway/v{1,2}/users/, /api/gateway/v{1,2}/organizations/, /api/gateway/v{1,2}/teams/")
     httpd.serve_forever()
     return 0
 

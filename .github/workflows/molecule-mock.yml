@@ -1,6 +1,7 @@
 ---
 # Run Molecule integration tests against the mock Gateway (no real AAP).
 # Covers ansible.platform.user and ansible.platform.organization.
+# Each scenario tests all three connection scenarios: direct (http, persistent=false), persistent (http, persistent=true), and connection: local.
 name: molecule (mock)
 
 permissions:
@@ -58,6 +59,22 @@ jobs:
 
       - name: Run organization integration tests (mock)
         run: molecule test -s organization_mock --all
+
+      - name: Restart mock Gateway for team tests
+        working-directory: ${{ github.workspace }}
+        run: ansible-playbook -i extensions/molecule/default/inventory.yml extensions/molecule/default/create.yml
+
+      - name: Verify mock is up before team tests
+        working-directory: ${{ github.workspace }}
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/health
+
+      - name: Run team integration tests (mock)
+        run: molecule test -s team_mock --all
 
       - name: Stop mock Gateway (default scenario destroy)
         if: always()

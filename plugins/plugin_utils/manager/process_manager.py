@@ -246,3 +246,66 @@ class ProcessManager:
             error_msg += f"\n\nManager process died (exitcode: {returncode})"
 
         raise RuntimeError(error_msg)
+
+
+def spawn_ephemeral_client(task_vars, gateway_config):
+    """
+    Spawn an ephemeral manager process and return (ManagerRPCClient, None).
+
+    Used when the connection plugin does not support get_client() (e.g. connection: local),
+    so the action plugin can still run platform tasks by spawning a short-lived manager.
+
+    Callers (e.g. action plugin) should prefer connection: ansible.platform.http when
+    persistent mode or connection-level config is desired.
+
+    Args:
+        task_vars: Ansible task variables (must contain inventory_hostname or default 'localhost').
+        gateway_config: Gateway configuration.
+
+    Returns:
+        Tuple of (ManagerRPCClient, None). Facts are never set for ephemeral (local) path.
+    """
+    import hashlib
+    from .rpc_client import ManagerRPCClient
+
+    inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
+    host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
+    identifier = f"e{host_hash}"
+    socket_dir = Path('/tmp') / 'ap'
+    socket_dir.mkdir(exist_ok=True, parents=True)
+
+    conn_info = ProcessManager.generate_connection_info(
+        identifier=identifier,
+        socket_dir=socket_dir,
+        gateway_config=gateway_config
+    )
+    socket_path = conn_info.socket_path
+    authkey = conn_info.authkey
+    ProcessManager.cleanup_old_socket(socket_path)
+
+    script_path = Path(__file__).parent / 'manager_process.py'
+    if not script_path.exists():
+        raise FileNotFoundError(f"Manager process script not found at: {script_path}")
+
+    process = ProcessManager.spawn_manager_process(
+        script_path=script_path,
+        socket_path=socket_path,
+        socket_dir=str(socket_dir),
+        identifier=identifier,
+        gateway_config=gateway_config,
+        authkey_b64=conn_info.authkey_b64,
+        sys_path=list(sys.path)
+    )
+    ProcessManager.wait_for_process_startup(
+        socket_path=socket_path,
+        socket_dir=socket_dir,
+        identifier=identifier,
+        process=process,
+        max_wait=50
+    )
+
+    client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
+    client._ephemeral = True
+    client.socket_path = socket_path
+    logger.info("Ephemeral manager spawned for connection: local at %s", gateway_config.base_url)
+    return (client, None)

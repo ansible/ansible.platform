@@ -7,11 +7,12 @@
 #   ./playbooks/benchmark/run_benchmark.sh [user_count] [mode] [verbose]
 #   mode: direct | persistent | both (default: both)
 #   verbose: optional -v, -vv, -vvv, or set BENCHMARK_VERBOSE=-v (or -vv, -vvv)
+#   RUN_WITH_LOCAL=1: also run same playbook tasks with connection: local (ephemeral manager).
 # Examples:
 #   ./playbooks/benchmark/run_benchmark.sh              # 20 users, both modes
 #   ./playbooks/benchmark/run_benchmark.sh 50            # 50 users, both modes
 #   ./playbooks/benchmark/run_benchmark.sh 100 direct    # 100 users, direct only
-#   ./playbooks/benchmark/run_benchmark.sh 10 both -vv   # 10 users, both modes, verbose
+#   RUN_WITH_LOCAL=1 ./playbooks/benchmark/run_benchmark.sh 10 both  # same tasks with connection local too
 #   BENCHMARK_VERBOSE=-vv ./playbooks/benchmark/run_benchmark.sh 10
 set -e
 
@@ -117,6 +118,28 @@ if [[ "$MODE" == "persistent" || "$MODE" == "both" ]]; then
   echo ""
 fi
 
+# Optional: run same playbook tasks with connection: local (ephemeral manager)
+CONNECTION_LOCAL_OK=""
+if [[ -n "${RUN_WITH_LOCAL:-}" && "${RUN_WITH_LOCAL}" != "0" ]]; then
+  echo "=== Run same playbook tasks with connection: local (ephemeral manager) ==="
+  echo "--- Create $USER_COUNT users (connection=local) ---"
+  if ansible-playbook playbooks/benchmark/02_create_users.yml "${EXTRA_VARS[@]}" -e ansible_connection=local "${VERBOSE_OPT[@]}"; then
+    echo "--- Test all operations (connection=local) ---"
+    if ansible-playbook playbooks/benchmark/06_test_all_operations.yml "${EXTRA_VARS[@]}" -e ansible_connection=local "${VERBOSE_OPT[@]}"; then
+      echo "--- Cleanup $USER_COUNT users (connection=local) ---"
+      if ansible-playbook playbooks/benchmark/03_cleanup_bench_users.yml "${EXTRA_VARS[@]}" -e ansible_connection=local "${VERBOSE_OPT[@]}"; then
+        CONNECTION_LOCAL_OK="OK"
+        echo "Connection local (ephemeral): OK"
+      fi
+    fi
+  fi
+  if [[ -z "$CONNECTION_LOCAL_OK" ]]; then
+    CONNECTION_LOCAL_OK="FAILED"
+    echo "Connection local (ephemeral): FAILED" >&2
+  fi
+  echo ""
+fi
+
 # Report (session counts from POC connection plugin when BENCHMARK_STATS_FILE was set)
 {
   echo "=============================================="
@@ -144,7 +167,14 @@ else:
     SAVED=$(python3 -c "print(round($TIME_DIRECT - $TIME_PERSISTENT, 2))")
     echo "Time saved with persistent:    ${SAVED}s"
   fi
+  if [[ -n "$CONNECTION_LOCAL_OK" ]]; then
+    echo ""
+    echo "Connection local (same tasks, ephemeral manager): $CONNECTION_LOCAL_OK"
+  fi
   echo "=============================================="
 } | tee "$REPORT_FILE"
 echo ""
 echo "Report written to: $REPORT_FILE"
+if [[ -n "${RUN_WITH_LOCAL:-}" && "${RUN_WITH_LOCAL}" != "0" && "$CONNECTION_LOCAL_OK" == "FAILED" ]]; then
+  exit 1
+fi

@@ -1,18 +1,18 @@
 ---
-# Scenario: test ansible.platform.organization against the mock Gateway server (no real AAP).
-# Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
+# Scenario: test ansible.platform.team against the mock Gateway server (no real AAP).
+# Tests all three connection scenarios: Play 1 direct, Play 2 persistent, Play 3 connection local.
+# Uses mock's pre-seeded organization "Default" (id 1). Requires mock running (molecule test --all or default create).
 driver:
   name: default
 
 platforms:
   - name: localhost
 
-# Use scenario inventory (connection: local + gateway vars). Converge: play 2 direct, play 3 persistent, play 4 connection local.
 ansible:
   executor:
     args:
       ansible_playbook:
-        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/inventory.yml
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
 
 provisioner:
   name: ansible
@@ -29,4 +29,3 @@ scenario:
     - converge
     - verify
     - cleanup
-...

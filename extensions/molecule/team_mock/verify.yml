@@ -1,20 +1,22 @@
 ---
-# Verify: all three connection scenarios (direct, persistent, local).
-- name: Verify — user created with direct mode (mock)
+# Verify: all three team connection scenarios (direct, persistent, local).
+- name: Verify — team created with direct mode (mock)
   hosts: localhost
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_user: "molecule-mock-user-direct"
+    molecule_team_direct: "molecule-mock-team-direct"
+    molecule_org: "Default"
     ansible_platform_persistent: false
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
-    - name: Get user (state exists)
-      ansible.platform.user:
-        username: "{{ molecule_user }}"
+    - name: Get team (state exists, direct mode)
+      ansible.platform.team:
+        name: "{{ molecule_team_direct }}"
+        organization: "{{ molecule_org }}"
         state: exists
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -25,39 +27,40 @@
         ansible_connection: ansible.platform.http
         ansible_platform_persistent: false
 
-    - name: Assert user was found (direct mode)
+    - name: Assert team was found (direct mode)
       ansible.builtin.assert:
         that:
           - exists_result is not failed
           - exists_result.get('exists') | default(false) | bool
-          - exists_result.get('user') is defined
-        fail_msg: "Verify: could not find user {{ molecule_user }} (direct mode)."
+          - exists_result.get('team') is defined
+        fail_msg: "Verify: could not find team {{ molecule_team_direct }} (direct mode)."
       vars:
         ansible_connection: local
 
-    - name: Assert first name updated (direct)
+    - name: Assert description updated (direct)
       ansible.builtin.assert:
-        that: exists_result.user.first_name == "MoleculeMockUpdated"
-        fail_msg: "Verify: user (direct) first_name was not updated."
+        that: exists_result.team.description == "Updated by Molecule team_mock (direct)"
+        fail_msg: "Verify: team (direct) description was not updated."
       vars:
         ansible_connection: local
 
-# Verify user created with persistent mode.
-- name: Verify — user created with persistent mode (mock)
+- name: Verify — team created with persistent mode (mock)
   hosts: localhost
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_user_persistent: "molecule-mock-user-persistent"
+    molecule_team_persistent: "molecule-mock-team-persistent"
+    molecule_org: "Default"
     ansible_platform_persistent: true
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
-    - name: Get user (state exists, persistent mode)
-      ansible.platform.user:
-        username: "{{ molecule_user_persistent }}"
+    - name: Get team (state exists, persistent mode)
+      ansible.platform.team:
+        name: "{{ molecule_team_persistent }}"
+        organization: "{{ molecule_org }}"
         state: exists
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -68,38 +71,39 @@
         ansible_connection: ansible.platform.http
         ansible_platform_persistent: true
 
-    - name: Assert user was found (persistent mode)
+    - name: Assert team was found (persistent mode)
       ansible.builtin.assert:
         that:
           - exists_result_persistent is not failed
           - exists_result_persistent.get('exists') | default(false) | bool
-          - exists_result_persistent.get('user') is defined
-        fail_msg: "Verify: could not find user {{ molecule_user_persistent }} (persistent mode)."
+          - exists_result_persistent.get('team') is defined
+        fail_msg: "Verify: could not find team {{ molecule_team_persistent }} (persistent mode)."
       vars:
         ansible_connection: local
 
-    - name: Assert first name updated (persistent)
+    - name: Assert description updated (persistent)
       ansible.builtin.assert:
-        that: exists_result_persistent.user.first_name == "MoleculeMockPersistentUpdated"
-        fail_msg: "Verify: user (persistent) first_name was not updated."
+        that: exists_result_persistent.team.description == "Updated by Molecule team_mock (persistent)"
+        fail_msg: "Verify: team (persistent) description was not updated."
       vars:
         ansible_connection: local
 
-# Verify user created with connection: local.
-- name: Verify — user created with connection local (mock)
+- name: Verify — team created with connection local (mock)
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    molecule_user_local: "molecule-mock-user-local"
+    molecule_team_local: "molecule-mock-team-local"
+    molecule_org: "Default"
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
-    - name: Get user (state exists, connection local)
-      ansible.platform.user:
-        username: "{{ molecule_user_local }}"
+    - name: Get team (state exists, connection local)
+      ansible.platform.team:
+        name: "{{ molecule_team_local }}"
+        organization: "{{ molecule_org }}"
         state: exists
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -109,20 +113,19 @@
       vars:
         ansible_connection: local
 
-    - name: Assert user was found (connection local)
+    - name: Assert team was found (connection local)
       ansible.builtin.assert:
         that:
           - exists_result_local is not failed
           - exists_result_local.get('exists') | default(false) | bool
-          - exists_result_local.get('user') is defined
-        fail_msg: "Verify: could not find user {{ molecule_user_local }} (connection local)."
+          - exists_result_local.get('team') is defined
+        fail_msg: "Verify: could not find team {{ molecule_team_local }} (connection local)."
       vars:
         ansible_connection: local
 
-    - name: Assert first name updated (connection local)
+    - name: Assert description updated (local)
       ansible.builtin.assert:
-        that: exists_result_local.user.first_name == "MoleculeMockLocalUpdated"
-        fail_msg: "Verify: user (local) first_name was not updated."
+        that: exists_result_local.team.description == "Updated by Molecule team_mock (local)"
+        fail_msg: "Verify: team (local) description was not updated."
       vars:
         ansible_connection: local
-...

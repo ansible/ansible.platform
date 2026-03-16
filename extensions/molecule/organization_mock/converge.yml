@@ -20,25 +20,27 @@
       vars:
         ansible_connection: local
 
-# Play 2: organization tasks require platform connection (overrides scenario inventory's local).
-- name: Converge — organization integration tests (mock)
+# Play 2: organization with ansible.platform.http direct mode (ephemeral manager per task).
+- name: Converge — organization (mock, ansible.platform.http direct mode)
   hosts: localhost
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_org_name: "Molecule Test Org"
+    molecule_org_name: "Molecule Test Org Direct"
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
+    ansible_platform_persistent: false
   tasks:
-    - name: Create organization
+    - name: Create organization (direct mode)
       ansible.platform.organization:
         name: "{{ molecule_org_name }}"
-        description: "Created by Molecule organization_mock"
+        description: "Created by Molecule organization_mock (direct)"
       register: create_result
       vars:
         ansible_connection: ansible.platform.http
+        ansible_platform_persistent: false
 
     - name: Show create result
       ansible.builtin.debug:
@@ -54,14 +56,15 @@
       vars:
         ansible_connection: local
 
-    - name: Run again (idempotency)
+    - name: Run again (idempotency, direct mode)
       ansible.platform.organization:
         name: "{{ molecule_org_name }}"
-        description: "Created by Molecule organization_mock"
+        description: "Created by Molecule organization_mock (direct)"
         state: present
       register: idem_result
       vars:
         ansible_connection: ansible.platform.http
+        ansible_platform_persistent: false
 
     - name: Assert idempotent run did not change
       ansible.builtin.assert:
@@ -70,18 +73,139 @@
       vars:
         ansible_connection: local
 
-    - name: Update organization
+    - name: Update organization (direct mode)
       ansible.platform.organization:
         name: "{{ molecule_org_name }}"
-        description: "Updated by Molecule organization_mock"
+        description: "Updated by Molecule organization_mock (direct)"
       register: update_result
       vars:
         ansible_connection: ansible.platform.http
+        ansible_platform_persistent: false
 
-    - name: Assert update changed
+    - name: Assert update changed (direct mode)
       ansible.builtin.assert:
         that: update_result is changed
         fail_msg: "Update should report changed. update_result={{ update_result }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: organization with ansible.platform.http persistent mode (reused manager).
+- name: Converge — organization (mock, ansible.platform.http persistent mode)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_persistent: "Molecule Test Org Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+    ansible_platform_persistent: true
+  tasks:
+    - name: Create organization (persistent mode)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_persistent }}"
+        description: "Created by Molecule organization_mock (persistent)"
+      register: create_result_persistent
+      vars:
+        ansible_connection: ansible.platform.http
+        ansible_platform_persistent: true
+
+    - name: Assert create changed (persistent mode)
+      ansible.builtin.assert:
+        that: create_result_persistent is changed
+        fail_msg: "Create (persistent) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (persistent mode)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_persistent }}"
+        description: "Created by Molecule organization_mock (persistent)"
+        state: present
+      register: idem_result_persistent
+      vars:
+        ansible_connection: ansible.platform.http
+        ansible_platform_persistent: true
+
+    - name: Assert idempotent run did not change (persistent mode)
+      ansible.builtin.assert:
+        that: idem_result_persistent is not changed
+        fail_msg: "Idempotent run (persistent) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update organization (persistent mode)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_persistent }}"
+        description: "Updated by Molecule organization_mock (persistent)"
+      register: update_result_persistent
+      vars:
+        ansible_connection: ansible.platform.http
+        ansible_platform_persistent: true
+
+    - name: Assert update changed (persistent mode)
+      ansible.builtin.assert:
+        that: update_result_persistent is changed
+        fail_msg: "Update (persistent) should report changed."
+      vars:
+        ansible_connection: local
+
+# Play 4: same organization tasks with connection: local (ephemeral manager).
+- name: Converge — organization (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_org_name_local: "Molecule Test Org Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "mock"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        description: "Created by Molecule organization_mock (connection local)"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that: create_result_local is changed
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        description: "Created by Molecule organization_mock (connection local)"
+        state: present
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed. idem_result_local={{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        description: "Updated by Molecule organization_mock (connection local)"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed. update_result_local={{ update_result_local }}"
       vars:
         ansible_connection: local
 ...

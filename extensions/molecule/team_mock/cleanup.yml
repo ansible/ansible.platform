@@ -1,79 +1,91 @@
 ---
-# Cleanup: delete organizations created by converge (direct, persistent, local).
-- name: Cleanup — delete organization (mock, direct mode)
+# Clean up test teams from mock (direct, persistent, local).
+- name: Cleanup — delete team (mock, direct mode)
   hosts: localhost
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_org_name: "Molecule Test Org Direct"
+    molecule_team_direct: "molecule-mock-team-direct"
+    molecule_org: "Default"
     ansible_platform_persistent: false
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
-    - name: Delete organization (direct mode)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name }}"
+    - name: Delete team (direct mode)
+      ansible.platform.team:
+        name: "{{ molecule_team_direct }}"
+        organization: "{{ molecule_org }}"
         state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
       register: delete_result
       failed_when: false
       vars:
         ansible_connection: ansible.platform.http
         ansible_platform_persistent: false
 
-    - name: Assert organization removed or already absent (direct)
+    - name: Assert team removed or already absent (direct)
       ansible.builtin.assert:
         that: delete_result is not failed
-        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name }}."
+        fail_msg: "Cleanup: failed to delete team {{ molecule_team_direct }}."
       vars:
         ansible_connection: local
 
-# Delete organization created with persistent mode.
-- name: Cleanup — delete organization (mock, persistent mode)
+- name: Cleanup — delete team (mock, persistent mode)
   hosts: localhost
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_org_name_persistent: "Molecule Test Org Persistent"
+    molecule_team_persistent: "molecule-mock-team-persistent"
+    molecule_org: "Default"
     ansible_platform_persistent: true
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
-    - name: Delete organization (persistent mode)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name_persistent }}"
+    - name: Delete team (persistent mode)
+      ansible.platform.team:
+        name: "{{ molecule_team_persistent }}"
+        organization: "{{ molecule_org }}"
         state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
       register: delete_result_persistent
       failed_when: false
       vars:
         ansible_connection: ansible.platform.http
         ansible_platform_persistent: true
 
-    - name: Assert organization removed or already absent (persistent)
+    - name: Assert team removed or already absent (persistent)
       ansible.builtin.assert:
         that: delete_result_persistent is not failed
-        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name_persistent }}."
+        fail_msg: "Cleanup: failed to delete team {{ molecule_team_persistent }}."
       vars:
         ansible_connection: local
 
-# Delete organization created with connection: local.
-- name: Cleanup — delete organization (mock, connection local)
+- name: Cleanup — delete team (mock, connection local)
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    molecule_org_name_local: "Molecule Test Org Local"
+    molecule_team_local: "molecule-mock-team-local"
+    molecule_org: "Default"
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
     gateway_password: "mock"
     gateway_validate_certs: false
   tasks:
-    - name: Delete organization (connection local)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name_local }}"
+    - name: Delete team (connection local)
+      ansible.platform.team:
+        name: "{{ molecule_team_local }}"
+        organization: "{{ molecule_org }}"
         state: absent
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -84,10 +96,9 @@
       vars:
         ansible_connection: local
 
-    - name: Assert organization removed or already absent (connection local)
+    - name: Assert team removed or already absent (connection local)
       ansible.builtin.assert:
         that: delete_result_local is not failed
-        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name_local }}."
+        fail_msg: "Cleanup: failed to delete team {{ molecule_team_local }}."
       vars:
         ansible_connection: local
-...

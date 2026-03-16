@@ -248,8 +248,8 @@ class BaseResourceActionPlugin(ActionBase):
             required=True
         )
 
-        # DISPATCHER: Delegate to connection plugin's get_client() method
-        # The connection plugin handles routing to persistent or ephemeral managers
+        # DISPATCHER: Delegate to connection plugin's get_client() when available;
+        # otherwise support connection: local by spawning an ephemeral manager.
         try:
             if hasattr(self._connection, 'get_client'):
                 logger.debug("Dispatching to connection plugin's get_client() method")
@@ -260,11 +260,16 @@ class BaseResourceActionPlugin(ActionBase):
                 logger.debug("Got client from connection plugin: %s", type(client))
                 return client, facts_to_set
             else:
-                # Fallback: Connection plugin doesn't implement get_client()
-                raise AnsibleError(
-                    f"Connection plugin '{self._connection.transport}' does not support 'get_client()' method. "
-                    "Ensure you are using 'connection: ansible.platform.http' in your playbook."
+                # Fallback: connection is local (or other) — spawn ephemeral manager so tasks still work
+                logger.info(
+                    "Connection is '%s'; using ephemeral manager (use connection: ansible.platform.http for persistent mode).",
+                    self._connection.transport
                 )
+                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
+                    spawn_ephemeral_client
+                )
+                client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config)
+                return client, facts_to_set
         except Exception as e:
             logger.error("Failed in _get_or_spawn_manager dispatcher: %s: %s", type(e).__name__, e)
             import traceback

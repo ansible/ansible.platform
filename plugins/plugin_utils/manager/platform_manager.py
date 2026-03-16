@@ -838,8 +838,13 @@ class PlatformService(BaseAPIClient):
             # Use list endpoint and filter by lookup field
             if not list_op:
                 raise ValueError("No LIST operation defined for this resource")
-            url = self._build_url(list_op.path, query_params={lookup_field: unique_value})
-            logger.debug("Calling GET %s to find %s=%s", url, lookup_field, unique_value)
+            query_params = {lookup_field: unique_value}
+            if hasattr(mixin_class, 'get_find_list_query_params'):
+                extra = mixin_class.get_find_list_query_params(ansible_data)
+                if extra:
+                    query_params.update(extra)
+            url = self._build_url(list_op.path, query_params=query_params)
+            logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
             response = self.session.get(
                 url,
                 timeout=self.request_timeout,
