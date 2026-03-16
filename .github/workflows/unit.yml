@@ -2,8 +2,6 @@
 name: Collection Unit Tests
 
 on:
-  push:
-    branches: [main]
   pull_request:
   push:
     branches: [devel, ANSTRAT-1640]
