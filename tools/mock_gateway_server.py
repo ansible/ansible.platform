@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Local mock server for AAP Gateway API.
 

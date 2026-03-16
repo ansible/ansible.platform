@@ -4,7 +4,6 @@
 from pathlib import Path
 import shutil
 import tempfile
-import pytest
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import (
     APIVersionRegistry,
@@ -78,5 +77,3 @@ def test_find_best_version_closest_lower():
         assert registry.find_best_version("2.1", "user") == "2"
     finally:
         shutil.rmtree(api_root, ignore_errors=True)
-
-

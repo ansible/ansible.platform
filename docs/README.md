@@ -17,7 +17,7 @@ Overview and index for the ansible.platform collection (ANSTRAT-1640). Docs are 
 | **Migration** | [migration/](migration/) | Playbook migration |
 | **Demo** | [demo/](demo/) | Demo script, Q&A |
 | **Reusables** | [reusables/](reusables/) | Shared variables, snippets |
-| **Reference (meraki_rm)** | [REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md) | What we can learn from Brad’s action plugin & resource module approach |
+| **Reference (meraki_rm)** | [REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md) | What we can learn from Brad's action plugin & resource module approach |
 
 ---
 
@@ -108,7 +108,7 @@ Shared content (e.g. variables, snippets).
 
 - **variables.md**
 
-### Reference: meraki_rm (Brad’s approach)
+### Reference: meraki_rm (Brad's approach)
 
 - **[REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md)** — Action plugin & resource module pattern, data-driven base, User Models, identity categories, adding resources. Use when evolving our action plugin design or adding new resources.
 - **Testing/mock:** [testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md](testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md) — Molecule and mock server.

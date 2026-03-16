@@ -4,7 +4,7 @@
 
 This directory holds Molecule scenarios for the ansible.platform collection.
 
-**Important:** For tox integration to run these tests, (1) track in git: `extensions/molecule/` and `tests/integration/test_integration.py`. (2) Our tox integration runs pytest with `--rootdir={toxinidir}` so pytest-ansible’s scenario discovery (which runs `git ls-files` from `config.rootpath`) uses the repo; otherwise rootpath can be wrong and no scenarios are found. Tox copies only `git ls-files` into the collection build; if this directory is untracked, no scenarios are found and you get "got empty parameter set for (molecule_scenario)". Run `git add extensions/molecule/` (and commit) so the **users** scenario runs in `tox -e integration-*`. Our `tox-ansible.ini` overrides integration envs to run pytest from the **collection_build** directory (which has `galaxy.yml` and `extensions/molecule`); the installed collection tarball does not include `galaxy.yml`, so discovery would otherwise find no scenarios. Tests run against an AAP Gateway; connection is configured via environment variables or inventory.
+**Important:** For tox integration to run these tests, (1) track in git: `extensions/molecule/` and `tests/integration/test_integration.py`. (2) Our tox integration runs pytest with `--rootdir={toxinidir}` so pytest-ansible's scenario discovery (which runs `git ls-files` from `config.rootpath`) uses the repo; otherwise rootpath can be wrong and no scenarios are found. Tox copies only `git ls-files` into the collection build; if this directory is untracked, no scenarios are found and you get "got empty parameter set for (molecule_scenario)". Run `git add extensions/molecule/` (and commit) so the **users** scenario runs in `tox -e integration-*`. Our `tox-ansible.ini` overrides integration envs to run pytest from the **collection_build** directory (which has `galaxy.yml` and `extensions/molecule`); the installed collection tarball does not include `galaxy.yml`, so discovery would otherwise find no scenarios. Tests run against an AAP Gateway; connection is configured via environment variables or inventory.
 
 ## Layout (meraki_rm–inspired)
 
@@ -83,13 +83,13 @@ molecule test -s users --all
 
 Ensure the Gateway is running and reachable before running the **users** scenario.
 
-### Why you see “Another version of …” (networking / ansible.platform) warnings
+### Why you see "Another version of …" (networking / ansible.platform) warnings
 
 Ansible discovers collections from **several roots**:
 
 1. **ANSIBLE_COLLECTIONS_PATH** (your `../..` = workspace parent)
 2. **~/.ansible/collections** (user installs)
-3. **Python env’s `ansible_collections`** (e.g. venv `site-packages` if you pip-installed collections)
+3. **Python env's `ansible_collections`** (e.g. venv `site-packages` if you pip-installed collections)
 
 When the same FQCN (e.g. `cisco.ios`, `ansible.platform`) exists in more than one root, Ansible warns and uses the **first** one in its path order. The warnings do **not** mean Molecule is testing those collections; they only mean duplicate copies were seen. Your scenario only uses **ansible.platform** (user module).
 

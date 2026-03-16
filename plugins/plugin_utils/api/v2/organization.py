@@ -31,8 +31,11 @@ class OrganizationTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> 'APIOrganization_v2':
-        op = getattr(context, 'operation', None) if isinstance(context, TransformContext) else context.get('operation')
-        include_nulls = getattr(context, 'include_nulls_for_update', False) if isinstance(context, TransformContext) else context.get('include_nulls_for_update', False)
+        op = (getattr(context, 'operation', None) if isinstance(context, TransformContext)
+              else context.get('operation'))
+        include_nulls = (getattr(context, 'include_nulls_for_update', False)
+                         if isinstance(context, TransformContext)
+                         else context.get('include_nulls_for_update', False))
         api_data = {}
         name = getattr(ansible_instance, 'name', None)
         new_name = getattr(ansible_instance, 'new_name', None)
@@ -55,11 +58,22 @@ class OrganizationTransformMixin_v2(BaseTransformMixin):
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
-            'create': EndpointOperation(path='/api/gateway/v2/organizations/', method='POST', fields=['name', 'description'], required_for='create', order=1),
-            'update': EndpointOperation(path='/api/gateway/v2/organizations/{id}/', method='PATCH', fields=['name', 'description'], path_params=['id'], required_for='update', order=1),
-            'delete': EndpointOperation(path='/api/gateway/v2/organizations/{id}/', method='DELETE', fields=[], path_params=['id'], required_for='delete', order=1),
-            'get': EndpointOperation(path='/api/gateway/v2/organizations/{id}/', method='GET', fields=[], path_params=['id'], required_for='find', order=1),
-            'list': EndpointOperation(path='/api/gateway/v2/organizations/', method='GET', fields=[], required_for='find', order=1),
+            'create': EndpointOperation(
+                path='/api/gateway/v2/organizations/', method='POST',
+                fields=['name', 'description'], required_for='create', order=1),
+            'update': EndpointOperation(
+                path='/api/gateway/v2/organizations/{id}/', method='PATCH',
+                fields=['name', 'description'], path_params=['id'],
+                required_for='update', order=1),
+            'delete': EndpointOperation(
+                path='/api/gateway/v2/organizations/{id}/', method='DELETE',
+                fields=[], path_params=['id'], required_for='delete', order=1),
+            'get': EndpointOperation(
+                path='/api/gateway/v2/organizations/{id}/', method='GET',
+                fields=[], path_params=['id'], required_for='find', order=1),
+            'list': EndpointOperation(
+                path='/api/gateway/v2/organizations/', method='GET',
+                fields=[], required_for='find', order=1),
         }
 
     @classmethod

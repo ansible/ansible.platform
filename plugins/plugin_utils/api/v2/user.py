@@ -104,8 +104,11 @@ class UserTransformMixin_v2(BaseTransformMixin):
         read_only = {"id", "created", "modified", "url"}
         # Only send null for these on enforced update; many APIs reject null for password/booleans
         clearable_string_fields = {"email", "first_name", "last_name"}
-        op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
-        include_nulls = getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        op = (getattr(context, "operation", None) if isinstance(context, TransformContext)
+              else context.get("operation"))
+        include_nulls = (getattr(context, "include_nulls_for_update", False)
+                        if isinstance(context, TransformContext)
+                        else context.get("include_nulls_for_update", False))
 
         for field in simple_fields:
             value = getattr(ansible_instance, field, None)

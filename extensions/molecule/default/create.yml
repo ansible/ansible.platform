@@ -21,8 +21,8 @@
           --port {{ mock_server_port }}
           --daemon
       args:
-        # Repo/collection root (create.yml lives in extensions/molecule/default/)
-        chdir: "{{ playbook_dir }}/../.."
+        # Collection root (create.yml is in extensions/molecule/default/ -> go up 3 levels)
+        chdir: "{{ playbook_dir }}/../../.."
       changed_when: true
       register: server_start
 

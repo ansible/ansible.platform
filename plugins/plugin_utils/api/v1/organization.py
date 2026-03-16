@@ -47,8 +47,11 @@ class OrganizationTransformMixin_v1(BaseTransformMixin):
         name = getattr(ansible_instance, 'name', None)
         new_name = getattr(ansible_instance, 'new_name', None)
         description = getattr(ansible_instance, 'description', None)
-        op = getattr(context, 'operation', None) if isinstance(context, TransformContext) else context.get('operation')
-        include_nulls = getattr(context, 'include_nulls_for_update', False) if isinstance(context, TransformContext) else context.get('include_nulls_for_update', False)
+        op = (getattr(context, 'operation', None) if isinstance(context, TransformContext)
+              else context.get('operation'))
+        include_nulls = (getattr(context, 'include_nulls_for_update', False)
+                         if isinstance(context, TransformContext)
+                         else context.get('include_nulls_for_update', False))
 
         if op == 'create':
             api_data['name'] = name or new_name
