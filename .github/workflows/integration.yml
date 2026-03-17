@@ -56,7 +56,18 @@ jobs:
             echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
         working-directory: aap-gateway
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install integration controller requirements
+        run: pip install -r tests/integration/requirements.txt ansible-core
+        working-directory: ansible-platform
+
       - name: Perform integration tests
+        env:
+          ANSIBLE_TEST_INTEGRATION_NO_VENV: '1'
         run: make collection-test
         working-directory: ansible-platform
 
