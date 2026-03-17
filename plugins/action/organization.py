@@ -188,11 +188,13 @@ class ActionModule(BaseResourceActionPlugin):
             except Exception:
                 validated_output = manager_result
 
+            # Top-level id/name so playbooks can use org1.id, org1.name
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
+                'name': validated_output.get('name'),
             })
             if operation == 'find':
                 result['exists'] = bool(validated_output.get('id'))

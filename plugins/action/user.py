@@ -228,12 +228,13 @@ class ActionModule(BaseResourceActionPlugin):
             except Exception:
                 validated_output = manager_result
 
-            # Format return dict
+            # Format return dict (top-level id/username so playbooks can use user1.id, user1.username)
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
+                'username': validated_output.get('username'),
             })
             if operation == 'find':
                 result['exists'] = bool(validated_output.get('id'))
