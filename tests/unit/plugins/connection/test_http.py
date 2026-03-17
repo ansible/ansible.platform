@@ -21,223 +21,127 @@ Covers:
 """
 
 from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
-from unittest.mock import MagicMock, patch
+import unittest
+from unittest.mock import patch, MagicMock
 
 from ansible_collections.ansible.platform.plugins.connection.http import Connection
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
 
-def _make_connection():
-    """Create a Connection instance with minimal mocks for testing get_client().
+class TestHTTPConnectionDispatcher(unittest.TestCase):
+    def setUp(self):
+        """Set up the mock connection object and standard variables for testing."""
+        self.mock_play_context = MagicMock()
+        self.mock_play_context.shell = 'sh'
+        self.mock_play_context.executable = '/bin/sh'
+        self.mock_new_stdin = MagicMock()
+        self.connection = Connection(self.mock_play_context, self.mock_new_stdin)
+        self.connection._connected = True
+        self.gateway_config = GatewayConfig(base_url="https://example.com/", username="admin", password="secret")
+        self.task_vars = {"inventory_hostname": "localhost"}
 
-    ConnectionBase.__init__ calls get_shell_plugin(shell_type=play_context.shell, executable=...).
-    Ansible's loader expects real strings, not MagicMock, so we set .shell and .executable explicitly.
-    """
-    play_context = MagicMock()
-    play_context.shell = "sh"
-    play_context.executable = "/bin/sh"
-    new_stdin = MagicMock()
-    conn = Connection(play_context, new_stdin)
-    conn._connected = True
-    return conn
+    def test_get_client_default_uses_direct_mode(self):
+        """When persistent option is not set (or False), get_client routes to _get_direct_client."""
+        mock_direct = MagicMock(return_value=(MagicMock(), None))
+        mock_persistent = MagicMock()
 
+        with patch.object(self.connection, "get_option", side_effect=KeyError("persistent")):
+            with patch.object(self.connection, "_get_direct_client", mock_direct):
+                with patch.object(self.connection, "_get_persistent_client", mock_persistent):
+                    client, facts = self.connection.get_client(self.task_vars, self.gateway_config)
 
-def _make_gateway_config():
-    """Minimal GatewayConfig for tests."""
-    return GatewayConfig(base_url="https://example.com/", username="admin", password="secret")
+        mock_direct.assert_called_once_with(self.task_vars, self.gateway_config)
+        mock_persistent.assert_not_called()
+        self.assertIsNone(facts)
 
+    def test_get_client_persistent_option_true_routes_to_persistent(self):
+        """When connection option persistent=True, get_client routes to _get_persistent_client."""
+        mock_client = MagicMock()
+        mock_facts = {"platform_manager_socket": "/tmp/sock", "platform_manager_authkey": "key"}
+        mock_direct = MagicMock()
+        mock_persistent = MagicMock(return_value=(mock_client, mock_facts))
 
-# ---- Dispatcher: routing to persistent vs direct ----
+        with patch.object(self.connection, "get_option", return_value=True):
+            with patch.object(self.connection, "_get_direct_client", mock_direct):
+                with patch.object(self.connection, "_get_persistent_client", mock_persistent):
+                    client, facts = self.connection.get_client(self.task_vars, self.gateway_config)
 
+        mock_persistent.assert_called_once_with(self.task_vars, self.gateway_config)
+        mock_direct.assert_not_called()
+        self.assertIs(client, mock_client)
+        self.assertEqual(facts, mock_facts)
 
-def test_get_client_default_uses_direct_mode():
-    """When persistent option is not set (or False), get_client routes to _get_direct_client."""
-    conn = _make_connection()
-    task_vars = {"inventory_hostname": "localhost"}
-    gateway_config = _make_gateway_config()
-    mock_direct = MagicMock(return_value=(MagicMock(), None))
-    mock_persistent = MagicMock()
+    def test_get_client_persistent_option_false_routes_to_direct(self):
+        """When connection option persistent=False, get_client routes to _get_direct_client."""
+        mock_direct = MagicMock(return_value=(MagicMock(), None))
+        mock_persistent = MagicMock()
 
-    with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
-        with patch.object(conn, "_get_direct_client", mock_direct):
-            with patch.object(conn, "_get_persistent_client", mock_persistent):
-                client, facts = conn.get_client(task_vars, gateway_config)
+        with patch.object(self.connection, "get_option", return_value=False):
+            with patch.object(self.connection, "_get_direct_client", mock_direct):
+                with patch.object(self.connection, "_get_persistent_client", mock_persistent):
+                    client, facts = self.connection.get_client(self.task_vars, self.gateway_config)
 
-    mock_direct.assert_called_once_with(task_vars, gateway_config)
-    mock_persistent.assert_not_called()
-    assert facts is None
+        mock_direct.assert_called_once_with(self.task_vars, self.gateway_config)
+        mock_persistent.assert_not_called()
+        self.assertIsNone(facts)
 
+    def test_get_client_var_ansible_platform_use_persistent_connection_true(self):
+        """When get_option is missing and task_vars has ansible_platform_use_persistent_connection=true, use persistent."""
+        self.task_vars["ansible_platform_use_persistent_connection"] = True
+        self.task_vars["hostvars"] = {"localhost": {}}
+        mock_persistent = MagicMock(return_value=(MagicMock(), {"platform_manager_socket": "/tmp/s"}))
 
-def test_get_client_persistent_option_true_routes_to_persistent():
-    """When connection option persistent=True, get_client routes to _get_persistent_client."""
-    conn = _make_connection()
-    task_vars = {"inventory_hostname": "localhost"}
-    gateway_config = _make_gateway_config()
-    mock_client = MagicMock()
-    mock_facts = {"platform_manager_socket": "/tmp/sock", "platform_manager_authkey": "key"}
-    mock_direct = MagicMock()
-    mock_persistent = MagicMock(return_value=(mock_client, mock_facts))
+        with patch.object(self.connection, "get_option", side_effect=KeyError("persistent")):
+            with patch.object(self.connection, "_get_direct_client", MagicMock()):
+                with patch.object(self.connection, "_get_persistent_client", mock_persistent):
+                    self.connection.get_client(self.task_vars, self.gateway_config)
 
-    with patch.object(conn, "get_option", return_value=True):
-        with patch.object(conn, "_get_direct_client", mock_direct):
-            with patch.object(conn, "_get_persistent_client", mock_persistent):
-                client, facts = conn.get_client(task_vars, gateway_config)
+        mock_persistent.assert_called_once()
 
-    mock_persistent.assert_called_once_with(task_vars, gateway_config)
-    mock_direct.assert_not_called()
-    assert client is mock_client
-    assert facts == mock_facts
+    def test_get_client_var_ansible_platform_persistent_true(self):
+        """When get_option is missing and task_vars has ansible_platform_persistent=true, use persistent."""
+        self.task_vars["ansible_platform_persistent"] = "true"
+        self.task_vars["hostvars"] = {"localhost": {}}
+        mock_persistent = MagicMock(return_value=(MagicMock(), {}))
 
+        with patch.object(self.connection, "get_option", side_effect=KeyError("persistent")):
+            with patch.object(self.connection, "_get_direct_client", MagicMock()):
+                with patch.object(self.connection, "_get_persistent_client", mock_persistent):
+                    self.connection.get_client(self.task_vars, self.gateway_config)
 
-def test_get_client_persistent_option_false_routes_to_direct():
-    """When connection option persistent=False, get_client routes to _get_direct_client."""
-    conn = _make_connection()
-    task_vars = {"inventory_hostname": "localhost"}
-    gateway_config = _make_gateway_config()
-    mock_direct = MagicMock(return_value=(MagicMock(), None))
-    mock_persistent = MagicMock()
+        mock_persistent.assert_called_once()
 
-    with patch.object(conn, "get_option", return_value=False):
-        with patch.object(conn, "_get_direct_client", mock_direct):
-            with patch.object(conn, "_get_persistent_client", mock_persistent):
-                client, facts = conn.get_client(task_vars, gateway_config)
+    def test_get_client_var_hostvars_ansible_platform_use_persistent_connection(self):
+        """When hostvars[host] has ansible_platform_use_persistent_connection=yes, use persistent."""
+        self.task_vars = {
+            "inventory_hostname": "myhost",
+            "hostvars": {"myhost": {"ansible_platform_use_persistent_connection": "yes"}},
+        }
+        mock_persistent = MagicMock(return_value=(MagicMock(), {}))
 
-    mock_direct.assert_called_once_with(task_vars, gateway_config)
-    mock_persistent.assert_not_called()
-    assert facts is None
+        with patch.object(self.connection, "get_option", side_effect=KeyError("persistent")):
+            with patch.object(self.connection, "_get_direct_client", MagicMock()):
+                with patch.object(self.connection, "_get_persistent_client", mock_persistent):
+                    self.connection.get_client(self.task_vars, self.gateway_config)
 
+        mock_persistent.assert_called_once()
 
-def test_get_client_var_ansible_platform_use_persistent_connection_true():
-    """When get_option is missing and task_vars has ansible_platform_use_persistent_connection=true, use persistent."""
-    conn = _make_connection()
-    task_vars = {
-        "inventory_hostname": "localhost",
-        "hostvars": {"localhost": {}},
-        "ansible_platform_use_persistent_connection": True,
-    }
-    gateway_config = _make_gateway_config()
-    mock_persistent = MagicMock(return_value=(MagicMock(), {"platform_manager_socket": "/tmp/s"}))
+    def test_get_client_var_falsy_uses_direct(self):
+        """When vars set persistent to false/no/0, use direct mode."""
+        self.task_vars["ansible_platform_persistent"] = "false"
+        self.task_vars["hostvars"] = {"localhost": {}}
+        mock_direct = MagicMock(return_value=(MagicMock(), None))
 
-    with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
-        with patch.object(conn, "_get_direct_client", MagicMock()):
-            with patch.object(conn, "_get_persistent_client", mock_persistent):
-                conn.get_client(task_vars, gateway_config)
+        with patch.object(self.connection, "get_option", side_effect=KeyError("persistent")):
+            with patch.object(self.connection, "_get_direct_client", mock_direct):
+                with patch.object(self.connection, "_get_persistent_client", MagicMock()):
+                    self.connection.get_client(self.task_vars, self.gateway_config)
 
-    mock_persistent.assert_called_once()
-
-
-def test_get_client_var_ansible_platform_persistent_true():
-    """When get_option is missing and task_vars has ansible_platform_persistent=true, use persistent."""
-    conn = _make_connection()
-    task_vars = {
-        "inventory_hostname": "localhost",
-        "hostvars": {"localhost": {}},
-        "ansible_platform_persistent": "true",
-    }
-    gateway_config = _make_gateway_config()
-    mock_persistent = MagicMock(return_value=(MagicMock(), {}))
-
-    with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
-        with patch.object(conn, "_get_direct_client", MagicMock()):
-            with patch.object(conn, "_get_persistent_client", mock_persistent):
-                conn.get_client(task_vars, gateway_config)
-
-    mock_persistent.assert_called_once()
+        mock_direct.assert_called_once()
 
 
-def test_get_client_var_hostvars_ansible_platform_use_persistent_connection():
-    """When hostvars[host] has ansible_platform_use_persistent_connection=yes, use persistent."""
-    conn = _make_connection()
-    task_vars = {
-        "inventory_hostname": "myhost",
-        "hostvars": {"myhost": {"ansible_platform_use_persistent_connection": "yes"}},
-    }
-    gateway_config = _make_gateway_config()
-    mock_persistent = MagicMock(return_value=(MagicMock(), {}))
-
-    with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
-        with patch.object(conn, "_get_direct_client", MagicMock()):
-            with patch.object(conn, "_get_persistent_client", mock_persistent):
-                conn.get_client(task_vars, gateway_config)
-
-    mock_persistent.assert_called_once()
-
-
-def test_get_client_var_falsy_uses_direct():
-    """When vars set persistent to false/no/0, use direct mode."""
-    conn = _make_connection()
-    task_vars = {
-        "inventory_hostname": "localhost",
-        "hostvars": {"localhost": {}},
-        "ansible_platform_persistent": "false",
-    }
-    gateway_config = _make_gateway_config()
-    mock_direct = MagicMock(return_value=(MagicMock(), None))
-
-    with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
-        with patch.object(conn, "_get_direct_client", mock_direct):
-            with patch.object(conn, "_get_persistent_client", MagicMock()):
-                conn.get_client(task_vars, gateway_config)
-
-    mock_direct.assert_called_once()
-
-
-def test_get_client_no_option_no_vars_defaults_to_direct():
-    """When get_option raises and no persistent vars are set, default to direct mode."""
-    conn = _make_connection()
-    task_vars = {"inventory_hostname": "localhost", "hostvars": {"localhost": {}}}
-    gateway_config = _make_gateway_config()
-    mock_direct = MagicMock(return_value=(MagicMock(), None))
-
-    with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
-        with patch.object(conn, "_get_direct_client", mock_direct):
-            with patch.object(conn, "_get_persistent_client", MagicMock()):
-                conn.get_client(task_vars, gateway_config)
-
-    mock_direct.assert_called_once()
-    assert mock_direct.return_value[1] is None
-
-
-# ---- Direct (ephemeral) mode ----
-
-
-def test_get_client_direct_returns_client_and_no_facts():
-    """Direct mode returns (client, None) so no facts are set for reuse."""
-    conn = _make_connection()
-    task_vars = {"inventory_hostname": "localhost"}
-    gateway_config = _make_gateway_config()
-    mock_client = MagicMock()
-    mock_direct = MagicMock(return_value=(mock_client, None))
-
-    with patch.object(conn, "get_option", return_value=False):
-        with patch.object(conn, "_get_direct_client", mock_direct):
-            with patch.object(conn, "_get_persistent_client", MagicMock()):
-                client, facts = conn.get_client(task_vars, gateway_config)
-
-    assert client is mock_client
-    assert facts is None
-
-
-# ---- Persistent mode ----
-
-
-def test_get_client_persistent_returns_client_and_facts():
-    """Persistent mode returns (client, facts_dict) so facts can be set for reuse."""
-    conn = _make_connection()
-    task_vars = {"inventory_hostname": "localhost"}
-    gateway_config = _make_gateway_config()
-    mock_client = MagicMock()
-    facts_dict = {"platform_manager_socket": "/tmp/sock", "platform_manager_authkey": "b64key"}
-
-    with patch.object(conn, "get_option", return_value=True):
-        with patch.object(conn, "_get_direct_client", MagicMock()):
-            with patch.object(
-                conn, "_get_persistent_client", MagicMock(return_value=(mock_client, facts_dict))
-            ):
-                client, facts = conn.get_client(task_vars, gateway_config)
-
-    assert client is mock_client
-    assert facts == facts_dict
-    assert "platform_manager_socket" in facts
-    assert "platform_manager_authkey" in facts
+if __name__ == '__main__':
+    unittest.main()
