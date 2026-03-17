@@ -28,7 +28,6 @@ from unittest.mock import patch, MagicMock
 
 from ansible_collections.ansible.platform.plugins.connection.http import Connection
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
-from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
 
 class TestHTTPConnectionDispatcher(unittest.TestCase):
