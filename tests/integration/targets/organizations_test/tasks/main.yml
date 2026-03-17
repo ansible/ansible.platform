@@ -34,6 +34,11 @@
           - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
         fail_msg: "organization '{{ organization_name }}' exists in the system!"
 
+    - name: Ensure organization is absent before create (so create actually changes the system)
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+        state: absent
+
     - name: Create Organizations
       ansible.platform.organization:
         name: "{{ organization_name }}"
