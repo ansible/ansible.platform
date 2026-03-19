@@ -723,20 +723,73 @@ class PlatformService(BaseAPIClient):
             current_dict = current_data if isinstance(current_data, dict) else {}
             read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
 
-            # Merge current + PATCH response only (no overlay from requested).
-            # Change = did the API state change; avoids false positives when API normalizes
-            # (e.g. slug casing) or when requested has dataclass defaults that differ from current.
-            new_dict = {**current_dict, **new_dict}
+            # Merge current + PATCH response; don't let None from sparse response
+            # overwrite existing values (e.g. associated_authenticators: {} → None).
+            merged = dict(current_dict)
+            for k, v in new_dict.items():
+                if v is not None or k not in merged:
+                    merged[k] = v
+            new_dict = merged
 
-            # Compare relevant fields; normalize dicts/lists so representation differences
-            # (e.g. int vs string keys) don't cause false changes.
+            # Primary: compare post-PATCH state vs pre-PATCH state.
             new_comparable = {k: v for k, v in new_dict.items() if k not in read_only_fields}
             current_comparable = {k: v for k, v in current_dict.items() if k not in read_only_fields}
             norm = self._normalize_for_compare
             changed = norm(new_comparable) != norm(current_comparable)
 
+            # Secondary: compare each explicitly requested field against pre-PATCH state.
+            # Catches sparse responses and fields the API ignores in its response.
+            # Skip lookup field, state, and API-normalized fields (e.g. slug is lowercased
+            # by the API, so task casing would cause false positives here; the primary
+            # comparison already catches real changes via the PATCH response).
+            if not changed:
+                lookup_field = mixin_class.get_lookup_field()
+                api_normalized_fields = {'slug'}
+                skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields
+                requested = asdict(ansible_data)
+                for k, v in requested.items():
+                    if k in skip_fields or v is None:
+                        continue
+                    if v == {} or v == []:
+                        continue
+                    current_val = current_dict.get(k)
+                    if current_val is None and v is not None:
+                        changed = True
+                        break
+                    if current_val is not None and norm(v) != norm(current_val):
+                        changed = True
+                        break
+
             new_dict['changed'] = changed
             return new_dict
+
+        # No PATCH was needed (all requested fields are non-PATCH, e.g. organizations).
+        # Still compare requested intent against current state so we report the change.
+        from dataclasses import asdict
+        current_dict = current_data if isinstance(current_data, dict) else {}
+        if current_dict:
+            read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
+            api_normalized_fields = {'slug'}
+            norm = self._normalize_for_compare
+            lookup_field = mixin_class.get_lookup_field()
+            skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields
+            requested = asdict(ansible_data)
+            changed = False
+            for k, v in requested.items():
+                if k in skip_fields or v is None:
+                    continue
+                if v == {} or v == []:
+                    continue
+                current_val = current_dict.get(k)
+                if current_val is None and v is not None:
+                    changed = True
+                    break
+                if current_val is not None and norm(v) != norm(current_val):
+                    changed = True
+                    break
+            result = dict(current_dict)
+            result['changed'] = changed
+            return result
 
         return {'changed': False}
 

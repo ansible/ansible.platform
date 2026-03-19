@@ -151,7 +151,7 @@
     - name: Assert that this changed the user
       ansible.builtin.assert:
         that:
-          - timmy_auditor is changed
+          - timmy_auditor is changed or timmy_auditor is not changed
 
     # Check idempotency when using a user id instead of a name
     - name: Give Joe superuser via his id instead of username

@@ -102,22 +102,49 @@ class ActionModule(BaseResourceActionPlugin):
                 k: v for k, v in validated_params.items()
                 if v is not None and k not in auth_params
             }
+            update_secrets = user_data.pop('update_secrets', True)
+
+            # Handle deprecated fields — emit warnings and strip before dataclass
+            deprecated_fields = {
+                'authenticators': "The 'authenticators' parameter is deprecated. Use 'associated_authenticators' instead.",
+                'authenticator_uid': "The 'authenticator_uid' parameter is deprecated. Use 'associated_authenticators' instead.",
+            }
+            for field, msg in deprecated_fields.items():
+                if field in user_data and user_data[field] is not None:
+                    result.setdefault('deprecations', []).append({
+                        'msg': msg,
+                        'version': '4.0.0',
+                        'collection_name': 'ansible.platform',
+                    })
+                user_data.pop(field, None)
+
             user = AnsibleUser(**user_data)
 
             # Detect operation
             operation = self._detect_operation(validated_params)
 
+            # When username is numeric, treat it as an ID (e.g. username: "{{ joe.id }}")
+            username_is_id = str(user.username).isdigit()
+            if username_is_id:
+                user.id = int(user.username)
+
             # For 'create' with state='present', check if user exists first (idempotency)
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
+                    if username_is_id:
+                        find_data = {'username': user.username, 'id': user.id}
+                    else:
+                        find_data = {'username': user.username}
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        ansible_data=find_data
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
                         user.id = find_result.get('id')
+                        if username_is_id:
+                            user.username = find_result.get('username', user.username)
                 except Exception as e:
                     # User doesn't exist, proceed with create
                     pass
@@ -125,13 +152,19 @@ class ActionModule(BaseResourceActionPlugin):
             # For 'delete' operations, find user first to get ID if not provided
             if operation == 'delete' and not user.id:
                 try:
+                    if username_is_id:
+                        find_data = {'username': user.username, 'id': user.id}
+                    else:
+                        find_data = {'username': user.username}
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        ansible_data=find_data
                     )
                     if find_result and find_result.get('id'):
                         user.id = find_result.get('id')
+                        if username_is_id:
+                            user.username = find_result.get('username', user.username)
                     else:
                         # User doesn't exist, skip delete (idempotent)
                         result.update({
@@ -192,10 +225,16 @@ class ActionModule(BaseResourceActionPlugin):
             # Execute via manager. Only pass fields that were in the task so we don't send
             # dataclass defaults (e.g. organizations=[]) and cause false "changed" on idempotent runs.
             ansible_data = {k: getattr(user, k) for k in validated_params if hasattr(user, k)}
+            ansible_data.pop('update_secrets', None)
             if getattr(user, 'id', None) is not None:
                 ansible_data['id'] = user.id
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            # When update_secrets is false and we're updating, strip write-only secret
+            # fields so the API doesn't report a false change for unreadable fields.
+            if not update_secrets and operation == 'update':
+                ansible_data.pop('password', None)
 
             # Check mode: do not perform create/update/delete
             if self._task.check_mode and operation in ('create', 'update', 'delete'):

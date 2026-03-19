@@ -80,6 +80,27 @@ options:
       - Keys are authenticator IDs (integer); values are dicts with I(uid) and optionally I(email)
     type: dict
 
+  update_secrets:
+    description:
+      - When C(false), secret fields (e.g. I(password)) will not be sent during updates,
+        preventing false C(changed) reports when the current value cannot be read back.
+      - Set to C(true) (default) to always push secrets.
+    type: bool
+    default: true
+
+  authenticators:
+    description:
+      - List of authenticator IDs to associate with the user
+      - Deprecated - use I(associated_authenticators) instead
+    type: list
+    elements: int
+
+  authenticator_uid:
+    description:
+      - UID for authenticator association
+      - Deprecated - use I(associated_authenticators) instead
+    type: str
+
   state:
     description:
       - Desired state of the user (CRUD-aligned).
