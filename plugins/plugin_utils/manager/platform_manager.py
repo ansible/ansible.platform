@@ -967,6 +967,10 @@ class PlatformService(BaseAPIClient):
                 if hasattr(e, 'response') and e.response is not None:
                     logger.error("Response status: %s", e.response.status_code)
                     logger.error("Response body: %s", e.response.text)
+                    # Include response body in message so callers (e.g. tests) can assert on validation errors
+                    body = getattr(e.response, 'text', '') or ''
+                    if body and body not in str(e):
+                        raise ValueError(f"{e}\nResponse body: {body[:1000]}") from e
                 raise
 
             # Store result
