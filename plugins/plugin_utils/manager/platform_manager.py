@@ -739,13 +739,13 @@ class PlatformService(BaseAPIClient):
 
             # Secondary: compare each explicitly requested field against pre-PATCH state.
             # Catches sparse responses and fields the API ignores in its response.
-            # Skip lookup field, state, and API-normalized fields (e.g. slug is lowercased
-            # by the API, so task casing would cause false positives here; the primary
-            # comparison already catches real changes via the PATCH response).
+            # Skip lookup field, state, API-normalized fields (e.g. slug), and internal
+            # resolved fields (e.g. organization_id set by action plugin but not in API state).
             if not changed:
                 lookup_field = mixin_class.get_lookup_field()
                 api_normalized_fields = {'slug'}
-                skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields
+                internal_fields = {'organization_id'}
+                skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields | internal_fields
                 requested = asdict(ansible_data)
                 for k, v in requested.items():
                     if k in skip_fields or v is None:
@@ -770,9 +770,10 @@ class PlatformService(BaseAPIClient):
         if current_dict:
             read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
             api_normalized_fields = {'slug'}
+            internal_fields = {'organization_id'}
             norm = self._normalize_for_compare
             lookup_field = mixin_class.get_lookup_field()
-            skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields
+            skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields | internal_fields
             requested = asdict(ansible_data)
             changed = False
             for k, v in requested.items():

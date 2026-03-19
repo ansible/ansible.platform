@@ -17,6 +17,8 @@ __metaclass__ = type
 import logging
 from dataclasses import asdict
 
+import requests
+
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.team import AnsibleTeam
 
@@ -73,6 +75,7 @@ class ActionModule(BaseResourceActionPlugin):
         ]
 
         try:
+            operation = None
             doc = self._get_documentation()
             argspec = self._build_argspec_from_docs(doc) if doc else None
             if not argspec:
@@ -95,6 +98,11 @@ class ActionModule(BaseResourceActionPlugin):
             team = AnsibleTeam(**team_data)
             operation = self._detect_operation(validated_params)
 
+            # When name is numeric, treat it as an ID (e.g. name: "{{ team1.id }}")
+            name_is_id = str(team.name).strip().isdigit()
+            if name_is_id:
+                team.id = int(team.name)
+
             # Resolve organization to id for find/delete (required for team list query)
             org_id = _resolve_organization_id(manager, team.organization)
             if org_id is None and team.organization and operation in ('find', 'create', 'update', 'delete', 'enforced'):
@@ -103,7 +111,7 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
             team.organization_id = org_id
 
-            # Idempotent create: find by name+organization, then update if exists
+            # Idempotent create: find by name+organization (or by id when name is numeric), then update if exists
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
@@ -114,6 +122,8 @@ class ActionModule(BaseResourceActionPlugin):
                     if find_result and find_result.get('id'):
                         operation = 'update'
                         team.id = find_result.get('id')
+                        if name_is_id:
+                            team.name = find_result.get('name', team.name)
                 except Exception:
                     pass
 
@@ -139,6 +149,42 @@ class ActionModule(BaseResourceActionPlugin):
                     result.update({
                         'changed': False,
                         'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                        'msg': f"Team '{team.name}' in organization '{team.organization}' does not exist (already absent)"
+                    })
+                    return result
+
+            # Delete by id (from numeric name): verify team belongs to the requested org.
+            # If verify fails (exception, team not found, org mismatch) → treat as absent.
+            if operation == 'delete' and team.id and org_id is not None and name_is_id:
+                proceed_with_delete = False
+                try:
+                    verify_team = AnsibleTeam(
+                        name=team.name, organization=team.organization,
+                        id=team.id, organization_id=org_id, state='absent'
+                    )
+                    verify_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=asdict(verify_team)
+                    )
+                    if verify_result and verify_result.get('id'):
+                        found_org = verify_result.get('organization', '')
+                        requested_org = team.organization
+                        if str(team.organization).isdigit():
+                            try:
+                                names = manager.lookup_organization_names([org_id])
+                                if names:
+                                    requested_org = names[0]
+                            except Exception:
+                                pass
+                        if found_org == requested_org:
+                            proceed_with_delete = True
+                except Exception:
+                    pass
+                if not proceed_with_delete:
+                    result.update({
+                        'changed': False, 'failed': False,
                         self.MODULE_NAME: {'state': 'absent'},
                         'msg': f"Team '{team.name}' in organization '{team.organization}' does not exist (already absent)"
                     })
@@ -185,12 +231,48 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
 
+            # Check mode: do not perform create/update/delete
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': team.name, 'organization': team.organization},
+                        'id': None,
+                        'name': team.name,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': team.name, 'organization': team.organization, 'id': getattr(team, 'id', None)},
+                        'id': getattr(team, 'id', None),
+                        'name': team.name,
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(team, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation,
                     module_name=self.MODULE_NAME,
                     ansible_data=ansible_data
                 )
+            except requests.HTTPError as e:
+                if operation == 'delete' and e.response is not None and e.response.status_code == 404:
+                    result.update({
+                        'changed': False,
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                        'msg': f"Team '{team.name}' in organization '{team.organization}' does not exist (already absent)"
+                    })
+                    return result
+                raise
             except ValueError as e:
                 if operation == 'find' and ('not found' in str(e).lower() or 'resource with' in str(e).lower()):
                     result.update({
@@ -241,6 +323,14 @@ class ActionModule(BaseResourceActionPlugin):
             result['_timing']['api_call_time'] = timing.get('api_call_time', 0)
 
         except Exception as e:
+            if operation == 'delete' and '404' in str(e):
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: {'state': 'absent'},
+                    'msg': f"Team '{team.name}' in organization '{team.organization}' does not exist (already absent)"
+                })
+                return result
             import traceback
             self._display.vvv(f"Error in team action plugin: {e}")
             result['failed'] = True
