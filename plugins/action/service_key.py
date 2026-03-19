@@ -113,6 +113,17 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data = asdict(sk)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                result.update({
+                    'changed': True if operation != 'delete' else bool(getattr(sk, 'id', None)),
+                    'failed': False,
+                    self.MODULE_NAME: {'name': sk.name, 'state': 'absent'} if operation == 'delete' else {'name': sk.name},
+                    'id': getattr(sk, 'id', None),
+                    'name': sk.name,
+                })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data

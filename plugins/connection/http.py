@@ -217,7 +217,6 @@ class Connection(ConnectionBase):
             # Use a very short identifier to avoid "AF_UNIX path too long" error
             # Unix domain socket paths are limited to ~104 characters on macOS
             import hashlib
-            # Hash the hostname to keep it short
             host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
             identifier = f"e{host_hash}"  # "e" for ephemeral + 4-char hash
             logger.debug("Generated identifier: %s", identifier)

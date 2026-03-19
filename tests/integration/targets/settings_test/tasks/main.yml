@@ -1,7 +1,19 @@
 ---
+# Avoid gateway_api lookup (can crash worker). Use uri to GET settings/all.
 - name: Get current settings
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/gateway/v1/settings/all/"
+    force_basic_auth: true
+    url_username: "{{ gateway_username }}"
+    url_password: "{{ gateway_password }}"
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    method: GET
+    return_content: true
+  register: settings_all_response
+
+- name: Set current_settings from API response
   ansible.builtin.set_fact:
-    current_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/all', **connection_info) }}"
+    current_settings: "{{ settings_all_response.json }}"
 
 - name: Run Tests
   module_defaults:

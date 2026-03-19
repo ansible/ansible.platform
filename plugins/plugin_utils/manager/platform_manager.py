@@ -707,6 +707,19 @@ class PlatformService(BaseAPIClient):
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
+        # For update, some APIs require all required fields in the PATCH body (e.g. http_port
+        # requires "number"). Merge current resource values for any update-operation field
+        # that is missing/None in api_data so the request body is valid.
+        update_op = next(
+            (op for op in operations.values() if getattr(op, 'required_for', None) == 'update'),
+            None
+        )
+        if update_op and current_data:
+            current_dict = current_data if isinstance(current_data, dict) else current_data
+            for field in getattr(update_op, 'fields', []) or []:
+                if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
+                    setattr(api_data, field, current_dict[field])
+
         # Execute update operation
         api_result = self._execute_operations(
             operations, api_data, context, required_for='update'

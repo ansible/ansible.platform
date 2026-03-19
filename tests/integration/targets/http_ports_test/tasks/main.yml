@@ -32,6 +32,10 @@
       loop: "{{ _http_ports_list.json.results | default([]) }}"
       when: item.number is defined and item.number in [65530, 65531, 65532, 65533]
 
+    - name: Set fact when an API port already exists (Gateway allows only one)
+      ansible.builtin.set_fact:
+        api_port_already_exists: "{{ (_http_ports_list.json.results | default([])) | selectattr('is_api_port', 'equalto', true) | list | length > 0 }}"
+
     - name: Create http port 1 with check mode
       ansible.platform.http_port:
         name: "{{ test_id }}-Port-65531"
@@ -168,50 +172,68 @@
         that:
           - delete is changed
 
-    - name: Add API http port
-      ansible.platform.http_port:
-        name: "Port 44301"
-        number: 44301
-        use_https: true
-        is_api_port: true
-        state: present
-      register: http_port5
+    # Skip when Gateway already has an API port (only one allowed per system)
+    - name: API port tests (create second API port, remove, make non-API; skip if one exists)
+      block:
+        - name: Add API http port
+          ansible.platform.http_port:
+            name: "Port 44301"
+            number: 44301
+            use_https: true
+            is_api_port: true
+            state: present
+          register: http_port5
 
-    - name: Remove API http port
-      ansible.platform.http_port:
-        name: "Port 44301"
-        state: absent
-      ignore_errors: true
-      register: http_port5_remove_result
+        - name: Remove API http port
+          ansible.platform.http_port:
+            name: "Port 44301"
+            state: absent
+          ignore_errors: true
+          register: http_port5_remove_result
 
-    - name: Try to make it not an API port
-      ansible.platform.http_port:
-        name: "Port 44301"
-        is_api_port: false
-      ignore_errors: true
-      register: http_port5_not_api_result
+        - name: Try to make it not an API port
+          ansible.platform.http_port:
+            name: "Port 44301"
+            is_api_port: false
+          ignore_errors: true
+          register: http_port5_not_api_result
 
-    - name: API Port assertions
-      ansible.builtin.assert:
-        that:
-          - http_port5 is changed
-          - http_port5_remove_result is failed
-          - http_port5_not_api_result is failed
+        - name: API Port assertions
+          ansible.builtin.assert:
+            that:
+              - http_port5 is changed
+              - http_port5_remove_result is failed
+              - http_port5_not_api_result is failed
+      when: not api_port_already_exists
 
   always:
-    # Always Cleanup
-    - name: Delete http ports
+    # Individual tasks (not a loop) so each gets its own worker process,
+    # avoiding stale multiprocessing proxy errors under ansible-test --requirements.
+    - name: Delete http port 1
       ansible.platform.http_port:
         state: absent
-        name: "{{ vars[item].id }}"
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "http_port1"
-        - "http_port2"
-        - "http_port3"
-        - "http_port4"
-        # API port cannot be deleted via API, so we leave it.
-        # If this ever becomes a problem in the future, add a task here to
-        # delete it using manage.py.
-        # - "http_port5"
+        name: "{{ http_port1.id }}"
+      when: http_port1 is defined and http_port1.id is defined
+      ignore_errors: true
+
+    - name: Delete http port 2
+      ansible.platform.http_port:
+        state: absent
+        name: "{{ http_port2.id }}"
+      when: http_port2 is defined and http_port2.id is defined
+      ignore_errors: true
+
+    - name: Delete http port 3
+      ansible.platform.http_port:
+        state: absent
+        name: "{{ http_port3.id }}"
+      when: http_port3 is defined and http_port3.id is defined
+      ignore_errors: true
+
+    - name: Delete http port 4
+      ansible.platform.http_port:
+        state: absent
+        name: "{{ http_port4.id }}"
+      when: http_port4 is defined and http_port4.id is defined
+      ignore_errors: true
 ...

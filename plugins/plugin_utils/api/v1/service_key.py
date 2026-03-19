@@ -116,3 +116,6 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
             modified=api_data.get('modified'),
             url=api_data.get('url'),
         )
+
+
+Service_KeyTransformMixin_v1 = ServiceKeyTransformMixin_v1

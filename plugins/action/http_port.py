@@ -81,17 +81,24 @@ class ActionModule(BaseResourceActionPlugin):
             hp = AnsibleHttpPort(**hp_data)
             operation = self._detect_operation(validated_params)
 
-            # Idempotent create: find by name, then update if exists
+            # When name is numeric, treat it as an ID (e.g. name: "{{ http_port3.id }}")
+            name_is_id = str(hp.name).strip().isdigit()
+            if name_is_id:
+                hp.id = int(hp.name)
+
+            # Idempotent create: find by name (or by id when name is numeric), then update if exists
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'name': hp.name}
+                        ansible_data=asdict(hp)
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
                         hp.id = find_result.get('id')
+                        if name_is_id:
+                            hp.name = find_result.get('name', hp.name)
                 except Exception:
                     pass
 
@@ -243,6 +250,16 @@ class ActionModule(BaseResourceActionPlugin):
             result['_timing']['api_call_time'] = timing.get('api_call_time', 0)
 
         except Exception as e:
+            # Delete of non-existent port (404) → treat as already absent
+            if operation == 'delete' and ('404' in str(e) or 'Not Found' in str(e).lower()):
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: {'state': 'absent'},
+                    'msg': "Http port '{0}' does not exist (already absent)".format(
+                        getattr(hp, 'name', None) or getattr(hp, 'id', '?'))
+                })
+                return result
             import traceback
             self._display.vvv(f"Error in http_port action plugin: {e}")
             result['failed'] = True

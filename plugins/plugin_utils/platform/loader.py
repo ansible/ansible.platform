@@ -15,6 +15,11 @@ from .registry import APIVersionRegistry
 logger = logging.getLogger(__name__)
 
 
+def _to_pascal_case(name: str) -> str:
+    """Convert a snake_case name to PascalCase (e.g. 'service_type' -> 'ServiceType')."""
+    return ''.join(part.capitalize() for part in name.split('_'))
+
+
 class DynamicClassLoader:
     """
     Dynamically load version-specific classes at runtime.
@@ -107,7 +112,7 @@ class DynamicClassLoader:
             ) from e
 
         # Find Ansible dataclass (e.g., AnsibleUser)
-        class_name = f'Ansible{module_name.title()}'
+        class_name = f'Ansible{_to_pascal_case(module_name)}'
 
         if hasattr(module, class_name):
             return getattr(module, class_name)
@@ -157,18 +162,19 @@ class DynamicClassLoader:
             ) from e
 
         # Find API dataclass (e.g., APIUser_v1)
-        api_class_name = f'API{module_name.title()}_v{version_normalized}'
+        pascal = _to_pascal_case(module_name)
+        api_class_name = f'API{pascal}_v{version_normalized}'
         api_class = self._find_class_in_module(
             module,
-            [api_class_name, f'API{module_name.title()}', 'API*'],
+            [api_class_name, f'API{pascal}', 'API*'],
             f"API dataclass for {module_name}"
         )
 
         # Find transform mixin (e.g., UserTransformMixin_v1)
-        mixin_class_name = f'{module_name.title()}TransformMixin_v{version_normalized}'
+        mixin_class_name = f'{pascal}TransformMixin_v{version_normalized}'
         mixin_class = self._find_class_in_module(
             module,
-            [mixin_class_name, f'{module_name.title()}TransformMixin', '*TransformMixin'],
+            [mixin_class_name, f'{pascal}TransformMixin', '*TransformMixin'],
             f"Transform mixin for {module_name}",
             base_class=BaseTransformMixin
         )
@@ -210,10 +216,9 @@ class DynamicClassLoader:
         # Try each pattern
         for pattern in patterns:
             if '*' in pattern:
-                # Wildcard pattern
-                prefix = pattern.replace('*', '')
+                prefix, _, suffix = pattern.partition('*')
                 for name, cls in classes:
-                    if name.startswith(prefix):
+                    if name.startswith(prefix) and name.endswith(suffix):
                         return cls
             else:
                 # Exact match
