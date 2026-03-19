@@ -220,6 +220,9 @@
         name: "{{ authenticator_map_2.name }}"
         authenticator: "{{ authenticator1.id }}"
         map_type: is_superuser
+        role: ""
+        team: ""
+        organization: ""
       register: authenticator_map_2_change
 
     - name: Assert that we can change an existing authenticator map
