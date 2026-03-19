@@ -137,3 +137,7 @@ class HttpPortTransformMixin_v1(BaseTransformMixin):
             'url': api_data.get('url'),
         }
         return AnsibleHttpPort(**ansible_data)
+
+
+# Alias so loader finds mixin when module_name is "http_port" (title() -> "Http_Port").
+Http_PortTransformMixin_v1 = HttpPortTransformMixin_v1

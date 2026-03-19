@@ -162,6 +162,32 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
 
+            # Check mode: do not perform create/update/delete
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': hp.name, 'number': hp.number, 'use_https': getattr(hp, 'use_https', False), 'is_api_port': getattr(hp, 'is_api_port', False)},
+                        'id': None,
+                        'name': hp.name,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': hp.name, 'number': hp.number, 'use_https': getattr(hp, 'use_https', False), 'is_api_port': getattr(hp, 'is_api_port', False), 'id': getattr(hp, 'id', None)},
+                        'id': getattr(hp, 'id', None),
+                        'name': hp.name,
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(hp, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation,
