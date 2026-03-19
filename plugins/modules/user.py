@@ -74,6 +74,12 @@ options:
     type: list
     elements: str
 
+  associated_authenticators:
+    description:
+      - Map of authenticator id to user attributes (uid, email) for that authenticator
+      - Keys are authenticator IDs (integer); values are dicts with I(uid) and optionally I(email)
+    type: dict
+
   state:
     description:
       - Desired state of the user (CRUD-aligned).

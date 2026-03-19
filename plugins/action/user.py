@@ -189,11 +189,40 @@ class ActionModule(BaseResourceActionPlugin):
                     # User does not exist: create with task params
                     operation = 'create'
 
-            # Execute via manager (find may raise ValueError when resource not found)
-            # For enforced update, pass flag so transform sends null for omitted fields (API can clear them)
-            ansible_data = dict(user.__dict__)
+            # Execute via manager. Only pass fields that were in the task so we don't send
+            # dataclass defaults (e.g. organizations=[]) and cause false "changed" on idempotent runs.
+            ansible_data = {k: getattr(user, k) for k in validated_params if hasattr(user, k)}
+            if getattr(user, 'id', None) is not None:
+                ansible_data['id'] = user.id
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            # Check mode: do not perform create/update/delete
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'username': user.username},
+                        'id': None,
+                        'username': user.username,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'username': user.username, 'id': getattr(user, 'id', None)},
+                        'id': getattr(user, 'id', None),
+                        'username': user.username,
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(user, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation,

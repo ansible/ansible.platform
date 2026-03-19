@@ -721,19 +721,53 @@ class PlatformService(BaseAPIClient):
             # Convert to dict for comparison and return
             new_dict = asdict(ansible_instance)
             current_dict = current_data if isinstance(current_data, dict) else {}
+            read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
 
-            # Compare relevant fields (exclude read-only fields like created, modified, url)
-            read_only_fields = {'id', 'created', 'modified', 'url'}
+            # Merge current + PATCH response only (no overlay from requested).
+            # Change = did the API state change; avoids false positives when API normalizes
+            # (e.g. slug casing) or when requested has dataclass defaults that differ from current.
+            new_dict = {**current_dict, **new_dict}
+
+            # Compare relevant fields; normalize dicts/lists so representation differences
+            # (e.g. int vs string keys) don't cause false changes.
             new_comparable = {k: v for k, v in new_dict.items() if k not in read_only_fields}
             current_comparable = {k: v for k, v in current_dict.items() if k not in read_only_fields}
+            norm = self._normalize_for_compare
+            changed = norm(new_comparable) != norm(current_comparable)
 
-            changed = new_comparable != current_comparable
-
-            # Add 'changed' field to result dict
             new_dict['changed'] = changed
             return new_dict
 
         return {'changed': False}
+
+    @staticmethod
+    def _normalize_for_compare(value: Any) -> Any:
+        """Normalize a value for change comparison so representation differences (e.g. int vs str dict keys) don't cause false changes."""
+        if isinstance(value, dict):
+            return {str(k): PlatformService._normalize_for_compare(v) for k, v in sorted(value.items(), key=lambda x: str(x[0]))}
+        if isinstance(value, list):
+            return [PlatformService._normalize_for_compare(item) for item in value]
+        return value
+
+    @staticmethod
+    def _deep_merge_for_compare(current: Any, requested: Any) -> Any:
+        """Merge current and requested for comparison; requested wins on conflicts. Preserves API-only keys in current so idempotent runs don't false-positive."""
+        if not isinstance(current, dict) or not isinstance(requested, dict):
+            return requested
+        result = {}
+        all_keys = set(str(k) for k in current) | set(str(k) for k in requested)
+        for key in sorted(all_keys):
+            c = current.get(key) if key in current else current.get(int(key)) if key.isdigit() else None
+            r = requested.get(key) if key in requested else requested.get(int(key)) if key.isdigit() else None
+            if r is None:
+                result[key] = c
+            elif c is None:
+                result[key] = r
+            elif isinstance(c, dict) and isinstance(r, dict):
+                result[key] = PlatformService._deep_merge_for_compare(c, r)
+            else:
+                result[key] = r
+        return result
 
     def _delete_resource(
         self,

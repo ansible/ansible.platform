@@ -55,10 +55,25 @@ class ActionModule(BaseResourceActionPlugin):
             auth_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
             auth = AnsibleAuthenticator(**auth_data)
             operation = self._detect_operation(validated_params)
+
+            def _find_payload():
+                """Build find payload; when name is numeric treat as id for GET by id."""
+                payload = {'name': auth.name}
+                if getattr(auth, 'id', None):
+                    payload['id'] = auth.id
+                elif getattr(auth, 'name', None) is not None:
+                    try:
+                        n = str(auth.name).strip()
+                        if n.isdigit():
+                            payload['id'] = int(n)
+                    except (ValueError, TypeError):
+                        pass
+                return payload
+
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': auth.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
@@ -68,7 +83,7 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'delete' and not auth.id:
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': auth.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                     if find_result and find_result.get('id'):
                         auth.id = find_result.get('id')
@@ -91,7 +106,7 @@ class ActionModule(BaseResourceActionPlugin):
                 argspec_fields = set(argspec.get('argument_spec', {}).keys())
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': auth.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                 except ValueError:
                     find_result = None
@@ -113,6 +128,33 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data = asdict(auth)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            # Check mode: do not perform create/update/delete
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': auth.name, 'slug': getattr(auth, 'slug', None)},
+                        'id': None,
+                        'name': auth.name,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {k: getattr(auth, k, None) for k in ('name', 'slug', 'id') if hasattr(auth, k)},
+                        'id': getattr(auth, 'id', None),
+                        'name': getattr(auth, 'name', None),
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(auth, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data

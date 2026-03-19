@@ -26,12 +26,21 @@ logger = logging.getLogger(__name__)
 
 
 def _find_payload(am, manager):
-    """Build find ansible_data with resolved authenticator_id."""
+    """Build find ansible_data with resolved authenticator_id.
+    When name is purely numeric, treat it as id so find uses GET by id instead of list by name.
+    """
     payload = asdict(am)
-    if am.authenticator and not am.id:
+    if am.authenticator and not getattr(am, 'id', None):
         try:
             payload['authenticator_id'] = manager.lookup_resource_id('authenticators', 'name', am.authenticator)
         except Exception:
+            pass
+    if not getattr(am, 'id', None) and getattr(am, 'name', None) is not None:
+        try:
+            n = str(am.name).strip()
+            if n.isdigit():
+                payload['id'] = int(n)
+        except (ValueError, TypeError):
             pass
     return payload
 
@@ -84,7 +93,32 @@ class ActionModule(BaseResourceActionPlugin):
                         operation='find', module_name=self.MODULE_NAME, ansible_data=find_data()
                     )
                     if find_result and find_result.get('id'):
-                        am.id = find_result.get('id')
+                        # When find used GET by id (e.g. numeric name), verify authenticator matches
+                        # so "delete by wrong authenticator" does not delete the map
+                        found_auth = find_result.get('authenticator')
+                        requested_auth_id = None
+                        if getattr(am, 'authenticator', None) is not None:
+                            try:
+                                requested_auth_id = manager.lookup_resource_id(
+                                    'authenticators', 'name', str(am.authenticator)
+                                )
+                            except Exception:
+                                pass
+                            if requested_auth_id is None and str(am.authenticator).isdigit():
+                                requested_auth_id = int(am.authenticator)
+                        # Unresolvable authenticator (e.g. "NonExisting") or mismatch -> do not delete
+                        if getattr(am, 'authenticator', None) is not None:
+                            if requested_auth_id is None or found_auth is None or int(found_auth) != int(requested_auth_id):
+                                find_result = None
+                        if find_result and find_result.get('id'):
+                            am.id = find_result.get('id')
+                        else:
+                            result.update({
+                                'changed': False, 'failed': False,
+                                self.MODULE_NAME: {'state': 'absent'},
+                                'msg': "Authenticator map '%s' does not exist (already absent)" % am.name
+                            })
+                            return result
                     else:
                         result.update({
                             'changed': False, 'failed': False,
@@ -128,6 +162,33 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data.pop('authenticator_id', None)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            # Check mode: do not perform create/update/delete; return would-change result
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': am.name, 'authenticator': getattr(am, 'authenticator', None)},
+                        'id': None,
+                        'name': am.name,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {k: getattr(am, k, None) for k in ('name', 'authenticator', 'id') if hasattr(am, k)},
+                        'id': getattr(am, 'id', None),
+                        'name': getattr(am, 'name', None),
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(am, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data
