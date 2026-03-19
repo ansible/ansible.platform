@@ -24,22 +24,22 @@ class AAPService(AAPObject):
         super().manage(**kwargs)
 
     def get_service_cluster(self):
-        from ..module_utils.aap_service_cluster import AAPServiceCluster
-
-        cluster_params = {self.module.IDENTITY_FIELDS['service_clusters']: self.params.get('service_cluster'), "state": self.STATE_EXISTS}
-
-        self.service_cluster = AAPServiceCluster(module=self.module, params=cluster_params)
-
-        self.service_cluster.manage(auto_exit=False, fail_when_not_exists=True)
+        # Resolve service_cluster name to id via API (service_cluster module is manager-based)
+        item = self.module.get_one(
+            'service_clusters',
+            name_or_id=self.params.get('service_cluster'),
+            allow_none=False
+        )
+        self.service_cluster = type('_Ref', (), {'data': item})()
 
     def get_http_port(self):
-        from ..module_utils.aap_http_port import AAPHttpPort
-
-        params = {self.module.IDENTITY_FIELDS['http_ports']: self.params.get('http_port'), "state": self.STATE_EXISTS}
-
-        self.http_port = AAPHttpPort(module=self.module, params=params)
-
-        self.http_port.manage(auto_exit=False, fail_when_not_exists=True)
+        # Resolve http_port name to id via API (http_port module is manager-based; no AAPHttpPort)
+        item = self.module.get_one(
+            'http_ports',
+            name_or_id=self.params.get('http_port'),
+            allow_none=False
+        )
+        self.http_port = type('_Ref', (), {'data': item})()
 
     def unique_field(self):
         return self.module.IDENTITY_FIELDS["services"]

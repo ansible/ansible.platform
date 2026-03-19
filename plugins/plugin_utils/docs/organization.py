@@ -1,7 +1,8 @@
 """
-DOCUMENTATION string for organization module.
+Legacy: DOCUMENTATION for the organization module now lives in plugins/modules/organization.py.
 
-This serves as the single source of truth for the module's interface.
+The action plugin discovers it via _get_documentation() from the sibling module
+(meraki_rm-style). This file is kept for reference only; do not import from here.
 """
 
 DOCUMENTATION = """

@@ -139,7 +139,12 @@ def main():
 
     # Create a module for ourselves
     module = AAPModule(argument_spec=argument_spec)
-    AAPApplication(module).manage(json_output_fields=['client_id', 'client_secret'])
+    app = AAPApplication(module)
+    # For state=exists, do not fail when the item is missing; return exists=false so callers can check
+    if module.params.get('state') == 'exists':
+        app.manage(json_output_fields=['client_id', 'client_secret'], fail_when_not_exists=False)
+    else:
+        app.manage(json_output_fields=['client_id', 'client_secret'])
 
 
 if __name__ == '__main__':

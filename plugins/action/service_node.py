@@ -5,9 +5,8 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 """
-Action plugin for ansible.platform.organization module.
-
-This action plugin uses the persistent connection manager architecture.
+Action plugin for ansible.platform.service_node module.
+Uses the persistent connection manager architecture.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -15,117 +14,84 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import logging
+import time
 from dataclasses import asdict
 
+from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.organization import AnsibleOrganization
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.service_node import AnsibleServiceNode
 
 logger = logging.getLogger(__name__)
 
 
 class ActionModule(BaseResourceActionPlugin):
-    """
-    Action plugin for organization module.
-
-    Uses the persistent connection manager architecture for improved performance.
-    """
-
-    MODULE_NAME = 'organization'
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    MODULE_NAME = 'service_node'
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = dict()
-
         self._task_vars = task_vars
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp
-
-        import time
         action_start = time.perf_counter()
-
         auth_params = [
             'gateway_hostname', 'gateway_username', 'gateway_password',
             'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',
             'aap_hostname', 'aap_username', 'aap_password', 'aap_token',
             'aap_validate_certs', 'aap_request_timeout'
         ]
-
         try:
             doc = self._get_documentation()
             argspec = self._build_argspec_from_docs(doc) if doc else None
             if not argspec:
-                from ansible.errors import AnsibleError
-                raise AnsibleError("Could not load DOCUMENTATION for organization module")
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, 'input')
+                raise AnsibleError("Could not load DOCUMENTATION for service_node module")
+            validated_input = self._validate_data(self._task.args.copy(), argspec, 'input')
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
-
             if facts_to_set:
                 result['ansible_facts'] = facts_to_set
                 result['_ansible_facts_cacheable'] = True
-
             validated_params = validated_input.validated_parameters
-            org_data = {
-                k: v for k, v in validated_params.items()
-                if v is not None and k not in auth_params
-            }
-            org = AnsibleOrganization(**org_data)
+            sn_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
+            sn = AnsibleServiceNode(**sn_data)
             operation = self._detect_operation(validated_params)
-
-            # Idempotent create: find by name, then update if exists
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
-                        operation='find',
-                        module_name=self.MODULE_NAME,
-                        ansible_data={'name': org.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sn.name}
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
-                        org.id = find_result.get('id')
+                        sn.id = find_result.get('id')
                 except Exception:
                     pass
-
-            # Delete: find by name to get id if not provided
-            if operation == 'delete' and not org.id:
+            if operation == 'delete' and not sn.id:
                 try:
                     find_result = manager.execute(
-                        operation='find',
-                        module_name=self.MODULE_NAME,
-                        ansible_data={'name': org.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sn.name}
                     )
                     if find_result and find_result.get('id'):
-                        org.id = find_result.get('id')
+                        sn.id = find_result.get('id')
                     else:
                         result.update({
-                            'changed': False,
-                            'failed': False,
+                            'changed': False, 'failed': False,
                             self.MODULE_NAME: {'state': 'absent'},
-                            'msg': f"Organization '{org.name}' does not exist (already absent)"
+                            'msg': "Service node '%s' does not exist (already absent)" % sn.name
                         })
                         return result
                 except Exception:
                     result.update({
-                        'changed': False,
-                        'failed': False,
+                        'changed': False, 'failed': False,
                         self.MODULE_NAME: {'state': 'absent'},
-                        'msg': f"Organization '{org.name}' does not exist (already absent)"
+                        'msg': "Service node '%s' does not exist (already absent)" % sn.name
                     })
                     return result
-
-            # Enforced: find then merge, then create or update
             if operation == 'enforced':
                 read_only_fields = {'id', 'created', 'modified', 'url'}
                 argspec_fields = set(argspec.get('argument_spec', {}).keys())
                 try:
                     find_result = manager.execute(
-                        operation='find',
-                        module_name=self.MODULE_NAME,
-                        ansible_data={'name': org.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sn.name}
                     )
                 except ValueError:
                     find_result = None
@@ -134,64 +100,43 @@ class ActionModule(BaseResourceActionPlugin):
                     for k in argspec_fields:
                         if k in auth_params:
                             continue
-                        if k in validated_params:
-                            merged[k] = validated_params[k]
-                        elif k == 'name':
-                            merged[k] = find_result.get(k) or org.name
-                        else:
-                            merged[k] = None
+                        merged[k] = validated_params.get(k) if k in validated_params else (find_result.get(k) if k == 'name' else None)
                     for ro in read_only_fields:
                         if ro in find_result:
                             merged[ro] = find_result[ro]
-                    merged.setdefault('name', org.name or find_result.get('name'))
-                    org_data = {k: v for k, v in merged.items() if hasattr(AnsibleOrganization, k)}
-                    org_data.setdefault('name', org.name)
-                    org = AnsibleOrganization(**org_data)
+                    merged.setdefault('name', sn.name or find_result.get('name'))
+                    sn_data = {k: v for k, v in merged.items() if hasattr(AnsibleServiceNode, k)}
+                    sn = AnsibleServiceNode(**sn_data)
                     operation = 'update'
                 else:
                     operation = 'create'
-
-            ansible_data = asdict(org)
+            ansible_data = asdict(sn)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
-
             try:
                 manager_result = manager.execute(
-                    operation=operation,
-                    module_name=self.MODULE_NAME,
-                    ansible_data=ansible_data
+                    operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data
                 )
             except ValueError as e:
                 if operation == 'find' and ('not found' in str(e).lower() or 'resource with' in str(e).lower()):
                     result.update({
-                        'changed': False,
-                        'failed': False,
-                        self.MODULE_NAME: {},
-                        'exists': False,
-                        'msg': f"Organization '{org.name}' does not exist"
+                        'changed': False, 'failed': False, self.MODULE_NAME: {},
+                        'exists': False, 'msg': "Service node '%s' does not exist" % sn.name
                     })
                     return result
                 raise
-
             read_only_fields = {'id', 'created', 'modified', 'url'}
             argspec_fields = set(argspec.get('argument_spec', {}).keys())
-            filtered_result = {
-                k: v for k, v in manager_result.items()
-                if k in argspec_fields or k in read_only_fields
-            }
+            filtered_result = {k: v for k, v in manager_result.items() if k in argspec_fields or k in read_only_fields}
             try:
                 validated_output = self._validate_data(
-                    {k: v for k, v in filtered_result.items() if k in argspec_fields},
-                    argspec,
-                    'output'
+                    {k: v for k, v in filtered_result.items() if k in argspec_fields}, argspec, 'output'
                 )
                 for field in read_only_fields:
                     if field in filtered_result:
                         validated_output[field] = filtered_result[field]
             except Exception:
                 validated_output = manager_result
-
-            # Top-level id/name so playbooks can use org1.id, org1.name
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
@@ -203,19 +148,15 @@ class ActionModule(BaseResourceActionPlugin):
                 result['exists'] = bool(validated_output.get('id'))
             elif operation == 'delete':
                 result[self.MODULE_NAME]['state'] = 'absent'
-
-            action_end = time.perf_counter()
             timing = manager_result.get('_timing', {})
-            result.setdefault('_timing', {})['action_plugin_time'] = action_end - action_start
+            result.setdefault('_timing', {})['action_plugin_time'] = time.perf_counter() - action_start
             result['_timing']['manager_processing_time'] = timing.get('manager_processing_time', 0)
             result['_timing']['api_call_time'] = timing.get('api_call_time', 0)
-
         except Exception as e:
             import traceback
-            self._display.vvv(f"Error in organization action plugin: {e}")
+            self._display.vvv("Error in service_node action plugin: %s" % e)
             result['failed'] = True
             result['msg'] = str(e)
             if self._display.verbosity >= 3:
                 result['exception'] = traceback.format_exc()
-
         return result

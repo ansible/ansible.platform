@@ -16,9 +16,9 @@ __metaclass__ = type
 
 import logging
 
+from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
-from ansible_collections.ansible.platform.plugins.plugin_utils.docs.user import DOCUMENTATION
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,11 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp  # not used
 
         try:
-            # Build argspec from DOCUMENTATION (includes fragments)
-            argspec = self._build_argspec_from_docs(DOCUMENTATION)
+            # Build argspec from DOCUMENTATION in sibling module (plugins/modules/user.py)
+            doc = self._get_documentation()
+            argspec = self._build_argspec_from_docs(doc) if doc else None
+            if argspec is None:
+                raise AnsibleError("Could not load DOCUMENTATION for user module")
 
             # Extract auth parameters separately (not part of module validation)
             # Auth params come from task_vars or task args, handled by extract_gateway_config

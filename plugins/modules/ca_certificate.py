@@ -83,32 +83,4 @@ id:
     sample: "42"
 """
 
-from ..module_utils.aap_module import AAPModule
-from ..module_utils.aap_ca_certificate import AAPCACertificate
-
-
-def main():
-    argument_spec = dict(
-        name=dict(type="str", required=True),
-        pem_data=dict(type="str", required=False),
-        sha256=dict(type="str", required=False),
-        related_id_reference=dict(type="str"),
-        state=dict(choices=["present", "absent", "exists"], default="present"),
-    )
-
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    # Validate certificate data consistency for present state
-    if module.params.get("state") == "present":
-        pem_data = module.params.get("pem_data")
-        sha256 = module.params.get("sha256")
-
-        # If one is provided, both must be provided (for data integrity)
-        if (pem_data and not sha256) or (sha256 and not pem_data):
-            module.fail_json(msg="pem_data and sha256 must be provided together for certificate validation")
-
-    AAPCACertificate(module).manage()
-
-
-if __name__ == "__main__":
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

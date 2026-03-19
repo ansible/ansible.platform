@@ -5,7 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 """
-Action plugin for ansible.platform.organization module.
+Action plugin for ansible.platform.http_port module.
 
 This action plugin uses the persistent connection manager architecture.
 """
@@ -15,22 +15,23 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import logging
+import time
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.organization import AnsibleOrganization
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.http_port import AnsibleHttpPort
 
 logger = logging.getLogger(__name__)
 
 
 class ActionModule(BaseResourceActionPlugin):
     """
-    Action plugin for organization module.
+    Action plugin for http_port module.
 
     Uses the persistent connection manager architecture for improved performance.
     """
 
-    MODULE_NAME = 'organization'
+    MODULE_NAME = 'http_port'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -43,7 +44,6 @@ class ActionModule(BaseResourceActionPlugin):
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp
 
-        import time
         action_start = time.perf_counter()
 
         auth_params = [
@@ -58,7 +58,7 @@ class ActionModule(BaseResourceActionPlugin):
             argspec = self._build_argspec_from_docs(doc) if doc else None
             if not argspec:
                 from ansible.errors import AnsibleError
-                raise AnsibleError("Could not load DOCUMENTATION for organization module")
+                raise AnsibleError("Could not load DOCUMENTATION for http_port module")
             module_args = self._task.args.copy()
             validated_input = self._validate_data(module_args, argspec, 'input')
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
@@ -69,11 +69,16 @@ class ActionModule(BaseResourceActionPlugin):
                 result['_ansible_facts_cacheable'] = True
 
             validated_params = validated_input.validated_parameters
-            org_data = {
+            hp_data = {
                 k: v for k, v in validated_params.items()
                 if v is not None and k not in auth_params
             }
-            org = AnsibleOrganization(**org_data)
+            # Apply defaults for booleans so API receives them
+            if 'use_https' not in hp_data:
+                hp_data['use_https'] = False
+            if 'is_api_port' not in hp_data:
+                hp_data['is_api_port'] = False
+            hp = AnsibleHttpPort(**hp_data)
             operation = self._detect_operation(validated_params)
 
             # Idempotent create: find by name, then update if exists
@@ -82,30 +87,30 @@ class ActionModule(BaseResourceActionPlugin):
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'name': org.name}
+                        ansible_data={'name': hp.name}
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
-                        org.id = find_result.get('id')
+                        hp.id = find_result.get('id')
                 except Exception:
                     pass
 
             # Delete: find by name to get id if not provided
-            if operation == 'delete' and not org.id:
+            if operation == 'delete' and not hp.id:
                 try:
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'name': org.name}
+                        ansible_data={'name': hp.name}
                     )
                     if find_result and find_result.get('id'):
-                        org.id = find_result.get('id')
+                        hp.id = find_result.get('id')
                     else:
                         result.update({
                             'changed': False,
                             'failed': False,
                             self.MODULE_NAME: {'state': 'absent'},
-                            'msg': f"Organization '{org.name}' does not exist (already absent)"
+                            'msg': f"Http port '{hp.name}' does not exist (already absent)"
                         })
                         return result
                 except Exception:
@@ -113,7 +118,7 @@ class ActionModule(BaseResourceActionPlugin):
                         'changed': False,
                         'failed': False,
                         self.MODULE_NAME: {'state': 'absent'},
-                        'msg': f"Organization '{org.name}' does not exist (already absent)"
+                        'msg': f"Http port '{hp.name}' does not exist (already absent)"
                     })
                     return result
 
@@ -125,7 +130,7 @@ class ActionModule(BaseResourceActionPlugin):
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'name': org.name}
+                        ansible_data={'name': hp.name}
                     )
                 except ValueError:
                     find_result = None
@@ -137,21 +142,23 @@ class ActionModule(BaseResourceActionPlugin):
                         if k in validated_params:
                             merged[k] = validated_params[k]
                         elif k == 'name':
-                            merged[k] = find_result.get(k) or org.name
+                            merged[k] = find_result.get(k) or hp.name
                         else:
                             merged[k] = None
                     for ro in read_only_fields:
                         if ro in find_result:
                             merged[ro] = find_result[ro]
-                    merged.setdefault('name', org.name or find_result.get('name'))
-                    org_data = {k: v for k, v in merged.items() if hasattr(AnsibleOrganization, k)}
-                    org_data.setdefault('name', org.name)
-                    org = AnsibleOrganization(**org_data)
+                    merged.setdefault('name', hp.name or find_result.get('name'))
+                    merged.setdefault('use_https', False)
+                    merged.setdefault('is_api_port', False)
+                    hp_data = {k: v for k, v in merged.items() if hasattr(AnsibleHttpPort, k)}
+                    hp_data.setdefault('name', hp.name)
+                    hp = AnsibleHttpPort(**hp_data)
                     operation = 'update'
                 else:
                     operation = 'create'
 
-            ansible_data = asdict(org)
+            ansible_data = asdict(hp)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
 
@@ -168,7 +175,7 @@ class ActionModule(BaseResourceActionPlugin):
                         'failed': False,
                         self.MODULE_NAME: {},
                         'exists': False,
-                        'msg': f"Organization '{org.name}' does not exist"
+                        'msg': f"Http port '{hp.name}' does not exist"
                     })
                     return result
                 raise
@@ -191,7 +198,6 @@ class ActionModule(BaseResourceActionPlugin):
             except Exception:
                 validated_output = manager_result
 
-            # Top-level id/name so playbooks can use org1.id, org1.name
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
@@ -212,7 +218,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         except Exception as e:
             import traceback
-            self._display.vvv(f"Error in organization action plugin: {e}")
+            self._display.vvv(f"Error in http_port action plugin: {e}")
             result['failed'] = True
             result['msg'] = str(e)
             if self._display.verbosity >= 3:

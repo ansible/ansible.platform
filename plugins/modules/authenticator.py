@@ -87,8 +87,6 @@ EXAMPLES = """
     name: OIDCAuth
     type: ansible_base.authentication.authenticator_plugins.oidc
     configuration:
-      # https://<OIDC URL>/realms/aap/.well-known/openid-configuration.
-      # Note client need to provide only first part without / at the end. AAP oidc plugin appends "/.well-known/openid-configuration" automatically
       OIDC_ENDPOINT: "https://<OIDC URL>/realms/aap"
       KEY: "<CLIENT_ID>"
       SECRET: "<SECRET>"
@@ -98,9 +96,6 @@ EXAMPLES = """
         - 'HS256'
     order: 3
     state: present
-    aap_hostname: hostname.example.com
-    aap_token: sample_token
-    aap_validate_certs: false
 
 - name: "Create LDAP authentication"
   ansible.platform.authenticator:
@@ -113,9 +108,6 @@ EXAMPLES = """
       BIND_PASSWORD: "<BIND_USER_PWD>"
       START_TLS: false
       GROUP_TYPE: "MemberDNGroupType"
-      GROUP_TYPE_PARAMS:
-        name_attr: "cn"
-        member_attr: "member"
       USER_SEARCH:
         - 'cn=users,cn=accounts,dc=example,dc=com'
         - 'SCOPE_SUBTREE'
@@ -130,36 +122,7 @@ EXAMPLES = """
         email: "mail"
     order: 4
     state: present
-    aap_hostname: hostname.example.com
-    aap_token: sample_token
-    aap_validate_certs: false
 ...
 """
 
-from ..module_utils.aap_authenticator import AAPAuthenticator
-from ..module_utils.aap_module import AAPModule
-
-
-def main():
-    argument_spec = dict(
-        name=dict(type="str", required=True),
-        new_name=dict(type="str"),
-        slug=dict(type="str"),
-        enabled=dict(type="bool"),
-        create_objects=dict(type="bool"),
-        remove_users=dict(type="bool", default=True),
-        type=dict(type="str"),
-        configuration=dict(type="dict", default={}, no_log=True),  # can contain secrets
-        order=dict(type="int"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-        auto_migrate_users_to=dict(type="str"),
-    )
-
-    # Create a module with spec
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    AAPAuthenticator(module).manage()
-
-
-if __name__ == "__main__":
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

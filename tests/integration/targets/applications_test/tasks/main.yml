@@ -51,15 +51,18 @@
         client_type: public
       check_mode: true
 
-    - name: Search for Application 1
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'applications',
-          query_params={'name': '{{ name_prefix }}-app1'}, **connection_info) }}"
+    # Avoid gateway_api lookup here (can crash worker on macOS). Use module state: exists instead.
+    - name: Check that Application 1 does not exist
+      ansible.platform.application:
+        name: "{{ name_prefix }}-app1"
+        organization: "{{ name_prefix }}-Organization-1"
+        state: exists
+      register: app1_search
 
     - name: Assert that Application 1 does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - not app1_search.exists | default(false)
         fail_msg: "App '{{ name_prefix }}-app1' exists in the system!"
 
     - name: Create Application 1

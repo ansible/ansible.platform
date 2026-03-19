@@ -1,4 +1,6 @@
 ---
+# Platform modules (organization, team, role_team_assignment) use API calls to the gateway.
+# Run with connection: local so tasks execute on the controller and can reach the gateway.
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -6,6 +8,9 @@
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  vars:
+    ansible_connection: local
 
   block:
 

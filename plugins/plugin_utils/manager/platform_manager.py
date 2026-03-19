@@ -1099,6 +1099,38 @@ class PlatformService(BaseAPIClient):
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
 
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str
+    ) -> Optional[int]:
+        """
+        Resolve a resource name to ID by GET list with filter.
+        Used by mixins to resolve FKs (e.g. service_cluster name -> id).
+        """
+        if not lookup_value:
+            return None
+        if str(lookup_value).isdigit():
+            return int(lookup_value)
+        cache_key = f"{endpoint}:{lookup_field}:{lookup_value}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+        url = self._build_url(endpoint, query_params={lookup_field: lookup_value})
+        response = self.session.get(
+            url,
+            timeout=self.request_timeout,
+            verify=self.verify_ssl
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not results:
+            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+        rid = results[0].get("id")
+        if rid is not None:
+            self.cache[cache_key] = rid
+        return rid
+
     def shutdown(self) -> dict:
         """
         Gracefully shutdown the manager service.

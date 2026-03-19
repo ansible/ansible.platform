@@ -15,6 +15,7 @@ __metaclass__ = type
 
 import base64
 import fcntl
+import importlib
 import json
 import logging
 import subprocess
@@ -542,6 +543,28 @@ class BaseResourceActionPlugin(ActionBase):
             'platform_manager_authkey': authkey_b64,
             'gateway_url': gateway_config.base_url
         }
+
+    def _get_documentation(self) -> str:
+        """Auto-discover DOCUMENTATION from the sibling modules/ package.
+
+        Uses MODULE_NAME to import plugins.modules.<MODULE_NAME> and return
+        its DOCUMENTATION attribute. Same approach as cisco.meraki_rm.
+        """
+        if not self.MODULE_NAME:
+            return ''
+        parent_pkg = type(self).__module__.rsplit('.', 2)[0]  # ...plugins
+        for candidate in (
+            f'{parent_pkg}.modules.{self.MODULE_NAME}',
+            f'ansible_collections.ansible.platform.plugins.modules.{self.MODULE_NAME}',
+        ):
+            try:
+                mod = importlib.import_module(candidate)
+                doc = getattr(mod, 'DOCUMENTATION', None)
+                if doc:
+                    return doc
+            except (ImportError, ModuleNotFoundError):
+                continue
+        return ''
 
     def _build_argspec_from_docs(self, documentation: str) -> dict:
         """
