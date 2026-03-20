@@ -76,8 +76,8 @@ class ActionModule(BaseResourceActionPlugin):
             am_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
             am = AnsibleAuthenticatorMap(**am_data)
             operation = self._detect_operation(validated_params)
+
             def find_data():
- 
                 return _find_payload(am, manager)
             # Used for idempotency detection: if we discover the resource already exists
             # while "creating", we compare desired fields against the existing payload.

@@ -3,7 +3,7 @@ Ansible Application dataclass - user-facing stable interface.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Union
 
 
 @dataclass
@@ -40,4 +40,3 @@ class AnsibleApplication:
     created: Optional[str] = None
     modified: Optional[str] = None
     url: Optional[str] = None
-

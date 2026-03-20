@@ -50,7 +50,6 @@ options:
       - Password for the user
       - Write-only field used to set or change the password
     type: str
-    no_log: true
 
   is_superuser:
     description:
@@ -123,13 +122,18 @@ notes:
   - For C(exists), only I(username) is required; returns current state (read-only, no change)
   - For C(enforced), omitted fields are left unchanged on the server (merge semantics)
 
-return:
-  user:
-    description: User resource (when state is not C(absent)); matches argspec + read-only fields (id, url, created, modified).
-  before:
-    description: State before the operation (when state is C(enforced) or C(absent) and resource existed).
-  after:
-    description: State after the operation (when a change was made).
-  changed:
-    description: Whether a change was made.
+"""
+
+EXAMPLES = """
+- name: Create a user
+  ansible.platform.user:
+    username: test-user
+    first_name: Test
+    password: secret
+    state: present
+
+- name: Ensure a user is absent
+  ansible.platform.user:
+    username: test-user
+    state: absent
 """

@@ -5,7 +5,7 @@ API v1 RoleUserAssignment dataclass and transform mixin.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union, List
+from typing import Optional, Dict, Any, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext

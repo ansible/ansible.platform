@@ -176,23 +176,23 @@ class Store:
         """Create all generic resource stores with appropriate config."""
         defs: List[tuple] = [
             # (endpoint_name, required_fields, start_id)
-            ("applications",          ["name", "organization"],  3000),
-            ("authenticators",        ["name"],                   3100),
-            ("authenticator_maps",    ["name", "authenticator"],  3200),
-            ("ca_certificates",       ["name"],                   3300),
-            ("feature_flags",         ["name"],                   3400),
-            ("http_ports",            ["name"],                   3500),
-            ("role_definitions",      ["name"],                   3600),
-            ("role_team_assignments", [],                         3700),
-            ("role_user_assignments", [],                         3800),
-            ("routes",                ["name"],                   3900),
-            ("service_clusters",      ["name"],                   4000),
-            ("service_keys",          ["name"],                   4100),
-            ("service_nodes",         ["name"],                   4200),
-            ("service_types",         ["name"],                   4300),
-            ("services",              ["name"],                   4400),
-            ("tokens",                [],                         4500),
-            ("ui_plugin_routes",      ["name"],                   4600),
+            ("applications", ["name", "organization"], 3000),
+            ("authenticators", ["name"], 3100),
+            ("authenticator_maps", ["name", "authenticator"], 3200),
+            ("ca_certificates", ["name"], 3300),
+            ("feature_flags", ["name"], 3400),
+            ("http_ports", ["name"], 3500),
+            ("role_definitions", ["name"], 3600),
+            ("role_team_assignments", [], 3700),
+            ("role_user_assignments", [], 3800),
+            ("routes", ["name"], 3900),
+            ("service_clusters", ["name"], 4000),
+            ("service_keys", ["name"], 4100),
+            ("service_nodes", ["name"], 4200),
+            ("service_types", ["name"], 4300),
+            ("services", ["name"], 4400),
+            ("tokens", [], 4500),
+            ("ui_plugin_routes", ["name"], 4600),
         ]
         for endpoint, required, start_id in defs:
             self._resources[endpoint] = GenericResource(
@@ -225,7 +225,7 @@ class Store:
                  "toggle_type": "run-time", "condition": "boolean",
                  "description": "Example runtime feature flag", "required": False,
                  "support_level": "DEVELOPER_PREVIEW", "visibility": True,
-                 "toggle_type": "run-time", "labels": []},
+                 "labels": []},
                 {"id": 3402, "name": "FEATURE_EXPERIMENTAL_UI", "value": "False",
                  "toggle_type": "run-time", "condition": "boolean",
                  "description": "Experimental UI features", "required": False,
@@ -501,8 +501,9 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     # Generic CRUD helper
     # ------------------------------------------------------------------
 
-    def _handle_generic_resource(self, resource_name: str, parts: list,
-                                  version: str, qs: Dict[str, list]) -> bool:
+    def _handle_generic_resource(
+        self, resource_name: str, parts: list, version: str, qs: Dict[str, list]
+    ) -> bool:
         """
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
@@ -784,7 +785,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:    # noqa: N802
         self._route()
 
-    def do_DELETE(self) -> None: # noqa: N802
+    def do_DELETE(self) -> None:  # noqa: N802
         self._route()
 
 

@@ -2,7 +2,7 @@
 Ansible Settings dataclass - user-facing stable interface.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 
