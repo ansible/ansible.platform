@@ -74,6 +74,14 @@ options:
       - Comma separated string
       - Selects which (tagged) nodes receive traffic from this route
       type: str
+    idle_timeout_seconds:
+      description:
+        - Idle timeout for the proxied connection, in seconds.
+      type: int
+    request_timeout_seconds:
+      description:
+        - Request timeout for the proxied connection, in seconds.
+      type: int
 
 extends_documentation_fragment:
 - ansible.platform.state
@@ -141,6 +149,8 @@ def main():
         service_path=dict(type="str"),
         service_port=dict(type="int"),
         node_tags=dict(type="str"),
+        idle_timeout_seconds=dict(type="int"),
+        request_timeout_seconds=dict(type="int"),
         state=dict(
             choices=["present", "absent", "exists", "enforced"], default="present"
         ),
