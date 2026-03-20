@@ -41,3 +41,4 @@
         fail_msg: "Verify: team (local) description was not updated."
       vars:
         ansible_connection: local
+...

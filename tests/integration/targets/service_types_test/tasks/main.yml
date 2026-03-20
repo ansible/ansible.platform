@@ -18,19 +18,19 @@
       ansible.platform.service_cluster:
         name: dummy
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup Service Type bigger_dummy
       ansible.platform.service_type:
         name: bigger_dummy
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup Service Type dummy
       ansible.platform.service_type:
         name: dummy
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Create dummy Service Type with check mode
       ansible.platform.service_type:

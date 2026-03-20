@@ -83,4 +83,5 @@ EXAMPLES = """
     name: Gateway Developers
     organization: Ansible Product Development
     state: absent
+...
 """

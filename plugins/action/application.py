@@ -181,11 +181,27 @@ class ActionModule(BaseResourceActionPlugin):
                 )
                 return result
 
-            manager_result = manager.execute(
-                operation=operation,
-                module_name=self.MODULE_NAME,
-                ansible_data=ansible_data,
-            )
+            try:
+                manager_result = manager.execute(
+                    operation=operation,
+                    module_name=self.MODULE_NAME,
+                    ansible_data=ansible_data,
+                )
+            except ValueError as e:
+                if operation == "find" and (
+                    "not found" in str(e).lower() or "resource with" in str(e).lower()
+                ):
+                    result.update(
+                        {
+                            "changed": False,
+                            "failed": False,
+                            self.MODULE_NAME: {},
+                            "exists": False,
+                            "msg": "Application '%s' does not exist" % app.name,
+                        }
+                    )
+                    return result
+                raise
 
             read_only_fields = {"id", "created", "modified", "url"}
             argspec_fields = set(argspec.get("argument_spec", {}).keys())

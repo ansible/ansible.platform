@@ -136,4 +136,5 @@ EXAMPLES = """
   ansible.platform.user:
     username: test-user
     state: absent
+...
 """

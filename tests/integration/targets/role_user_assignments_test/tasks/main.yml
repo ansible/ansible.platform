@@ -24,49 +24,49 @@
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup Team 2
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup User 1
       ansible.platform.user:
         username: "{{ username }}--User-1"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup User 2
       ansible.platform.user:
         username: "{{ username }}--User-2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup User 3
       ansible.platform.user:
         username: "{{ username }}--User-3"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup User 4
       ansible.platform.user:
         username: "{{ username }}--User-4"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup Organization 1
       ansible.platform.organization:
         name: "{{ organization_name }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup Organization 2
       ansible.platform.organization:
         name: "{{ organization_name }}-2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     # <Users> -------------------
     - name: Create Users
@@ -332,7 +332,7 @@
         role_definition: Team Admin
         user: "{{ user4.id }}"
       register: role_definition_exists_check_team3
-      ignore_errors: true
+      failed_when: false
 
     - name: Assert that the role role_definition_exists_check_team3 is failed
       ansible.builtin.assert:
@@ -359,7 +359,7 @@
         role_definition: Organization Admin
         user: "{{ user.id }}"
       register: role_definition_exists_check_org2
-      ignore_errors: true
+      failed_when: false
 
     - name: Assert that the role role_definition_exists_check_org2 is failed
       ansible.builtin.assert:
@@ -381,7 +381,7 @@
         role_definition: Organization Admin
         user: "{{ user3.id }}"
       register: role_definition_exists_check
-      ignore_errors: true
+      failed_when: false
 
     - name: Assert that the role role_definition_exists_check is failed
       ansible.builtin.assert:
@@ -420,47 +420,47 @@
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Team 2
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete User 1
       ansible.platform.user:
         username: "{{ username }}--User-1"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete User 2
       ansible.platform.user:
         username: "{{ username }}--User-2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete User 3
       ansible.platform.user:
         username: "{{ username }}--User-3"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete User 4
       ansible.platform.user:
         username: "{{ username }}--User-4"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Organization 1
       ansible.platform.organization:
         name: "{{ organization_name }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Organization 2
       ansible.platform.organization:
         name: "{{ organization_name }}-2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 ...

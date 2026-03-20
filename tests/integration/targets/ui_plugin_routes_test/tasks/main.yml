@@ -105,7 +105,7 @@
            | map(attribute='results')
            | flatten }}
       when: _leftover_port_ids | length > 0
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup - delete leftover ports
       ansible.builtin.uri:

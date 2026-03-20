@@ -28,43 +28,43 @@
         - "{{ name_prefix }}-Key 3"
         - "{{ name_prefix }}-Key 4"
         - "{{ name_prefix }}-Key 5"
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service cluster - Automation Controller
       ansible.platform.service_cluster:
         name: "Automation Controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service cluster - Automation Hub
       ansible.platform.service_cluster:
         name: "Automation Hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service cluster - Event Driven Automation
       ansible.platform.service_cluster:
         name: "Event Driven Automation"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service type - controller
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service type - hub
       ansible.platform.service_type:
         name: "{{ test_id }}hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service type - eda
       ansible.platform.service_type:
         name: "{{ test_id }}eda"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     # <Service Clusters> ----------------------------
     - name: Create Controller Service Type
@@ -283,65 +283,65 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Key 2
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 2"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Key 3
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 3"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Key 4
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 4"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Key 5
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 5"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Cluster - Automation Controller
       ansible.platform.service_cluster:
         name: "Automation Controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Cluster - Automation Hub
       ansible.platform.service_cluster:
         name: "Automation Hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Cluster - Event Driven Automation
       ansible.platform.service_cluster:
         name: "Event Driven Automation"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Type - controller
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Type - hub
       ansible.platform.service_type:
         name: "{{ test_id }}hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Type - eda
       ansible.platform.service_type:
         name: "{{ test_id }}eda"
         state: absent
-      ignore_errors: true
+      failed_when: false
 ...

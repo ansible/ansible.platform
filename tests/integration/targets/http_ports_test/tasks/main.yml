@@ -174,6 +174,7 @@
 
     # Skip when Gateway already has an API port (only one allowed per system)
     - name: API port tests (create second API port, remove, make non-API; skip if one exists)
+      when: not api_port_already_exists
       block:
         - name: Add API http port
           ansible.platform.http_port:
@@ -188,14 +189,14 @@
           ansible.platform.http_port:
             name: "Port 44301"
             state: absent
-          ignore_errors: true
+          ignore_errors: true  # noqa: ignore-errors
           register: http_port5_remove_result
 
         - name: Try to make it not an API port
           ansible.platform.http_port:
             name: "Port 44301"
             is_api_port: false
-          ignore_errors: true
+          ignore_errors: true  # noqa: ignore-errors
           register: http_port5_not_api_result
 
         - name: API Port assertions
@@ -204,7 +205,6 @@
               - http_port5 is changed
               - http_port5_remove_result is failed
               - http_port5_not_api_result is failed
-      when: not api_port_already_exists
 
   always:
     # Individual tasks (not a loop) so each gets its own worker process,
@@ -214,26 +214,26 @@
         state: absent
         name: "{{ http_port1.id }}"
       when: http_port1 is defined and http_port1.id is defined
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete http port 2
       ansible.platform.http_port:
         state: absent
         name: "{{ http_port2.id }}"
       when: http_port2 is defined and http_port2.id is defined
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete http port 3
       ansible.platform.http_port:
         state: absent
         name: "{{ http_port3.id }}"
       when: http_port3 is defined and http_port3.id is defined
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete http port 4
       ansible.platform.http_port:
         state: absent
         name: "{{ http_port4.id }}"
       when: http_port4 is defined and http_port4.id is defined
-      ignore_errors: true
+      failed_when: false
 ...

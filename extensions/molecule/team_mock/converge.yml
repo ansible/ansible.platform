@@ -87,3 +87,4 @@
         that: update_result_local is changed
       vars:
         ansible_connection: local
+...

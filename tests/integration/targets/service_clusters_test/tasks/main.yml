@@ -18,43 +18,43 @@
       ansible.platform.service_cluster:
         name: "Event Driven Automation"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service cluster - Controller
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service cluster - Hub
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service cluster - EDA
       ansible.platform.service_cluster:
         name: "{{ test_id }}-AAP-eda"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service type - controller
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service type - hub
       ansible.platform.service_type:
         name: "{{ test_id }}hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service type - eda
       ansible.platform.service_type:
         name: "{{ test_id }}eda"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Create Controller Service Type with check mode
       ansible.platform.service_type:
@@ -274,41 +274,41 @@
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Hub Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete EDA Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-AAP-eda"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete renamed EDA Service Cluster
       ansible.platform.service_cluster:
         name: "Event Driven Automation"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Type - controller
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Type - hub
       ansible.platform.service_type:
         name: "{{ test_id }}hub"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Type - eda
       ansible.platform.service_type:
         name: "{{ test_id }}eda"
         state: absent
-      ignore_errors: true
+      failed_when: false
 ...

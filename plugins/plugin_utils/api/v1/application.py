@@ -16,7 +16,7 @@ class APIApplication_v1(BaseTransformMixin):
     """API v1 representation of a gateway application."""
 
     name: str
-    organization: int
+    organization: Optional[int] = None
 
     description: Optional[str] = None
     algorithm: Optional[str] = None
@@ -69,15 +69,27 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
         else:
             api_data["name"] = name or new_name or ""
 
-        # Organization is resolved to id by action plugin to avoid name/id mismatches.
-        organization = getattr(ansible_instance, "new_organization", None) if op in ("update", "enforced") else getattr(ansible_instance, "organization", None)
+        # Determine which organization field to use based on operation.
         if op in ("update", "enforced") and getattr(ansible_instance, "new_organization", None) is not None:
             organization = getattr(ansible_instance, "new_organization", None)
         else:
             organization = getattr(ansible_instance, "organization", None)
 
         if organization is not None:
-            api_data["organization"] = int(str(organization).strip())
+            org_str = str(organization).strip()
+            if org_str.isdigit():
+                api_data["organization"] = int(org_str)
+            else:
+                # Resolve organization name -> id via manager (context.manager is PlatformService directly).
+                mgr = context.manager if isinstance(context, TransformContext) else context.get("manager")
+                if mgr is not None:
+                    try:
+                        api_data["organization"] = mgr.lookup_resource_id("organizations", "name", org_str)
+                    except Exception:
+                        pass
+                # If resolution failed, pass the raw value and let the API return a descriptive error.
+                if "organization" not in api_data:
+                    api_data["organization"] = organization
 
         # Simple fields
         for field in (

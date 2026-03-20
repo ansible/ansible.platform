@@ -25,7 +25,7 @@
         - "Controller on 10.10.0.3"
         - "Controller on 10.10.0.5"
         - "Controller on 10.10.0.7"
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service clusters
       ansible.platform.service_cluster:
@@ -35,7 +35,7 @@
         - "{{ test_id }}-Automation-Controller"
         - "{{ test_id }}-Automation-Hub"
         - "{{ test_id }}-Event-Driven-Automation"
-      ignore_errors: true
+      failed_when: false
 
     - name: Pre-cleanup service types
       ansible.platform.service_type:
@@ -45,7 +45,7 @@
         - "{{ test_id }}controller"
         - "{{ test_id }}hub"
         - "{{ test_id }}eda"
-      ignore_errors: true
+      failed_when: false
 
     - name: Create Controller Service Type
       ansible.platform.service_type:
@@ -295,7 +295,7 @@
         - "Controller on 10.10.0.3"
         - "Controller on 10.10.0.5"
         - "Controller on 10.10.0.7"
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Clusters
       ansible.platform.service_cluster:
@@ -305,7 +305,7 @@
         - "{{ test_id }}-Automation-Controller"
         - "{{ test_id }}-Automation-Hub"
         - "{{ test_id }}-Event-Driven-Automation"
-      ignore_errors: true
+      failed_when: false
 
     - name: Delete Service Types
       ansible.platform.service_type:
@@ -315,5 +315,5 @@
         - "{{ test_id }}controller"
         - "{{ test_id }}hub"
         - "{{ test_id }}eda"
-      ignore_errors: true
+      failed_when: false
 ...
