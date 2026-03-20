@@ -57,6 +57,7 @@ class EndpointOperation:
     required_for: Optional[str] = None
     depends_on: Optional[str] = None
     order: int = 0
+    flatten_body: bool = False  # If True, send dict field value as the body directly (for singletons)
 
 
 @dataclass

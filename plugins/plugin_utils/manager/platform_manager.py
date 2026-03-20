@@ -689,9 +689,10 @@ class PlatformService(BaseAPIClient):
         Returns:
             Updated resource as dict (Ansible format) with 'changed': True/False
         """
-        # Get the resource ID
+        # Get the resource ID (not required for singleton resources)
         resource_id = getattr(ansible_data, 'id', None)
-        if not resource_id:
+        is_singleton = getattr(mixin_class, 'is_singleton', False)
+        if not resource_id and not is_singleton:
             raise ValueError("Resource ID required for update operation")
 
         # Fetch current state for comparison
@@ -904,6 +905,11 @@ class PlatformService(BaseAPIClient):
         """
         Find resource by identifier.
 
+        Supports three modes:
+        1. Singleton (mixin.is_singleton=True): GET the fixed endpoint path directly
+        2. ID lookup: GET /resource/{id}/
+        3. List+filter: GET /resource/?field=value (including composite-key lookups)
+
         Args:
             ansible_data: Ansible dataclass instance
             mixin_class: Transform mixin class
@@ -914,16 +920,35 @@ class PlatformService(BaseAPIClient):
         """
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
-
-        # Find list operation (for querying) or get operation (for ID lookup)
-        list_op = operations.get('list')
         get_op = operations.get('get')
+        list_op = operations.get('list')
 
-        # Get lookup field name (e.g., 'username', 'name')
+        # --- Singleton resources (e.g. settings) ---
+        if getattr(mixin_class, 'is_singleton', False):
+            if not get_op:
+                raise ValueError("No GET operation defined for singleton resource")
+            url = self._build_url(get_op.path)
+            response = self.session.get(
+                url, timeout=self.request_timeout, verify=self.verify_ssl
+            )
+            response.raise_for_status()
+            api_result = response.json()
+            ansible_instance = mixin_class.from_api(api_result, context)
+            from dataclasses import asdict
+            return asdict(ansible_instance)
+
+        # --- Standard CRUD resources ---
         lookup_field = mixin_class.get_lookup_field()
         unique_value = getattr(ansible_data, lookup_field, None) or getattr(ansible_data, 'id', None)
 
-        if not unique_value:
+        # Support composite-key lookups via get_find_list_query_params.
+        # Use FK-resolved API data so query params contain IDs, not names.
+        composite_params = {}
+        if hasattr(mixin_class, 'get_find_list_query_params'):
+            api_data = mixin_class.from_ansible_data(ansible_data, context)
+            composite_params = mixin_class.get_find_list_query_params(api_data) or {}
+
+        if not unique_value and not composite_params:
             raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
 
         # If we have an ID, use get endpoint
@@ -939,14 +964,14 @@ class PlatformService(BaseAPIClient):
             response.raise_for_status()
             api_result = response.json()
         else:
-            # Use list endpoint and filter by lookup field
+            # Use list endpoint and filter by lookup field or composite params
             if not list_op:
                 raise ValueError("No LIST operation defined for this resource")
-            query_params = {lookup_field: unique_value}
-            if hasattr(mixin_class, 'get_find_list_query_params'):
-                extra = mixin_class.get_find_list_query_params(ansible_data)
-                if extra:
-                    query_params.update(extra)
+            query_params = {}
+            if unique_value:
+                query_params[lookup_field] = unique_value
+            if composite_params:
+                query_params.update(composite_params)
             url = self._build_url(list_op.path, query_params=query_params)
             logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
             response = self.session.get(
@@ -966,7 +991,6 @@ class PlatformService(BaseAPIClient):
             api_result = results[0]
 
         # REVERSE TRANSFORM: API → Ansible
-        # from_api returns AnsibleUser dataclass, convert to dict for return
         ansible_instance = mixin_class.from_api(api_result, context)
         from dataclasses import asdict
         return asdict(ansible_instance)
@@ -1016,6 +1040,10 @@ class PlatformService(BaseAPIClient):
                 if val is None:
                     continue
                 request_data[field] = val
+
+            # flatten_body: send the dict field value as the body directly (e.g. settings)
+            if getattr(endpoint_op, 'flatten_body', False) and len(request_data) == 1:
+                request_data = next(iter(request_data.values()))
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)
