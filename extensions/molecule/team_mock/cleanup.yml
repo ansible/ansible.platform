@@ -1,0 +1,35 @@
+---
+# Clean up test teams from mock (direct, persistent, local).
+- name: Cleanup — delete team (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_team_local: "molecule-mock-team-local"
+    molecule_org: "Default"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete team (connection local)
+      ansible.platform.team:
+        name: "{{ molecule_team_local }}"
+        organization: "{{ molecule_org }}"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert team removed or already absent (connection local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete team {{ molecule_team_local }}."
+      vars:
+        ansible_connection: local
+...

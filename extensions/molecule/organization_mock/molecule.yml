@@ -7,7 +7,7 @@ driver:
 platforms:
   - name: localhost
 
-# Use scenario inventory (connection: local + gateway vars); second play overrides to ansible.platform.http.
+# Use scenario inventory (connection: local + gateway vars). Converge: play 2 direct, play 3 persistent, play 4 connection local.
 ansible:
   executor:
     args:

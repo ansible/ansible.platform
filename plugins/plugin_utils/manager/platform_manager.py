@@ -707,6 +707,19 @@ class PlatformService(BaseAPIClient):
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
+        # For update, some APIs require all required fields in the PATCH body (e.g. http_port
+        # requires "number"). Merge current resource values for any update-operation field
+        # that is missing/None in api_data so the request body is valid.
+        update_op = next(
+            (op for op in operations.values() if getattr(op, 'required_for', None) == 'update'),
+            None
+        )
+        if update_op and current_data:
+            current_dict = current_data if isinstance(current_data, dict) else current_data
+            for field in getattr(update_op, 'fields', []) or []:
+                if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
+                    setattr(api_data, field, current_dict[field])
+
         # Execute update operation
         api_result = self._execute_operations(
             operations, api_data, context, required_for='update'
@@ -721,19 +734,110 @@ class PlatformService(BaseAPIClient):
             # Convert to dict for comparison and return
             new_dict = asdict(ansible_instance)
             current_dict = current_data if isinstance(current_data, dict) else {}
+            read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
 
-            # Compare relevant fields (exclude read-only fields like created, modified, url)
-            read_only_fields = {'id', 'created', 'modified', 'url'}
+            # Merge current + PATCH response; don't let None from sparse response
+            # overwrite existing values (e.g. associated_authenticators: {} → None).
+            merged = dict(current_dict)
+            for k, v in new_dict.items():
+                if v is not None or k not in merged:
+                    merged[k] = v
+            new_dict = merged
+
+            # Primary: compare post-PATCH state vs pre-PATCH state.
             new_comparable = {k: v for k, v in new_dict.items() if k not in read_only_fields}
             current_comparable = {k: v for k, v in current_dict.items() if k not in read_only_fields}
+            norm = self._normalize_for_compare
+            changed = norm(new_comparable) != norm(current_comparable)
 
-            changed = new_comparable != current_comparable
+            # Secondary: compare each explicitly requested field against pre-PATCH state.
+            # Catches sparse responses and fields the API ignores in its response.
+            # Skip lookup field, state, API-normalized fields (e.g. slug), and internal
+            # resolved fields (e.g. organization_id set by action plugin but not in API state).
+            if not changed:
+                lookup_field = mixin_class.get_lookup_field()
+                api_normalized_fields = {'slug'}
+                internal_fields = {'organization_id'}
+                skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields | internal_fields
+                requested = asdict(ansible_data)
+                for k, v in requested.items():
+                    if k in skip_fields or v is None:
+                        continue
+                    if v == {} or v == []:
+                        continue
+                    current_val = current_dict.get(k)
+                    if current_val is None and v is not None:
+                        changed = True
+                        break
+                    if current_val is not None and norm(v) != norm(current_val):
+                        changed = True
+                        break
 
-            # Add 'changed' field to result dict
             new_dict['changed'] = changed
             return new_dict
 
+        # No PATCH was needed (all requested fields are non-PATCH, e.g. organizations).
+        # Still compare requested intent against current state so we report the change.
+        from dataclasses import asdict
+        current_dict = current_data if isinstance(current_data, dict) else {}
+        if current_dict:
+            read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
+            api_normalized_fields = {'slug'}
+            internal_fields = {'organization_id'}
+            norm = self._normalize_for_compare
+            lookup_field = mixin_class.get_lookup_field()
+            skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields | internal_fields
+            requested = asdict(ansible_data)
+            changed = False
+            for k, v in requested.items():
+                if k in skip_fields or v is None:
+                    continue
+                if v == {} or v == []:
+                    continue
+                current_val = current_dict.get(k)
+                if current_val is None and v is not None:
+                    changed = True
+                    break
+                if current_val is not None and norm(v) != norm(current_val):
+                    changed = True
+                    break
+            result = dict(current_dict)
+            result['changed'] = changed
+            return result
+
         return {'changed': False}
+
+    @staticmethod
+    def _normalize_for_compare(value: Any) -> Any:
+        """Normalize a value for change comparison so representation differences (e.g. int vs str dict keys) don't cause false changes."""
+        if isinstance(value, dict):
+            return {str(k): PlatformService._normalize_for_compare(v) for k, v in sorted(value.items(), key=lambda x: str(x[0]))}
+        if isinstance(value, list):
+            return [PlatformService._normalize_for_compare(item) for item in value]
+        return value
+
+    @staticmethod
+    def _deep_merge_for_compare(current: Any, requested: Any) -> Any:
+        """Merge current and requested for comparison; requested wins on conflicts.
+
+        Preserves API-only keys in current so idempotent runs don't false-positive.
+        """
+        if not isinstance(current, dict) or not isinstance(requested, dict):
+            return requested
+        result = {}
+        all_keys = set(str(k) for k in current) | set(str(k) for k in requested)
+        for key in sorted(all_keys):
+            c = current.get(key) if key in current else current.get(int(key)) if key.isdigit() else None
+            r = requested.get(key) if key in requested else requested.get(int(key)) if key.isdigit() else None
+            if r is None:
+                result[key] = c
+            elif c is None:
+                result[key] = r
+            elif isinstance(c, dict) and isinstance(r, dict):
+                result[key] = PlatformService._deep_merge_for_compare(c, r)
+            else:
+                result[key] = r
+        return result
 
     def _delete_resource(
         self,
@@ -838,8 +942,13 @@ class PlatformService(BaseAPIClient):
             # Use list endpoint and filter by lookup field
             if not list_op:
                 raise ValueError("No LIST operation defined for this resource")
-            url = self._build_url(list_op.path, query_params={lookup_field: unique_value})
-            logger.debug("Calling GET %s to find %s=%s", url, lookup_field, unique_value)
+            query_params = {lookup_field: unique_value}
+            if hasattr(mixin_class, 'get_find_list_query_params'):
+                extra = mixin_class.get_find_list_query_params(ansible_data)
+                if extra:
+                    query_params.update(extra)
+            url = self._build_url(list_op.path, query_params=query_params)
+            logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
             response = self.session.get(
                 url,
                 timeout=self.request_timeout,
@@ -962,6 +1071,10 @@ class PlatformService(BaseAPIClient):
                 if hasattr(e, 'response') and e.response is not None:
                     logger.error("Response status: %s", e.response.status_code)
                     logger.error("Response body: %s", e.response.text)
+                    # Include response body in message so callers (e.g. tests) can assert on validation errors
+                    body = getattr(e.response, 'text', '') or ''
+                    if body and body not in str(e):
+                        raise ValueError(f"{e}\nResponse body: {body[:1000]}") from e
                 raise
 
             # Store result
@@ -1093,6 +1206,38 @@ class PlatformService(BaseAPIClient):
     def lookup_organization_names(self, ids: list) -> list:
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
+
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str
+    ) -> Optional[int]:
+        """
+        Resolve a resource name to ID by GET list with filter.
+        Used by mixins to resolve FKs (e.g. service_cluster name -> id).
+        """
+        if not lookup_value:
+            return None
+        if str(lookup_value).isdigit():
+            return int(lookup_value)
+        cache_key = f"{endpoint}:{lookup_field}:{lookup_value}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+        url = self._build_url(endpoint, query_params={lookup_field: lookup_value})
+        response = self.session.get(
+            url,
+            timeout=self.request_timeout,
+            verify=self.verify_ssl
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not results:
+            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+        rid = results[0].get("id")
+        if rid is not None:
+            self.cache[cache_key] = rid
+        return rid
 
     def shutdown(self) -> dict:
         """

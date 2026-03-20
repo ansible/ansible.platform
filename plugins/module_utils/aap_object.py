@@ -46,11 +46,19 @@ class AAPObject:
                 if fail_when_not_exists:
                     self.module.fail_json(msg=f"Item {self.ITEM_TYPE} does not exist: {self.unique_value()}")
                 else:
+                    self.module.json_output["exists"] = False
+                    if auto_exit:
+                        self.module.exit_json(**self.module.json_output)
                     return
-
-            self.module.json_output["id"] = self.data['id']
-            if auto_exit:
-                self.module.exit_json(**self.module.json_output)
+            else:
+                self.module.json_output["id"] = self.data['id']
+                self.module.json_output["exists"] = True
+                # Include the full item data under the item type key for easy access
+                if self.ITEM_TYPE:
+                    self.module.json_output[self.ITEM_TYPE] = self.data
+                if auto_exit:
+                    self.module.exit_json(**self.module.json_output)
+            return
 
         # Delete
         elif self.absent():

@@ -56,7 +56,7 @@ no_api_parameter_ok = {
 # https://issues.redhat.com/browse/AAP-23122 for DAB RBAC endpoints
 # https://issues.redhat.com/browse/AAP-24613 for service_key
 
-needs_development = ['ui_plugin_route']  # i.e. 'team', 'organization'
+needs_development = []  # i.e. 'team', 'organization'
 needs_param_development = {}
 # -----------------------------------------------------------------------------------------------------------
 

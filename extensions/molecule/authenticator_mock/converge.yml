@@ -1,0 +1,91 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+- name: Converge — authenticator (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create authenticator (connection local)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: true
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that: create_result_local is changed
+        fail_msg: "Create (local) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: true
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update authenticator (connection local)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: false
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed."
+      vars:
+        ansible_connection: local
+...

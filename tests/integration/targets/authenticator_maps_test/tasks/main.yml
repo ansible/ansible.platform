@@ -74,16 +74,19 @@
         order: 10
       check_mode: true
 
-    - name: Search for the authenticator map 1
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'authenticator_maps',
-          query_params={'name': '{{ name_prefix }}-AMap-1'}, **connection_info) }}"
+    # Avoid gateway_api lookup here (can crash worker). Use module state: exists instead.
+    - name: Check that authenticator map 1 does not exist
+      ansible.platform.authenticator_map:
+        name: "{{ name_prefix }}-AMap-1"
+        authenticator: "{{ authenticator1.name }}"
+        state: exists
+      register: amap1_search
 
     - name: Assert that authenticator map 1 does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
-        fail_msg: "Authenticator map '{{ name_prefix }}-app1' exists in the system!"
+          - not amap1_search.exists | default(false)
+        fail_msg: "Authenticator map '{{ name_prefix }}-AMap-1' exists in the system!"
 
     - name: Create authenticator map 1
       ansible.platform.authenticator_map:
@@ -217,6 +220,9 @@
         name: "{{ authenticator_map_2.name }}"
         authenticator: "{{ authenticator1.id }}"
         map_type: is_superuser
+        role: ""
+        team: ""
+        organization: ""
       register: authenticator_map_2_change
 
     - name: Assert that we can change an existing authenticator map

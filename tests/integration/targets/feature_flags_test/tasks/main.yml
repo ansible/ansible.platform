@@ -1,7 +1,19 @@
 ---
+# Avoid gateway_api lookup (can crash worker). Use uri to GET settings and feature_flags.
 - name: Get current settings to check if runtime feature flags are enabled
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/gateway/v1/settings/"
+    force_basic_auth: true
+    url_username: "{{ gateway_username }}"
+    url_password: "{{ gateway_password }}"
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    method: GET
+    return_content: true
+  register: settings_response
+
+- name: Set all_settings from API response
   ansible.builtin.set_fact:
-    all_settings: "{{ lookup('ansible.platform.gateway_api', 'settings', **connection_info) }}"
+    all_settings: "{{ settings_response.json.results | default(settings_response.json) | default([]) }}"
 
 - name: Check if RUNTIME_FEATURE_FLAGS is enabled
   ansible.builtin.set_fact:
@@ -19,8 +31,19 @@
   when: not runtime_feature_flags_enabled
 
 - name: Get list of available feature flags
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/gateway/v1/feature_flags/"
+    force_basic_auth: true
+    url_username: "{{ gateway_username }}"
+    url_password: "{{ gateway_password }}"
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    method: GET
+    return_content: true
+  register: feature_flags_response
+
+- name: Set available_flags from API response
   ansible.builtin.set_fact:
-    available_flags: "{{ lookup('ansible.platform.gateway_api', 'feature_flags', **connection_info) }}"
+    available_flags: "{{ feature_flags_response.json.results | default(feature_flags_response.json) | default([]) }}"
 
 - name: Find a runtime feature flag for testing
   ansible.builtin.set_fact:

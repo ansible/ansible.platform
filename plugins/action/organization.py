@@ -19,7 +19,6 @@ from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.organization import AnsibleOrganization
-from ansible_collections.ansible.platform.plugins.plugin_utils.docs.organization import DOCUMENTATION
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +54,11 @@ class ActionModule(BaseResourceActionPlugin):
         ]
 
         try:
-            argspec = self._build_argspec_from_docs(DOCUMENTATION)
+            doc = self._get_documentation()
+            argspec = self._build_argspec_from_docs(doc) if doc else None
+            if not argspec:
+                from ansible.errors import AnsibleError
+                raise AnsibleError("Could not load DOCUMENTATION for organization module")
             module_args = self._task.args.copy()
             validated_input = self._validate_data(module_args, argspec, 'input')
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
@@ -152,6 +155,32 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
 
+            # Check mode: do not perform create/update/delete
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': org.name},
+                        'id': None,
+                        'name': org.name,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'name': org.name, 'id': getattr(org, 'id', None)},
+                        'id': getattr(org, 'id', None),
+                        'name': org.name,
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(org, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation,
@@ -188,11 +217,13 @@ class ActionModule(BaseResourceActionPlugin):
             except Exception:
                 validated_output = manager_result
 
+            # Top-level id/name so playbooks can use org1.id, org1.name
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
+                'name': validated_output.get('name'),
             })
             if operation == 'find':
                 result['exists'] = bool(validated_output.get('id'))

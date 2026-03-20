@@ -1,0 +1,15 @@
+---
+# Organization_mock scenario: use scenario inventory so we can mix connection types.
+# First play (health check) uses connection: local; second play uses ansible.platform.http.
+# Mock gateway vars are set here and in play vars. Structure matches shared inventory for parse compatibility.
+all:
+  vars:
+    ansible_connection: local
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  children:
+    gateway_under_test:
+      hosts:
+        localhost: {}
