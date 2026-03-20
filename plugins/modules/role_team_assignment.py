@@ -168,6 +168,7 @@ EXAMPLES = '''
         type: "organizations"
     state: absent
   register: result
+...
 '''
 
 RETURN = '''
