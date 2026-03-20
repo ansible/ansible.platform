@@ -55,10 +55,18 @@ class ActionModule(BaseResourceActionPlugin):
             sc_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
             sc = AnsibleServiceCluster(**sc_data)
             operation = self._detect_operation(validated_params)
+
+            def _find_payload():
+                """Build find payload; treat numeric name as ID."""
+                payload = {'name': sc.name}
+                if sc.name is not None and str(sc.name).strip().isdigit():
+                    payload['id'] = int(str(sc.name).strip())
+                return payload
+
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sc.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
@@ -68,7 +76,7 @@ class ActionModule(BaseResourceActionPlugin):
             if operation == 'delete' and not sc.id:
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sc.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                     if find_result and find_result.get('id'):
                         sc.id = find_result.get('id')
@@ -91,7 +99,7 @@ class ActionModule(BaseResourceActionPlugin):
                 argspec_fields = set(argspec.get('argument_spec', {}).keys())
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sc.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                 except ValueError:
                     find_result = None
@@ -113,6 +121,17 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data = asdict(sc)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                result.update({
+                    'changed': True if operation != 'delete' else bool(getattr(sc, 'id', None)),
+                    'failed': False,
+                    self.MODULE_NAME: {'name': sc.name, 'state': 'absent'} if operation == 'delete' else {'name': sc.name},
+                    'id': getattr(sc, 'id', None),
+                    'name': sc.name,
+                })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data

@@ -8,24 +8,6 @@
   ansible.builtin.set_fact:
     name_prefix: "GW-Collection-Test-ServiceKeys-{{ test_id }}"
 
-- name: Get existing service clusters
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname }}/api/gateway/v1/service_clusters/"
-    method: GET
-    url_username: "{{ gateway_username }}"
-    url_password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | default(false) }}"
-    status_code: [200]
-  register: _sc_response
-
-- name: Fail if more than one service cluster or that cluster is not a gateway cluster
-  ansible.builtin.fail:
-    msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
-  when:
-    - _sc_response.json.count > 1
-    - _sc_response.json.count != 1 and _sc_response.json.results[0].type != 'gateway'
-
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:

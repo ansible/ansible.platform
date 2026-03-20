@@ -4,17 +4,6 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Get existing service clusters
-  ansible.builtin.set_fact:
-    _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters', **connection_info) }}"
-
-- name: Fail if more than one service cluster or that cluster is not a gateway cluster
-  ansible.builtin.fail:
-    msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
-  when:
-    - _sc_query | length > 1
-    - _sc_query | length == 1 and _sc_query[0].type != 'gateway'
-
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -24,6 +13,49 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    # Pre-cleanup: remove leftovers from prior failed runs
+    - name: Pre-cleanup service cluster - renamed EDA
+      ansible.platform.service_cluster:
+        name: "Event Driven Automation"
+        state: absent
+      ignore_errors: true
+
+    - name: Pre-cleanup service cluster - Controller
+      ansible.platform.service_cluster:
+        name: "{{ test_id }}-Automation-Controller"
+        state: absent
+      ignore_errors: true
+
+    - name: Pre-cleanup service cluster - Hub
+      ansible.platform.service_cluster:
+        name: "{{ test_id }}-Automation-Hub"
+        state: absent
+      ignore_errors: true
+
+    - name: Pre-cleanup service cluster - EDA
+      ansible.platform.service_cluster:
+        name: "{{ test_id }}-AAP-eda"
+        state: absent
+      ignore_errors: true
+
+    - name: Pre-cleanup service type - controller
+      ansible.platform.service_type:
+        name: "{{ test_id }}controller"
+        state: absent
+      ignore_errors: true
+
+    - name: Pre-cleanup service type - hub
+      ansible.platform.service_type:
+        name: "{{ test_id }}hub"
+        state: absent
+      ignore_errors: true
+
+    - name: Pre-cleanup service type - eda
+      ansible.platform.service_type:
+        name: "{{ test_id }}eda"
+        state: absent
+      ignore_errors: true
+
     - name: Create Controller Service Type with check mode
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
@@ -33,16 +65,22 @@
         service_index_path: "/api/service-index/"
       check_mode: true
 
-    - name: Search for the Controller Service Type and assert that it does not exist
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'service_clusters',
-          query_params={'name': '{{ test_id }}controller'}, **connection_info) }}"
+    - name: Search for the Controller Service Type
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/service_clusters/?name={{ (test_id + 'controller') | urlencode }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: controller_search
 
-    - name: Assert that Route does not exist
+    - name: Assert that Controller Service Cluster does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
-        fail_msg: "Service Type '{{ test_id }}controller' exists in the system!"
+          - controller_search.json.count == 0
+        fail_msg: "Service Cluster '{{ test_id }}controller' exists in the system!"
 
     - name: Create Controller Service Type
       ansible.platform.service_type:
@@ -170,14 +208,21 @@
           - changed_eda_sc is changed
           - changed_eda_sc.id == eda_sc.id
 
-    - name: Query the server for service clusters  with specific health check interval
-      ansible.builtin.set_fact:
-        _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters/?health_check_interval_seconds=1162', **connection_info) }}"
+    - name: Query the server for service clusters with specific health check interval
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/service_clusters/?health_check_interval_seconds=1162"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: _sc_health_check_response
 
     - name: Ensure we have 3 service clusters with health_check_interval_seconds=1162
       ansible.builtin.assert:
         that:
-          - _sc_query | length == 3
+          - _sc_health_check_response.json.count == 3
 
     - name: Delete a non-existent service cluster
       ansible.platform.service_cluster:
@@ -225,25 +270,45 @@
           - change_eda_auth_type is changed
 
   always:
-    # Always Cleanup
-    - name: Delete Service Clusters
+    - name: Delete Controller Service Cluster
       ansible.platform.service_cluster:
-        name: "{{ vars[item].id }}"
+        name: "{{ test_id }}-Automation-Controller"
         state: absent
-      loop:
-        - "controller_sc"
-        - "hub_sc"
-        - "eda_sc"
-      when: "item in vars and 'id' in vars[item]"
+      ignore_errors: true
 
-    - name: Delete Service Types
-      ansible.platform.service_type:
-        name: "{{ item.name }}"
+    - name: Delete Hub Service Cluster
+      ansible.platform.service_cluster:
+        name: "{{ test_id }}-Automation-Hub"
         state: absent
-      loop: "{{ gateway_service_types }}"
-      vars:
-        gateway_service_types:
-          - name: "{{ test_id }}controller"
-          - name: "{{ test_id }}hub"
-          - name: "{{ test_id }}eda"
+      ignore_errors: true
+
+    - name: Delete EDA Service Cluster
+      ansible.platform.service_cluster:
+        name: "{{ test_id }}-AAP-eda"
+        state: absent
+      ignore_errors: true
+
+    - name: Delete renamed EDA Service Cluster
+      ansible.platform.service_cluster:
+        name: "Event Driven Automation"
+        state: absent
+      ignore_errors: true
+
+    - name: Delete Service Type - controller
+      ansible.platform.service_type:
+        name: "{{ test_id }}controller"
+        state: absent
+      ignore_errors: true
+
+    - name: Delete Service Type - hub
+      ansible.platform.service_type:
+        name: "{{ test_id }}hub"
+        state: absent
+      ignore_errors: true
+
+    - name: Delete Service Type - eda
+      ansible.platform.service_type:
+        name: "{{ test_id }}eda"
+        state: absent
+      ignore_errors: true
 ...
