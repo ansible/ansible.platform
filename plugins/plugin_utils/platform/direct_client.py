@@ -522,7 +522,7 @@ class DirectHTTPClient(BaseAPIClient):
         self,
         operation: str,
         module_name: str,
-        ansible_data=None,
+        ansible_data_dict=None,
         **kwargs
     ) -> dict:
         """
@@ -534,8 +534,8 @@ class DirectHTTPClient(BaseAPIClient):
         Args:
             operation: Operation type ('create', 'update', 'delete', 'find')
             module_name: Module name (e.g., 'user', 'organization')
-            ansible_data: Ansible dataclass or dict (preferred, matches ManagerRPCClient API)
-        kwargs: Optional legacy parameters (e.g. ansible_data_dict)
+            ansible_data_dict: Ansible dataclass or dict
+        kwargs: Optional alias: ansible_data (matches ManagerRPCClient API)
 
         Returns:
             Result as dict (Ansible format) with timing information
@@ -545,10 +545,9 @@ class DirectHTTPClient(BaseAPIClient):
         """
         from dataclasses import asdict, is_dataclass
 
-        # Support legacy alias: ansible_data_dict.
-        ansible_data_dict = ansible_data
-        if ansible_data_dict is None and "ansible_data_dict" in kwargs:
-            ansible_data_dict = kwargs.get("ansible_data_dict")
+        # Support callers that pass ansible_data= as a keyword argument.
+        if ansible_data_dict is None and "ansible_data" in kwargs:
+            ansible_data_dict = kwargs.get("ansible_data")
 
         # Convert to dict if dataclass (for consistency with ManagerRPCClient)
         if is_dataclass(ansible_data_dict):
