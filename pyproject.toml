@@ -1,3 +1,10 @@
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 python_files = ["test_*.py", "*_test.py"]
+
+# This is an Ansible collection, not a Python package.
+# Tell setuptools not to try to discover or install any Python packages
+# so that tox linting environments (black, flake8, isort) do not fail with
+# "Multiple top-level packages discovered in a flat-layout".
+[tool.setuptools]
+packages = []
