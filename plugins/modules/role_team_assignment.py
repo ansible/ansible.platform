@@ -27,9 +27,8 @@ notes:
   - Team roles cannot be assigned to another team
     (Team Admin to Team is not supported).
   - Organization Member role cannot be assigned to teams.
-  - Only resource-scoped organization roles (e.g. "Organization Inventory
-    Admin", "Organization Credential Admin") can be meaningfully assigned
-    to teams.
+  - Only resource-scoped organization roles such as Organization Inventory Admin
+    and Organization Credential Admin can be meaningfully assigned to teams.
   - Attempting unsupported role assignments will result in errors.
 options:
     role_definition:
@@ -67,7 +66,7 @@ options:
             type:
                 description:
                   - The object type used for name lookup.
-                  - "Supported values: C(organizations), C(teams)."
+                  - Supported values are C(organizations) and C(teams).
                 type: str
                 required: false
             object_id:
