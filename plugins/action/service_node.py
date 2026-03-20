@@ -55,7 +55,9 @@ class ActionModule(BaseResourceActionPlugin):
             sn_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
             sn = AnsibleServiceNode(**sn_data)
             operation = self._detect_operation(validated_params)
+            non_update_fields = {'state', 'new_name', 'tags'}
             if operation == 'create' and validated_params.get('state') == 'present':
+                find_result = None
                 try:
                     find_result = manager.execute(
                         operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sn.name}
@@ -65,6 +67,54 @@ class ActionModule(BaseResourceActionPlugin):
                         sn.id = find_result.get('id')
                 except Exception:
                     pass
+                if operation == 'update' and find_result:
+                    ref_field_modules = {'service_cluster': 'service_cluster'}
+                    changed = False
+                    for k, v in sn_data.items():
+                        if k in non_update_fields or k in auth_params:
+                            continue
+                        existing = find_result.get(k)
+                        if k in ref_field_modules and v is not None and existing is not None:
+                            v_str, e_str = str(v).strip(), str(existing).strip()
+                            if v_str.isdigit() != e_str.isdigit():
+                                try:
+                                    lookup_name = v_str if not v_str.isdigit() else e_str
+                                    ref_result = manager.execute(
+                                        operation='find', module_name=ref_field_modules[k],
+                                        ansible_data={'name': lookup_name}
+                                    )
+                                    resolved_id = str(ref_result.get('id', '')) if ref_result else None
+                                    compare_id = e_str if e_str.isdigit() else v_str
+                                    if resolved_id == compare_id:
+                                        continue
+                                except Exception:
+                                    pass
+                                changed = True
+                                break
+                        if str(v) != str(existing) if (v is not None and existing is not None) else (v != existing):
+                            changed = True
+                            break
+                    if not changed and not validated_params.get('new_name'):
+                        read_only_fields = {'id', 'created', 'modified', 'url'}
+                        argspec_fields = set(argspec.get('argument_spec', {}).keys())
+                        filtered = {k: v for k, v in find_result.items() if k in argspec_fields or k in read_only_fields}
+                        try:
+                            validated_output = self._validate_data(
+                                {k: v for k, v in filtered.items() if k in argspec_fields}, argspec, 'output'
+                            )
+                            for f in read_only_fields:
+                                if f in filtered:
+                                    validated_output[f] = filtered[f]
+                        except Exception:
+                            validated_output = find_result
+                        result.update({
+                            'changed': False,
+                            'failed': False,
+                            self.MODULE_NAME: validated_output,
+                            'id': find_result.get('id'),
+                            'name': find_result.get('name'),
+                        })
+                        return result
             if operation == 'delete' and not sn.id:
                 try:
                     find_result = manager.execute(
@@ -113,6 +163,17 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data = asdict(sn)
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                result.update({
+                    'changed': True if operation != 'delete' else bool(getattr(sn, 'id', None)),
+                    'failed': False,
+                    self.MODULE_NAME: {'name': sn.name, 'state': 'absent'} if operation == 'delete' else {'name': sn.name},
+                    'id': getattr(sn, 'id', None),
+                    'name': sn.name,
+                })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data

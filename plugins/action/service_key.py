@@ -55,20 +55,77 @@ class ActionModule(BaseResourceActionPlugin):
             sk_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
             sk = AnsibleServiceKey(**sk_data)
             operation = self._detect_operation(validated_params)
+
+            def _find_payload():
+                payload = {'name': sk.name}
+                if sk.name is not None and str(sk.name).strip().isdigit():
+                    payload['id'] = int(str(sk.name).strip())
+                return payload
+
+            non_update_fields = {'state', 'new_name', 'mark_previous_inactive', 'secret'}
             if operation == 'create' and validated_params.get('state') == 'present':
+                find_result = None
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sk.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
                         sk.id = find_result.get('id')
                 except Exception:
                     pass
+                if operation == 'update' and find_result:
+                    ref_field_modules = {'service_cluster': 'service_cluster'}
+                    changed = False
+                    for k, v in sk_data.items():
+                        if k in non_update_fields or k in auth_params:
+                            continue
+                        existing = find_result.get(k)
+                        if k in ref_field_modules and v is not None and existing is not None:
+                            v_str, e_str = str(v).strip(), str(existing).strip()
+                            if v_str.isdigit() != e_str.isdigit():
+                                try:
+                                    lookup_name = v_str if not v_str.isdigit() else e_str
+                                    ref_result = manager.execute(
+                                        operation='find', module_name=ref_field_modules[k],
+                                        ansible_data={'name': lookup_name}
+                                    )
+                                    resolved_id = str(ref_result.get('id', '')) if ref_result else None
+                                    compare_id = e_str if e_str.isdigit() else v_str
+                                    if resolved_id == compare_id:
+                                        continue
+                                except Exception:
+                                    pass
+                                changed = True
+                                break
+                        if str(v) != str(existing) if (v is not None and existing is not None) else (v != existing):
+                            changed = True
+                            break
+                    if not changed and not validated_params.get('new_name'):
+                        read_only_fields = {'id', 'created', 'modified', 'url'}
+                        argspec_fields = set(argspec.get('argument_spec', {}).keys())
+                        filtered = {k: v for k, v in find_result.items() if k in argspec_fields or k in read_only_fields}
+                        try:
+                            validated_output = self._validate_data(
+                                {k: v for k, v in filtered.items() if k in argspec_fields}, argspec, 'output'
+                            )
+                            for f in read_only_fields:
+                                if f in filtered:
+                                    validated_output[f] = filtered[f]
+                        except Exception:
+                            validated_output = find_result
+                        result.update({
+                            'changed': False,
+                            'failed': False,
+                            self.MODULE_NAME: validated_output,
+                            'id': find_result.get('id'),
+                            'name': find_result.get('name'),
+                        })
+                        return result
             if operation == 'delete' and not sk.id:
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sk.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                     if find_result and find_result.get('id'):
                         sk.id = find_result.get('id')
@@ -91,7 +148,7 @@ class ActionModule(BaseResourceActionPlugin):
                 argspec_fields = set(argspec.get('argument_spec', {}).keys())
                 try:
                     find_result = manager.execute(
-                        operation='find', module_name=self.MODULE_NAME, ansible_data={'name': sk.name}
+                        operation='find', module_name=self.MODULE_NAME, ansible_data=_find_payload()
                     )
                 except ValueError:
                     find_result = None
@@ -110,7 +167,13 @@ class ActionModule(BaseResourceActionPlugin):
                     operation = 'update'
                 else:
                     operation = 'create'
-            ansible_data = asdict(sk)
+            if operation == 'update' and validated_params.get('state') != 'enforced':
+                user_fields = set(sk_data.keys()) | {'id', 'name'}
+                ansible_data = {k: v for k, v in asdict(sk).items() if k in user_fields}
+            else:
+                ansible_data = asdict(sk)
+            if sk.name is not None and str(sk.name).strip().isdigit() and 'id' not in ansible_data:
+                ansible_data['id'] = int(str(sk.name).strip())
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
 
