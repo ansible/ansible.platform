@@ -38,6 +38,7 @@ class APIUser_v1(BaseTransformMixin):
 
     # For organizations - handled separately via associations
     organization_ids: Optional[List[int]] = None
+    associated_authenticators: Optional[Dict[str, Any]] = None
 
 
 class UserTransformMixin_v1(BaseTransformMixin):
@@ -66,7 +67,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
         simple_fields = [
             'username', 'email', 'first_name', 'last_name',
             'password', 'is_superuser', 'is_platform_auditor',
-            'id', 'created', 'modified', 'url'
+            'id', 'created', 'modified', 'url', 'associated_authenticators'
         ]
         read_only = {'id', 'created', 'modified', 'url'}
         # Only send null for these on enforced update; many APIs reject null for password/booleans
@@ -154,6 +155,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
         'password': 'password',
         'is_superuser': 'is_superuser',
         'is_platform_auditor': 'is_platform_auditor',
+        'associated_authenticators': 'associated_authenticators',
         'id': 'id',
         'created': 'created',
         'modified': 'modified',
@@ -194,7 +196,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 path='/api/gateway/v1/users/{id}/',
                 method='PATCH',
                 # Omit username from body; resource is identified by URL (many APIs reject username in PATCH)
-                fields=['email', 'first_name', 'last_name', 'password', 'is_superuser', 'is_platform_auditor'],
+                fields=['email', 'first_name', 'last_name', 'password', 'is_superuser', 'is_platform_auditor', 'associated_authenticators'],
                 path_params=['id'],
                 required_for='update',
                 order=1

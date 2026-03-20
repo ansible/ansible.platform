@@ -1,0 +1,213 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+- name: Converge — route (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct"
+        gateway_path: "/mock-direct/"
+        description: "Mock route (direct)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (direct)
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency, direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct"
+        gateway_path: "/mock-direct/"
+        description: "Mock route (direct)"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (direct)
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct"
+        gateway_path: "/mock-direct/"
+        description: "Updated mock route (direct)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (direct)
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Create route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent"
+        gateway_path: "/mock-persistent/"
+        description: "Mock route (persistent)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (persistent)
+      ansible.builtin.assert:
+        that: create_result_persistent is changed
+        fail_msg: "Create (persistent) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency, persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent"
+        gateway_path: "/mock-persistent/"
+        description: "Mock route (persistent)"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (persistent)
+      ansible.builtin.assert:
+        that: idem_result_persistent is not changed
+        fail_msg: "Idempotent run (persistent) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent"
+        gateway_path: "/mock-persistent/"
+        description: "Updated mock route (persistent)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (persistent)
+      ansible.builtin.assert:
+        that: update_result_persistent is changed
+        fail_msg: "Update (persistent) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Create route (local)
+      ansible.platform.route:
+        name: "molecule-mock-route-local"
+        gateway_path: "/mock-local/"
+        description: "Mock route (local)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (local)
+      ansible.builtin.assert:
+        that: create_result_local is changed
+        fail_msg: "Create (local) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency, local)
+      ansible.platform.route:
+        name: "molecule-mock-route-local"
+        gateway_path: "/mock-local/"
+        description: "Mock route (local)"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update route (local)
+      ansible.platform.route:
+        name: "molecule-mock-route-local"
+        gateway_path: "/mock-local/"
+        description: "Updated mock route (local)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed."
+      vars:
+        ansible_connection: local
+...

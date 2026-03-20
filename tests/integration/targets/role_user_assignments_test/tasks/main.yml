@@ -19,6 +19,55 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    # Pre-cleanup: remove leftovers from prior failed runs
+    - name: Pre-cleanup Team 1
+      ansible.platform.team:
+        name: "{{ name_prefix }}-Team-1"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup Team 2
+      ansible.platform.team:
+        name: "{{ name_prefix }}-Team-2"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup User 1
+      ansible.platform.user:
+        username: "{{ username }}--User-1"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup User 2
+      ansible.platform.user:
+        username: "{{ username }}--User-2"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup User 3
+      ansible.platform.user:
+        username: "{{ username }}--User-3"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup User 4
+      ansible.platform.user:
+        username: "{{ username }}--User-4"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup Organization 1
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup Organization 2
+      ansible.platform.organization:
+        name: "{{ organization_name }}-2"
+        state: absent
+      failed_when: false
+
     # <Users> -------------------
     - name: Create Users
       ansible.platform.user:
@@ -108,12 +157,32 @@
           - team2 is changed
     # </Teams> -------------------
 
-    - name: Fetch Ansible ID for team2 & organization 2
+    - name: Fetch team2 details via URI
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/teams/{{ team2.id }}/"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: _team2_detail
+
+    - name: Fetch organization 2 details via URI
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/organizations/{{ org2.id }}/"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: _org2_detail
+
+    - name: Set Ansible IDs for team2 & organization 2
       ansible.builtin.set_fact:
-        team2_ansible_id: "{{ query('ansible.platform.gateway_api', 'teams/' + (team2.id | string),
-         **connection_info)[0].summary_fields.resource.ansible_id }}"
-        org2_ansible_id: "{{ query('ansible.platform.gateway_api', 'organizations/' + (org2.id | string),
-         **connection_info)[0].summary_fields.resource.ansible_id }}"
+        team2_ansible_id: "{{ _team2_detail.json.summary_fields.resource.ansible_id }}"
+        org2_ansible_id: "{{ _org2_detail.json.summary_fields.resource.ansible_id }}"
 
     # # <Role User Assignments> -------------------
     - name: Assign Admins by Role User Assignments
@@ -263,7 +332,7 @@
         role_definition: Team Admin
         user: "{{ user4.id }}"
       register: role_definition_exists_check_team3
-      ignore_errors: true
+      failed_when: false
 
     - name: Assert that the role role_definition_exists_check_team3 is failed
       ansible.builtin.assert:
@@ -290,7 +359,7 @@
         role_definition: Organization Admin
         user: "{{ user.id }}"
       register: role_definition_exists_check_org2
-      ignore_errors: true
+      failed_when: false
 
     - name: Assert that the role role_definition_exists_check_org2 is failed
       ansible.builtin.assert:
@@ -312,7 +381,7 @@
         role_definition: Organization Admin
         user: "{{ user3.id }}"
       register: role_definition_exists_check
-      ignore_errors: true
+      failed_when: false
 
     - name: Assert that the role role_definition_exists_check is failed
       ansible.builtin.assert:
@@ -345,36 +414,53 @@
 
     # </Role User Assignments> ------------------
 
-  # # <Cleanup>
+  # <Cleanup>
   always:
-  # Always Cleanup
-    - name: Delete users
-      ansible.platform.user:
-        username: "{{ item }}"
-        state: absent
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "{{ username }}--User-1"
-        - "{{ username }}--User-2"
-        - "{{ username }}--User-3"
-        - "{{ username }}--User-4"
-
-    - name: Delete Organizations
-      ansible.platform.organization:
-        name: "{{ item }}"
-        state: absent
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "org"
-        - "{{ organization_name }}"
-        - "{{ organization_name }}-2"
-
-    - name: Delete all Teams
+    - name: Delete Team 1
       ansible.platform.team:
-        name: "{{ item }}"
+        name: "{{ name_prefix }}-Team-1"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "{{ name_prefix }}-Team-1"
-        - "{{ name_prefix }}-Team-2"
+      failed_when: false
+
+    - name: Delete Team 2
+      ansible.platform.team:
+        name: "{{ name_prefix }}-Team-2"
+        state: absent
+      failed_when: false
+
+    - name: Delete User 1
+      ansible.platform.user:
+        username: "{{ username }}--User-1"
+        state: absent
+      failed_when: false
+
+    - name: Delete User 2
+      ansible.platform.user:
+        username: "{{ username }}--User-2"
+        state: absent
+      failed_when: false
+
+    - name: Delete User 3
+      ansible.platform.user:
+        username: "{{ username }}--User-3"
+        state: absent
+      failed_when: false
+
+    - name: Delete User 4
+      ansible.platform.user:
+        username: "{{ username }}--User-4"
+        state: absent
+      failed_when: false
+
+    - name: Delete Organization 1
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete Organization 2
+      ansible.platform.organization:
+        name: "{{ organization_name }}-2"
+        state: absent
+      failed_when: false
 ...

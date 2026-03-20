@@ -39,6 +39,86 @@
       gateway_validate_certs: "{{ gateway_validate_certs | default(omit) }}"
 
   block:
+    # Pre-cleanup: remove leftover ports from prior failed runs (unique number constraint).
+    - name: Pre-cleanup - find leftover ports by number
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/http_ports/?number={{ item }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      loop: ["{{ primary_http_port_number }}", "{{ secondary_http_port_number }}"]
+      register: _leftover_ports
+
+    - name: Pre-cleanup - collect leftover port IDs
+      ansible.builtin.set_fact:
+        _leftover_port_ids: >-
+          {{ _leftover_ports.results
+             | map(attribute='json')
+             | map(attribute='results')
+             | flatten
+             | map(attribute='id')
+             | list }}
+
+    - name: Pre-cleanup - find routes referencing leftover ports
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/routes/?http_port={{ item }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      loop: "{{ _leftover_port_ids }}"
+      register: _leftover_routes
+      when: _leftover_port_ids | length > 0
+
+    - name: Pre-cleanup - find ui_plugin_routes referencing leftover ports
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/ui_plugin_routes/?http_port={{ item }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      loop: "{{ _leftover_port_ids }}"
+      register: _leftover_ui_routes
+      when: _leftover_port_ids | length > 0
+
+    - name: Pre-cleanup - delete leftover routes
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}{{ item.url }}"
+        method: DELETE
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [204, 404]
+      loop: >-
+        {{ ((_leftover_routes.results | default([]))
+            + (_leftover_ui_routes.results | default([])))
+           | selectattr('json', 'defined')
+           | map(attribute='json')
+           | map(attribute='results')
+           | flatten }}
+      when: _leftover_port_ids | length > 0
+      failed_when: false
+
+    - name: Pre-cleanup - delete leftover ports
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/http_ports/{{ item }}/"
+        method: DELETE
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [204, 404]
+      loop: "{{ _leftover_port_ids }}"
+      when: _leftover_port_ids | length > 0
+
     ### Create Http Port ###
     - name: Create Http Ports
       ansible.platform.http_port:
@@ -118,15 +198,20 @@
       check_mode: true
 
     - name: Search for the UI plugin route and assert that it does not exist
-      ansible.builtin.set_fact:
-        item_that_should_not_exist:
-          "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes',
-          query_params={'name': hub_dashboard_plugin_name}, **connection_info) }}"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/ui_plugin_routes/?name={{ hub_dashboard_plugin_name | urlencode }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: ui_plugin_route_search
 
     - name: Assert that UI Plugin Route does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - ui_plugin_route_search.json.count == 0
         fail_msg: "UI Plugin Route '{{ hub_dashboard_plugin_name }}' exists in the system!"
 
     - name: Create UI Plugin Routes
@@ -174,25 +259,29 @@
           - __ui_plugin_routes_result.results[2] is changed
 
     - name: Get created UI Plugin Route details
-      ansible.builtin.set_fact:
-        hub_plugin_route_result:
-          "{{ lookup('ansible.platform.gateway_api', 'ui_plugin_routes',
-          query_params={'name': hub_dashboard_plugin_name}, **connection_info) }}"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/ui_plugin_routes/?name={{ hub_dashboard_plugin_name | urlencode }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: hub_plugin_route_response
 
     - name: Debug UI Plugin Route lookup result
       ansible.builtin.debug:
-        var: hub_plugin_route_result
+        var: hub_plugin_route_response.json
 
     - name: Assert UI Plugin Route was found
       ansible.builtin.assert:
         that:
-          - hub_plugin_route_result is defined
-          - hub_plugin_route_result | length > 0
-        fail_msg: "UI Plugin Route '{{ hub_dashboard_plugin_name }}' was not found. Found: {{ hub_plugin_route_result }}"
+          - hub_plugin_route_response.json.count > 0
+        fail_msg: "UI Plugin Route '{{ hub_dashboard_plugin_name }}' was not found."
 
     - name: Set UI Plugin Route details
       ansible.builtin.set_fact:
-        hub_plugin_route: "{{ hub_plugin_route_result }}"
+        hub_plugin_route: "{{ hub_plugin_route_response.json.results[0] }}"
 
     - name: Assert that gateway_path was auto-generated correctly
       ansible.builtin.assert:

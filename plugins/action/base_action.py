@@ -15,6 +15,7 @@ __metaclass__ = type
 
 import base64
 import fcntl
+import importlib
 import json
 import logging
 import subprocess
@@ -248,8 +249,8 @@ class BaseResourceActionPlugin(ActionBase):
             required=True
         )
 
-        # DISPATCHER: Delegate to connection plugin's get_client() method
-        # The connection plugin handles routing to persistent or ephemeral managers
+        # DISPATCHER: Delegate to connection plugin's get_client() when available;
+        # otherwise support connection: local by spawning an ephemeral manager.
         try:
             if hasattr(self._connection, 'get_client'):
                 logger.debug("Dispatching to connection plugin's get_client() method")
@@ -260,11 +261,16 @@ class BaseResourceActionPlugin(ActionBase):
                 logger.debug("Got client from connection plugin: %s", type(client))
                 return client, facts_to_set
             else:
-                # Fallback: Connection plugin doesn't implement get_client()
-                raise AnsibleError(
-                    f"Connection plugin '{self._connection.transport}' does not support 'get_client()' method. "
-                    "Ensure you are using 'connection: ansible.platform.http' in your playbook."
+                # Fallback: connection is local (or other) — spawn ephemeral manager so tasks still work
+                logger.info(
+                    "Connection is '%s'; using ephemeral manager (use connection: ansible.platform.http for persistent mode).",
+                    self._connection.transport
                 )
+                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
+                    spawn_ephemeral_client
+                )
+                client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config)
+                return client, facts_to_set
         except Exception as e:
             logger.error("Failed in _get_or_spawn_manager dispatcher: %s: %s", type(e).__name__, e)
             import traceback
@@ -537,6 +543,28 @@ class BaseResourceActionPlugin(ActionBase):
             'platform_manager_authkey': authkey_b64,
             'gateway_url': gateway_config.base_url
         }
+
+    def _get_documentation(self) -> str:
+        """Auto-discover DOCUMENTATION from the sibling modules/ package.
+
+        Uses MODULE_NAME to import plugins.modules.<MODULE_NAME> and return
+        its DOCUMENTATION attribute. Same approach as cisco.meraki_rm.
+        """
+        if not self.MODULE_NAME:
+            return ''
+        parent_pkg = type(self).__module__.rsplit('.', 2)[0]  # ...plugins
+        for candidate in (
+            f'{parent_pkg}.modules.{self.MODULE_NAME}',
+            f'ansible_collections.ansible.platform.plugins.modules.{self.MODULE_NAME}',
+        ):
+            try:
+                mod = importlib.import_module(candidate)
+                doc = getattr(mod, 'DOCUMENTATION', None)
+                if doc:
+                    return doc
+            except (ImportError, ModuleNotFoundError):
+                continue
+        return ''
 
     def _build_argspec_from_docs(self, documentation: str) -> dict:
         """

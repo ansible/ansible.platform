@@ -246,3 +246,90 @@ class ProcessManager:
             error_msg += f"\n\nManager process died (exitcode: {returncode})"
 
         raise RuntimeError(error_msg)
+
+
+def _af_unix_available():
+    """Return True if AF_UNIX sockets can be created on this system."""
+    import socket as _socket
+    import tempfile
+    import os
+    try:
+        s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        s.close()
+        return True
+    except (OSError, AttributeError):
+        return False
+
+
+def spawn_ephemeral_client(task_vars, gateway_config):
+    """
+    Spawn an ephemeral manager process and return (client, None).
+
+    Used when the connection plugin does not support get_client() (e.g. connection: local),
+    so the action plugin can still run platform tasks by spawning a short-lived manager.
+
+    On systems where AF_UNIX sockets are unavailable (e.g. sandboxed VMs), falls back to
+    DirectHTTPClient which makes HTTP requests directly without a manager process.
+
+    Callers (e.g. action plugin) should prefer connection: ansible.platform.http when
+    persistent mode or connection-level config is desired.
+
+    Args:
+        task_vars: Ansible task variables (must contain inventory_hostname or default 'localhost').
+        gateway_config: Gateway configuration.
+
+    Returns:
+        Tuple of (client, None). Facts are never set for ephemeral (local) path.
+    """
+    import hashlib
+    from .rpc_client import ManagerRPCClient
+
+    # Fallback to DirectHTTPClient when AF_UNIX sockets are not available
+    if not _af_unix_available():
+        logger.info("AF_UNIX sockets unavailable; falling back to DirectHTTPClient for ephemeral connection: local")
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+        client = DirectHTTPClient(gateway_config)
+        client._ephemeral = True
+        return (client, None)
+
+    inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
+    host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
+    identifier = f"e{host_hash}"
+    socket_dir = Path('/tmp') / 'ap'
+    socket_dir.mkdir(exist_ok=True, parents=True)
+
+    conn_info = ProcessManager.generate_connection_info(
+        identifier=identifier,
+        socket_dir=socket_dir,
+        gateway_config=gateway_config
+    )
+    socket_path = conn_info.socket_path
+    authkey = conn_info.authkey
+    ProcessManager.cleanup_old_socket(socket_path)
+
+    script_path = Path(__file__).parent / 'manager_process.py'
+    if not script_path.exists():
+        raise FileNotFoundError(f"Manager process script not found at: {script_path}")
+
+    process = ProcessManager.spawn_manager_process(
+        script_path=script_path,
+        socket_path=socket_path,
+        socket_dir=str(socket_dir),
+        identifier=identifier,
+        gateway_config=gateway_config,
+        authkey_b64=conn_info.authkey_b64,
+        sys_path=list(sys.path)
+    )
+    ProcessManager.wait_for_process_startup(
+        socket_path=socket_path,
+        socket_dir=socket_dir,
+        identifier=identifier,
+        process=process,
+        max_wait=50
+    )
+
+    client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
+    client._ephemeral = True
+    client.socket_path = socket_path
+    logger.info("Ephemeral manager spawned for connection: local at %s", gateway_config.base_url)
+    return (client, None)

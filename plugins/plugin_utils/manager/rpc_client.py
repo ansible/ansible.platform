@@ -125,6 +125,31 @@ class ManagerRPCClient:
 
         return result_dict
 
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str
+    ):
+        """
+        Resolve a resource name to its integer ID via the manager process.
+
+        Delegates to PlatformService.lookup_resource_id() so the lookup uses
+        the manager's active HTTP session (and benefits from its cache).
+
+        Args:
+            endpoint: API endpoint name (e.g. 'organizations', 'users')
+            lookup_field: Field to filter by (e.g. 'name', 'username')
+            lookup_value: Value to look up
+
+        Returns:
+            Integer resource ID
+
+        Raises:
+            ValueError: If the resource is not found
+        """
+        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value)
+
     def shutdown_manager(self) -> dict:
         """
         Request manager to shutdown gracefully.

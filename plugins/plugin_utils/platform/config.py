@@ -101,11 +101,17 @@ def extract_gateway_config(
         host_vars.get('gateway_password') or
         host_vars.get('aap_password')
     )
-    gateway_token = (
+    gateway_token_raw = (
         task_args.get('gateway_token') or
         host_vars.get('gateway_token') or
         host_vars.get('aap_token')
     )
+    # The token module sets aap_token as a dict ({"token": "...", "id": ...}).
+    # Extract the actual token string if we got a dict.
+    if isinstance(gateway_token_raw, dict):
+        gateway_token = gateway_token_raw.get('token')
+    else:
+        gateway_token = gateway_token_raw
     gateway_validate_certs = (
         task_args.get('gateway_validate_certs')
         if 'gateway_validate_certs' in task_args

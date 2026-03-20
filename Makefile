@@ -70,11 +70,16 @@ collection-lint: collection-install
 
 ## Run the collection tests
 ## Requires the GATEWAY_PASSWORD env variable to be set
+## Set ANSIBLE_TEST_INTEGRATION_NO_VENV=1 to run without --venv (e.g. in CI after installing controller deps)
+ANSIBLE_TEST_INTEGRATION_VENV := --venv
+ifneq ($(ANSIBLE_TEST_INTEGRATION_NO_VENV),)
+ANSIBLE_TEST_INTEGRATION_VENV :=
+endif
 collection-test: collection-install
 	echo 'gateway_password: $(GATEWAY_PASSWORD)' > /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
 	cd /tmp/collections/ansible_collections/ansible/platform && \
-	  ansible-test integration --color yes --venv --requirements --coverage
+	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:

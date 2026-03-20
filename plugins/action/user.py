@@ -16,9 +16,9 @@ __metaclass__ = type
 
 import logging
 
+from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
-from ansible_collections.ansible.platform.plugins.plugin_utils.docs.user import DOCUMENTATION
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,11 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp  # not used
 
         try:
-            # Build argspec from DOCUMENTATION (includes fragments)
-            argspec = self._build_argspec_from_docs(DOCUMENTATION)
+            # Build argspec from DOCUMENTATION in sibling module (plugins/modules/user.py)
+            doc = self._get_documentation()
+            argspec = self._build_argspec_from_docs(doc) if doc else None
+            if argspec is None:
+                raise AnsibleError("Could not load DOCUMENTATION for user module")
 
             # Extract auth parameters separately (not part of module validation)
             # Auth params come from task_vars or task args, handled by extract_gateway_config
@@ -99,22 +102,49 @@ class ActionModule(BaseResourceActionPlugin):
                 k: v for k, v in validated_params.items()
                 if v is not None and k not in auth_params
             }
+            update_secrets = user_data.pop('update_secrets', True)
+
+            # Handle deprecated fields — emit warnings and strip before dataclass
+            deprecated_fields = {
+                'authenticators': "The 'authenticators' parameter is deprecated. Use 'associated_authenticators' instead.",
+                'authenticator_uid': "The 'authenticator_uid' parameter is deprecated. Use 'associated_authenticators' instead.",
+            }
+            for field, msg in deprecated_fields.items():
+                if field in user_data and user_data[field] is not None:
+                    result.setdefault('deprecations', []).append({
+                        'msg': msg,
+                        'version': '4.0.0',
+                        'collection_name': 'ansible.platform',
+                    })
+                user_data.pop(field, None)
+
             user = AnsibleUser(**user_data)
 
             # Detect operation
             operation = self._detect_operation(validated_params)
 
+            # When username is numeric, treat it as an ID (e.g. username: "{{ joe.id }}")
+            username_is_id = str(user.username).isdigit()
+            if username_is_id:
+                user.id = int(user.username)
+
             # For 'create' with state='present', check if user exists first (idempotency)
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
+                    if username_is_id:
+                        find_data = {'username': user.username, 'id': user.id}
+                    else:
+                        find_data = {'username': user.username}
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        ansible_data=find_data
                     )
                     if find_result and find_result.get('id'):
                         operation = 'update'
                         user.id = find_result.get('id')
+                        if username_is_id:
+                            user.username = find_result.get('username', user.username)
                 except Exception as e:
                     # User doesn't exist, proceed with create
                     pass
@@ -122,13 +152,19 @@ class ActionModule(BaseResourceActionPlugin):
             # For 'delete' operations, find user first to get ID if not provided
             if operation == 'delete' and not user.id:
                 try:
+                    if username_is_id:
+                        find_data = {'username': user.username, 'id': user.id}
+                    else:
+                        find_data = {'username': user.username}
                     find_result = manager.execute(
                         operation='find',
                         module_name=self.MODULE_NAME,
-                        ansible_data={'username': user.username}
+                        ansible_data=find_data
                     )
                     if find_result and find_result.get('id'):
                         user.id = find_result.get('id')
+                        if username_is_id:
+                            user.username = find_result.get('username', user.username)
                     else:
                         # User doesn't exist, skip delete (idempotent)
                         result.update({
@@ -186,11 +222,46 @@ class ActionModule(BaseResourceActionPlugin):
                     # User does not exist: create with task params
                     operation = 'create'
 
-            # Execute via manager (find may raise ValueError when resource not found)
-            # For enforced update, pass flag so transform sends null for omitted fields (API can clear them)
-            ansible_data = dict(user.__dict__)
+            # Execute via manager. Only pass fields that were in the task so we don't send
+            # dataclass defaults (e.g. organizations=[]) and cause false "changed" on idempotent runs.
+            ansible_data = {k: getattr(user, k) for k in validated_params if hasattr(user, k)}
+            ansible_data.pop('update_secrets', None)
+            if getattr(user, 'id', None) is not None:
+                ansible_data['id'] = user.id
             if operation == 'update' and validated_params.get('state') == 'enforced':
                 ansible_data['_platform_enforced'] = True
+
+            # When update_secrets is false and we're updating, strip write-only secret
+            # fields so the API doesn't report a false change for unreadable fields.
+            if not update_secrets and operation == 'update':
+                ansible_data.pop('password', None)
+
+            # Check mode: do not perform create/update/delete
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'create':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'username': user.username},
+                        'id': None,
+                        'username': user.username,
+                    })
+                elif operation == 'update':
+                    result.update({
+                        'changed': True,
+                        'failed': False,
+                        self.MODULE_NAME: {'username': user.username, 'id': getattr(user, 'id', None)},
+                        'id': getattr(user, 'id', None),
+                        'username': user.username,
+                    })
+                else:  # delete
+                    result.update({
+                        'changed': bool(getattr(user, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                return result
+
             try:
                 manager_result = manager.execute(
                     operation=operation,
@@ -228,12 +299,13 @@ class ActionModule(BaseResourceActionPlugin):
             except Exception:
                 validated_output = manager_result
 
-            # Format return dict
+            # Format return dict (top-level id/username so playbooks can use user1.id, user1.username)
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
                 self.MODULE_NAME: validated_output,
                 'id': validated_output.get('id'),
+                'username': validated_output.get('username'),
             })
             if operation == 'find':
                 result['exists'] = bool(validated_output.get('id'))
@@ -282,7 +354,16 @@ class ActionModule(BaseResourceActionPlugin):
             import traceback
             self._display.vvv(f"❌ Error in action plugin: {e}")
             result['failed'] = True
-            result['msg'] = str(e)
+            err_str = str(e)
+            # Surface clearer hint for connection/network errors (e.g. Max retries exceeded, Connection refused)
+            if not err_str or 'Max retries exceeded' in err_str or 'ConnectionError' in type(e).__name__:
+                hint = (
+                    "Gateway unreachable (connection/network or SSL). Check base_url (gateway_hostname), "
+                    "that the host is reachable, and gateway_validate_certs (use false for self-signed). "
+                )
+                result['msg'] = hint + "Original error: " + (err_str or type(e).__name__)
+            else:
+                result['msg'] = err_str
 
             # Include traceback in verbose mode
             if self._display.verbosity >= 3:

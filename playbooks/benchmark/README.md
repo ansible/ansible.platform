@@ -52,6 +52,12 @@ BENCHMARK_VERBOSE=-vv ./playbooks/benchmark/run_benchmark.sh 10
 
 **Verbose:** Optional third argument `-v`, `-vv`, or `-vvv` (passed to `ansible-playbook`). Or set `BENCHMARK_VERBOSE=-v` (or `-vv`, `-vvv`) in the environment.
 
+**Run same tasks with connection: local:** To also run the same create/test/cleanup playbooks with `connection: local` (ephemeral manager on the controller), set `RUN_WITH_LOCAL=1`. The script will run 02, 06 (test all operations), and 03 with `-e ansible_connection=local` and report "Connection local (same tasks, ephemeral manager): OK" or "FAILED". Example:
+```bash
+RUN_WITH_LOCAL=1 ./playbooks/benchmark/run_benchmark.sh 10 both
+```
+If the connection-local run fails, the script exits with status 1.
+
 The script writes a summary to `playbooks/benchmark/benchmark_report.txt` (override with `BENCHMARK_REPORT_FILE`).
 
 ## Running playbooks manually

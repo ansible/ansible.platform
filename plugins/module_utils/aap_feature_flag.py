@@ -96,8 +96,9 @@ class AAPFeatureFlag(AAPObject):
             settings_url = self.module.build_url('settings/')
             response = self.module.make_request('GET', settings_url)
 
-            if response.get('status_code') == 200 and 'results' in response:
-                for setting in response['results']:
+            resp_json = response.get('json', {})
+            if response.get('status_code') == 200 and 'results' in resp_json:
+                for setting in resp_json['results']:
                     if setting.get('key') == 'RUNTIME_FEATURE_FLAGS':
                         return setting.get('value', '').lower() == 'true'
 

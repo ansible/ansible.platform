@@ -5,6 +5,12 @@ __metaclass__ = type
 from ..module_utils.aap_object import AAPObject
 
 
+class _Result(object):
+    """Simple holder for .data (used for organization/user lookup results)."""
+    def __init__(self, data):
+        self.data = data
+
+
 class AAPApplication(AAPObject):
     API_ENDPOINT_NAME = "applications"
     ITEM_TYPE = "application"
@@ -33,17 +39,12 @@ class AAPApplication(AAPObject):
         return {'name': self.params.get('name'), 'organization': self.organization.data['id']}
 
     def _get_organization(self, name_or_id):
-        from ..module_utils.aap_organization import AAPOrganization
-
-        params = {"name": name_or_id, "state": self.STATE_EXISTS}
-
         # If delete is required, organization doesn't need to exist
         fail_when_not_exists = not self.absent()
-
-        organization = AAPOrganization(module=self.module, params=params)
-        organization.manage(auto_exit=False, fail_when_not_exists=fail_when_not_exists)
-
-        return organization
+        data = self.module.get_one('organizations', name_or_id, allow_none=not fail_when_not_exists)
+        if data is None and fail_when_not_exists:
+            self.module.fail_json(msg="Organization does not exist: {0}".format(name_or_id))
+        return _Result(data)
 
     def get_organization(self):
         self.organization = self._get_organization(self.params.get('organization'))
@@ -52,15 +53,13 @@ class AAPApplication(AAPObject):
         self.new_organization = self._get_organization(name_or_id)
 
     def get_user(self):
-        from ..module_utils.aap_user import AAPUser
-
-        params = {"username": self.params.get('user'), "state": self.STATE_EXISTS}
-
         # If delete is required, user doesn't need to exist
         fail_when_not_exists = not self.absent()
-
-        self.user = AAPUser(module=self.module, params=params)
-        self.user.manage(auto_exit=False, fail_when_not_exists=fail_when_not_exists)
+        username = self.params.get('user')
+        data = self.module.get_one('users', username, allow_none=not fail_when_not_exists)
+        if data is None and fail_when_not_exists:
+            self.module.fail_json(msg="User does not exist: {0}".format(username))
+        self.user = _Result(data)
         return self.user
 
     def get_existing_item(self):

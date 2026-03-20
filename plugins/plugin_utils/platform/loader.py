@@ -15,6 +15,11 @@ from .registry import APIVersionRegistry
 logger = logging.getLogger(__name__)
 
 
+def _to_pascal_case(name: str) -> str:
+    """Convert a snake_case name to PascalCase (e.g. 'service_type' -> 'ServiceType')."""
+    return ''.join(part.capitalize() for part in name.split('_'))
+
+
 class DynamicClassLoader:
     """
     Dynamically load version-specific classes at runtime.
@@ -106,13 +111,19 @@ class DynamicClassLoader:
                 f"Failed to import Ansible module {module_path}: {e}"
             ) from e
 
-        # Find Ansible dataclass (e.g., AnsibleUser)
-        class_name = f'Ansible{module_name.title()}'
+        # Find Ansible dataclass (e.g., AnsibleUser, AnsibleCACertificate)
+        class_name = f'Ansible{_to_pascal_case(module_name)}'
+        target_lower = class_name.lower()
 
         if hasattr(module, class_name):
             return getattr(module, class_name)
 
-        # Fallback: find any class starting with 'Ansible'
+        # Case-insensitive fallback (handles acronyms like CA vs Ca)
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if name.lower() == target_lower:
+                return obj
+
+        # Last resort: any class starting with 'Ansible'
         for name, obj in inspect.getmembers(module, inspect.isclass):
             if name.startswith('Ansible'):
                 return obj
@@ -157,18 +168,19 @@ class DynamicClassLoader:
             ) from e
 
         # Find API dataclass (e.g., APIUser_v1)
-        api_class_name = f'API{module_name.title()}_v{version_normalized}'
+        pascal = _to_pascal_case(module_name)
+        api_class_name = f'API{pascal}_v{version_normalized}'
         api_class = self._find_class_in_module(
             module,
-            [api_class_name, f'API{module_name.title()}', 'API*'],
+            [api_class_name, f'API{pascal}', 'API*'],
             f"API dataclass for {module_name}"
         )
 
         # Find transform mixin (e.g., UserTransformMixin_v1)
-        mixin_class_name = f'{module_name.title()}TransformMixin_v{version_normalized}'
+        mixin_class_name = f'{pascal}TransformMixin_v{version_normalized}'
         mixin_class = self._find_class_in_module(
             module,
-            [mixin_class_name, f'{module_name.title()}TransformMixin', '*TransformMixin'],
+            [mixin_class_name, f'{pascal}TransformMixin', '*TransformMixin'],
             f"Transform mixin for {module_name}",
             base_class=BaseTransformMixin
         )
@@ -185,6 +197,10 @@ class DynamicClassLoader:
         """
         Find a class in a module matching patterns.
 
+        Uses case-insensitive matching so class names with acronyms
+        (e.g. CACertificate vs CaCertificate) are found regardless
+        of capitalisation style.
+
         Args:
             module: Imported module
             patterns: List of patterns to try (wildcards supported)
@@ -197,31 +213,28 @@ class DynamicClassLoader:
         Raises:
             ValueError: If no matching class found
         """
-        # Get all classes from module
         classes = inspect.getmembers(module, inspect.isclass)
 
-        # Filter by base class if specified
         if base_class:
             classes = [
                 (name, cls) for name, cls in classes
                 if issubclass(cls, base_class) and cls != base_class
             ]
 
-        # Try each pattern
         for pattern in patterns:
             if '*' in pattern:
-                # Wildcard pattern
-                prefix = pattern.replace('*', '')
+                prefix, _sep, suffix = pattern.partition('*')
+                p_lower, s_lower = prefix.lower(), suffix.lower()
                 for name, cls in classes:
-                    if name.startswith(prefix):
+                    n_lower = name.lower()
+                    if n_lower.startswith(p_lower) and n_lower.endswith(s_lower):
                         return cls
             else:
-                # Exact match
+                pat_lower = pattern.lower()
                 for name, cls in classes:
-                    if name == pattern:
+                    if name.lower() == pat_lower:
                         return cls
 
-        # Not found
         raise ValueError(
             "No %s found in %s. Tried patterns: %s" % (description, module.__name__, patterns)
         )
