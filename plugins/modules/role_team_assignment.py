@@ -4,20 +4,14 @@
 # (c) 2025, Ansible Platform Collection Contributors
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""
-Doc-only stub for ansible.platform.role_team_assignment.
-
-All execution logic lives in the corresponding action plugin
-(plugins/action/role_team_assignment.py).  This module exists solely
-so that ansible-doc, validate-modules, and argument-spec validation
-can discover the DOCUMENTATION / EXAMPLES blocks.
-"""
+# This module is implemented as an action plugin.
+# See plugins/action/role_team_assignment.py for the implementation.
 
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: role_team_assignment
 author: Rohit Thakur (@rohitthakur2590)
@@ -31,7 +25,7 @@ notes:
   - This module is subject to limitations of the RBAC system in AAP 2.6.
   - Global roles (e.g. Platform Auditor) cannot be assigned to teams.
   - Team roles cannot be assigned to another team
-    (Team Admin → Team is not supported).
+    (Team Admin to Team is not supported).
   - Organization Member role cannot be assigned to teams.
   - Only resource-scoped organization roles (e.g. "Organization Inventory
     Admin", "Organization Credential Admin") can be meaningfully assigned
@@ -53,7 +47,7 @@ options:
     team_ansible_id:
         description:
           - Resource id of the team who will receive permissions from this
-            assignment.  Alternative to I(team).
+            assignment. Alternative to I(team).
         required: false
         type: str
     assignment_objects:
@@ -73,7 +67,7 @@ options:
             type:
                 description:
                   - The object type used for name lookup.
-                  - Supported values: C(organizations), C(teams).
+                  - "Supported values: C(organizations), C(teams)."
                 type: str
                 required: false
             object_id:
@@ -117,9 +111,9 @@ options:
       type: str
 extends_documentation_fragment:
 - ansible.platform.auth
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 - name: Assign role to a team against multiple organizations by name
   ansible.platform.role_team_assignment:
     role_definition: Organization Inventory Admin
@@ -169,13 +163,13 @@ EXAMPLES = '''
     state: absent
   register: result
 ...
-'''
+"""
 
-RETURN = '''
+RETURN = """
 id:
     description: Database id of the assignment (single-object operations).
     type: int
-    returned: when state=present or state=exists and a single object is targeted
+    returned: when state is present or exists and a single object is targeted
 assignments:
     description: List of assignment results when multiple objects are targeted.
     type: list
@@ -188,14 +182,4 @@ changed:
     description: Whether any assignment was created or deleted.
     type: bool
     returned: always
-'''
-
-
-def main():
-    # All execution is handled by the action plugin.
-    # This stub is never called directly.
-    pass
-
-
-if __name__ == '__main__':
-    main()
+"""
