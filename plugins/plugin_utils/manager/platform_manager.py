@@ -818,7 +818,10 @@ class PlatformService(BaseAPIClient):
 
     @staticmethod
     def _deep_merge_for_compare(current: Any, requested: Any) -> Any:
-        """Merge current and requested for comparison; requested wins on conflicts. Preserves API-only keys in current so idempotent runs don't false-positive."""
+        """Merge current and requested for comparison; requested wins on conflicts.
+
+        Preserves API-only keys in current so idempotent runs don't false-positive.
+        """
         if not isinstance(current, dict) or not isinstance(requested, dict):
             return requested
         result = {}

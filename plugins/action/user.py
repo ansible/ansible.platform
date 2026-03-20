@@ -357,7 +357,10 @@ class ActionModule(BaseResourceActionPlugin):
             err_str = str(e)
             # Surface clearer hint for connection/network errors (e.g. Max retries exceeded, Connection refused)
             if not err_str or 'Max retries exceeded' in err_str or 'ConnectionError' in type(e).__name__:
-                hint = "Gateway unreachable (connection/network or SSL). Check base_url (gateway_hostname), that the host is reachable, and gateway_validate_certs (use false for self-signed). "
+                hint = (
+                    "Gateway unreachable (connection/network or SSL). Check base_url (gateway_hostname), "
+                    "that the host is reachable, and gateway_validate_certs (use false for self-signed). "
+                )
                 result['msg'] = hint + "Original error: " + (err_str or type(e).__name__)
             else:
                 result['msg'] = err_str

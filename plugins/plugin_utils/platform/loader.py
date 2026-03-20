@@ -223,7 +223,7 @@ class DynamicClassLoader:
 
         for pattern in patterns:
             if '*' in pattern:
-                prefix, _, suffix = pattern.partition('*')
+                prefix, _sep, suffix = pattern.partition('*')
                 p_lower, s_lower = prefix.lower(), suffix.lower()
                 for name, cls in classes:
                     n_lower = name.lower()

@@ -143,4 +143,3 @@ class RoleDefinitionTransformMixin_v1(BaseTransformMixin):
             'url': api_data.get('url'),
         }
         return AnsibleRoleDefinition(**ansible_data)
-

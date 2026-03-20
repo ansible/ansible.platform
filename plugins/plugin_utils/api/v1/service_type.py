@@ -138,4 +138,3 @@ class ServiceTypeTransformMixin_v1(BaseTransformMixin):
             'url': api_data.get('url'),
         }
         return AnsibleServiceType(**ansible_data)
-

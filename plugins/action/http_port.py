@@ -175,7 +175,11 @@ class ActionModule(BaseResourceActionPlugin):
                     result.update({
                         'changed': True,
                         'failed': False,
-                        self.MODULE_NAME: {'name': hp.name, 'number': hp.number, 'use_https': getattr(hp, 'use_https', False), 'is_api_port': getattr(hp, 'is_api_port', False)},
+                        self.MODULE_NAME: {
+                            'name': hp.name, 'number': hp.number,
+                            'use_https': getattr(hp, 'use_https', False),
+                            'is_api_port': getattr(hp, 'is_api_port', False),
+                        },
                         'id': None,
                         'name': hp.name,
                     })
@@ -183,7 +187,12 @@ class ActionModule(BaseResourceActionPlugin):
                     result.update({
                         'changed': True,
                         'failed': False,
-                        self.MODULE_NAME: {'name': hp.name, 'number': hp.number, 'use_https': getattr(hp, 'use_https', False), 'is_api_port': getattr(hp, 'is_api_port', False), 'id': getattr(hp, 'id', None)},
+                        self.MODULE_NAME: {
+                            'name': hp.name, 'number': hp.number,
+                            'use_https': getattr(hp, 'use_https', False),
+                            'is_api_port': getattr(hp, 'is_api_port', False),
+                            'id': getattr(hp, 'id', None),
+                        },
                         'id': getattr(hp, 'id', None),
                         'name': hp.name,
                     })

@@ -54,9 +54,11 @@ from typing import TYPE_CHECKING, Tuple, Optional, Dict, Any, Union
 
 from ansible.plugins.connection import ConnectionBase
 
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+
 if TYPE_CHECKING:
     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
 
 logger = logging.getLogger(__name__)
@@ -202,11 +204,6 @@ class Connection(ConnectionBase):
         import tempfile
         from pathlib import Path
 
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
-            ProcessManager
-        )
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
         try:
             logger.debug("Platform connection (direct mode): Spawning ephemeral manager (will be shut down after task)")
 
@@ -324,11 +321,6 @@ class Connection(ConnectionBase):
         Returns:
             Tuple of (ManagerRPCClient, facts_dict)
         """
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import (
-            ProcessManager
-        )
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
         logger.debug("Platform connection (persistent mode): Getting or spawning manager")
 
         # Get inventory hostname

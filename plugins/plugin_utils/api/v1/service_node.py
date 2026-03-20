@@ -110,4 +110,3 @@ class ServiceNodeTransformMixin_v1(BaseTransformMixin):
             modified=api_data.get('modified'),
             url=api_data.get('url'),
         )
-

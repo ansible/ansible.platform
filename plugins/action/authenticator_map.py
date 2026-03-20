@@ -76,7 +76,8 @@ class ActionModule(BaseResourceActionPlugin):
             am_data = {k: v for k, v in validated_params.items() if v is not None and k not in auth_params}
             am = AnsibleAuthenticatorMap(**am_data)
             operation = self._detect_operation(validated_params)
-            find_data = lambda: _find_payload(am, manager)
+            def find_data():
+                return _find_payload(am, manager)
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
