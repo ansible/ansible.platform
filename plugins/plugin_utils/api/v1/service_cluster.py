@@ -145,5 +145,3 @@ class ServiceClusterTransformMixin_v1(BaseTransformMixin):
             url=api_data.get('url'),
         )
 
-
-Service_ClusterTransformMixin_v1 = ServiceClusterTransformMixin_v1

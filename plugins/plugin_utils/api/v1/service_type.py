@@ -139,5 +139,3 @@ class ServiceTypeTransformMixin_v1(BaseTransformMixin):
         }
         return AnsibleServiceType(**ansible_data)
 
-
-Service_TypeTransformMixin_v1 = ServiceTypeTransformMixin_v1

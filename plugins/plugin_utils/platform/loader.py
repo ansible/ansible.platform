@@ -111,13 +111,19 @@ class DynamicClassLoader:
                 f"Failed to import Ansible module {module_path}: {e}"
             ) from e
 
-        # Find Ansible dataclass (e.g., AnsibleUser)
+        # Find Ansible dataclass (e.g., AnsibleUser, AnsibleCACertificate)
         class_name = f'Ansible{_to_pascal_case(module_name)}'
+        target_lower = class_name.lower()
 
         if hasattr(module, class_name):
             return getattr(module, class_name)
 
-        # Fallback: find any class starting with 'Ansible'
+        # Case-insensitive fallback (handles acronyms like CA vs Ca)
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if name.lower() == target_lower:
+                return obj
+
+        # Last resort: any class starting with 'Ansible'
         for name, obj in inspect.getmembers(module, inspect.isclass):
             if name.startswith('Ansible'):
                 return obj
@@ -191,6 +197,10 @@ class DynamicClassLoader:
         """
         Find a class in a module matching patterns.
 
+        Uses case-insensitive matching so class names with acronyms
+        (e.g. CACertificate vs CaCertificate) are found regardless
+        of capitalisation style.
+
         Args:
             module: Imported module
             patterns: List of patterns to try (wildcards supported)
@@ -203,30 +213,28 @@ class DynamicClassLoader:
         Raises:
             ValueError: If no matching class found
         """
-        # Get all classes from module
         classes = inspect.getmembers(module, inspect.isclass)
 
-        # Filter by base class if specified
         if base_class:
             classes = [
                 (name, cls) for name, cls in classes
                 if issubclass(cls, base_class) and cls != base_class
             ]
 
-        # Try each pattern
         for pattern in patterns:
             if '*' in pattern:
                 prefix, _, suffix = pattern.partition('*')
+                p_lower, s_lower = prefix.lower(), suffix.lower()
                 for name, cls in classes:
-                    if name.startswith(prefix) and name.endswith(suffix):
+                    n_lower = name.lower()
+                    if n_lower.startswith(p_lower) and n_lower.endswith(s_lower):
                         return cls
             else:
-                # Exact match
+                pat_lower = pattern.lower()
                 for name, cls in classes:
-                    if name == pattern:
+                    if name.lower() == pat_lower:
                         return cls
 
-        # Not found
         raise ValueError(
             "No %s found in %s. Tried patterns: %s" % (description, module.__name__, patterns)
         )

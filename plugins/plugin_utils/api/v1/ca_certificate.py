@@ -103,7 +103,3 @@ class CACertificateTransformMixin_v1(BaseTransformMixin):
             modified=api_data.get('modified'),
             url=api_data.get('url'),
         )
-
-
-# Alias so loader finds mixin when module_name is "ca_certificate" (title() -> "Ca_Certificate").
-Ca_CertificateTransformMixin_v1 = CACertificateTransformMixin_v1

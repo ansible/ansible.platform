@@ -135,4 +135,3 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
 
 
 # Alias for loader: module name "authenticator_map" -> title() "Authenticator_Map"
-Authenticator_MapTransformMixin_v1 = AuthenticatorMapTransformMixin_v1

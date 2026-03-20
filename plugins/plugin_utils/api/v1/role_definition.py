@@ -144,5 +144,3 @@ class RoleDefinitionTransformMixin_v1(BaseTransformMixin):
         }
         return AnsibleRoleDefinition(**ansible_data)
 
-
-Role_DefinitionTransformMixin_v1 = RoleDefinitionTransformMixin_v1
