@@ -53,6 +53,9 @@ class AAPObject:
             else:
                 self.module.json_output["id"] = self.data['id']
                 self.module.json_output["exists"] = True
+                # Include the full item data under the item type key for easy access
+                if self.ITEM_TYPE:
+                    self.module.json_output[self.ITEM_TYPE] = self.data
                 if auto_exit:
                     self.module.exit_json(**self.module.json_output)
             return

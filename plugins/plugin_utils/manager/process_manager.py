@@ -248,12 +248,28 @@ class ProcessManager:
         raise RuntimeError(error_msg)
 
 
+def _af_unix_available():
+    """Return True if AF_UNIX sockets can be created on this system."""
+    import socket as _socket
+    import tempfile
+    import os
+    try:
+        s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        s.close()
+        return True
+    except (OSError, AttributeError):
+        return False
+
+
 def spawn_ephemeral_client(task_vars, gateway_config):
     """
-    Spawn an ephemeral manager process and return (ManagerRPCClient, None).
+    Spawn an ephemeral manager process and return (client, None).
 
     Used when the connection plugin does not support get_client() (e.g. connection: local),
     so the action plugin can still run platform tasks by spawning a short-lived manager.
+
+    On systems where AF_UNIX sockets are unavailable (e.g. sandboxed VMs), falls back to
+    DirectHTTPClient which makes HTTP requests directly without a manager process.
 
     Callers (e.g. action plugin) should prefer connection: ansible.platform.http when
     persistent mode or connection-level config is desired.
@@ -263,10 +279,18 @@ def spawn_ephemeral_client(task_vars, gateway_config):
         gateway_config: Gateway configuration.
 
     Returns:
-        Tuple of (ManagerRPCClient, None). Facts are never set for ephemeral (local) path.
+        Tuple of (client, None). Facts are never set for ephemeral (local) path.
     """
     import hashlib
     from .rpc_client import ManagerRPCClient
+
+    # Fallback to DirectHTTPClient when AF_UNIX sockets are not available
+    if not _af_unix_available():
+        logger.info("AF_UNIX sockets unavailable; falling back to DirectHTTPClient for ephemeral connection: local")
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+        client = DirectHTTPClient(gateway_config)
+        client._ephemeral = True
+        return (client, None)
 
     inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
     host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]

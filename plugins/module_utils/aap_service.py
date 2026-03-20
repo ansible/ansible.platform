@@ -107,7 +107,7 @@ class AAPService(AAPObject):
 
     def get_gateway_path(self):
         if self.data:
-            gateway_path = self.data['gateway_path']
+            gateway_path = self.data.get('gateway_path')
         else:
             api_slug = self.params.get('api_slug')
             # Taken from:

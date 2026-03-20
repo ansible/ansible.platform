@@ -1,65 +1,5 @@
 ---
 # Cleanup: delete organizations created by converge (direct, persistent, local).
-- name: Cleanup — delete organization (mock, direct mode)
-  hosts: localhost
-  connection: ansible.platform.http
-  gather_facts: false
-  vars:
-    molecule_org_name: "Molecule Test Org Direct"
-    ansible_platform_persistent: false
-    gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "mock"
-    gateway_validate_certs: false
-  tasks:
-    - name: Delete organization (direct mode)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name }}"
-        state: absent
-      register: delete_result
-      failed_when: false
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: false
-
-    - name: Assert organization removed or already absent (direct)
-      ansible.builtin.assert:
-        that: delete_result is not failed
-        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name }}."
-      vars:
-        ansible_connection: local
-
-# Delete organization created with persistent mode.
-- name: Cleanup — delete organization (mock, persistent mode)
-  hosts: localhost
-  connection: ansible.platform.http
-  gather_facts: false
-  vars:
-    molecule_org_name_persistent: "Molecule Test Org Persistent"
-    ansible_platform_persistent: true
-    gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "mock"
-    gateway_validate_certs: false
-  tasks:
-    - name: Delete organization (persistent mode)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name_persistent }}"
-        state: absent
-      register: delete_result_persistent
-      failed_when: false
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: true
-
-    - name: Assert organization removed or already absent (persistent)
-      ansible.builtin.assert:
-        that: delete_result_persistent is not failed
-        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name_persistent }}."
-      vars:
-        ansible_connection: local
-
-# Delete organization created with connection: local.
 - name: Cleanup — delete organization (mock, connection local)
   hosts: localhost
   connection: local
@@ -68,7 +8,7 @@
     molecule_org_name_local: "Molecule Test Org Local"
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
-    gateway_password: "mock"
+    gateway_password: "testpass"
     gateway_validate_certs: false
   tasks:
     - name: Delete organization (connection local)

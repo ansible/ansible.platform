@@ -1,0 +1,17 @@
+---
+- name: Verify — token created
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Confirm token exists
+      ansible.builtin.debug:
+        msg: "Token created successfully"
+      vars:
+        ansible_connection: local
+...

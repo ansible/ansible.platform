@@ -462,11 +462,68 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str
+    ):
+        """
+        Resolve a resource name to ID by GET list with filter.
+        Compatible with PlatformService.lookup_resource_id interface.
+        Used by API mixins to resolve FKs (e.g. authenticator name -> id).
+
+        Args:
+            endpoint: API resource endpoint name (e.g. 'authenticators', 'service_clusters')
+            lookup_field: Field to filter on (e.g. 'name')
+            lookup_value: Value to look up
+
+        Returns:
+            Resource ID (int) or None
+        """
+        if not lookup_value:
+            return None
+        if str(lookup_value).isdigit():
+            return int(lookup_value)
+
+        cache_key = f"lookup:{endpoint}:{lookup_field}:{lookup_value}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        # Detect API version if not done yet
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = '1'
+
+        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
+        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        url = self._build_url(api_path, {lookup_field: lookup_value})
+
+        response = self._make_request('GET', url, operation='lookup', resource=endpoint)
+
+        try:
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
+        except Exception:
+            response_data = {}
+
+        results = response_data.get('results', [])
+        if not results:
+            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+
+        rid = results[0].get('id')
+        if rid is not None:
+            self.cache[cache_key] = rid
+        return rid
+
     def execute(
         self,
         operation: str,
         module_name: str,
-        ansible_data_dict: dict
+        ansible_data=None,
+        ansible_data_dict: dict = None
     ) -> dict:
         """
         Execute a generic operation on any resource.
@@ -477,7 +534,8 @@ class DirectHTTPClient(BaseAPIClient):
         Args:
             operation: Operation type ('create', 'update', 'delete', 'find')
             module_name: Module name (e.g., 'user', 'organization')
-            ansible_data_dict: Ansible dataclass as dict
+            ansible_data: Ansible dataclass or dict (preferred, matches ManagerRPCClient API)
+            ansible_data_dict: Ansible dataclass as dict (legacy alias for ansible_data)
 
         Returns:
             Result as dict (Ansible format) with timing information
@@ -486,6 +544,10 @@ class DirectHTTPClient(BaseAPIClient):
             ValueError: If operation is unknown or execution fails
         """
         from dataclasses import asdict, is_dataclass
+
+        # Support both ansible_data (ManagerRPCClient API) and ansible_data_dict (legacy)
+        if ansible_data_dict is None:
+            ansible_data_dict = ansible_data
 
         # Convert to dict if dataclass (for consistency with ManagerRPCClient)
         if is_dataclass(ansible_data_dict):
@@ -659,6 +721,34 @@ class DirectHTTPClient(BaseAPIClient):
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
+        # Pre-PATCH idempotency check: compare only the fields we'd update.
+        # Timestamps (modified, created, url) change on every PATCH so they
+        # must be excluded from the comparison.
+        _skip_for_idempotency = {'modified', 'created', 'url', 'state'}
+        update_op = operations.get('update')
+        if update_op and update_op.fields and current_data:
+            would_update = {}
+            for field in update_op.fields:
+                value = getattr(api_data, field, None)
+                if value is not None:
+                    would_update[field] = value
+            needs_update = any(
+                str(current_data.get(f)) != str(would_update[f])
+                for f in would_update
+                if f not in _skip_for_idempotency
+                # Skip encrypted/write-only fields: the API returns "$encrypted$"
+                # as a placeholder for hashed values (passwords, secrets). These
+                # can never be meaningfully compared to the plaintext desired value,
+                # so we always treat them as already correct and skip the PATCH for
+                # that field — same logic as AAPModule.fields_could_be_same().
+                and current_data.get(f) != '$encrypted$'
+            )
+            if not needs_update:
+                # Nothing to change — return current state with changed=False
+                result = dict(current_data)
+                result['changed'] = False
+                return result
+
         # Execute update operation
         api_result = self._execute_operations(
             operations, api_data, context, required_for='update'
@@ -670,9 +760,8 @@ class DirectHTTPClient(BaseAPIClient):
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
             ansible_result = asdict(ansible_instance)
-            # Compare with current state to determine if changed
-            changed = ansible_result != current_data
-            ansible_result['changed'] = changed
+            # We actually sent a PATCH so this is a real change
+            ansible_result['changed'] = True
             return ansible_result
 
         return {'changed': False}
@@ -829,6 +918,12 @@ class DirectHTTPClient(BaseAPIClient):
                         continue
                     request_data[field] = value
 
+            # Skip secondary (dependent) operations that have no data to send.
+            # This prevents calling e.g. /users/{id}/organizations/ when organizations is not set.
+            if endpoint_op.depends_on and not request_data:
+                logger.info("DirectHTTPClient: Skipping secondary operation %s (no data to send)", op_name)
+                continue
+
             # Performance timing: API call start
             api_start = time.perf_counter()
             logger.info("DirectHTTPClient: API call start for %s: %s", endpoint_op, api_start)
@@ -902,3 +997,45 @@ class DirectHTTPClient(BaseAPIClient):
         # TODO: Implement lookup using cache
         # This should use the cache to avoid repeated lookups
         pass
+
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """
+        Make a raw authenticated HTTP request and return parsed JSON.
+
+        Used by action plugins for non-standard endpoints (e.g. settings/all/).
+
+        Args:
+            method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
+            path: API path (e.g. '/api/gateway/v1/settings/all/')
+            data: Optional dict to JSON-encode as request body
+
+        Returns:
+            Parsed JSON response dict (empty dict on empty body)
+        """
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = '1'
+
+        url = self._build_url(path)
+        kwargs = {}
+        if data is not None:
+            kwargs['data'] = json.dumps(data).encode('utf-8')
+
+        response = self._make_request(
+            method.upper(),
+            url,
+            operation='direct_request',
+            resource=path,
+            **kwargs
+        )
+        try:
+            response_body = response.read()
+            return json.loads(response_body) if response_body else {}
+        except Exception:
+            return {}

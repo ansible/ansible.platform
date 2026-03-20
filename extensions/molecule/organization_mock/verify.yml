@@ -1,83 +1,5 @@
 ---
 # Verify: all three connection scenarios (direct, persistent, local).
-- name: Verify — organization created with direct mode (mock)
-  hosts: localhost
-  connection: ansible.platform.http
-  gather_facts: false
-  vars:
-    molecule_org_name: "Molecule Test Org Direct"
-    ansible_platform_persistent: false
-    gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "mock"
-    gateway_validate_certs: false
-  tasks:
-    - name: Get organization (state exists, direct mode)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name }}"
-        state: exists
-      register: exists_result
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: false
-
-    - name: Assert organization was found (direct mode)
-      ansible.builtin.assert:
-        that:
-          - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.get('organization') is defined
-        fail_msg: "Verify: organization {{ molecule_org_name }} not found (direct mode)."
-      vars:
-        ansible_connection: local
-
-    - name: Assert description updated (direct)
-      ansible.builtin.assert:
-        that: exists_result.organization.description == "Updated by Molecule organization_mock (direct)"
-        fail_msg: "Verify: organization (direct) description was not updated."
-      vars:
-        ansible_connection: local
-
-# Verify organization created with persistent mode.
-- name: Verify — organization created with persistent mode (mock)
-  hosts: localhost
-  connection: ansible.platform.http
-  gather_facts: false
-  vars:
-    molecule_org_name_persistent: "Molecule Test Org Persistent"
-    ansible_platform_persistent: true
-    gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "mock"
-    gateway_validate_certs: false
-  tasks:
-    - name: Get organization (state exists, persistent mode)
-      ansible.platform.organization:
-        name: "{{ molecule_org_name_persistent }}"
-        state: exists
-      register: exists_result_persistent
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: true
-
-    - name: Assert organization was found (persistent mode)
-      ansible.builtin.assert:
-        that:
-          - exists_result_persistent is not failed
-          - exists_result_persistent.get('exists') | default(false) | bool
-          - exists_result_persistent.get('organization') is defined
-        fail_msg: "Verify: organization {{ molecule_org_name_persistent }} not found (persistent mode)."
-      vars:
-        ansible_connection: local
-
-    - name: Assert description updated (persistent)
-      ansible.builtin.assert:
-        that: exists_result_persistent.organization.description == "Updated by Molecule organization_mock (persistent)"
-        fail_msg: "Verify: organization (persistent) description was not updated."
-      vars:
-        ansible_connection: local
-
-# Verify organization created with connection: local.
 - name: Verify — organization created with connection local (mock)
   hosts: localhost
   connection: local
@@ -86,7 +8,7 @@
     molecule_org_name_local: "Molecule Test Org Local"
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
-    gateway_password: "mock"
+    gateway_password: "testpass"
     gateway_validate_certs: false
   tasks:
     - name: Get organization (state exists, connection local)

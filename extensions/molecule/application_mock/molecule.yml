@@ -1,10 +1,4 @@
 ---
-# Scenario: test ansible.platform.user against the mock Gateway server (no real AAP).
-# Tests all three connection scenarios: Play 1 direct (ansible.platform.http, persistent=false),
-# Play 2 persistent (ansible.platform.http, persistent=true), Play 3 connection local.
-# Requires the mock to be running: use "molecule test --all" (default starts mock) or start
-# tools/mock_gateway_server.py manually on port 8000.
-# Inherits config.yml (shared_state, test_sequence).
 driver:
   name: default
 

@@ -1,0 +1,71 @@
+---
+- name: Cleanup — delete services
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert service removed (direct)
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete service (direct)."
+      vars:
+        ansible_connection: local
+
+    - name: Delete service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_persistent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert service removed (persistent)
+      ansible.builtin.assert:
+        that: delete_result_persistent is not failed
+        fail_msg: "Cleanup: failed to delete service (persistent)."
+      vars:
+        ansible_connection: local
+
+    - name: Delete service (local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert service removed (local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete service (local)."
+      vars:
+        ansible_connection: local
+...

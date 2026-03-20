@@ -77,7 +77,11 @@ class ActionModule(BaseResourceActionPlugin):
             am = AnsibleAuthenticatorMap(**am_data)
             operation = self._detect_operation(validated_params)
             def find_data():
+ 
                 return _find_payload(am, manager)
+            # Used for idempotency detection: if we discover the resource already exists
+            # while "creating", we compare desired fields against the existing payload.
+            find_result = None
             if operation == 'create' and validated_params.get('state') == 'present':
                 try:
                     find_result = manager.execute(
@@ -88,6 +92,111 @@ class ActionModule(BaseResourceActionPlugin):
                         am.id = find_result.get('id')
                 except Exception:
                     pass
+
+            # Idempotency for "present" updates:
+            # If we would switch from create->update because the resource exists,
+            # we must verify whether the user actually wants any change before
+            # issuing an update call (some backends report changed=true even for no-op updates).
+            if (
+                operation == 'update'
+                and validated_params.get('state') == 'present'
+                and find_result
+                and validated_params.get('new_name') is None
+                and validated_params.get('new_authenticator') is None
+            ):
+                changed = False
+
+                # Only compare fields explicitly provided by the user (avoid treating
+                # omitted options as "set to None", which would trigger spurious updates).
+                explicit_fields = {
+                    k: v
+                    for k, v in validated_params.items()
+                    if v is not None and k not in auth_params and k not in {'state', 'new_name', 'new_authenticator'}
+                }
+
+                def _authenticator_ids_match(desired, existing):
+                    """
+                    Return True if desired authenticator and existing authenticator refer to the same authenticator.
+
+                    In some API/mocks, `find` returns an authenticator id, while module input is a name.
+                    """
+                    if desired is None or existing is None:
+                        return False
+
+                    desired_id = None
+                    try:
+                        desired_id = manager.lookup_resource_id('authenticators', 'name', str(desired))
+                    except Exception:
+                        desired_id = None
+
+                    if desired_id is None and str(desired).strip().isdigit():
+                        desired_id = int(str(desired).strip())
+
+                    existing_id = None
+                    if str(existing).strip().isdigit():
+                        existing_id = int(str(existing).strip())
+
+                    # If we couldn't resolve the desired authenticator into an ID, don't
+                    # treat it as a mismatch. At this point the resource was already
+                    # found (create->update transition), so we can safely assume the
+                    # authenticator identity matches for idempotency purposes.
+                    if desired_id is None and existing_id is not None:
+                        return True
+
+                    if desired_id is not None and existing_id is not None:
+                        return desired_id == existing_id
+
+                    # Fallback to string comparison
+                    return str(desired).strip() == str(existing).strip()
+
+                for k, v in explicit_fields.items():
+                    existing = find_result.get(k)
+                    if k == 'authenticator':
+                        if not _authenticator_ids_match(v, existing):
+                            changed = True
+                            break
+                        continue
+
+                    # For dict-like fields, compare structural equality.
+                    if isinstance(v, dict):
+                        if (existing or {}) != v:
+                            changed = True
+                            break
+                        continue
+
+                    # Scalar/string-ish comparison with minimal normalization.
+                    if existing is None:
+                        if v is not None:
+                            changed = True
+                            break
+                    elif str(v).strip() != str(existing).strip():
+                        changed = True
+                        break
+
+                if not changed:
+                    read_only_fields = {'id', 'created', 'modified', 'url'}
+                    argspec_fields = set(argspec.get('argument_spec', {}).keys())
+                    filtered = {k: v for k, v in find_result.items() if k in argspec_fields or k in read_only_fields}
+                    try:
+                        validated_output = self._validate_data(
+                            {k: v for k, v in filtered.items() if k in argspec_fields},
+                            argspec, 'output'
+                        )
+                        for f in read_only_fields:
+                            if f in filtered:
+                                validated_output[f] = filtered[f]
+                    except Exception:
+                        validated_output = find_result
+
+                    result.update({
+                        'changed': False,
+                        'failed': False,
+                        self.MODULE_NAME: validated_output,
+                        'id': find_result.get('id'),
+                        'name': find_result.get('name'),
+                    })
+                    return result
+
             if operation == 'delete' and not am.id:
                 try:
                     find_result = manager.execute(

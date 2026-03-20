@@ -7,26 +7,195 @@
 """
 Action plugin for ansible.platform.feature_flag module.
 
-Delegates to the module so feature_flag tasks use the same action-plugin-based
-flow. Gateway config comes from task vars or module_defaults.
+Feature flags are update-only resources (no create/delete).
+The action plugin finds the flag by name, then conditionally PATCHes the value.
 """
 
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-from ansible.plugins.action import ActionBase
+import logging
+import time
+from dataclasses import asdict
+
+from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.feature_flag import AnsibleFeatureFlag
+
+logger = logging.getLogger(__name__)
 
 
-class ActionModule(ActionBase):
-    """Action plugin for feature_flag; runs the module."""
+class ActionModule(BaseResourceActionPlugin):
+    """Action plugin for feature_flag module."""
+
+    MODULE_NAME = 'feature_flag'
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
-            task_vars = {}
+            task_vars = dict()
+
+        self._task_vars = task_vars
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp
-        return self._execute_module(
-            module_name='ansible.platform.feature_flag',
-            task_vars=task_vars,
-        )
+
+        action_start = time.perf_counter()
+
+        auth_params = [
+            'gateway_hostname', 'gateway_username', 'gateway_password',
+            'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',
+            'aap_hostname', 'aap_username', 'aap_password', 'aap_token',
+            'aap_validate_certs', 'aap_request_timeout',
+        ]
+
+        try:
+            doc = self._get_documentation()
+            argspec = self._build_argspec_from_docs(doc) if doc else None
+            if not argspec:
+                from ansible.errors import AnsibleError
+                raise AnsibleError("Could not load DOCUMENTATION for feature_flag module")
+
+            module_args = self._task.args.copy()
+            validated_input = self._validate_data(module_args, argspec, 'input')
+            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+            self._client = manager
+
+            if facts_to_set:
+                result['ansible_facts'] = facts_to_set
+                result['_ansible_facts_cacheable'] = True
+
+            validated_params = validated_input.validated_parameters
+            resource_data = {
+                k: v for k, v in validated_params.items()
+                if v is not None and k not in auth_params
+            }
+            flag = AnsibleFeatureFlag(**resource_data)
+            state = validated_params.get('state', 'exists')
+
+            # Always find the feature flag first
+            try:
+                find_result = manager.execute(
+                    operation='find',
+                    module_name=self.MODULE_NAME,
+                    ansible_data={'name': flag.name}
+                )
+            except Exception as e:
+                result.update({
+                    'changed': False,
+                    'failed': True,
+                    'msg': "Feature flag '%s' not found: %s" % (flag.name, e),
+                })
+                return result
+
+            current_id = find_result.get('id')
+            current_value = find_result.get('value')
+
+            if state == 'exists':
+                # Just verify it exists and return current state
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: find_result,
+                    'id': current_id,
+                    'name': flag.name,
+                    'value': current_value,
+                    'exists': bool(current_id),
+                })
+                return result
+
+            if state == 'absent':
+                # Feature flags cannot be deleted; treat as no-op
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: find_result,
+                    'value': current_value,
+                    'msg': "Feature flags cannot be deleted.",
+                })
+                return result
+
+            # state == 'present' or 'enforced': update value if it differs
+            desired_value = flag.value
+            if desired_value is None:
+                # No value specified, nothing to change
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: find_result,
+                    'id': current_id,
+                    'name': flag.name,
+                    'value': current_value,
+                })
+                return result
+
+            # Idempotency check
+            if str(current_value) == str(desired_value):
+                result.update({
+                    'changed': False,
+                    'failed': False,
+                    self.MODULE_NAME: find_result,
+                    'id': current_id,
+                    'name': flag.name,
+                    'value': current_value,
+                })
+                return result
+
+            # Check mode: do not actually update
+            if self._task.check_mode:
+                result.update({
+                    'changed': True,
+                    'failed': False,
+                    self.MODULE_NAME: find_result,
+                    'id': current_id,
+                    'name': flag.name,
+                })
+                return result
+
+            # Perform the update
+            flag.id = current_id
+            ansible_data = asdict(flag)
+            manager_result = manager.execute(
+                operation='update',
+                module_name=self.MODULE_NAME,
+                ansible_data=ansible_data
+            )
+
+            read_only_fields = {'id', 'created', 'modified', 'url'}
+            argspec_fields = set(argspec.get('argument_spec', {}).keys())
+            filtered_result = {
+                k: v for k, v in manager_result.items()
+                if k in argspec_fields or k in read_only_fields
+            }
+            try:
+                validated_output = self._validate_data(
+                    {k: v for k, v in filtered_result.items() if k in argspec_fields},
+                    argspec, 'output'
+                )
+                for field in read_only_fields:
+                    if field in filtered_result:
+                        validated_output[field] = filtered_result[field]
+            except Exception:
+                validated_output = manager_result
+
+            result.update({
+                'changed': manager_result.get('changed', True),
+                'failed': False,
+                self.MODULE_NAME: validated_output,
+                'id': validated_output.get('id', current_id),
+                'name': flag.name,
+                'value': validated_output.get('value', desired_value),
+            })
+
+            timing = manager_result.get('_timing', {})
+            result.setdefault('_timing', {})['action_plugin_time'] = time.perf_counter() - action_start
+            result['_timing']['manager_processing_time'] = timing.get('manager_processing_time', 0)
+            result['_timing']['api_call_time'] = timing.get('api_call_time', 0)
+
+        except Exception as e:
+            import traceback
+            self._display.vvv("Error in feature_flag action plugin: %s" % e)
+            result['failed'] = True
+            result['msg'] = str(e)
+            if self._display.verbosity >= 3:
+                result['exception'] = traceback.format_exc()
+
+        return result

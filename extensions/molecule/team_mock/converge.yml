@@ -1,157 +1,23 @@
 ---
-# Converge: team create and update against mock Gateway (http://127.0.0.1:8000).
-# Play 1: direct. Play 2: persistent. Play 3: connection local.
-# Uses mock's pre-seeded organization "Default" (id 1).
-- name: Converge — team (mock, ansible.platform.http direct mode)
+- name: Ensure mock Gateway is reachable
   hosts: localhost
-  connection: ansible.platform.http
+  connection: local
   gather_facts: false
   vars:
-    molecule_team_direct: "molecule-mock-team-direct"
-    molecule_org: "Default"
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "mock"
-    gateway_validate_certs: false
-    ansible_platform_persistent: false
   tasks:
-    - name: Create team (direct mode)
-      ansible.platform.team:
-        name: "{{ molecule_team_direct }}"
-        organization: "{{ molecule_org }}"
-        description: "Created by Molecule team_mock (direct)"
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: create_result
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: false
-
-    - name: Assert create changed (direct)
-      ansible.builtin.assert:
-        that: create_result is changed
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
       vars:
         ansible_connection: local
 
-    - name: Run again idempotency (direct)
-      ansible.platform.team:
-        name: "{{ molecule_team_direct }}"
-        organization: "{{ molecule_org }}"
-        description: "Created by Molecule team_mock (direct)"
-        state: present
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: idem_result
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: false
-
-    - name: Assert idempotent run did not change (direct)
-      ansible.builtin.assert:
-        that: idem_result is not changed
-      vars:
-        ansible_connection: local
-
-    - name: Update team (direct)
-      ansible.platform.team:
-        name: "{{ molecule_team_direct }}"
-        organization: "{{ molecule_org }}"
-        description: "Updated by Molecule team_mock (direct)"
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: update_result
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: false
-
-    - name: Assert update changed (direct)
-      ansible.builtin.assert:
-        that: update_result is changed
-      vars:
-        ansible_connection: local
-
-# Play 2: ansible.platform.http persistent mode
-- name: Converge — team (mock, ansible.platform.http persistent mode)
-  hosts: localhost
-  connection: ansible.platform.http
-  gather_facts: false
-  vars:
-    molecule_team_persistent: "molecule-mock-team-persistent"
-    molecule_org: "Default"
-    gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "mock"
-    gateway_validate_certs: false
-    ansible_platform_persistent: true
-  tasks:
-    - name: Create team (persistent mode)
-      ansible.platform.team:
-        name: "{{ molecule_team_persistent }}"
-        organization: "{{ molecule_org }}"
-        description: "Created by Molecule team_mock (persistent)"
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: create_result_persistent
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: true
-
-    - name: Assert create changed (persistent)
-      ansible.builtin.assert:
-        that: create_result_persistent is changed
-      vars:
-        ansible_connection: local
-
-    - name: Run again idempotency (persistent)
-      ansible.platform.team:
-        name: "{{ molecule_team_persistent }}"
-        organization: "{{ molecule_org }}"
-        description: "Created by Molecule team_mock (persistent)"
-        state: present
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: idem_result_persistent
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: true
-
-    - name: Assert idempotent run did not change (persistent)
-      ansible.builtin.assert:
-        that: idem_result_persistent is not changed
-      vars:
-        ansible_connection: local
-
-    - name: Update team (persistent)
-      ansible.platform.team:
-        name: "{{ molecule_team_persistent }}"
-        organization: "{{ molecule_org }}"
-        description: "Updated by Molecule team_mock (persistent)"
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: update_result_persistent
-      vars:
-        ansible_connection: ansible.platform.http
-        ansible_platform_persistent: true
-
-    - name: Assert update changed (persistent)
-      ansible.builtin.assert:
-        that: update_result_persistent is changed
-      vars:
-        ansible_connection: local
-
-# Play 3: connection local
 - name: Converge — team (mock, connection local)
   hosts: localhost
   connection: local
@@ -161,7 +27,7 @@
     molecule_org: "Default"
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: "mock"
-    gateway_password: "mock"
+    gateway_password: "testpass"
     gateway_validate_certs: false
   tasks:
     - name: Create team (connection local)

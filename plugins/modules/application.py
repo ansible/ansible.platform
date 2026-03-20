@@ -114,38 +114,4 @@ EXAMPLES = '''
 ...
 '''
 
-from ..module_utils.aap_application import AAPApplication
-from ..module_utils.aap_module import AAPModule
-
-
-def main():
-    # Any additional arguments that are not fields of the item can be added here
-    argument_spec = dict(
-        name=dict(required=True),
-        new_name=dict(),
-        organization=dict(required=True),
-        new_organization=dict(type="str"),
-        description=dict(),
-        authorization_grant_type=dict(choices=["password", "authorization-code"]),
-        client_type=dict(choices=['public', 'confidential']),
-        redirect_uris=dict(type="list", elements='str'),
-        skip_authorization=dict(type='bool'),
-        algorithm=dict(choices=["", "RS256", "HS256"]),
-        post_logout_redirect_uris=dict(type="list", elements="str"),
-        app_url=dict(type="str"),
-        user=dict(type="str"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    # Create a module for ourselves
-    module = AAPModule(argument_spec=argument_spec)
-    app = AAPApplication(module)
-    # For state=exists, do not fail when the item is missing; return exists=false so callers can check
-    if module.params.get('state') == 'exists':
-        app.manage(json_output_fields=['client_id', 'client_secret'], fail_when_not_exists=False)
-    else:
-        app.manage(json_output_fields=['client_id', 'client_secret'])
-
-
-if __name__ == '__main__':
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

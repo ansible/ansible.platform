@@ -35,6 +35,7 @@
         username: "{{ molecule_user }}"
         first_name: MoleculeTest
         password: "{{ molecule_password }}"
+        update_secrets: false
         state: present
       register: idem_result
 
