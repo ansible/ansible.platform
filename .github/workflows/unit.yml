@@ -29,7 +29,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: python -m pip install ansible-core pytest
+        run: |
+          python -m pip install ansible-core pytest
+          python -m pip install -r test-requirements.txt
 
       - name: Run unit tests
         working-directory: ansible_collections/ansible/platform
