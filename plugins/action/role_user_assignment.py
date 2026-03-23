@@ -74,6 +74,18 @@ class ActionModule(BaseResourceActionPlugin):
             object_ids = validated_params.get('object_ids')
             object_ansible_id = validated_params.get('object_ansible_id')
 
+            # Determine entity type from role_definition prefix so we can
+            # resolve object names (strings) to integer IDs.
+            _role_type_map = {
+                'Team': 'teams',
+                'Organization': 'organizations',
+            }
+            entity_type = next(
+                (mapped for prefix, mapped in _role_type_map.items()
+                 if role_definition_str and role_definition_str.startswith(prefix)),
+                None,
+            )
+
             # Collect list of object ids to iterate over
             if object_ids is not None:
                 objects_to_process = list(object_ids)
@@ -95,7 +107,61 @@ class ActionModule(BaseResourceActionPlugin):
                 if user_ansible_id is not None:
                     assignment_data['user_ansible_id'] = user_ansible_id
                 if obj is not None:
-                    assignment_data['object_id'] = int(obj) if str(obj).isdigit() else obj
+                    # Resolve object name → integer ID when possible.
+                    resolved_obj = None
+                    if str(obj).isdigit():
+                        resolved_obj = int(obj)
+                    elif entity_type:
+                        # obj is a name string — resolve to integer ID.
+                        # Primary: fast lookup_resource_id (single GET with name filter).
+                        try:
+                            resolved_obj = manager.lookup_resource_id(entity_type, 'name', str(obj))
+                        except Exception as _lookup_exc:
+                            logger.debug(
+                                "role_user_assignment: lookup_resource_id('%s', 'name', '%s') failed: %s",
+                                entity_type, obj, _lookup_exc
+                            )
+
+                        # Secondary fallback: use execute('find') for the entity module.
+                        # This uses the module's own transform mixin (a proven code path).
+                        # Only applicable for organizations — teams require 'organization'
+                        # as a required field which we may not have here.
+                        if resolved_obj is None and entity_type == 'organizations':
+                            try:
+                                _found = manager.execute(
+                                    operation='find',
+                                    module_name='organization',
+                                    ansible_data={'name': str(obj)},
+                                )
+                                if _found and _found.get('id'):
+                                    resolved_obj = int(_found['id'])
+                                    logger.debug(
+                                        "role_user_assignment: secondary find resolved '%s' → id=%s",
+                                        obj, resolved_obj
+                                    )
+                            except Exception as _find_exc:
+                                logger.debug(
+                                    "role_user_assignment: secondary find('organization', name='%s') failed: %s",
+                                    obj, _find_exc
+                                )
+
+                    if resolved_obj is None and not str(obj).isdigit():
+                        # Both lookup paths failed — cannot send a name string as
+                        # object_id to the API ("Expected pk value, received str.").
+                        # Fail early with a useful message.
+                        raise ValueError(
+                            "Cannot resolve object name '%s' (entity type: '%s') to an "
+                            "integer ID. Ensure the %s exists on the gateway or pass an "
+                            "integer object_id instead."
+                            % (obj, entity_type or "unknown", entity_type or "resource")
+                        )
+
+                    if resolved_obj is None:
+                        # entity_type was unknown — keep obj as-is; the transform mixin
+                        # will attempt its own resolution and raise if it also fails.
+                        resolved_obj = obj
+
+                    assignment_data['object_id'] = resolved_obj
                 if object_ansible_id is not None:
                     assignment_data['object_ansible_id'] = object_ansible_id
 

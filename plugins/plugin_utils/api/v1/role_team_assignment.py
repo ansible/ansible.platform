@@ -79,7 +79,20 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
 
         object_id = getattr(ansible_instance, "object_id", None)
         if object_id is not None:
-            api_data["object_id"] = int(object_id) if str(object_id).isdigit() else object_id
+            if isinstance(object_id, int):
+                api_data["object_id"] = object_id
+            elif str(object_id).isdigit():
+                api_data["object_id"] = int(object_id)
+            elif manager:
+                for endpoint in ("organizations", "teams"):
+                    resolved = _resolve_fk(manager, endpoint, "name", object_id)
+                    if resolved is not None:
+                        api_data["object_id"] = resolved
+                        break
+                else:
+                    api_data["object_id"] = object_id
+            else:
+                api_data["object_id"] = object_id
 
         object_ansible_id = getattr(ansible_instance, "object_ansible_id", None)
         if object_ansible_id is not None:
