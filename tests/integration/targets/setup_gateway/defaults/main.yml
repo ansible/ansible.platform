@@ -1,5 +1,5 @@
 ---
-gateway_hostname: https://34.238.38.25/
+gateway_hostname: https://34.238.38.25
 gateway_username: admin
 gateway_password: Admin!Password!Gw
 gateway_validate_certs: false
