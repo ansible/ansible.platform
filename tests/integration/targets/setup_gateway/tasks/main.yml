@@ -10,4 +10,12 @@
   until: server_ping is not failed
   retries: 30
   delay: 2
+
+- name: Configure connection mode for this test run
+  ansible.builtin.set_fact:
+    ansible_connection: >-
+      {{ 'ansible.platform.http' if connection_mode | default('local') in ['http-direct', 'http-persistent'] else 'local' }}
+    ansible_platform_use_persistent_connection: >-
+      {{ connection_mode | default('local') == 'http-persistent' }}
+  when: connection_mode is defined
 ...
