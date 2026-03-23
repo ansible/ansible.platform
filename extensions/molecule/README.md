@@ -27,6 +27,33 @@ molecule test -s users --all -- -e gateway_hostname=https://other.example/ -e ga
 
 The inventory sets `ansible_connection: ansible.platform.http` so the platform user module can call `get_client()` on the connection. Do not use `connection: local` for plays that run `ansible.platform.user`.
 
+## ⚠️ Which directory to run from
+
+**Always run `molecule` from the `extensions/` directory** (one level above this README), never from `extensions/molecule/` or from the collection root.
+
+Molecule resolves scenario names by looking for a `molecule/` subdirectory inside your current working directory:
+
+| Run from | Molecule looks for | Result |
+|---|---|---|
+| `extensions/` | `extensions/molecule/<scenario>/molecule.yml` | ✅ works |
+| `extensions/molecule/` | `extensions/molecule/molecule/<scenario>/molecule.yml` | ❌ `glob failed` |
+| `ansible/platform/` (collection root) | `ansible/platform/molecule/<scenario>/molecule.yml` | ❌ `glob failed` |
+
+**Quick fix if you hit `CRITICAL '...molecule.yml' glob failed`:**
+
+```bash
+# Go UP one level from extensions/molecule/ to extensions/
+cd ..   # now you are in extensions/
+
+molecule test -s role_user_assignment_mock
+```
+
+Or use the Makefile target from the collection root (it handles the `cd` for you):
+
+```bash
+make molecule-test SCENARIO=role_user_assignment_mock
+```
+
 ## Install (once)
 
 From the **collection root**, in a venv or your active env (e.g. `ansible312`):

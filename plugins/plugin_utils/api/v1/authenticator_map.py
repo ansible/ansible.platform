@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class APIAuthenticatorMap_v1(BaseTransformMixin):
     """API v1 representation of an authenticator map."""
 
-    name: str
-    authenticator: int
+    name: Optional[str] = None
+    authenticator: Optional[int] = None
     revoke: Optional[bool] = None
     map_type: Optional[str] = None
     team: Optional[str] = None
@@ -45,6 +45,10 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
             api_data['name'] = name or new_name
         elif op == 'update':
             api_data['name'] = new_name if new_name is not None else (name or '')
+        else:
+            # find / other operations — include name when available
+            if name is not None:
+                api_data['name'] = name
         auth = getattr(ansible_instance, 'authenticator', None)
         if auth is not None:
             manager = context.manager if isinstance(context, TransformContext) else context.get('manager')

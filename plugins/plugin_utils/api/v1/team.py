@@ -20,7 +20,7 @@ class APITeam_v1(BaseTransformMixin):
     API v1 representation of a team.
     """
 
-    name: str
+    name: Optional[str] = None
     organization: Optional[int] = None  # organization id for API
     description: Optional[str] = None
 
@@ -71,6 +71,10 @@ class TeamTransformMixin_v1(BaseTransformMixin):
             api_data['name'] = name or new_name
         elif op == 'update':
             api_data['name'] = new_name if new_name is not None else (name or '')
+        else:
+            # find / other operations — include name when available
+            if name is not None:
+                api_data['name'] = name
 
         if description is not None:
             api_data['description'] = description

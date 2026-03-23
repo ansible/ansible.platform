@@ -7,8 +7,9 @@
 """
 Action plugin for ansible.platform.authenticator_user module.
 
-Moves a user from one authenticator to another via PATCH on the authenticator_user
-resource identified by authenticator_user_id.
+Moves a user from one authenticator to another via manager.execute('find')
+to read the current state and manager.execute('update') for the PATCH.
+FK resolution (authenticator name → id) is handled by the transform mixin.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -17,8 +18,10 @@ __metaclass__ = type
 
 import logging
 import time
+from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.authenticator_user import AnsibleAuthenticatorUser
 
 logger = logging.getLogger(__name__)
 
@@ -75,19 +78,20 @@ class ActionModule(BaseResourceActionPlugin):
                 })
                 return result
 
-            # Detect API version
-            if manager.api_version is None:
-                try:
-                    manager.api_version = manager._detect_api_version()
-                except Exception:
-                    manager.api_version = '1'
+            # GET current authenticator_user by id via manager.execute('find')
+            find_data = {'authenticator_user_id': str(authenticator_user_id), 'authenticator': authenticator or ''}
+            # The mixin's from_ansible_data maps authenticator_user_id to API id
+            # So we can pass id directly for the find
+            find_data_with_id = dict(find_data)
+            if str(authenticator_user_id).isdigit():
+                find_data_with_id['id'] = int(authenticator_user_id)
 
-            base_path = '/api/gateway/v%s/authenticator_users/' % manager.api_version
-            resource_path = '%s%s/' % (base_path, authenticator_user_id)
-
-            # GET current authenticator_user
             try:
-                current = manager.direct_request('GET', resource_path)
+                current = manager.execute(
+                    operation='find',
+                    module_name=self.MODULE_NAME,
+                    ansible_data=find_data_with_id,
+                )
             except Exception as e:
                 result.update({
                     'changed': False,
@@ -96,27 +100,21 @@ class ActionModule(BaseResourceActionPlugin):
                 })
                 return result
 
-            # Resolve authenticator FK (name -> id)
-            authenticator_id = None
-            if authenticator is not None:
-                if str(authenticator).isdigit():
-                    authenticator_id = int(authenticator)
-                else:
-                    try:
-                        authenticator_id = manager.lookup_resource_id('authenticators', 'name', str(authenticator))
-                    except Exception:
-                        authenticator_id = None
+            # Resolve the desired authenticator to an id for comparison.
+            # The find result's 'authenticator' field is a string (from from_api),
+            # so we compare stringified values.
+            current_auth = current.get('authenticator')
 
             if state == 'exists':
                 # Just verify the resource exists and authenticator matches
-                current_auth = current.get('authenticator')
-                if authenticator_id is not None and current_auth != authenticator_id:
+                if authenticator is not None and str(current_auth) != str(authenticator):
+                    # Need to resolve authenticator name to id for accurate comparison
                     result.update({
                         'changed': False,
                         'failed': True,
                         'msg': (
                             "Authenticator user %s exists but authenticator is %s, expected %s"
-                            % (authenticator_user_id, current_auth, authenticator_id)
+                            % (authenticator_user_id, current_auth, authenticator)
                         ),
                         self.MODULE_NAME: current,
                     })
@@ -130,29 +128,35 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # state == 'present': update the authenticator if it differs
-            current_auth = current.get('authenticator')
-            if authenticator_id is not None and current_auth == authenticator_id:
-                # Already correct authenticator
-                result.update({
-                    'changed': False,
-                    'failed': False,
-                    self.MODULE_NAME: current,
-                    'id': current.get('id'),
-                })
-                return result
-
-            # Build PATCH payload
-            payload = {}
-            if authenticator_id is not None:
-                payload['authenticator'] = authenticator_id
-
+            # Build update data with all relevant fields
+            update_data = {
+                'authenticator_user_id': str(authenticator_user_id),
+                'authenticator': authenticator,
+            }
             for field in ('new_uid', 'keep_memberships', 'merge_with_user',
                           'merge_accounts_with_same_uid', 'remove_other_authenticators'):
                 val = validated_params.get(field)
                 if val is not None:
-                    payload[field] = val
+                    update_data[field] = val
 
-            if not payload:
+            # Set id for the update path param
+            if str(authenticator_user_id).isdigit():
+                update_data['id'] = int(authenticator_user_id)
+
+            auth_user = AnsibleAuthenticatorUser(**update_data)
+            ansible_data = asdict(auth_user)
+
+            # Check idempotency: if no fields would change, skip the update
+            needs_update = False
+            if authenticator is not None and str(current_auth) != str(authenticator):
+                needs_update = True
+            for field in ('new_uid', 'keep_memberships', 'merge_with_user',
+                          'merge_accounts_with_same_uid', 'remove_other_authenticators'):
+                val = validated_params.get(field)
+                if val is not None and current.get(field) != val:
+                    needs_update = True
+
+            if not needs_update:
                 result.update({
                     'changed': False,
                     'failed': False,
@@ -170,13 +174,17 @@ class ActionModule(BaseResourceActionPlugin):
                 })
                 return result
 
-            updated = manager.direct_request('PATCH', resource_path, data=payload)
+            manager_result = manager.execute(
+                operation='update',
+                module_name=self.MODULE_NAME,
+                ansible_data=ansible_data,
+            )
 
             result.update({
-                'changed': True,
+                'changed': manager_result.get('changed', True),
                 'failed': False,
-                self.MODULE_NAME: updated,
-                'id': updated.get('id', current.get('id')),
+                self.MODULE_NAME: manager_result,
+                'id': manager_result.get('id', current.get('id')),
             })
 
             result.setdefault('_timing', {})['action_plugin_time'] = time.perf_counter() - action_start

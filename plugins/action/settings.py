@@ -7,8 +7,9 @@
 """
 Action plugin for ansible.platform.settings module.
 
-Settings is a singleton resource: GET /settings/all/ to read, PATCH to update.
-Uses direct_request() for raw HTTP access to the singleton endpoint.
+Settings is a singleton resource: manager.execute('find') reads the current state,
+manager.execute('update') patches only the changed keys.  Idempotency is handled
+at the action plugin level by comparing desired vs current values.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -17,8 +18,10 @@ __metaclass__ = type
 
 import logging
 import time
+from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.settings import AnsibleSettings
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +67,13 @@ class ActionModule(BaseResourceActionPlugin):
             validated_params = validated_input.validated_parameters
             desired_settings = validated_params.get('settings', {}) or {}
 
-            # Detect API version for correct path
-            if manager.api_version is None:
-                try:
-                    manager.api_version = manager._detect_api_version()
-                except Exception:
-                    manager.api_version = '1'
-
-            settings_path = '/api/gateway/v%s/settings/all/' % manager.api_version
-
-            # GET current settings
-            current_settings = manager.direct_request('GET', settings_path)
+            # GET current settings via manager.execute('find')
+            current_result = manager.execute(
+                operation='find',
+                module_name=self.MODULE_NAME,
+                ansible_data={'settings': {}},
+            )
+            current_settings = current_result.get('settings', {}) or {}
 
             # Idempotency: check which desired keys differ from current
             to_update = {
@@ -109,8 +108,14 @@ class ActionModule(BaseResourceActionPlugin):
                 })
                 return result
 
-            # PATCH only the changed keys
-            updated_settings = manager.direct_request('PATCH', settings_path, data=to_update)
+            # PATCH only the changed keys via manager.execute('update')
+            update_settings = AnsibleSettings(settings=to_update)
+            update_result = manager.execute(
+                operation='update',
+                module_name=self.MODULE_NAME,
+                ansible_data=asdict(update_settings),
+            )
+            updated_settings = update_result.get('settings', {}) or {}
 
             result.update({
                 'changed': True,
