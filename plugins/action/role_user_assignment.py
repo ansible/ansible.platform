@@ -80,11 +80,9 @@ class ActionModule(BaseResourceActionPlugin):
             state = validated_params.get('state', 'present')
 
             # Detect API version
-            if manager.api_version is None:
-                try:
-                    manager.api_version = manager._detect_api_version()
-                except Exception:
-                    manager.api_version = '1'
+            api_version = getattr(manager, 'api_version', None)
+            if not api_version:
+                api_version = '1'
 
             api_version = manager.api_version
             assignments_base = '/api/gateway/v%s/role_user_assignments/' % api_version

@@ -140,8 +140,8 @@ class TestHTTPConnectionDispatcher(unittest.TestCase):
                     self.connection.get_client(self.task_vars, self.gateway_config)
 
         mock_direct.assert_called_once()
-        
-    def _make_connection():
+
+    def _make_connection(self):
         """Create a Connection instance with minimal mocks for testing get_client().
 
         ConnectionBase.__init__ calls get_shell_plugin(shell_type=play_context.shell, executable=...).
@@ -155,16 +155,15 @@ class TestHTTPConnectionDispatcher(unittest.TestCase):
         conn._connected = True
         return conn
 
-
-    def _make_gateway_config():
+    def _make_gateway_config(self):
         """Minimal GatewayConfig for tests."""
         return GatewayConfig(base_url="https://example.com/", username="admin", password="secret")
-      
-    def test_get_client_no_option_no_vars_defaults_to_direct():
+
+    def test_get_client_no_option_no_vars_defaults_to_direct(self):
         """When get_option raises and no persistent vars are set, default to direct mode."""
-        conn = _make_connection()
+        conn = self._make_connection()
         task_vars = {"inventory_hostname": "localhost", "hostvars": {"localhost": {}}}
-        gateway_config = _make_gateway_config()
+        gateway_config = self._make_gateway_config()
         mock_direct = MagicMock(return_value=(MagicMock(), None))
 
         with patch.object(conn, "get_option", side_effect=KeyError("persistent")):
@@ -175,15 +174,13 @@ class TestHTTPConnectionDispatcher(unittest.TestCase):
         mock_direct.assert_called_once()
         assert mock_direct.return_value[1] is None
 
-
     # ---- Direct (ephemeral) mode ----
 
-
-    def test_get_client_direct_returns_client_and_no_facts():
+    def test_get_client_direct_returns_client_and_no_facts(self):
         """Direct mode returns (client, None) so no facts are set for reuse."""
-        conn = _make_connection()
+        conn = self._make_connection()
         task_vars = {"inventory_hostname": "localhost"}
-        gateway_config = _make_gateway_config()
+        gateway_config = self._make_gateway_config()
         mock_client = MagicMock()
         mock_direct = MagicMock(return_value=(mock_client, None))
 
@@ -195,15 +192,13 @@ class TestHTTPConnectionDispatcher(unittest.TestCase):
         assert client is mock_client
         assert facts is None
 
-
     # ---- Persistent mode ----
 
-
-    def test_get_client_persistent_returns_client_and_facts():
+    def test_get_client_persistent_returns_client_and_facts(self):
         """Persistent mode returns (client, facts_dict) so facts can be set for reuse."""
-        conn = _make_connection()
+        conn = self._make_connection()
         task_vars = {"inventory_hostname": "localhost"}
-        gateway_config = _make_gateway_config()
+        gateway_config = self._make_gateway_config()
         mock_client = MagicMock()
         facts_dict = {"platform_manager_socket": "/tmp/sock", "platform_manager_authkey": "b64key"}
 
@@ -219,22 +214,20 @@ class TestHTTPConnectionDispatcher(unittest.TestCase):
         assert "platform_manager_socket" in facts
         assert "platform_manager_authkey" in facts
 
-
     # ---- Persistent connection failure scenarios ----
 
-
-    def test_persistent_reuse_fails_connection_raises_spawns_new():
+    def test_persistent_reuse_fails_connection_raises_spawns_new(self):
         """When reuse is attempted but ManagerRPCClient raises (e.g. process dead), spawn new manager and return it."""
         import base64
 
-        conn = _make_connection()
+        conn = self._make_connection()
         stale_socket = "/tmp/ansible_platform/stale.sock"
         authkey_b64 = base64.b64encode(b"secret").decode("ascii")
         task_vars = {
             "inventory_hostname": "localhost",
             "hostvars": {"localhost": {"platform_manager_socket": stale_socket, "platform_manager_authkey": authkey_b64}},
         }
-        gateway_config = _make_gateway_config()
+        gateway_config = self._make_gateway_config()
 
         mock_client = MagicMock()
         new_socket = "/tmp/ansible_platform/new.sock"
@@ -266,19 +259,18 @@ class TestHTTPConnectionDispatcher(unittest.TestCase):
         mock_pm.spawn_manager_process.assert_called_once()
         assert mock_rpc.call_count == 2
 
-
-    def test_persistent_socket_file_missing_spawns_new():
+    def test_persistent_socket_file_missing_spawns_new(self):
         """When facts have socket path but socket file does not exist, skip reuse and spawn new manager."""
         import base64
 
-        conn = _make_connection()
+        conn = self._make_connection()
         missing_socket = "/tmp/ansible_platform/missing.sock"
         authkey_b64 = base64.b64encode(b"secret").decode("ascii")
         task_vars = {
             "inventory_hostname": "localhost",
             "hostvars": {"localhost": {"platform_manager_socket": missing_socket, "platform_manager_authkey": authkey_b64}},
         }
-        gateway_config = _make_gateway_config()
+        gateway_config = self._make_gateway_config()
 
         mock_client = MagicMock()
         new_socket = "/tmp/ansible_platform/new.sock"
