@@ -11,15 +11,34 @@ from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
 
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
+
 def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
-    """Resolve a name or id to an integer id."""
+    """Resolve a name or id to an integer id.
+
+    Returns the integer ID, or None if resolution fails.
+    Exceptions are logged but not re-raised so callers can decide how to handle.
+    """
     if value is None:
         return None
     if str(value).isdigit():
         return int(value)
     try:
-        return manager.lookup_resource_id(endpoint, lookup_field, str(value))
-    except Exception:
+        result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
+        if result is None:
+            _logger.debug(
+                "_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'",
+                lookup_field, value, endpoint
+            )
+        return result
+    except Exception as exc:
+        _logger.debug(
+            "_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s",
+            lookup_field, value, endpoint, type(exc).__name__, exc
+        )
         return None
 
 
@@ -76,7 +95,44 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
 
         object_id = getattr(ansible_instance, "object_id", None)
         if object_id is not None:
-            api_data["object_id"] = int(object_id) if str(object_id).isdigit() else object_id
+            # Ensure object_id is always an integer for the API.
+            if isinstance(object_id, int):
+                api_data["object_id"] = object_id
+            elif str(object_id).isdigit():
+                api_data["object_id"] = int(object_id)
+            elif manager:
+                # object_id is a name string — derive entity type from role_definition to
+                # make a targeted lookup rather than trying all common types blindly.
+                role_def_name = getattr(ansible_instance, "role_definition", "") or ""
+                _entity_candidates = []
+                if role_def_name.lower().startswith("organization"):
+                    _entity_candidates = ["organizations", "teams"]
+                elif role_def_name.lower().startswith("team"):
+                    _entity_candidates = ["teams", "organizations"]
+                else:
+                    _entity_candidates = ["organizations", "teams"]
+
+                resolved = None
+                for endpoint in _entity_candidates:
+                    resolved = _resolve_fk(manager, endpoint, "name", object_id)
+                    if resolved is not None:
+                        api_data["object_id"] = resolved
+                        break
+
+                if resolved is None:
+                    # All lookups failed — cannot send a name string as object_id to the API.
+                    raise ValueError(
+                        "Cannot resolve object name '%s' to an integer ID. "
+                        "Checked endpoints: %s. "
+                        "Ensure the resource exists or pass an integer object_id directly."
+                        % (object_id, ", ".join(_entity_candidates))
+                    )
+            else:
+                # No manager available — we have no way to resolve the name.
+                raise ValueError(
+                    "object_id '%s' is not an integer and no manager is available to resolve it. "
+                    "Please provide an integer object_id." % object_id
+                )
 
         object_ansible_id = getattr(ansible_instance, "object_ansible_id", None)
         if object_ansible_id is not None:

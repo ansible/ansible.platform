@@ -8,7 +8,8 @@
 Action plugin for ansible.platform.role_user_assignment module.
 
 Assigns or removes a role for a user against one or more objects (teams/orgs).
-Handles FK resolution (role_definition, user, objects) and multi-object iteration.
+Handles multi-object iteration at the action plugin level; FK resolution and
+API calls are delegated to manager.execute() via the transform mixin.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -17,25 +18,12 @@ __metaclass__ = type
 
 import logging
 import time
+from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_user_assignment import AnsibleRoleUserAssignment
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_id(manager, endpoint, lookup_field, value, api_version):
-    """Resolve a name or id to an integer id."""
-    if value is None:
-        return None
-    s = str(value).strip()
-    if not s:
-        return None
-    if s.isdigit():
-        return int(s)
-    try:
-        return manager.lookup_resource_id(endpoint, lookup_field, s)
-    except Exception:
-        return None
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -79,14 +67,6 @@ class ActionModule(BaseResourceActionPlugin):
             validated_params = validated_input.validated_parameters
             state = validated_params.get('state', 'present')
 
-            # Detect API version
-            api_version = getattr(manager, 'api_version', None)
-            if not api_version:
-                api_version = '1'
-
-            api_version = manager.api_version
-            assignments_base = '/api/gateway/v%s/role_user_assignments/' % api_version
-
             role_definition_str = validated_params.get('role_definition')
             user_param = validated_params.get('user')
             user_ansible_id = validated_params.get('user_ansible_id')
@@ -94,40 +74,17 @@ class ActionModule(BaseResourceActionPlugin):
             object_ids = validated_params.get('object_ids')
             object_ansible_id = validated_params.get('object_ansible_id')
 
-            # Resolve role_definition -> id
-            role_def_id = _resolve_id(
-                manager, 'role_definitions', 'name', role_definition_str, api_version
-            )
-            if role_def_id is None:
-                result.update({
-                    'changed': False,
-                    'failed': True,
-                    'msg': "Could not find role_definition: '%s'" % role_definition_str,
-                })
-                return result
-
-            # Resolve user -> id
-            user_id = None
-            if user_param is not None:
-                user_id = _resolve_id(manager, 'users', 'username', user_param, api_version)
-
-            # Map role prefix to endpoint for object resolution
-            role_map = {
+            # Determine entity type from role_definition prefix so we can
+            # resolve object names (strings) to integer IDs.
+            _role_type_map = {
                 'Team': 'teams',
                 'Organization': 'organizations',
             }
             entity_type = next(
-                (mapped for prefix, mapped in role_map.items()
+                (mapped for prefix, mapped in _role_type_map.items()
                  if role_definition_str and role_definition_str.startswith(prefix)),
-                None
+                None,
             )
-
-            # Build base kwargs for assignment API
-            base_kwargs = {'role_definition': role_def_id}
-            if user_id is not None:
-                base_kwargs['user'] = user_id
-            if user_ansible_id is not None:
-                base_kwargs['user_ansible_id'] = user_ansible_id
 
             # Collect list of object ids to iterate over
             if object_ids is not None:
@@ -141,40 +98,89 @@ class ActionModule(BaseResourceActionPlugin):
             assignments = []
 
             for obj in objects_to_process:
-                kwargs = dict(base_kwargs)
-                resolved_obj_id = None
-
+                # Build an AnsibleRoleUserAssignment for this single object
+                assignment_data = {
+                    'role_definition': role_definition_str,
+                }
+                if user_param is not None:
+                    assignment_data['user'] = user_param
+                if user_ansible_id is not None:
+                    assignment_data['user_ansible_id'] = user_ansible_id
                 if obj is not None:
-                    # Resolve object name -> id if entity_type is known
-                    if entity_type and not str(obj).isdigit():
-                        resolved_obj_id = _resolve_id(
-                            manager, entity_type,
-                            'name' if entity_type == 'organizations' else 'name',
-                            str(obj), api_version
+                    # Resolve object name → integer ID when possible.
+                    resolved_obj = None
+                    if str(obj).isdigit():
+                        resolved_obj = int(obj)
+                    elif entity_type:
+                        # obj is a name string — resolve to integer ID.
+                        # Primary: fast lookup_resource_id (single GET with name filter).
+                        try:
+                            resolved_obj = manager.lookup_resource_id(entity_type, 'name', str(obj))
+                        except Exception as _lookup_exc:
+                            logger.debug(
+                                "role_user_assignment: lookup_resource_id('%s', 'name', '%s') failed: %s",
+                                entity_type, obj, _lookup_exc
+                            )
+
+                        # Secondary fallback: use execute('find') for the entity module.
+                        # This uses the module's own transform mixin (a proven code path).
+                        # Only applicable for organizations — teams require 'organization'
+                        # as a required field which we may not have here.
+                        if resolved_obj is None and entity_type == 'organizations':
+                            try:
+                                _found = manager.execute(
+                                    operation='find',
+                                    module_name='organization',
+                                    ansible_data={'name': str(obj)},
+                                )
+                                if _found and _found.get('id'):
+                                    resolved_obj = int(_found['id'])
+                                    logger.debug(
+                                        "role_user_assignment: secondary find resolved '%s' → id=%s",
+                                        obj, resolved_obj
+                                    )
+                            except Exception as _find_exc:
+                                logger.debug(
+                                    "role_user_assignment: secondary find('organization', name='%s') failed: %s",
+                                    obj, _find_exc
+                                )
+
+                    if resolved_obj is None and not str(obj).isdigit():
+                        # Both lookup paths failed — cannot send a name string as
+                        # object_id to the API ("Expected pk value, received str.").
+                        # Fail early with a useful message.
+                        raise ValueError(
+                            "Cannot resolve object name '%s' (entity type: '%s') to an "
+                            "integer ID. Ensure the %s exists on the gateway or pass an "
+                            "integer object_id instead."
+                            % (obj, entity_type or "unknown", entity_type or "resource")
                         )
-                        if resolved_obj_id is None:
-                            result.update({
-                                'changed': False,
-                                'failed': True,
-                                'msg': "Could not find %s: '%s'" % (entity_type, obj),
-                            })
-                            return result
-                    else:
-                        resolved_obj_id = int(obj) if str(obj).isdigit() else obj
 
-                    if resolved_obj_id is not None:
-                        kwargs['object_id'] = resolved_obj_id
+                    if resolved_obj is None:
+                        # entity_type was unknown — keep obj as-is; the transform mixin
+                        # will attempt its own resolution and raise if it also fails.
+                        resolved_obj = obj
 
+                    assignment_data['object_id'] = resolved_obj
                 if object_ansible_id is not None:
-                    kwargs['object_ansible_id'] = object_ansible_id
+                    assignment_data['object_ansible_id'] = object_ansible_id
 
-                # Find existing assignment
-                existing_assignment = self._find_assignment(
-                    manager, assignments_base, kwargs
-                )
+                assignment = AnsibleRoleUserAssignment(**assignment_data)
+                ansible_data = asdict(assignment)
+
+                # Try to find existing assignment via manager.execute('find')
+                existing = None
+                try:
+                    existing = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=ansible_data,
+                    )
+                except (ValueError, Exception):
+                    existing = None
 
                 if state == 'exists':
-                    if not existing_assignment:
+                    if not existing or not existing.get('id'):
                         result.update({
                             'changed': False,
                             'failed': True,
@@ -185,22 +191,31 @@ class ActionModule(BaseResourceActionPlugin):
                             ),
                         })
                         return result
-                    assignments.append(existing_assignment)
+                    assignments.append(existing)
 
                 elif state == 'absent':
-                    if existing_assignment:
+                    if existing and existing.get('id'):
                         if not self._task.check_mode:
-                            delete_path = '%s%s/' % (assignments_base, existing_assignment['id'])
-                            manager.direct_request('DELETE', delete_path)
+                            # Set id on the ansible_data for delete
+                            ansible_data['id'] = existing['id']
+                            manager.execute(
+                                operation='delete',
+                                module_name=self.MODULE_NAME,
+                                ansible_data=ansible_data,
+                            )
                         overall_changed = True
-                        assignments.append({'state': 'absent', 'id': existing_assignment['id']})
+                        assignments.append({'state': 'absent', 'id': existing['id']})
 
                 else:  # state == 'present'
-                    if existing_assignment:
-                        assignments.append(existing_assignment)
+                    if existing and existing.get('id'):
+                        assignments.append(existing)
                     else:
                         if not self._task.check_mode:
-                            created = manager.direct_request('POST', assignments_base, data=kwargs)
+                            created = manager.execute(
+                                operation='create',
+                                module_name=self.MODULE_NAME,
+                                ansible_data=ansible_data,
+                            )
                             assignments.append(created)
                         overall_changed = True
 
@@ -228,19 +243,3 @@ class ActionModule(BaseResourceActionPlugin):
                 result['exception'] = traceback.format_exc()
 
         return result
-
-    def _find_assignment(self, manager, base_path, kwargs):
-        """Find an existing role_user_assignment matching the given kwargs."""
-        from urllib.parse import urlencode
-        query_params = {k: v for k, v in kwargs.items() if v is not None}
-        url = base_path
-        if query_params:
-            url = '%s?%s' % (base_path, urlencode(query_params))
-        try:
-            response = manager.direct_request('GET', url)
-            results = response.get('results', [])
-            if results:
-                return results[0]
-        except Exception:
-            pass
-        return None

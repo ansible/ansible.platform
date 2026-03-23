@@ -711,9 +711,10 @@ class DirectHTTPClient(BaseAPIClient):
         context: TransformContext
     ) -> dict:
         """Update resource with transformation."""
-        # Get the resource ID
+        # Get the resource ID (not required for singleton resources)
         resource_id = getattr(ansible_data, 'id', None)
-        if not resource_id:
+        is_singleton = getattr(mixin_class, 'is_singleton', False)
+        if not resource_id and not is_singleton:
             raise ValueError("Resource ID required for update operation")
 
         # Fetch current state for comparison
@@ -811,11 +812,38 @@ class DirectHTTPClient(BaseAPIClient):
         mixin_class: type,
         context: TransformContext
     ) -> dict:
-        """Find resource by lookup field."""
+        """Find resource by lookup field.
+
+        Supports three modes:
+        1. Singleton (mixin.is_singleton=True): GET the fixed endpoint path directly
+        2. ID lookup: GET /resource/{id}/
+        3. List+filter: GET /resource/?field=value (including composite-key lookups)
+        """
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
+        get_op = operations.get('get')
         list_op = operations.get('list')
 
+        # --- Singleton resources (e.g. settings) ---
+        if getattr(mixin_class, 'is_singleton', False):
+            if not get_op:
+                raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
+            url = self._build_url(get_op.path)
+            with self._lock:
+                self._http_request_count += 1
+            response = self._make_request(
+                get_op.method, url, operation='find', resource=mixin_class.__name__
+            )
+            try:
+                response_body = response.read()
+                api_result = json.loads(response_body) if response_body else {}
+            except Exception:
+                api_result = {}
+            ansible_instance = mixin_class.from_api(api_result, context)
+            from dataclasses import asdict
+            return asdict(ansible_instance)
+
+        # --- Standard CRUD resources ---
         if not list_op:
             raise ValueError(f"List operation not defined for {mixin_class.__name__}")
 
@@ -824,13 +852,19 @@ class DirectHTTPClient(BaseAPIClient):
         logger.info("DirectHTTPClient: Lookup field for %s: %s", mixin_class.__name__, lookup_field)
         lookup_value = getattr(ansible_data, lookup_field, None)
         logger.info("DirectHTTPClient: Lookup value for %s: %s", mixin_class.__name__, lookup_value)
-        if not lookup_value:
-            raise ValueError(f"Lookup field '{lookup_field}' not found in data")
-        query_params = {lookup_field: lookup_value}
+        # Support composite-key lookups via get_find_list_query_params.
+        # Use FK-resolved API data so query params contain IDs, not names.
+        composite_params = {}
         if hasattr(mixin_class, 'get_find_list_query_params'):
-            extra = mixin_class.get_find_list_query_params(ansible_data)
-            if extra:
-                query_params.update(extra)
+            api_data_for_find = mixin_class.from_ansible_data(ansible_data, context)
+            composite_params = mixin_class.get_find_list_query_params(api_data_for_find) or {}
+        if not lookup_value and not composite_params:
+            raise ValueError(f"Lookup field '{lookup_field}' not found in data")
+        query_params = {}
+        if lookup_value:
+            query_params[lookup_field] = lookup_value
+        if composite_params:
+            query_params.update(composite_params)
         # Build URL with query parameter(s)
         url = self._build_url(list_op.path, query_params)
         logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
@@ -924,6 +958,10 @@ class DirectHTTPClient(BaseAPIClient):
                     if value is None:
                         continue
                     request_data[field] = value
+
+            # flatten_body: send the dict field value as the body directly (e.g. settings)
+            if getattr(endpoint_op, 'flatten_body', False) and len(request_data) == 1:
+                request_data = next(iter(request_data.values()))
 
             # Skip secondary (dependent) operations that have no data to send.
             # This prevents calling e.g. /users/{id}/organizations/ when organizations is not set.

@@ -14,7 +14,10 @@ PYTHON_VERSION:
 .PHONY: PYTHON_VERSION clean git_hooks_config \
 	collection-install collection-test collection-docs \
 	collection-lint collection-sanity  collection-test-completeness \
-	collection-test-integration-check
+	collection-test-integration-check \
+	collection-test-local collection-test-http-direct collection-test-http-persistent \
+	collection-test-all-connections \
+	molecule-test molecule-test-all
 
 ## Set the local git configuration(specific to this repo) to look for hooks in .githooks folder
 git_hooks_config:
@@ -71,15 +74,56 @@ collection-lint: collection-install
 ## Run the collection tests
 ## Requires the GATEWAY_PASSWORD env variable to be set
 ## Set ANSIBLE_TEST_INTEGRATION_NO_VENV=1 to run without --venv (e.g. in CI after installing controller deps)
+## Set CONNECTION_MODE to control which connection mode is tested:
+##   local            (default) – ephemeral DirectHTTPClient, one per task
+##   http-direct      – ansible.platform.http plugin, DirectHTTPClient, one per task
+##   http-persistent  – ansible.platform.http plugin, shared ManagerRPCClient process
 ANSIBLE_TEST_INTEGRATION_VENV := --venv
 ifneq ($(ANSIBLE_TEST_INTEGRATION_NO_VENV),)
 ANSIBLE_TEST_INTEGRATION_VENV :=
 endif
-collection-test: collection-install
-	echo 'gateway_password: $(GATEWAY_PASSWORD)' > /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
-	cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml && \
+CONNECTION_MODE ?= local
+
+_write_integration_config:
+	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
+	@printf 'gateway_password: %s\nconnection_mode: %s\n' \
+		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
+		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
+	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
+
+collection-test: collection-install _write_integration_config
 	cd /tmp/collections/ansible_collections/ansible/platform && \
 	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage
+
+## Run integration tests explicitly using connection: local (default ephemeral mode)
+collection-test-local: collection-install
+	$(MAKE) collection-test CONNECTION_MODE=local
+
+## Run integration tests using connection: ansible.platform.http in direct (non-persistent) mode
+collection-test-http-direct: collection-install
+	$(MAKE) collection-test CONNECTION_MODE=http-direct
+
+## Run integration tests using connection: ansible.platform.http in persistent manager mode
+collection-test-http-persistent: collection-install
+	$(MAKE) collection-test CONNECTION_MODE=http-persistent
+
+## Run integration tests sequentially for all three connection modes
+collection-test-all-connections: collection-install
+	$(MAKE) collection-test CONNECTION_MODE=local
+	$(MAKE) collection-test CONNECTION_MODE=http-direct
+	$(MAKE) collection-test CONNECTION_MODE=http-persistent
+
+## Run a single Molecule scenario (mock tests, no real Gateway needed).
+## Usage: make molecule-test SCENARIO=role_user_assignment_mock
+##        make molecule-test SCENARIO=users_mock
+## Runs from inside the scenario directory so molecule finds molecule.yml regardless of version.
+SCENARIO ?= default
+molecule-test:
+	cd extensions/molecule/$(SCENARIO) && molecule test
+
+## Run all Molecule mock scenarios (starts mock server via default scenario, runs all, tears down).
+molecule-test-all:
+	cd extensions && molecule test --all
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:

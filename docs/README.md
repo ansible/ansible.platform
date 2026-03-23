@@ -1,133 +1,79 @@
-# Ansible Platform Collection — Documentation
+# `ansible.platform` Documentation
 
-Overview and index for the ansible.platform collection (ANSTRAT-1640). Docs are grouped into subdirectories to make them easier to navigate.
-
----
-
-## Quick links
-
-| Topic | Directory | Key docs |
-|-------|-----------|----------|
-| **Architecture** | [architecture/](architecture/) | [ARCHITECTURE.md](architecture/ARCHITECTURE.md), [CONNECTION_MODES.md](architecture/CONNECTION_MODES.md) |
-| **Connection plugin** | [connection/](connection/) | Implementation, migration, code flow |
-| **Testing** | [testing/](testing/) | Unit/integration, Molecule, mock Gateway, CI |
-| **Project / release** | [project/](project/) | ANSTRAT-1640 timeline, breaking changes, scrum updates |
-| **API / Gateway** | [api/](api/) | Pagination, networking improvements |
-| **Troubleshooting** | [troubleshooting/](troubleshooting/) | Worker crash analysis |
-| **Migration** | [migration/](migration/) | Playbook migration |
-| **Demo** | [demo/](demo/) | Demo script, Q&A |
-| **Reusables** | [reusables/](reusables/) | Shared variables, snippets |
-| **Reference (meraki_rm)** | [REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md) | What we can learn from Brad's action plugin & resource module approach |
+This directory contains the canonical technical documentation for the `ansible.platform`
+collection. The structure mirrors `cisco/meraki_rm` — a related SDK from the same team —
+so developers familiar with that collection find the same patterns and numbering.
 
 ---
 
-## Directory summary
+## Document Index
 
-### [architecture/](architecture/)
-
-System design, connection modes, and high-level behavior.
-
-- **[ARCHITECTURE.md](architecture/ARCHITECTURE.md)** — System architecture, components, data flow, direct vs persistent mode
-- **[ARCHITECTURE_DIAGRAMS.md](architecture/ARCHITECTURE_DIAGRAMS.md)** — Diagrams (ASCII)
-- **[CONNECTION_MODES.md](architecture/CONNECTION_MODES.md)** — Direct vs persistent mode, when to use each, troubleshooting
-- **[DESIGN_ACTION_PLUGIN_OPERATIONS.md](architecture/DESIGN_ACTION_PLUGIN_OPERATIONS.md)** — Action plugin operations design
-- **[DISPATCHER_PATTERN.md](architecture/DISPATCHER_PATTERN.md)** — Dispatcher pattern
-- **[CODE_WALKTHROUGH.md](architecture/CODE_WALKTHROUGH.md)** — Code walkthrough
-- **[CURRENT_IMPLEMENTATION_SUMMARY.md](architecture/CURRENT_IMPLEMENTATION_SUMMARY.md)** — Current implementation summary
-
-### [connection/](connection/)
-
-Connection plugin implementation, migration, and code flow.
-
-- **CONNECTION_PLUGIN_*.md** — Migration, implementation, design decisions, final implementation
-- **CONNECTION_DISPATCHER_PLACEMENT.md** — Where the dispatcher runs
-- **CONNECTION_INITIALIZATION.md** — Initialization flow
-- **PERSISTENT_CONNECTION_CODEFLOW.md**, **STANDARD_CONNECTION_CODEFLOW.md** — Code flow for each mode
-- **VERIFYING_PERSISTENT_CONNECTION.md** — How to verify persistent mode
-
-### [testing/](testing/)
-
-How to run and extend tests; CI and references.
-
-**Quick run commands (from collection root):**
-
-| Test type | Command |
-|-----------|--------|
-| **Unit** | `tox -f unit --ansible -p auto --conf tox-ansible.ini` or `ansible-test units --venv -v` or `pytest tests/unit/ -v` (from collection root; see [RUN_UNIT_TESTS.md](testing/RUN_UNIT_TESTS.md) for pytest path). |
-| **Integration (Molecule)** | `ANSIBLE_COLLECTIONS_PATH="$(cd ../.. && pwd)" molecule test --all` (or mock-only: `molecule create -s default` then `molecule test -s users_mock --all` and `molecule test -s organization_mock --all`). CI runs mock scenarios via `.github/workflows/molecule-mock.yml`. |
-
-Unit tests live under **`tests/unit/`** (connection plugin, registry, loader). Integration tests use **Molecule** (see `extensions/molecule/` and [MOLECULE_TEST_ALL-HOW-IT-WORKS.md](testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md)).
-
-- **[RUN_UNIT_TESTS.md](testing/RUN_UNIT_TESTS.md)** — Run unit tests locally (tox-ansible, ansible-test, pytest)
-- **[RUN_INTEGRATION_TESTS_LOCALLY.md](testing/RUN_INTEGRATION_TESTS_LOCALLY.md)** — Run integration/Molecule tests locally
-- **[TESTING_WITH_MOCK_GATEWAY.md](testing/TESTING_WITH_MOCK_GATEWAY.md)** — Using the mock Gateway server
-- **INTEGRATION_TESTS_CI.md** — CI for integration tests
-- **JIRA-AAP-57835-TEST-PLAN-TICKETS.md** — Test plan epic ticket content (unit + Molecule)
-- **REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md** — Reference: meraki_rm for Molecule and mock server
-- **MOLECULE_TEST_ALL-HOW-IT-WORKS.md** — What runs when you `molecule test --all` and how to run it in CI
-- **SPIKE-MANAGER-LIFECYCLE-IN-MANAGED-ENVIRONMENTS.md** — Spike guide for manager lifecycle in containers/EE
-
-### [project/](project/)
-
-ANSTRAT-1640 project and release notes.
-
-- **[BREAKING_CHANGES_ANSTRAT_1640_PHASE1.md](project/BREAKING_CHANGES_ANSTRAT_1640_PHASE1.md)** — Breaking changes in Phase 1 (adopting new path)
-- **ANSTRAT_1640_TIMELINE_TESTATHON.md** — Timeline and testathon
-- **SCRUM_UPDATE_ANSTRAT_1640_POST_PROPOSAL.md** — Scrum update after P1 proposal
-
-### [api/](api/)
-
-Gateway API behavior and networking.
-
-- **GATEWAY_API_PAGINATION_FULL_URL.md** — Pagination and full URLs
-- **NETWORKING_IMPROVEMENTS.md** — Networking improvements and follow-ups
-
-### [troubleshooting/](troubleshooting/)
-
-Incident and root-cause notes.
-
-- **WORKER_CRASH_FIX.md**, **WORKER_CRASH_ROOT_CAUSE.md** — Worker crash analysis and fix
-
-### [migration/](migration/)
-
-Playbook and usage migration.
-
-- **PLAYBOOK_MIGRATION.md** — Migrating playbooks to the new path
-- **MIGRATE-MODULES-TO-PERSISTENT-MANAGER.md** — Migrating modules (organization, team, etc.) to the action plugin + persistent manager path (user as reference)
-
-### [demo/](demo/)
-
-Demos and FAQ.
-
-- **DEMO_SCRIPT.md** — Demo script
-- **Q_AND_A.md** — Q&A
-
-### [reusables/](reusables/)
-
-Shared content (e.g. variables, snippets).
-
-- **variables.md**
-
-### Reference: meraki_rm (Brad's approach)
-
-- **[REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md](REFERENCE-MERAKI_RM-ACTION-PLUGIN-APPROACH.md)** — Action plugin & resource module pattern, data-driven base, User Models, identity categories, adding resources. Use when evolving our action plugin design or adding new resources.
-- **Testing/mock:** [testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md](testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md) — Molecule and mock server.
+| # | File | Audience | Description |
+|---|------|----------|-------------|
+| 01 | [01-overview.md](01-overview.md) | All | Problem, vision, personas, user stories, module coverage, doc map |
+| 02 | [02-resource-module-pattern.md](02-resource-module-pattern.md) | All | States (present/absent/exists/enforced), entities vs endpoints, convergence contract |
+| 03 | [03-sdk-architecture.md](03-sdk-architecture.md) | Architects / Senior devs | Persistent connection manager, two connection modes, RPC interface, directory structure |
+| 04 | [04-data-model-transformation.md](04-data-model-transformation.md) | Framework devs | Three-tier data flow, Ansible model, API model, transform mixin, ref fields, case studies |
+| 05 | [05-design-principles.md](05-design-principles.md) | All devs | 10 rules governing every decision, quality checklist, human-in-the-loop triggers |
+| 06 | [06-foundation-components.md](06-foundation-components.md) | Framework devs | Full spec: Registry, Loader, BaseTransformMixin, GatewayConfig, PlatformService, PlatformManager, ManagerRPCClient, BaseResourceActionPlugin |
+| 07 | [07-adding-resources.md](07-adding-resources.md) | Feature devs | Step-by-step 7-file workflow, complete example, common patterns catalog, PR checklist |
+| 08 | [08-testing-strategy.md](08-testing-strategy.md) | All devs / QE | Three-layer strategy: unit (pytest), Molecule mock, integration; CI workflows; linting |
+| 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas, phase-by-phase guidance, coding standards, human-in-the-loop triggers, troubleshooting |
+| 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map, identity categories, known API quirks, implementation roadmap |
 
 ---
 
-## Component locations (in repo)
+## Reading Paths
 
-- **Platform / config:** `plugins/plugin_utils/platform/`
-- **Manager / RPC:** `plugins/plugin_utils/manager/`
-- **Action plugins:** `plugins/action/`
-- **Data models / API layers:** `plugins/plugin_utils/api/`, `plugins/plugin_utils/ansible_models/`
-- **Plugin documentation (DOCUMENTATION):** `plugins/plugin_utils/docs/`
+### "I want to understand what this collection does"
+→ [01-overview.md](01-overview.md) → [02-resource-module-pattern.md](02-resource-module-pattern.md)
+
+### "I want to understand the architecture"
+→ [03-sdk-architecture.md](03-sdk-architecture.md) → [04-data-model-transformation.md](04-data-model-transformation.md)
+
+### "I need to add a new resource module"
+→ [07-adding-resources.md](07-adding-resources.md) (primary)
+→ [05-design-principles.md](05-design-principles.md) (rules)
+→ [10-case-study-aap-platform.md](10-case-study-aap-platform.md) (find your resource's identity category)
+
+### "I'm working with an AI agent on this codebase"
+→ [09-agent-collaboration.md](09-agent-collaboration.md) first, then task-specific docs
+
+### "I need to modify the framework (manager, registry, base classes)"
+→ [06-foundation-components.md](06-foundation-components.md) → [03-sdk-architecture.md](03-sdk-architecture.md)
+
+### "I need to write or fix tests"
+→ [08-testing-strategy.md](08-testing-strategy.md)
 
 ---
 
-## Related
+## Document Dependency Map
 
-- **Collection README:** `../README.md`
-- **Changelog:** `../CHANGELOG.rst`
-- **Tests:** `../tests/`
-- **Molecule scenarios:** `../extensions/molecule/`
+```
+01-overview (start here)
+  │
+  ├── 02-resource-module-pattern (what resource modules are)
+  │     │
+  │     └── 03-sdk-architecture (persistent connection, manager lifecycle)
+  │           │
+  │           ├── 04-data-model-transformation (three-tier pattern)
+  │           │
+  │           └── 05-design-principles (the rules)
+  │
+  ├── 06-foundation-components (build the framework)
+  │     │
+  │     └── 07-adding-resources (use the framework)
+  │
+  ├── 08-testing-strategy (test everything)
+  │
+  ├── 09-agent-collaboration (AI agent guidance)
+  │
+  └── 10-case-study-aap-platform (module map, API quirks)
+```
+
+---
+
+## Old Documentation
+
+The previous documentation (a collection of unstructured `CAPS_NAMES.md` files) has
+been preserved in `docs_old/` for reference. It is not maintained going forward.

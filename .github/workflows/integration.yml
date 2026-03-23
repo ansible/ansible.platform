@@ -15,11 +15,19 @@ env:
   ANSIBLE_FORCE_COLOR: '1'
 jobs:
   integration:
-    name: collection integration test
+    name: integration (${{ matrix.connection_mode }})
     runs-on: ubuntu-latest
     environment: CI
     env:
       HEADLESS: "yes"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        connection_mode:
+          - local
+          - http-direct
+          - http-persistent
 
     steps:
       - uses: actions/checkout@v3
@@ -65,10 +73,10 @@ jobs:
         run: pip install -r tests/integration/requirements.txt ansible-core
         working-directory: ansible-platform
 
-      - name: Perform integration tests
+      - name: Perform integration tests (${{ matrix.connection_mode }})
         env:
           ANSIBLE_TEST_INTEGRATION_NO_VENV: '1'
-        run: make collection-test
+        run: make collection-test CONNECTION_MODE=${{ matrix.connection_mode }}
         working-directory: ansible-platform
 
       - name: Dump the container logs on failure

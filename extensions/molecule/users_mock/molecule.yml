@@ -1,5 +1,5 @@
 ---
-# Scenario: test ansible.platform.organization against the mock Gateway server (no real AAP).
+# Scenario: test ansible.platform.user against the mock Gateway server (no real AAP).
 # Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
 driver:
   name: default
@@ -7,7 +7,7 @@ driver:
 platforms:
   - name: localhost
 
-# Use scenario inventory (connection: local + gateway vars). Converge: play 2 direct, play 3 persistent, play 4 connection local.
+# Use scenario inventory (connection: local + gateway vars).
 ansible:
   executor:
     args:

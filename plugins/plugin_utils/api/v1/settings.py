@@ -2,7 +2,7 @@
 API v1 Settings dataclass and transform mixin.
 
 Settings uses a singleton endpoint (/settings/all/) rather than standard CRUD.
-The action plugin handles GET/PATCH directly via direct_request().
+The mixin declares is_singleton=True so the framework handles find/update correctly.
 """
 
 from __future__ import annotations
@@ -27,6 +27,9 @@ class SettingsTransformMixin_v1(BaseTransformMixin):
     Settings is a singleton resource: GET /settings/all/ returns a flat dict,
     PATCH /settings/all/ merges values.  There is no list, create, or delete.
     """
+
+    # Singleton flag — _find_resource and _update_resource check this
+    is_singleton = True
 
     @classmethod
     def from_ansible_data(
@@ -54,6 +57,7 @@ class SettingsTransformMixin_v1(BaseTransformMixin):
                 fields=["settings"],
                 required_for="update",
                 order=1,
+                flatten_body=True,  # Send the dict values as the body directly
             ),
         }
 

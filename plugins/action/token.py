@@ -7,9 +7,9 @@
 """
 Action plugin for ansible.platform.token module.
 
-Tokens are non-idempotent: each 'present' call creates a new token.
-Delete uses existing_token_id or existing_token['id'].
-Sets ansible_facts.aap_token with the created token data.
+Tokens are non-idempotent: each 'present' call creates a new token via
+manager.execute('create').  Delete uses existing_token_id or existing_token['id']
+via manager.execute('delete').  Sets ansible_facts.aap_token with created token data.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -18,8 +18,10 @@ __metaclass__ = type
 
 import logging
 import time
+from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.token import AnsibleToken
 
 logger = logging.getLogger(__name__)
 
@@ -65,15 +67,6 @@ class ActionModule(BaseResourceActionPlugin):
             validated_params = validated_input.validated_parameters
             state = validated_params.get('state', 'present')
 
-            # Detect API version for correct path
-            if manager.api_version is None:
-                try:
-                    manager.api_version = manager._detect_api_version()
-                except Exception:
-                    manager.api_version = '1'
-
-            tokens_path = '/api/gateway/v%s/tokens/' % manager.api_version
-
             if state == 'absent':
                 # Delete token by id (from existing_token or existing_token_id)
                 token_id = None
@@ -102,9 +95,13 @@ class ActionModule(BaseResourceActionPlugin):
                     })
                     return result
 
-                delete_path = '%s%s/' % (tokens_path, token_id)
                 try:
-                    manager.direct_request('DELETE', delete_path)
+                    token_data = {'id': token_id}
+                    manager.execute(
+                        operation='delete',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=token_data,
+                    )
                     result.update({
                         'changed': True,
                         'failed': False,
@@ -123,26 +120,13 @@ class ActionModule(BaseResourceActionPlugin):
 
             else:
                 # state == 'present': create a new token (always creates, never idempotent)
-                payload = {}
-                description = validated_params.get('description')
-                scope = validated_params.get('scope')
-                if description is not None:
-                    payload['description'] = description
-                if scope is not None:
-                    payload['scope'] = scope
+                token_obj_data = {}
+                for field in ('description', 'scope', 'application'):
+                    val = validated_params.get(field)
+                    if val is not None:
+                        token_obj_data[field] = val
 
-                # Resolve application FK if provided
-                application = validated_params.get('application')
-                if application is not None:
-                    if str(application).isdigit():
-                        payload['application'] = int(application)
-                    else:
-                        try:
-                            app_id = manager.lookup_resource_id('applications', 'name', str(application))
-                            if app_id:
-                                payload['application'] = app_id
-                        except Exception:
-                            payload['application'] = application
+                token = AnsibleToken(**token_obj_data)
 
                 if self._task.check_mode:
                     result.update({
@@ -154,24 +138,28 @@ class ActionModule(BaseResourceActionPlugin):
                     })
                     return result
 
-                token_data = manager.direct_request('POST', tokens_path, data=payload)
+                manager_result = manager.execute(
+                    operation='create',
+                    module_name=self.MODULE_NAME,
+                    ansible_data=asdict(token),
+                )
 
                 # Set ansible fact so the token value is accessible in the play
                 aap_token = {
-                    'id': token_data.get('id'),
-                    'token': token_data.get('token'),
-                    'description': token_data.get('description'),
-                    'scope': token_data.get('scope'),
-                    'created': token_data.get('created'),
-                    'modified': token_data.get('modified'),
-                    'url': token_data.get('url'),
+                    'id': manager_result.get('id'),
+                    'token': manager_result.get('token'),
+                    'description': manager_result.get('description'),
+                    'scope': manager_result.get('scope'),
+                    'created': manager_result.get('created'),
+                    'modified': manager_result.get('modified'),
+                    'url': manager_result.get('url'),
                 }
 
                 result.update({
                     'changed': True,
                     'failed': False,
-                    self.MODULE_NAME: token_data,
-                    'id': token_data.get('id'),
+                    self.MODULE_NAME: manager_result,
+                    'id': manager_result.get('id'),
                     'ansible_facts': {'aap_token': aap_token},
                     '_ansible_facts_cacheable': False,
                 })
