@@ -438,7 +438,7 @@ class PlatformService(BaseAPIClient):
             if 'X-API-Version' in response.headers:
                 version_str = response.headers['X-API-Version'].lstrip('v')
                 logger.debug("PlatformService: Extracted version '%s' from X-API-Version header", version_str)
-                
+
             # Parse JSON response
             elif response.headers.get('Content-Type', '').startswith('application/json'):
                 try:
