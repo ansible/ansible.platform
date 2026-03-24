@@ -420,7 +420,7 @@
         state: present
       register: mtls_validation_result
       failed_when: >
-        mtls_validation_result.msg is not defined or 
+        mtls_validation_result.msg is not defined or
         'Mutual TLS can only be enabled when gateway auth is disabled' not in mtls_validation_result.msg
 
     ### Delete Service Types ###
