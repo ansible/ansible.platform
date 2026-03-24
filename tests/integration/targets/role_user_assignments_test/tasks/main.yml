@@ -332,12 +332,9 @@
         role_definition: Team Admin
         user: "{{ user4.id }}"
       register: role_definition_exists_check_team3
-      failed_when: false
-
-    - name: Assert that the role role_definition_exists_check_team3 is failed
-      ansible.builtin.assert:
-        that:
-          - role_definition_exists_check_team3 is failed
+      failed_when: >
+        role_definition_exists_check_team3.msg is not defined or
+        'Role user assignment does not exist' not in role_definition_exists_check_team3.msg
 
     - name: Delete Role User Assignments for Organization Admin with object_ansible_id
       ansible.platform.role_user_assignment:
@@ -359,12 +356,9 @@
         role_definition: Organization Admin
         user: "{{ user.id }}"
       register: role_definition_exists_check_org2
-      failed_when: false
-
-    - name: Assert that the role role_definition_exists_check_org2 is failed
-      ansible.builtin.assert:
-        that:
-          - role_definition_exists_check_org2 is failed
+      failed_when: >
+        role_definition_exists_check_org2.msg is not defined or
+        'Role user assignment does not exist' not in role_definition_exists_check_org2.msg
 
     - name: Delete Role User Assignments for Organization Admin
       ansible.platform.role_user_assignment:
@@ -381,12 +375,9 @@
         role_definition: Organization Admin
         user: "{{ user3.id }}"
       register: role_definition_exists_check
-      failed_when: false
-
-    - name: Assert that the role role_definition_exists_check is failed
-      ansible.builtin.assert:
-        that:
-          - role_definition_exists_check is failed
+      failed_when: >
+        role_definition_exists_check.msg is not defined or
+        'Role user assignment does not exist' not in role_definition_exists_check.msg
 
     - name: Assert that removing user as org admin worked
       ansible.builtin.assert:

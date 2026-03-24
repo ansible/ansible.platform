@@ -329,7 +329,7 @@
       ansible.builtin.assert:
         that:
           - no_deprecation_result.deprecations is not defined or no_deprecation_result.deprecations | length == 0
-    
+
     # Test for Dynamic Versioning & Registry
     - name: Verify Dynamic Version Negotiation and Transformation
       ansible.platform.user:
