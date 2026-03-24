@@ -238,5 +238,5 @@
       loop:
         - "{{ ex_username }}"
         - "{{ ex_username }}-secrets"
-      ignore_errors: true
+      failed_when: false
 ...
