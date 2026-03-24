@@ -419,12 +419,9 @@
         enable_mtls: true
         state: present
       register: mtls_validation_result
-      failed_when: false
-
-    - name: Verify mTLS validation error occurred
-      ansible.builtin.assert:
-        that:
-          - "'Mutual TLS can only be enabled when gateway auth is disabled' in mtls_validation_result.msg"
+      failed_when: >
+        mtls_validation_result.msg is not defined or 
+        'Mutual TLS can only be enabled when gateway auth is disabled' not in mtls_validation_result.msg
 
     ### Delete Service Types ###
     - name: Delete Service Types
