@@ -25,7 +25,7 @@ class SettingsTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for Settings API v1.
 
     Settings is a singleton resource: GET /settings/all/ returns a flat dict,
-    PATCH /settings/all/ merges values.  There is no list, create, or delete.
+    PUT /settings/all/ replaces values.  There is no list, create, or delete.
     """
 
     # Singleton flag — _find_resource and _update_resource check this
@@ -53,7 +53,7 @@ class SettingsTransformMixin_v1(BaseTransformMixin):
             ),
             "update": EndpointOperation(
                 path="/api/gateway/v1/settings/all/",
-                method="PATCH",
+                method="PUT",
                 fields=["settings"],
                 required_for="update",
                 order=1,
