@@ -222,7 +222,12 @@ class AAPModule(AnsibleModule):
             super(AAPModule, self).fail_json(**kwargs)
 
     def exit_json(self, **kwargs):
-        # Try to log out if we are authenticated
+        # When called from a lookup plugin context (error_callback is set),
+        # do NOT call super().exit_json() which calls sys.exit(0) and would
+        # kill the Ansible worker process.  In lookup context the result is
+        # returned via the LookupModule.run() return value, not via this path.
+        if self.error_callback:
+            return
         super(AAPModule, self).exit_json(**kwargs)
 
     def warn(self, warning):
