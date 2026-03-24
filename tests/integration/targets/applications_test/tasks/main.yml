@@ -115,7 +115,7 @@
         organization: "{{ org1.id }}"
         authorization_grant_type: password
         client_type: public
-        user: "{{ user1.username }}"
+        user: "{{ user1.user.username }}"
       register: app3
 
     - name: Assert that we created application 3
@@ -130,7 +130,7 @@
         authorization_grant_type: password
         client_type: confidential
         skip_authorization: true
-        user: "{{ user1.username }}"
+        user: "{{ user1.user.username }}"
       register: app4
 
     - name: Assert that we created application 4
@@ -196,7 +196,7 @@
       ansible.platform.application:
         name: "{{ app2.id }}"
         organization: "{{  org1.id }}"
-        user: "{{ user1.username }}"
+        user: "{{ user1.user.username }}"
       register: change_app2
 
     - name: Assert that we can change an application to a new user
@@ -312,9 +312,9 @@
 
     - name: Delete Users
       ansible.platform.user:
-        username: "{{ vars[item].username }}"
+        username: "{{ vars[item].user.username }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].user is defined and 'id' in vars[item].user"
       loop:
         - "user1"
         - "user2"

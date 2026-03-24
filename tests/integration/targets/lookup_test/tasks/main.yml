@@ -54,13 +54,13 @@
     - name: Make user 2 admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
-        user: "{{ user2.id }}"
+        user: "{{ user2.user.id }}"
         object_id: "{{ org1.id }}"
 
     - name: Make admin user admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
-        user: "{{ admin1.id }}"
+        user: "{{ admin1.user.id }}"
         object_id: "{{ org1.id }}"
 
     - name: Use lookup plugin to query created objects
@@ -91,17 +91,17 @@
       ansible.builtin.assert:
         that:
           - _users | length == 3
-          - _users[0].username == admin1.username
-          - _users[1].username == user1.username
-          - _users[2].username == user2.username
+          - _users[0].username == admin1.user.username
+          - _users[1].username == user1.user.username
+          - _users[2].username == user2.user.username
 
     - name: Check Org-1 Admins
       ansible.builtin.assert:
         that:
           - _admins | length == 2
-          - _admins[0].username == admin1.username
+          - _admins[0].username == admin1.user.username
           - _admins[0].password == "Password Disabled"
-          - _admins[1].username == user2.username
+          - _admins[1].username == user2.user.username
           - _admins[1].password == "$encrypted$"
 
     - name: Expect One - Get 0
@@ -142,10 +142,10 @@
     - name: Delete Users
       ansible.platform.user:
         state: absent
-        username: "{{ vars[item].id }}"
+        username: "{{ vars[item].user.id }}"
       loop:
         - "user1"
         - "user2"
         - "admin1"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].user is defined and 'id' in vars[item].user"
 ...

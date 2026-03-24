@@ -125,16 +125,169 @@ notes:
 """
 
 EXAMPLES = """
+# ---------------------------------------------------------------------------
+# Basic lifecycle
+# ---------------------------------------------------------------------------
+
 - name: Create a user
   ansible.platform.user:
-    username: test-user
-    first_name: Test
-    password: secret
+    username: jdoe
+    first_name: Jane
+    last_name: Doe
+    email: jdoe@example.com
+    password: "{{ vault_jdoe_password }}"
+    state: present
+  register: created_user
+
+- name: Idempotent re-run — no change expected
+  ansible.platform.user:
+    username: jdoe
+    first_name: Jane
+    last_name: Doe
+    email: jdoe@example.com
     state: present
 
-- name: Ensure a user is absent
+# ---------------------------------------------------------------------------
+# Round-trip: feed the returned resource dict straight back as input.
+# 'state' is omitted intentionally — it defaults to 'present'.
+# 'password' will be "Password Disabled" which the module ignores on update.
+# ---------------------------------------------------------------------------
+
+- name: Round-trip update using registered result
+  ansible.platform.user: "{{ created_user.user | combine({'email': 'jdoe-updated@example.com'}) }}"
+
+# ---------------------------------------------------------------------------
+# Privilege escalation
+# ---------------------------------------------------------------------------
+
+- name: Grant superuser privileges
   ansible.platform.user:
-    username: test-user
+    username: jdoe
+    is_superuser: true
+
+- name: Revoke superuser privileges
+  ansible.platform.user:
+    username: jdoe
+    is_superuser: false
+
+# ---------------------------------------------------------------------------
+# Reference a user by numeric id (returned in result.user.id)
+# ---------------------------------------------------------------------------
+
+- name: Update user by id
+  ansible.platform.user:
+    username: "{{ created_user.user.id }}"
+    first_name: Janet
+
+# ---------------------------------------------------------------------------
+# Read current state without making changes
+# ---------------------------------------------------------------------------
+
+- name: Check whether a user exists
+  ansible.platform.user:
+    username: jdoe
+    state: exists
+  register: user_check
+
+- name: Show result
+  ansible.builtin.debug:
+    msg: "User exists: {{ user_check.exists }}"
+
+# ---------------------------------------------------------------------------
+# Password handling — set once, skip re-push on subsequent runs
+# ---------------------------------------------------------------------------
+
+- name: Create user and skip password re-push on updates
+  ansible.platform.user:
+    username: jdoe
+    password: "{{ vault_jdoe_password }}"
+    update_secrets: false
+    state: present
+
+# ---------------------------------------------------------------------------
+# Delete
+# ---------------------------------------------------------------------------
+
+- name: Remove a user (idempotent — safe to run even if already absent)
+  ansible.platform.user:
+    username: jdoe
     state: absent
 ...
+"""
+
+RETURN = """
+changed:
+  description: Whether any change was made to the resource.
+  returned: always
+  type: bool
+  sample: true
+
+user:
+  description: >
+    Pure resource configuration returned by the gateway API, filtered to the
+    fields this module accepts as input.  The dict can be passed back directly
+    as task parameters for idempotent round-trip operation.
+
+    Fields intentionally excluded:
+
+    - C(state) — an Ansible orchestration directive, not resource data.
+      Omitting it is safe because C(state) defaults to C(present).
+
+    - C(created), C(modified), C(url) — API read-only timestamps/links that
+      are not accepted as module input and would cause validation errors if
+      round-tripped blindly.
+
+    The one exception to "argspec-only" is C(id): it is not an input argspec
+    field but is included because it is the stable numeric identifier needed
+    by subsequent tasks (e.g. C(ansible.platform.role_user_assignment)).
+  returned: when the user exists after the task (state != absent)
+  type: dict
+  contains:
+    id:
+      description: Numeric primary key assigned by the gateway.
+      type: int
+      sample: 591
+    username:
+      description: The login username — the natural lookup key for this resource.
+      type: str
+      sample: direct-user2
+    email:
+      description: Email address of the user.
+      type: str
+      sample: user@example.com
+    first_name:
+      description: First name.
+      type: str
+      sample: Jane
+    last_name:
+      description: Last name.
+      type: str
+      sample: Doe
+    is_superuser:
+      description: Whether the user has superuser privileges.
+      type: bool
+      sample: false
+    is_platform_auditor:
+      description: Whether the user is a platform auditor (deprecated field).
+      type: bool
+      sample: false
+    password:
+      description: >
+        Always returned as C(Password Disabled) because the gateway API never
+        echoes passwords.  Passing this value back as C(password) input is safe
+        — the module skips the password field when the value equals
+        C(Password Disabled).
+      type: str
+      sample: "Password Disabled"
+    organizations:
+      description: List of organisation names associated with the user (deprecated field).
+      type: list
+      elements: str
+      sample: []
+    associated_authenticators:
+      description: >
+        Map of authenticator ID (integer key as string) to user attributes
+        (uid, email) for that authenticator.
+      type: dict
+      sample: {}
 """

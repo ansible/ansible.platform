@@ -156,7 +156,7 @@
     # Check idempotency when using a user id instead of a name
     - name: Give Joe superuser via his id instead of username
       ansible.platform.user:
-        username: "{{ joe.id }}"
+        username: "{{ joe.user.id }}"
         is_superuser: true
       register: joe_superuser_again
 
@@ -168,7 +168,7 @@
     # Change a user by their ID
     - name: Change Joe to Jane via ID
       ansible.platform.user:
-        username: "{{ joe.id }}"
+        username: "{{ joe.user.id }}"
         first_name: Jane
       register: jane
 
@@ -348,7 +348,7 @@
         state: absent
       loop:
         - "{{ username }}"
-        - "{{ doe.username }}"
+        - "{{ doe.user.username }}"
         - "timmy-{{ username }}"
         - "{{ username }}-noorg"
         - "{{ username }}-multiorg"
