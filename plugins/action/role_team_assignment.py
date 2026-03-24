@@ -25,7 +25,6 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import logging
-import time
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin

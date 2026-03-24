@@ -145,7 +145,7 @@
 
     - name: Redo Team 3 with state as exists
       ansible.platform.team:
-        name: "{{ team3.name }}" # Check existence
+        name: "{{ team3.team.name }}" # Check existence
         organization: "{{ org2.organization.name }}"
         state: exists
       register: team3

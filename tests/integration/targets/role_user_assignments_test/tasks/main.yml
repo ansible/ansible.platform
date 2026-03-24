@@ -135,7 +135,7 @@
     - name: Create Team 1
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
-        organization: "{{ org.name }}" # Org by name
+        organization: "{{ org.organization.name }}" # Org by name
         description: Team 1
       register: team1
 
@@ -147,7 +147,7 @@
     - name: Create Team 2
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-2"
-        organization: "{{ org2.name }}" # Org by name
+        organization: "{{ org2.organization.name }}" # Org by name
         description: Team 2
       register: team2
 

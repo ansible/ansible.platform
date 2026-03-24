@@ -290,4 +290,5 @@ user:
         (uid, email) for that authenticator.
       type: dict
       sample: {}
+...
 """

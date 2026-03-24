@@ -137,6 +137,7 @@ role_user_assignment:
     object_id:
       description: Primary key of the object this assignment applies to (if scoped).
       type: int
+...
 """
 
 from ..module_utils.aap_module import AAPModule

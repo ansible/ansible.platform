@@ -140,4 +140,5 @@ team:
     organization:
       description: Name of the organization this team belongs to.
       type: str
+...
 """

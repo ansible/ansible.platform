@@ -193,4 +193,5 @@ role_team_assignment:
     object_id:
       description: Primary key of the object this assignment applies to (if scoped).
       type: int
+...
 """
