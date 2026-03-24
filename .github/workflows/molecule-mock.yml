@@ -82,4 +82,3 @@ jobs:
         if: always()
         run: molecule destroy -s default
 ...
-

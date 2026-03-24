@@ -106,6 +106,7 @@ EXAMPLES = '''
     object_id: 1
     user: bob
     state: absent
+...
 '''
 
 RETURN = """

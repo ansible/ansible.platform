@@ -43,7 +43,6 @@ class ActionModule(BaseResourceActionPlugin):
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp
 
-
         auth_params = [
             'gateway_hostname', 'gateway_username', 'gateway_password',
             'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',

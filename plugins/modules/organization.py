@@ -85,6 +85,7 @@ EXAMPLES = """
   ansible.platform.organization:
     name: Ansible Platform Development
     state: absent
+...
 """
 
 RETURN = """

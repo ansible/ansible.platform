@@ -110,6 +110,7 @@ EXAMPLES = """
     name: Gateway Dev Team
     organization: Platform Engineering
     state: absent
+...
 """
 
 RETURN = """
