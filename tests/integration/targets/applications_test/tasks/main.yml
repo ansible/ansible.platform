@@ -95,7 +95,7 @@
     - name: Create Application 2
       ansible.platform.application:
         name: "{{ name_prefix }}-app2"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: authorization-code
         client_type: confidential
         description: Another application
@@ -112,7 +112,7 @@
     - name: Create Application 3
       ansible.platform.application:
         name: "{{ name_prefix }}-app3"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: public
         user: "{{ user1.user.username }}"
@@ -126,7 +126,7 @@
     - name: Create Application 4
       ansible.platform.application:
         name: "{{ name_prefix }}-app4"
-        organization: "{{ org1.name }}"
+        organization: "{{ org1.organization.name }}"
         authorization_grant_type: password
         client_type: confidential
         skip_authorization: true
@@ -141,7 +141,7 @@
     - name: Create Application 5
       ansible.platform.application:
         name: "{{ name_prefix }}-app5"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: confidential
       register: app5
@@ -154,7 +154,7 @@
     - name: Create Application 6
       ansible.platform.application:
         name: "{{ name_prefix }}-app6"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: confidential
         app_url: "https://tower.com"
@@ -168,7 +168,7 @@
     - name: Test exists does not change
       ansible.platform.application:
         name: "{{ app1.name }}"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         state: exists
       register: exists_app1
 
@@ -180,7 +180,7 @@
     - name: Change application uris
       ansible.platform.application:
         name: "{{ app1.name }}"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         redirect_uris:  # changed
           - "https://tower.com/api/v3/"
           - "https://tower.com/api/v3/teams"
@@ -195,7 +195,7 @@
     - name: Change an application to a user owned application
       ansible.platform.application:
         name: "{{ app2.id }}"
-        organization: "{{  org1.id }}"
+        organization: "{{  org1.organization.id }}"
         user: "{{ user1.user.username }}"
       register: change_app2
 
@@ -209,7 +209,7 @@
       ansible.platform.application:
         name: "{{ app4.name }}"
         new_name: "{{ app4.name }}-new"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
       register: rename_app4
 
     - name: Assert that we can rename an application
@@ -221,8 +221,8 @@
     - name: Move an application to a new organization
       ansible.platform.application:
         name: "{{ app5.name }}"
-        organization: "{{ org1.name }}"
-        new_organization: "{{ org2.name }}"
+        organization: "{{ org1.organization.name }}"
+        new_organization: "{{ org2.organization.name }}"
       register: change_app5
 
     - name: Assert that we can move an application to a new org
@@ -234,7 +234,7 @@
     - name: Change application app_url
       ansible.platform.application:
         name: "{{ name_prefix }}-app6"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         app_url: https://awx.com
       register: change_app6
 
@@ -247,7 +247,7 @@
     - name: Change application app_url (blank out app_url)
       ansible.platform.application:
         name: "{{ name_prefix }}-app6"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         app_url: ""
       register: change_app6
 
@@ -260,7 +260,7 @@
     - name: Delete not existent ID
       ansible.platform.application:
         name: "{{ name_prefix }}-app314159"  # Does not exist
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         state: absent
       register: delete_application
 
@@ -272,7 +272,7 @@
     - name: Delete a real application
       ansible.platform.application:
         name: "{{ app5.name }}"
-        organization: "{{ org2.name }}"
+        organization: "{{ org2.organization.name }}"
         state: absent
       register: delete_app5
 
@@ -285,7 +285,7 @@
     - name: Delete Applications in Org1
       ansible.platform.application:
         name: "{{ vars[item].id }}"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         state: absent
       loop:
         - "app1"
@@ -299,7 +299,7 @@
     - name: Delete Applications in Org2
       ansible.platform.application:
         name: "{{ vars[item].id }}"
-        organization: "{{ org2.id }}"
+        organization: "{{ org2.organization.id }}"
         state: absent
       loop:
         - "app1"
@@ -321,9 +321,9 @@
 
     - name: Delete Organizations
       ansible.platform.organization:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].organization.id }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
       loop:
         - "org1"
         - "org2"

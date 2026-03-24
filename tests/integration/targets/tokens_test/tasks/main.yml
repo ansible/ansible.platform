@@ -33,7 +33,7 @@
     - name: Create Application 1 Org 1
       ansible.platform.application:
         name: "{{ name_prefix }}-app1"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: public
       register: app1
@@ -41,7 +41,7 @@
     - name: Create Application 1 Org 2
       ansible.platform.application:
         name: "{{ name_prefix }}-app1"
-        organization: "{{ org2.id }}"
+        organization: "{{ org2.organization.id }}"
         authorization_grant_type: password
         client_type: public
       register: app2
@@ -91,7 +91,7 @@
       ansible.platform.token:
         application: "{{ name_prefix }}-app1"
         scope: write
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
       register: app_token
 
     - name: Assert that we created a token
@@ -113,7 +113,7 @@
     - name: Delete app1
       ansible.platform.application:
         name: "{{ vars[item].id }}"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         state: absent
       loop:
         - "app1"
@@ -122,7 +122,7 @@
     - name: Delete Applications in Org2
       ansible.platform.application:
         name: "{{ vars[item].id }}"
-        organization: "{{ org2.id }}"
+        organization: "{{ org2.organization.id }}"
         state: absent
       loop:
         - "app2"
@@ -130,9 +130,9 @@
 
     - name: Delete Organizations
       ansible.platform.organization:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].organization.id }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
       loop:
         - "org1"
         - "org2"

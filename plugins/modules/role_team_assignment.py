@@ -165,20 +165,32 @@ EXAMPLES = """
 """
 
 RETURN = """
-id:
-    description: Database id of the assignment (single-object operations).
-    type: int
-    returned: when state is present or exists and a single object is targeted
-assignments:
-    description: List of assignment results when multiple objects are targeted.
-    type: list
-    returned: always
-role_team_assignment:
-    description: The assignment resource dict (single-object) or wrapper dict.
-    type: dict
-    returned: always
 changed:
-    description: Whether any assignment was created or deleted.
-    type: bool
-    returned: always
+  description: Whether any assignment was created or deleted.
+  returned: always
+  type: bool
+
+role_team_assignment:
+  description: >
+    The role assignment resource after the operation. For a single-object
+    assignment this is the assignment dict. For multi-object (C(assignment_objects)),
+    this is C({assignments: [...]}).
+    API-managed fields (C(created), C(url)) and Ansible directives
+    (C(state)) are excluded so that C(result.role_team_assignment)
+    represents only the resource data.
+  returned: when state is present or exists
+  type: dict
+  contains:
+    id:
+      description: Numeric database ID of the assignment.
+      type: int
+    role_definition:
+      description: Name or ID of the role definition assigned.
+      type: str
+    team:
+      description: Name or ID of the team receiving the role.
+      type: str
+    object_id:
+      description: Primary key of the object this assignment applies to (if scoped).
+      type: int
 """

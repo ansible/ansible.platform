@@ -1,7 +1,10 @@
 ---
-# Run Molecule integration tests against the mock Gateway (no real AAP).
-# Covers ansible.platform.user and ansible.platform.organization.
-# Each scenario tests all three connection scenarios: direct (http, persistent=false), persistent (http, persistent=true), and connection: local.
+# Run all Molecule *_mock scenarios against the mock Gateway (no real AAP).
+# Each scenario spins up its own mock server, runs converge → verify → cleanup,
+# then tears down — fully parallel and independent.
+#
+# New module scenarios are picked up automatically: add an extensions/molecule/*_mock/
+# directory with converge.yml + verify.yml and this workflow runs it on the next PR.
 name: molecule (mock)
 
 permissions:
@@ -13,17 +16,39 @@ on:
     branches: [devel, ANSTRAT-1640]
 
 env:
-  MOLECULE_CONFIG: extensions/molecule/config.yml
   ANSIBLE_FORCE_COLOR: "1"
   PY_COLORS: "1"
 
 jobs:
-  molecule-mock:
-    name: Molecule user + organization (mock)
+  # ── Discover all *_mock scenarios ──────────────────────────────────────────
+  list-scenarios:
+    name: Discover mock scenarios
     runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.list.outputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List *_mock scenario directories
+        id: list
+        run: |
+          scenarios=$(ls extensions/molecule/ | grep '_mock$' | jq -R . | jq -sc .)
+          echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
+          echo "Found scenarios: $scenarios"
+
+  # ── Run each scenario in parallel, each with its own mock server ────────────
+  molecule-mock:
+    name: Molecule (${{ matrix.scenario }})
+    needs: list-scenarios
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJson(needs.list-scenarios.outputs.scenarios) }}
     env:
-      # Use installed collection (galaxy install puts it here); else Molecule's ../../.. points at repo root and collection is not found
+      # galaxy install puts the collection here; keeps Molecule's collections_path resolvable
       ANSIBLE_COLLECTIONS_PATH: $HOME/.ansible/collections
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,45 +63,21 @@ jobs:
       - name: Install collection
         run: ansible-galaxy collection install . --force
 
-      - name: Start mock Gateway (default scenario create)
+      - name: Start mock Gateway (default scenario)
         run: molecule create -s default
 
-      - name: Run user integration tests (mock)
-        run: molecule test -s users_mock --all
-
-      - name: Restart mock Gateway for organization tests
-        working-directory: ${{ github.workspace }}
-        run: ansible-playbook -i extensions/molecule/default/inventory.yml extensions/molecule/default/create.yml
-
-      - name: Verify mock is up before organization tests
-        working-directory: ${{ github.workspace }}
+      - name: Wait for mock Gateway health endpoint
         run: |
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:8000/health && break
+            echo "Waiting for mock ($i/30)..."
             sleep 2
           done
           curl -sf http://127.0.0.1:8000/health
 
-      - name: Run organization integration tests (mock)
-        run: molecule test -s organization_mock --all
+      - name: Run ${{ matrix.scenario }}
+        run: molecule test -s ${{ matrix.scenario }} --all
 
-      - name: Restart mock Gateway for team tests
-        working-directory: ${{ github.workspace }}
-        run: ansible-playbook -i extensions/molecule/default/inventory.yml extensions/molecule/default/create.yml
-
-      - name: Verify mock is up before team tests
-        working-directory: ${{ github.workspace }}
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8000/health && break
-            sleep 2
-          done
-          curl -sf http://127.0.0.1:8000/health
-
-      - name: Run team integration tests (mock)
-        run: molecule test -s team_mock --all
-
-      - name: Stop mock Gateway (default scenario destroy)
+      - name: Stop mock Gateway
         if: always()
         run: molecule destroy -s default
-...

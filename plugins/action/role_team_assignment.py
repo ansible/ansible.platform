@@ -47,8 +47,6 @@ class ActionModule(BaseResourceActionPlugin):
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp
 
-        action_start = time.perf_counter()
-
         try:
             doc = self._get_documentation()
             argspec = self._build_argspec_from_docs(doc) if doc else None
@@ -178,20 +176,27 @@ class ActionModule(BaseResourceActionPlugin):
                             assignments.append(created)
                         overall_changed = True
 
-            if len(assignments) == 1:
-                primary = assignments[0]
+            # Clean each individual assignment in the list
+            _internal_keys = {'_timing', 'changed'}
+            _api_readonly = {'created', 'modified', 'url'}
+            _excluded = _internal_keys | _api_readonly
+
+            def _clean_assignment(a):
+                if not isinstance(a, dict):
+                    return a
+                return {k: v for k, v in a.items() if k not in _excluded}
+
+            cleaned_assignments = [_clean_assignment(a) for a in assignments]
+            if len(cleaned_assignments) == 1:
+                primary = cleaned_assignments[0]
             else:
-                primary = {'assignments': assignments}
+                primary = {'assignments': cleaned_assignments}
 
             result.update({
                 'changed': overall_changed,
                 'failed': False,
                 self.MODULE_NAME: primary,
-                'id': primary.get('id') if len(assignments) == 1 else None,
-                'assignments': assignments,
             })
-
-            result.setdefault('_timing', {})['action_plugin_time'] = time.perf_counter() - action_start
 
         except Exception as e:
             import traceback

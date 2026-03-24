@@ -64,28 +64,28 @@
     - name: Create Team 1 in Organization 1
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-1"
-        organization: "{{ org1.name }}"
+        organization: "{{ org1.organization.name }}"
         description: "Test Team 1"
       register: team1
 
     - name: Create Team 2 in Organization 2
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-2"
-        organization: "{{ org2.name }}"
+        organization: "{{ org2.organization.name }}"
         description: "Test Team 2"
       register: team2
 
     - name: Create Team 3 in Organization 3
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-3"
-        organization: "{{ org3.name }}"
+        organization: "{{ org3.organization.name }}"
         description: "Test Team 3"
       register: team3
 
     - name: Create Team 4 in Organization 4
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-4"
-        organization: "{{ org4.name }}"
+        organization: "{{ org4.organization.name }}"
         description: "Test Team 3"
       register: team4
 
@@ -100,10 +100,10 @@
     - name: Assign Org Admin to Team1 on Org1
       ansible.platform.role_team_assignment:
         assignment_objects:
-          - name: "{{ org1.name }}"
+          - name: "{{ org1.organization.name }}"
             type: "organizations"
         role_definition: Organization Admin
-        team: "{{ team1.id }}"
+        team: "{{ team1.team.id }}"
       register: org_admin_assignment_1
       ignore_errors: true  # this may fail depending on AAP limitations
 
@@ -111,10 +111,10 @@
     - name: Assign Platform Auditor to Team1 on Org1
       ansible.platform.role_team_assignment:
         assignment_objects:
-          - name: "{{ org1.name }}"
+          - name: "{{ org1.organization.name }}"
             type: "organizations"
         role_definition: Platform Auditor
-        team: "{{ team1.name }}"
+        team: "{{ team1.team.name }}"
       register: org_admin_assignment_2
       ignore_errors: true  # this may fail depending on AAP limitations
 
@@ -123,9 +123,9 @@
     # - name: Assign Org Inventory Admin to Team2 on Org2
     #   ansible.platform.role_team_assignment:
     #     assignment_objects:
-    #       - name: "{{ org1.name }}"
+    #       - name: "{{ org1.organization.name }}"
     #         type: "organizations"
-    #       - name: "{{ org2.name }}"
+    #       - name: "{{ org2.organization.name }}"
     #         type: "organizations"
     #     role_definition: Organization Inventory Admin
     #     team: "{{ team2.name }}"
@@ -141,9 +141,9 @@
     # - name: Re-run Org Inventory Admin removal for Team2
     #   ansible.platform.role_team_assignment:
     #     assignment_objects:
-    #       - name: "{{ org1.name }}"
+    #       - name: "{{ org1.organization.name }}"
     #         type: "organizations"
-    #       - name: "{{ org2.name }}"
+    #       - name: "{{ org2.organization.name }}"
     #         type: "organizations"
     #     role_definition: Organization Inventory Admin
     #     team: "{{ team2.name }}"
@@ -159,7 +159,7 @@
     # - name: Assign Org Credential Admin to Team3 on Org3
     #   ansible.platform.role_team_assignment:
     #     assignment_objects:
-    #       - name: "{{ org3.name }}"
+    #       - name: "{{ org3.organization.name }}"
     #         type: "organizations"
     #     role_definition: Organization Credential Admin
     #     team: "{{ team3.name }}"
@@ -178,9 +178,9 @@
     # - name: Remove Org Inventory Admin assignment from Team2 on Org1,Org2
     #   ansible.platform.role_team_assignment:
     #     assignment_objects:
-    #       - name: "{{ org1.name }}"
+    #       - name: "{{ org1.organization.name }}"
     #         type: organizations
-    #       - name: "{{ org2.name }}"
+    #       - name: "{{ org2.organization.name }}"
     #         type: organizations
     #     role_definition: Organization Inventory Admin
     #     team: "{{ team2.name }}"
@@ -189,7 +189,7 @@
     # - name: Remove Org Inventory Admin assignment from Team2 on Org3
     #   ansible.platform.role_team_assignment:
     #     assignment_objects:
-    #       - name: "{{ org3.name }}"
+    #       - name: "{{ org3.organization.name }}"
     #         type: organizations
     #     role_definition: Organization Inventory Admin
     #     team: "{{ team3.name }}"
@@ -203,18 +203,18 @@
         organization: "{{ item.organization }}"
         state: absent
       loop:
-        - { name: "{{ team1.name }}", organization: "{{ org1.name }}" }
-        - { name: "{{ team2.name }}", organization: "{{ org2.name }}" }
-        - { name: "{{ team3.name }}", organization: "{{ org3.name }}" }
-        - { name: "{{ team4.name }}", organization: "{{ org4.name }}" }
+        - { name: "{{ team1.team.name }}", organization: "{{ org1.organization.name }}" }
+        - { name: "{{ team2.team.name }}", organization: "{{ org2.organization.name }}" }
+        - { name: "{{ team3.team.name }}", organization: "{{ org3.organization.name }}" }
+        - { name: "{{ team4.team.name }}", organization: "{{ org4.organization.name }}" }
 
     - name: Delete test organizations
       ansible.platform.organization:
         name: "{{ item }}"
         state: absent
       loop:
-        - "{{ org1.name }}"
-        - "{{ org2.name }}"
-        - "{{ org3.name }}"
-        - "{{ org4.name }}"
+        - "{{ org1.organization.name }}"
+        - "{{ org2.organization.name }}"
+        - "{{ org3.organization.name }}"
+        - "{{ org4.organization.name }}"
 ...
