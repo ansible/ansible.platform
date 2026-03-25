@@ -108,31 +108,35 @@
         - "user_token"
         - "user_token_two"
         - "app_token"
-      when: item in vars
+      when: >-
+        item in vars
+        and vars[item] is mapping
+        and 'ansible_facts' in vars[item]
+        and 'aap_token' in vars[item].ansible_facts
 
     - name: Delete app1
       ansible.platform.application:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].application.name }}"
         organization: "{{ org1.organization.id }}"
         state: absent
       loop:
         - "app1"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'application' in vars[item]"
 
     - name: Delete Applications in Org2
       ansible.platform.application:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].application.name }}"
         organization: "{{ org2.organization.id }}"
         state: absent
       loop:
         - "app2"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'application' in vars[item]"
 
     - name: Delete Organizations
       ansible.platform.organization:
-        name: "{{ vars[item].organization.id }}"
+        name: "{{ vars[item].organization.name }}"
         state: absent
-      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
+      when: "item in vars and 'organization' in vars[item]"
       loop:
         - "org1"
         - "org2"
