@@ -122,6 +122,7 @@ EXAMPLES = """
 
 from ansible.errors import AnsibleError  # noqa
 from ansible.module_utils._text import to_native  # noqa
+from ansible.module_utils.six.moves.urllib.parse import urlparse  # noqa
 from ansible.plugins.lookup import LookupBase  # noqa
 from ansible.utils.display import Display  # noqa
 
@@ -136,6 +137,14 @@ class LookupModule(LookupBase):
 
     def warn_callback(self, warning):
         self.display.warning(warning)
+
+    @staticmethod
+    def _fetch_paginated_page(module, next_page):
+        """GET the next page. Absolute http(s) URLs are used as-is; relative paths use get_endpoint."""
+        next_page = to_native(next_page)
+        if next_page.startswith(("https://", "http://")):
+            return module.make_request("GET", urlparse(next_page))
+        return module.get_endpoint(next_page)
 
     def run(self, terms, variables=None, **kwargs):
         if len(terms) != 1:
@@ -180,7 +189,7 @@ class LookupModule(LookupBase):
 
             next_page = return_data['next']
             while next_page is not None:
-                next_response = module.get_endpoint(next_page)
+                next_response = self._fetch_paginated_page(module, next_page)
                 return_data['results'] += next_response['json']['results']
                 next_page = next_response['json']['next']
             return_data['next'] = None
