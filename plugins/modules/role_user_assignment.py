@@ -69,29 +69,77 @@ extends_documentation_fragment:
 '''
 
 EXAMPLES = '''
-- name: Give Bob organization admin role for org 1
+- name: Give bob organization admin role for a single org
   ansible.platform.role_user_assignment:
     role_definition: Organization Admin
     object_id: 1
     user: bob
-    state: present
+  register: assignment
 
-- name: Give Bob Team admin role for teams with id 1 and name "team2"
+- name: Give bob team admin role for multiple teams by id and name
   ansible.platform.role_user_assignment:
     role_definition: Team Admin
-    object_ids: ['1', 'team2']
+    object_ids: ['1', 'dev-team']
     user: bob
-    state: present
 
-- name: Give Bob team admin role for org 1 using object_ansible_id
+- name: Give bob a role using object_ansible_id (UUID)
   ansible.platform.role_user_assignment:
-    role_definition: Team Admin
+    role_definition: Organization Admin
     object_ansible_id: c891b9f7-cc08-4b62-9843-c9ebfda262a9
     user: bob
-    state: present
 
+- name: Grant platform-level auditor role (no object scoping)
+  ansible.platform.role_user_assignment:
+    role_definition: Platform Auditor
+    user: bob
+
+- name: Check whether an assignment exists
+  ansible.platform.role_user_assignment:
+    role_definition: Organization Admin
+    object_id: 1
+    user: bob
+    state: exists
+
+- name: Remove an assignment
+  ansible.platform.role_user_assignment:
+    role_definition: Organization Admin
+    object_id: 1
+    user: bob
+    state: absent
 ...
 '''
+
+RETURN = """
+changed:
+  description: Whether an assignment was created or removed.
+  returned: always
+  type: bool
+
+role_user_assignment:
+  description: >
+    The role assignment resource after the operation. For a single-object
+    assignment this is the assignment dict. For multi-object (C(object_ids)),
+    this is C({assignments: [...]}).
+    API-managed fields (C(created), C(url)) and Ansible directives
+    (C(state), C(object_ids)) are excluded so that C(result.role_user_assignment)
+    represents only the resource data.
+  returned: when state is present or exists
+  type: dict
+  contains:
+    id:
+      description: Numeric database ID of the assignment.
+      type: int
+    role_definition:
+      description: Name or ID of the role definition assigned.
+      type: str
+    user:
+      description: Username or ID of the user receiving the role.
+      type: str
+    object_id:
+      description: Primary key of the object this assignment applies to (if scoped).
+      type: int
+...
+"""
 
 from ..module_utils.aap_module import AAPModule
 

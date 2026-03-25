@@ -135,7 +135,7 @@
     - name: Create Team 1
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
-        organization: "{{ org.name }}" # Org by name
+        organization: "{{ org.organization.name }}" # Org by name
         description: Team 1
       register: team1
 
@@ -147,7 +147,7 @@
     - name: Create Team 2
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-2"
-        organization: "{{ org2.name }}" # Org by name
+        organization: "{{ org2.organization.name }}" # Org by name
         description: Team 2
       register: team2
 
@@ -159,7 +159,7 @@
 
     - name: Fetch team2 details via URI
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/teams/{{ team2.id }}/"
+        url: "{{ gateway_hostname }}/api/gateway/v1/teams/{{ team2.team.id }}/"
         method: GET
         url_username: "{{ gateway_username }}"
         url_password: "{{ gateway_password }}"
@@ -170,7 +170,7 @@
 
     - name: Fetch organization 2 details via URI
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/organizations/{{ org2.id }}/"
+        url: "{{ gateway_hostname }}/api/gateway/v1/organizations/{{ org2.organization.id }}/"
         method: GET
         url_username: "{{ gateway_username }}"
         url_password: "{{ gateway_password }}"
@@ -187,9 +187,9 @@
     # # <Role User Assignments> -------------------
     - name: Assign Admins by Role User Assignments
       ansible.platform.role_user_assignment: &org_assignment
-        object_id: "{{ org.id }}"
+        object_id: "{{ org.organization.id }}"
         role_definition: Organization Admin
-        user: "{{ user2.id }}"
+        user: "{{ user2.user.id }}"
       register: org_admin_role_assignment
 
     - name: Assert that adding user as org admin worked
@@ -209,9 +209,9 @@
 
     - name: Assign Organization Admin by Role User Assignments
       ansible.platform.role_user_assignment: &orgs_assignment
-        object_ids: ["{{ org.id }}", "{{ organization_name }}-2"]
+        object_ids: ["{{ org.organization.id }}", "{{ organization_name }}-2"]
         role_definition: Organization Admin
-        user: "{{ user3.id }}"
+        user: "{{ user3.user.id }}"
       register: org_admin_role_assignment2
 
     - name: Assert that adding user as org admin worked
@@ -232,7 +232,7 @@
       ansible.platform.role_user_assignment: &orgs_assignment3
         object_ansible_id: "{{ org2_ansible_id }}"
         role_definition: Organization Admin
-        user: "{{ user.id }}"
+        user: "{{ user.user.id }}"
       register: org_admin_role_assignment3
 
     - name: Assert that adding user as org admin worked for org2
@@ -251,9 +251,9 @@
 
     - name: Assign Team Admin by Role User Assignments
       ansible.platform.role_user_assignment: &team_assignment
-        object_ids: ["{{ team1.id }}", "{{ name_prefix }}-Team-2"]
+        object_ids: ["{{ team1.team.id }}", "{{ name_prefix }}-Team-2"]
         role_definition: Team Admin
-        user: "{{ user2.id }}"
+        user: "{{ user2.user.id }}"
       register: team_admin_role_assignment
 
     - name: Assert that adding user as team admin worked
@@ -274,7 +274,7 @@
       ansible.platform.role_user_assignment: &team2_admin_assignment
         object_ansible_id: "{{ team2_ansible_id }}"
         role_definition: Team Admin
-        user: "{{ user4.id }}"
+        user: "{{ user4.user.id }}"
         state: present
       register: team2_admin_role_assignment
 
@@ -295,7 +295,7 @@
     - name: Assign Platform Auditor by Role User Assignments
       ansible.platform.role_user_assignment: &platform_auditor_assignment
         role_definition: Platform Auditor
-        user: "{{ user3.id }}"
+        user: "{{ user3.user.id }}"
       register: platform_auditor_role_assignment
 
     - name: Assert that adding user as team admin worked
@@ -316,7 +316,7 @@
       ansible.platform.role_user_assignment:
         state: absent
         object_ansible_id: "{{ team2_ansible_id }}"
-        user: "{{ user4.id }}"
+        user: "{{ user4.user.id }}"
         role_definition: Team Admin
       register: delete_role_user_assignment_team3
 
@@ -330,21 +330,21 @@
         state: exists
         object_ansible_id: "{{ team2_ansible_id }}"
         role_definition: Team Admin
-        user: "{{ user4.id }}"
+        user: "{{ user4.user.id }}"
       register: role_definition_exists_check_team3
       failed_when: false
 
     - name: Assert that the role role_definition_exists_check_team3 is failed
       ansible.builtin.assert:
         that:
-          - role_definition_exists_check_team3 is failed
+          - role_definition_exists_check_team3.role_user_assignment is not defined
 
     - name: Delete Role User Assignments for Organization Admin with object_ansible_id
       ansible.platform.role_user_assignment:
         state: absent
         object_ansible_id: "{{ org2_ansible_id }}"
         role_definition: Organization Admin
-        user: "{{ user.id }}"
+        user: "{{ user.user.id }}"
       register: delete_role_user_assignment_org
 
     - name: Assert that removing user as org admin worked
@@ -357,36 +357,36 @@
         state: exists
         object_ansible_id: "{{ org2_ansible_id }}"
         role_definition: Organization Admin
-        user: "{{ user.id }}"
+        user: "{{ user.user.id }}"
       register: role_definition_exists_check_org2
       failed_when: false
 
     - name: Assert that the role role_definition_exists_check_org2 is failed
       ansible.builtin.assert:
         that:
-          - role_definition_exists_check_org2 is failed
+          - role_definition_exists_check_org2.role_user_assignment is not defined
 
     - name: Delete Role User Assignments for Organization Admin
       ansible.platform.role_user_assignment:
         state: absent
-        object_ids: ["{{ org.id }}", "{{ organization_name }}-2"]
+        object_ids: ["{{ org.organization.id }}", "{{ organization_name }}-2"]
         role_definition: Organization Admin
-        user: "{{ user3.id }}"
+        user: "{{ user3.user.id }}"
       register: delete_role_user_assignment
 
     - name: Check Existence of Role User Assignments for orgs
       ansible.platform.role_user_assignment:
         state: exists
-        object_ids: ["{{ org.id }}", "{{ organization_name }}-2"]
+        object_ids: ["{{ org.organization.id }}", "{{ organization_name }}-2"]
         role_definition: Organization Admin
-        user: "{{ user3.id }}"
+        user: "{{ user3.user.id }}"
       register: role_definition_exists_check
       failed_when: false
 
     - name: Assert that the role role_definition_exists_check is failed
       ansible.builtin.assert:
         that:
-          - role_definition_exists_check is failed
+          - role_definition_exists_check.role_user_assignment is not defined
 
     - name: Assert that removing user as org admin worked
       ansible.builtin.assert:
@@ -395,15 +395,15 @@
 
     - name: Check Existence of Role User Assignments
       ansible.platform.role_user_assignment:
-        object_id: "{{ org.id }}"
+        object_id: "{{ org.organization.id }}"
         role_definition: Organization Admin
-        user: "{{ user.id }}"
+        user: "{{ user.user.id }}"
 
     - name: Check absence of Role User Assignments
       ansible.platform.role_user_assignment:
-        object_id: "{{ org.id }}"
+        object_id: "{{ org.organization.id }}"
         role_definition: Organization Member
-        user: "{{ user.id }}"
+        user: "{{ user.user.id }}"
         state: absent
       register: role_definition
 

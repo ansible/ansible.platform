@@ -64,7 +64,7 @@
 
     - name: Alter an existing organization by ID
       ansible.platform.organization:
-        name: "{{ org.id }}"
+        name: "{{ org.organization.id }}"
         description: "Some Organization"
       register: org_change
 
@@ -83,7 +83,7 @@
       ansible.builtin.assert:
         that:
           - rename_org is changed
-          - org.id == rename_org.id
+          - org.organization.id == rename_org.organization.id
 
     - name: Delete a non-existent organization
       ansible.platform.organization:
@@ -98,7 +98,7 @@
 
     - name: Delete an org
       ansible.platform.organization:
-        name: "{{ org.id }}"
+        name: "{{ org.organization.id }}"
         state: absent
       register: org_delete
 
@@ -115,7 +115,7 @@
       ansible.platform.organization:
         name: "{{ item }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
       loop:
         - "org"
 ...

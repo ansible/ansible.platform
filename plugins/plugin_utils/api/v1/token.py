@@ -26,6 +26,46 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
         return None
 
 
+def _resolve_application_id(manager, application, organization=None):
+    """
+    Resolve an application name to its id, optionally scoped to an organization.
+
+    If ``organization`` is given the lookup is filtered to that org so duplicate
+    app names across orgs are handled correctly.  If ``organization`` is omitted
+    and multiple applications share the same name an error is raised to force the
+    caller to disambiguate.
+    """
+    if application is None:
+        return None
+    if str(application).isdigit():
+        return int(application)
+
+    query_params = {"name": str(application)}
+
+    # Resolve org to id when provided so we can filter the application list
+    if organization is not None:
+        if str(organization).isdigit():
+            org_id = int(organization)
+        else:
+            org_id = manager.lookup_resource_id("organizations", "name", str(organization))
+        if org_id is not None:
+            query_params["organization"] = org_id
+
+    url = manager._build_url("applications", query_params=query_params)
+    response = manager.session.get(url, timeout=manager.request_timeout, verify=manager.verify_ssl)
+    response.raise_for_status()
+    results = response.json().get("results", [])
+
+    if not results:
+        raise ValueError("Application '%s' not found" % application)
+    if len(results) > 1:
+        raise ValueError(
+            "Application '%s' is ambiguous: found %d matches across different organizations. "
+            "Specify the 'organization' parameter to disambiguate." % (application, len(results))
+        )
+    return results[0].get("id")
+
+
 @dataclass
 class APIToken_v1(BaseTransformMixin):
     """API v1 representation of a gateway OAuth2 token."""
@@ -59,10 +99,13 @@ class TokenTransformMixin_v1(BaseTransformMixin):
             if val is not None:
                 api_data[field] = val
 
-        # Resolve FK: application name -> id
+        # Resolve FK: application name -> id, filtered by organization when provided.
+        # Raises ValueError if the name is ambiguous (same name in multiple orgs)
+        # and no organization is given to disambiguate.
         application = getattr(ansible_instance, "application", None)
+        organization = getattr(ansible_instance, "organization", None)
         if application is not None and manager:
-            resolved = _resolve_fk(manager, "applications", "name", application)
+            resolved = _resolve_application_id(manager, application, organization=organization)
             if resolved is not None:
                 api_data["application"] = resolved
 

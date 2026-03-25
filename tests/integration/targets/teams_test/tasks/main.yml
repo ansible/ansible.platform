@@ -52,7 +52,7 @@
     - name: Create Team 1 with check mode
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
-        organization: "{{ org1.name }}" # Org by name
+        organization: "{{ org1.organization.name }}" # Org by name
         description: Team 1
       check_mode: true
 
@@ -60,7 +60,7 @@
     - name: Check that team1 does not exist
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
-        organization: "{{ org1.name }}"
+        organization: "{{ org1.organization.name }}"
         state: exists
       register: team1_search
 
@@ -73,7 +73,7 @@
     - name: Create Team 1
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
-        organization: "{{ org1.name }}" # Org by name
+        organization: "{{ org1.organization.name }}" # Org by name
         description: Team 1
       register: team1
 
@@ -84,7 +84,7 @@
 
     - name: Validate we can't change a team to a non-existent organization
       ansible.platform.team:
-        name: "{{ team1.name }}"
+        name: "{{ team1.team.name }}"
         organization: "{{ name_prefix }}-Org-DNE"
       ignore_errors: true
       register: invalid_team
@@ -98,7 +98,7 @@
     - name: Recreate Team 1
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-1"
-        organization: "{{ org1.name }}"
+        organization: "{{ org1.organization.name }}"
         description: Team 1
       register: team1
 
@@ -110,7 +110,7 @@
     - name: Create Team 2
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-2"
-        organization: "{{ org2.id }}"
+        organization: "{{ org2.organization.id }}"
       register: team2
 
     - name: Assert that team 2 was created
@@ -121,7 +121,7 @@
     - name: Create Team 3
       ansible.platform.team:
         name: "{{ name_prefix }}-Team-3"
-        organization: "{{ org2.name }}"
+        organization: "{{ org2.organization.name }}"
         description: Team 3
       register: team3
 
@@ -132,8 +132,8 @@
 
     - name: Change description of Team 1
       ansible.platform.team:
-        name: "{{ team1.id }}"
-        organization: "{{ org1.id }}"
+        name: "{{ team1.team.id }}"
+        organization: "{{ org1.organization.id }}"
         description: New Description of Team 1
       register: new_team_1
 
@@ -141,12 +141,12 @@
       ansible.builtin.assert:
         that:
           - new_team_1 is changed
-          - new_team_1.id == team1.id
+          - new_team_1.team.id == team1.team.id
 
     - name: Redo Team 3 with state as exists
       ansible.platform.team:
-        name: "{{ team3.name }}" # Check existence
-        organization: "{{ org2.name }}"
+        name: "{{ team3.team.name }}" # Check existence
+        organization: "{{ org2.organization.name }}"
         state: exists
       register: team3
 
@@ -157,8 +157,8 @@
 
     - name: Validate delete of non-existent team via invalid org
       ansible.platform.team:
-        name: "{{ team3.id }}"
-        organization: "{{ org1.name }}"
+        name: "{{ team3.team.id }}"
+        organization: "{{ org1.organization.name }}"
         state: absent
       register: non_existent_delete
 
@@ -169,8 +169,8 @@
 
     - name: Validate delete of non-existing team via invalid name
       ansible.platform.team:
-        name: "{{ team1.id }}" # Check absence by wrong name
-        organization: "{{ org2.name }}"
+        name: "{{ team1.team.id }}" # Check absence by wrong name
+        organization: "{{ org2.organization.name }}"
         state: absent
       register: non_existent_delete
 
@@ -181,8 +181,8 @@
 
     - name: Rename a team
       ansible.platform.team:
-        name: "{{ team1.id }}"
-        organization: "{{ org1.name }}"
+        name: "{{ team1.team.id }}"
+        organization: "{{ org1.organization.name }}"
         new_name: "{{ test_id }}-Team1-New"
       register: new_team1
 
@@ -190,20 +190,20 @@
       ansible.builtin.assert:
         that:
           - new_team1 is changed
-          - team1.id == new_team1.id
+          - team1.team.id == new_team1.team.id
 
     - name: Change a teams organization
       ansible.platform.team:
-        name: "{{ team2.name }}"
-        organization: "{{ org2.name }}"
-        new_organization: "{{ org1.name }}"
+        name: "{{ team2.team.name }}"
+        organization: "{{ org2.organization.name }}"
+        new_organization: "{{ org1.organization.name }}"
       register: new_team2
 
     - name: Assert that changing the org caused a change to the existing team
       ansible.builtin.assert:
         that:
           - new_team2 is changed
-          - new_team2.id == team2.id
+          - new_team2.team.id == team2.team.id
   # </Teams> ------------------------------------
 
   always:
@@ -211,32 +211,32 @@
     - name: Delete Team1
       ansible.platform.team:
         state: absent
-        name: "{{ team1.id }}"
-        organization: "{{ org1.id }}"
+        name: "{{ team1.team.id }}"
+        organization: "{{ org1.organization.id }}"
       when: team1 is defined and org1 is defined
 
     - name: Delete Team2
       ansible.platform.team:
         state: absent
-        name: "{{ team2.id }}"
+        name: "{{ team2.team.id }}"
         organization: "{{ item }}"
       when: team2 is defined and item is defined
       loop:
-        - "{{ org1.id }}"
-        - "{{ org2.id }}"
+        - "{{ org1.organization.id }}"
+        - "{{ org2.organization.id }}"
 
     - name: Delete Team3
       ansible.platform.team:
         state: absent
-        name: "{{ team3.id }}"
-        organization: "{{ org2.id }}"
+        name: "{{ team3.team.id }}"
+        organization: "{{ org2.organization.id }}"
       when: team3 is defined and org2 is defined
 
     - name: Delete Organizations
       ansible.platform.organization:
         state: absent
-        name: "{{ vars[item].id }}"
-      when: item in vars and 'id' in vars[item]
+        name: "{{ vars[item].organization.id }}"
+      when: item in vars and vars[item].organization is defined and 'id' in vars[item].organization
       loop:
         - org1
         - org2

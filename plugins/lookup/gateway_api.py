@@ -148,7 +148,17 @@ class LookupModule(LookupBase):
                 module_params[module_param] = opt_val
 
         # Create our module
-        module = AAPModule(argument_spec={}, direct_params=module_params, error_callback=self.handle_error, warn_callback=self.warn_callback)
+        # Wrap in try/except BaseException so that any sys.exit() or other fatal
+        # BaseException raised inside AAPModule (e.g. from AnsibleModule internals)
+        # is converted to an AnsibleError instead of killing the Ansible worker process.
+        try:
+            module = AAPModule(argument_spec={}, direct_params=module_params, error_callback=self.handle_error, warn_callback=self.warn_callback)
+        except AnsibleError:
+            raise
+        except SystemExit as e:
+            raise AnsibleError('gateway_api lookup: unexpected SystemExit({0}) during module init'.format(e.code))
+        except BaseException as e:
+            raise AnsibleError('gateway_api lookup: unexpected {0} during module init: {1}'.format(type(e).__name__, to_native(e)))
 
         response = module.get_endpoint(terms[0], data=self.get_option('query_params', {}))
 

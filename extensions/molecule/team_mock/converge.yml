@@ -45,7 +45,27 @@
 
     - name: Assert create changed (local)
       ansible.builtin.assert:
-        that: create_result_local is changed
+        that:
+          - create_result_local is changed
+          - create_result_local.team.id is defined
+          - create_result_local.team.name == molecule_team_local
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Assert RETURN shape — no internal/readonly keys in result.team (ANSTRAT-1640)
+      ansible.builtin.assert:
+        that:
+          - "'_timing' not in create_result_local"
+          - "'_timing' not in create_result_local.team"
+          - "'changed' not in create_result_local.team"
+          - "'state' not in create_result_local.team"
+          - "'new_name' not in create_result_local.team"
+          - "'new_organization' not in create_result_local.team"
+          - "'created' not in create_result_local.team"
+          - "'modified' not in create_result_local.team"
+          - "'url' not in create_result_local.team"
+        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.team. result={{ create_result_local }}"
       vars:
         ansible_connection: local
 

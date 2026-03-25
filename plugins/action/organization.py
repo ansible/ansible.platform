@@ -43,9 +43,6 @@ class ActionModule(BaseResourceActionPlugin):
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp
 
-        import time
-        action_start = time.perf_counter()
-
         auth_params = [
             'gateway_hostname', 'gateway_username', 'gateway_password',
             'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',
@@ -162,16 +159,12 @@ class ActionModule(BaseResourceActionPlugin):
                         'changed': True,
                         'failed': False,
                         self.MODULE_NAME: {'name': org.name},
-                        'id': None,
-                        'name': org.name,
                     })
                 elif operation == 'update':
                     result.update({
                         'changed': True,
                         'failed': False,
                         self.MODULE_NAME: {'name': org.name, 'id': getattr(org, 'id', None)},
-                        'id': getattr(org, 'id', None),
-                        'name': org.name,
                     })
                 else:  # delete
                     result.update({
@@ -199,42 +192,62 @@ class ActionModule(BaseResourceActionPlugin):
                     return result
                 raise
 
-            read_only_fields = {'id', 'created', 'modified', 'url'}
+            # Validate output
+            # Keys excluded from the resource sub-dict ('organization'):
+            #
+            #   _internal_keys     — injected by the manager/RPC layer; not resource data.
+            #
+            #   _api_readonly      — fields the API returns but does not accept as input
+            #                        (created, modified, url). Including them breaks
+            #                        idempotent round-trip.
+            #
+            #   _ansible_directives — argspec fields that are Ansible control parameters
+            #                        (state, new_name). 'state' and 'new_name' are operation
+            #                        parameters, not resource fields.
+            #
+            # 'id' is NOT in the argspec but IS included in the resource dict because it
+            # is the stable numeric identifier needed by subsequent tasks.
+            _internal_keys = {'_timing', 'changed'}
+            _api_readonly = {'created', 'modified', 'url'}
+            _ansible_directives = {'state', 'new_name'}
+            _excluded = _internal_keys | _api_readonly | _ansible_directives
             argspec_fields = set(argspec.get('argument_spec', {}).keys())
+
+            # Build a clean view: argspec fields (minus directives) + id.
+            argspec_resource_fields = (argspec_fields - _ansible_directives) | {'id'}
             filtered_result = {
                 k: v for k, v in manager_result.items()
-                if k in argspec_fields or k in read_only_fields
+                if k in argspec_resource_fields
+                and k not in _internal_keys
             }
             try:
                 validated_output = self._validate_data(
-                    {k: v for k, v in filtered_result.items() if k in argspec_fields},
+                    {k: v for k, v in filtered_result.items() if k in argspec_fields and k not in _ansible_directives},
                     argspec,
                     'output'
                 )
-                for field in read_only_fields:
-                    if field in filtered_result:
-                        validated_output[field] = filtered_result[field]
+                # Restore id after argspec validation (not an argspec field but needed).
+                if 'id' in filtered_result:
+                    validated_output['id'] = filtered_result['id']
             except Exception:
-                validated_output = manager_result
+                # Output validation failed — fall back to filtered view, still strip excluded keys.
+                validated_output = {
+                    k: v for k, v in manager_result.items()
+                    if k not in _excluded
+                }
+                if 'id' in manager_result:
+                    validated_output['id'] = manager_result['id']
 
-            # Top-level id/name so playbooks can use org1.id, org1.name
+            # Top-level result: Ansible control keys + the clean resource sub-dict only.
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
                 self.MODULE_NAME: validated_output,
-                'id': validated_output.get('id'),
-                'name': validated_output.get('name'),
             })
             if operation == 'find':
                 result['exists'] = bool(validated_output.get('id'))
             elif operation == 'delete':
                 result[self.MODULE_NAME]['state'] = 'absent'
-
-            action_end = time.perf_counter()
-            timing = manager_result.get('_timing', {})
-            result.setdefault('_timing', {})['action_plugin_time'] = action_end - action_start
-            result['_timing']['manager_processing_time'] = timing.get('manager_processing_time', 0)
-            result['_timing']['api_call_time'] = timing.get('api_call_time', 0)
 
         except Exception as e:
             import traceback

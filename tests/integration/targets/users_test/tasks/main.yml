@@ -156,7 +156,7 @@
     # Check idempotency when using a user id instead of a name
     - name: Give Joe superuser via his id instead of username
       ansible.platform.user:
-        username: "{{ joe.id }}"
+        username: "{{ joe.user.id }}"
         is_superuser: true
       register: joe_superuser_again
 
@@ -168,7 +168,7 @@
     # Change a user by their ID
     - name: Change Joe to Jane via ID
       ansible.platform.user:
-        username: "{{ joe.id }}"
+        username: "{{ joe.user.id }}"
         first_name: Jane
       register: jane
 
@@ -215,7 +215,7 @@
         first_name: Doe
         password: "{{ 65535 | random | to_uuid }}"
         organizations:
-          - "{{ org1.name }}"
+          - "{{ org1.organization.name }}"
       register: doe
 
     - name: Assert the creation of the user changed the system
@@ -239,7 +239,7 @@
       ansible.platform.user:
         username: "{{ username }}-noorg"
         organizations:
-          - "{{ org1.name }}"
+          - "{{ org1.organization.name }}"
       register: add_to_org
 
     - name: Assert that adding the organization changed the user
@@ -258,8 +258,8 @@
         first_name: MultiOrg
         password: "{{ 65535 | random | to_uuid }}"
         organizations:
-          - "{{ org1.name }}"
-          - "{{ org2.name }}"
+          - "{{ org1.organization.name }}"
+          - "{{ org2.organization.name }}"
       register: multiorg_user
 
     - name: Assert the creation of the user changed the system
@@ -337,8 +337,8 @@
         name: "{{ item }}"
         state: absent
       loop:
-        - "{{ org2.name }}"
-        - "{{ org1.name }}"
+        - "{{ org2.organization.name }}"
+        - "{{ org1.organization.name }}"
       register: delete_results
       ignore_errors: true
 
@@ -348,7 +348,7 @@
         state: absent
       loop:
         - "{{ username }}"
-        - "{{ doe.username }}"
+        - "{{ doe.user.username }}"
         - "timmy-{{ username }}"
         - "{{ username }}-noorg"
         - "{{ username }}-multiorg"

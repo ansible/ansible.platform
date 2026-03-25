@@ -56,19 +56,62 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
-- name: Create Organization
+- name: Create an organization
+  ansible.platform.organization:
+    name: Ansible Product Development
+    description: Organization for ansible developers
+  register: created_org
+
+- name: Idempotent re-run — no change expected
   ansible.platform.organization:
     name: Ansible Product Development
     description: Organization for ansible developers
 
-- name: Update Organization
-  ansible.platform.organization:
-    name: Ansible Product Development
-    description: Updated description
+- name: Round-trip update using registered result
+  ansible.platform.organization: "{{ created_org.organization | combine({'description': 'Updated description'}) }}"
 
-- name: Delete Organization
+- name: Rename an organization
   ansible.platform.organization:
     name: Ansible Product Development
+    new_name: Ansible Platform Development
+
+- name: Check whether an organization exists (no change)
+  ansible.platform.organization:
+    name: Ansible Platform Development
+    state: exists
+  register: org_check
+
+- name: Delete an organization
+  ansible.platform.organization:
+    name: Ansible Platform Development
     state: absent
+...
+"""
+
+RETURN = """
+changed:
+  description: Whether the organization was created, updated, or deleted.
+  returned: always
+  type: bool
+
+organization:
+  description: >
+    The organization resource as it exists after the operation.
+    Contains only the fields accepted as module input (argspec fields) plus C(id).
+    API-managed fields (C(created), C(modified), C(url)) and Ansible directives
+    (C(state), C(new_name)) are excluded so that C(result.organization) can be
+    fed back as module parameters unchanged (idempotent round-trip).
+  returned: when state is present, exists, or enforced
+  type: dict
+  contains:
+    id:
+      description: Numeric database ID of the organization.
+      type: int
+    name:
+      description: Name of the organization.
+      type: str
+    description:
+      description: Description of the organization.
+      type: str
 ...
 """

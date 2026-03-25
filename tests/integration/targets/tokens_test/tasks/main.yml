@@ -33,7 +33,7 @@
     - name: Create Application 1 Org 1
       ansible.platform.application:
         name: "{{ name_prefix }}-app1"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: public
       register: app1
@@ -41,7 +41,7 @@
     - name: Create Application 1 Org 2
       ansible.platform.application:
         name: "{{ name_prefix }}-app1"
-        organization: "{{ org2.id }}"
+        organization: "{{ org2.organization.id }}"
         authorization_grant_type: password
         client_type: public
       register: app2
@@ -91,7 +91,7 @@
       ansible.platform.token:
         application: "{{ name_prefix }}-app1"
         scope: write
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
       register: app_token
 
     - name: Assert that we created a token
@@ -108,31 +108,35 @@
         - "user_token"
         - "user_token_two"
         - "app_token"
-      when: item in vars
+      when: >-
+        item in vars
+        and vars[item] is mapping
+        and 'ansible_facts' in vars[item]
+        and 'aap_token' in vars[item].ansible_facts
 
     - name: Delete app1
       ansible.platform.application:
-        name: "{{ vars[item].id }}"
-        organization: "{{ org1.id }}"
+        name: "{{ vars[item].application.name }}"
+        organization: "{{ org1.organization.id }}"
         state: absent
       loop:
         - "app1"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'application' in vars[item]"
 
     - name: Delete Applications in Org2
       ansible.platform.application:
-        name: "{{ vars[item].id }}"
-        organization: "{{ org2.id }}"
+        name: "{{ vars[item].application.name }}"
+        organization: "{{ org2.organization.id }}"
         state: absent
       loop:
         - "app2"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'application' in vars[item]"
 
     - name: Delete Organizations
       ansible.platform.organization:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].organization.name }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'organization' in vars[item]"
       loop:
         - "org1"
         - "org2"
