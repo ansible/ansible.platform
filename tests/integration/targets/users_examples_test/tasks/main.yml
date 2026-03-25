@@ -88,7 +88,14 @@
       # Strip read-only 'id' field before feeding the result back as module args;
       # 'id' is present in the registered result for reference but is not an
       # accepted input parameter for ansible.platform.user.
-      ansible.platform.user: "{{ created_user.user | combine({'email': ex_username ~ '-updated@example.com'}) | dict2items | rejectattr('key', 'equalto', 'id') | items2dict }}"
+      ansible.platform.user: >-
+        {{
+          created_user.user
+          | combine({'email': ex_username ~ '-updated@example.com'})
+          | dict2items
+          | rejectattr('key', 'equalto', 'id')
+          | items2dict
+        }}
       register: roundtrip_result
 
     - name: Assert round-trip update applied the new email
