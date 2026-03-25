@@ -344,13 +344,18 @@ class Connection(ConnectionBase):
         # Validate socket if found
         if socket_path and Path(socket_path).exists() and authkey_b64:
             # Reuse existing manager (no new HTTP/TLS session)
-            try:
-                authkey = base64.b64decode(authkey_b64)
-                client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-                logger.info("Reusing existing persistent manager: %s", socket_path)
-                return client, None
-            except Exception as e:
-                logger.warning("Failed to connect to existing manager: %s, spawning new one", e)
+            if ProcessManager.is_socket_stale(socket_path):
+                logger.warning("Stale socket detected at %s. Process is no longer running. Cleaning up orphaned socket.", socket_path)
+                ProcessManager.cleanup_old_socket(socket_path)
+            else:
+                try:
+                    authkey = base64.b64decode(authkey_b64)
+                    client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
+                    logger.info("Reusing existing persistent manager: %s", socket_path)
+                    return client, None
+                except Exception as e:
+                    logger.warning("Failed to connect to existing manager: %s, spawning new one", e)
+                    ProcessManager.cleanup_old_socket(socket_path)
 
         # Spawn new manager
         logger.info("Spawning new persistent manager for host: %s", inventory_hostname)

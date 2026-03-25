@@ -276,7 +276,7 @@ def test_persistent_reuse_fails_connection_raises_spawns_new():
             mock_pm.cleanup_old_socket.return_value = None
             mock_pm.spawn_manager_process.return_value = MagicMock(pid=9999)
             mock_pm.wait_for_process_startup.return_value = None
-
+            mock_pm.is_socket_stale.return_value = False
             with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient") as mock_rpc:
                 mock_rpc.side_effect = [ConnectionError("Connection refused"), mock_client]
 
@@ -290,16 +290,16 @@ def test_persistent_reuse_fails_connection_raises_spawns_new():
     assert mock_rpc.call_count == 2
 
 
-def test_persistent_socket_file_missing_spawns_new():
-    """When facts have socket path but socket file does not exist, skip reuse and spawn new manager."""
+def test_persistent_socket_stale_cleans_up_and_spawns_new():
+    """When the socket is detected as stale, skip reuse attempt, clean up, and spawn new manager."""
     import base64
 
     conn = _make_connection()
-    missing_socket = "/tmp/ansible_platform/missing.sock"
+    stale_socket = "/tmp/ansible_platform/stale.sock"
     authkey_b64 = base64.b64encode(b"secret").decode("ascii")
     task_vars = {
         "inventory_hostname": "localhost",
-        "hostvars": {"localhost": {"platform_manager_socket": missing_socket, "platform_manager_authkey": authkey_b64}},
+        "hostvars": {"localhost": {"platform_manager_socket": stale_socket, "platform_manager_authkey": authkey_b64}},
     }
     gateway_config = _make_gateway_config()
 
@@ -311,8 +311,7 @@ def test_persistent_socket_file_missing_spawns_new():
     conn_info.authkey = b"secret"
 
     with patch("ansible_collections.ansible.platform.plugins.connection.http.Path") as mock_path_cls:
-        # Socket exists check: False (file missing) so we never try to connect
-        mock_path_cls.return_value.exists.return_value = False
+        mock_path_cls.return_value.exists.return_value = True
         mock_path_cls.return_value.parent.parent.__truediv__.return_value.exists.return_value = True
 
         with patch("ansible_collections.ansible.platform.plugins.connection.http.ProcessManager") as mock_pm:
@@ -320,13 +319,15 @@ def test_persistent_socket_file_missing_spawns_new():
             mock_pm.cleanup_old_socket.return_value = None
             mock_pm.spawn_manager_process.return_value = MagicMock(pid=9999)
             mock_pm.wait_for_process_startup.return_value = None
-
-            with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient", return_value=mock_client):
+            mock_pm.is_socket_stale.return_value = True
+            with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient", return_value=mock_client) as mock_rpc:
                 client, facts = conn._get_persistent_client(task_vars, gateway_config)
 
     assert client is mock_client
     assert facts is not None
     assert facts.get("platform_manager_socket") == new_socket
+    mock_pm.cleanup_old_socket.assert_any_call(stale_socket)
     mock_pm.spawn_manager_process.assert_called_once()
+    assert mock_rpc.call_count == 1
     # ManagerRPCClient only called once (for new spawn), not for reuse
     # We didn't patch it with side_effect so we can't assert call_count; the important part is spawn was used

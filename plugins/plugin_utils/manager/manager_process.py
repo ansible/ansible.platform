@@ -50,6 +50,13 @@ def main():
     gateway_token = sys.argv[7] or None
     gateway_validate_certs = sys.argv[8].lower() == 'true'
     gateway_request_timeout = float(sys.argv[9])
+    pid_file = f"{socket_path}.pid"
+    try:
+        with open(pid_file, 'w') as f:
+            f.write(str(os.getpid()))
+        log_marker(f"PID {os.getpid()} written to {pid_file}")
+    except Exception as e:
+        log_marker(f"Failed to write PID file: {e}")
     log_marker("Arguments parsed successfully")
 
     # Read sys.path and authkey from environment
@@ -212,6 +219,13 @@ def main():
                 with open(error_log, 'a') as f:
                     f.write(f"Error during shutdown: {e}\n")
                     f.flush()
+            try:
+                if os.path.exists(pid_file):
+                    os.remove(pid_file)
+            except Exception:
+                with open(error_log, 'a') as f:
+                    f.write(f"Failed to remove PID file on signal exit: {e}\n")
+                    f.flush()
             sys.exit(0)
 
         # Register signal handlers
@@ -243,6 +257,15 @@ def main():
                 f.flush()
             service.shutdown()
             sys.exit(0)
+
+        finally:
+            try:
+                if os.path.exists(pid_file):
+                    os.remove(pid_file)
+            except Exception:
+                with open(error_log, 'a') as f:
+                    f.write(f"Failed to remove PID file on normal exit: {e}\n")
+                    f.flush()
 
     except Exception as e:
         # Log to a temp file for debugging

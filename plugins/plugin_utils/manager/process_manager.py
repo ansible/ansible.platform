@@ -107,20 +107,57 @@ class ProcessManager:
         )
 
     @staticmethod
+    def is_socket_stale(socket_path: str) -> bool:
+        """
+        Check if the manager process associated with the socket is still running.
+        Uses the .pid file to verify process ownership.
+        """
+        socket_file = Path(socket_path)
+        if not socket_file.exists():
+            return False
+        pid_file = Path(f"{socket_path}.pid")
+        if not pid_file.exists():
+            logger.warning("Socket exists but no PID file found. Considering socket stale.")
+            return True
+        try:
+            pid_str = pid_file.read_text().strip()
+            if not pid_str.isdigit():
+                return True
+            pid = int(pid_str)
+
+            # Check if process is alive
+            import os
+            try:
+                os.kill(pid, 0)
+                return False  # Process is alive
+            except OSError:
+                logger.warning("Manager process %s is no longer running. Stale socket detected.", pid)
+                return True   # Process is dead
+        except Exception as e:
+            logger.warning("Error reading PID file %s: %s. Considering socket stale.", pid_file, e)
+            return True
+
+    @staticmethod
     def cleanup_old_socket(socket_path: str) -> None:
         """
-        Clean up old socket file if it exists.
-
+        Clean up old socket file and its PID file if they exist.
         Args:
             socket_path: Path to socket file
         """
         socket_file = Path(socket_path)
+        pid_file = Path(f"{socket_path}.pid")
         if socket_file.exists():
             try:
                 socket_file.unlink()
                 logger.debug("Removed old socket: %s", socket_path)
             except Exception as e:
                 logger.warning("Failed to remove old socket: %s", e)
+        if pid_file.exists():
+            try:
+                pid_file.unlink()
+                logger.debug("Removed old PID file: %s", pid_file)
+            except Exception as e:
+                logger.warning("Failed to remove old PID file: %s", e)
 
     @staticmethod
     def spawn_manager_process(

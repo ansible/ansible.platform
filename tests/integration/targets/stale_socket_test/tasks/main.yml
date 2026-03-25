@@ -1,0 +1,96 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Generate names
+  ansible.builtin.set_fact:
+    username: "Gateway-Collection-tests-stale-user-{{ test_id }}"
+
+- name: Run Stale Socket Recovery Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  vars:
+    ansible_connection: ansible.platform.http
+    ansible_platform_use_persistent_connection: true
+
+  block:
+    - name: Trigger the initial manager spawn
+      ansible.platform.user:
+        username: "{{ username }}"
+        first_name: Initial
+        password: "{{ 65535 | random | to_uuid }}"
+        state: present
+      register: initial_run
+
+    - name: Assert the initial run was successful
+      ansible.builtin.assert:
+        that:
+          - initial_run is changed
+
+    - name: Find the generated socket path locally
+      ansible.builtin.shell: |
+        set -o pipefail
+        ls -1 /tmp/ansible_platform/manager_*.sock | head -n 1
+      args:
+        executable: /bin/bash
+      register: found_socket_cmd
+      changed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Force facts so the next task attempts reuse
+      ansible.builtin.set_fact:
+        platform_manager_socket: "{{ found_socket_cmd.stdout }}"
+        platform_manager_authkey: "ZHVtbXlfa2V5"
+
+    - name: Simulate sudden manager crash (OOM Kill / Eviction)
+      ansible.builtin.shell: |
+        echo "Killing manager process to orphan the socket..."
+        pkill -9 -f "manager_process.py"
+      register: kill_result
+      changed_when: kill_result.rc == 0
+      failed_when: kill_result.rc not in [0, 1]
+      vars:
+        ansible_connection: local
+
+    - name: Execute another task to trigger recovery
+      ansible.platform.user:
+        username: "{{ username }}"
+        first_name: Recovered
+        state: present
+      register: recovery_run
+
+    - name: Assert recovery was successful
+      ansible.builtin.assert:
+        that:
+          - recovery_run is not failed
+          - recovery_run is changed
+          - recovery_run.user.first_name == "Recovered"
+        fail_msg: "The connection plugin tripped over the stale socket instead of recovering."
+
+  always:
+    - name: Delete users
+      ansible.platform.user:
+        username: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ username }}"
+      register: delete_results
+      failed_when:
+        - delete_results is failed
+        - "'404' not in delete_results.msg | default('')"
+
+    - name: Cleanup orphaned test sockets
+      ansible.builtin.shell: rm -f /tmp/ansible_platform/manager_*.sock*
+      register: rm_result
+      changed_when: false
+      failed_when: rm_result.rc != 0
+      vars:
+        ansible_connection: local
+...
