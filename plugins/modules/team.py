@@ -66,22 +66,80 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
-- name: Create Team
+- name: Create a team
   ansible.platform.team:
     name: Gateway Developers
     description: AAP Gateway Developers Team
     organization: Ansible Product Development
+  register: created_team
 
-- name: Update Team
+- name: Idempotent re-run — no change expected
+  ansible.platform.team:
+    name: Gateway Developers
+    organization: Ansible Product Development
+
+- name: Round-trip update using registered result
+  ansible.platform.team: "{{ created_team.team | combine({'description': 'Updated description'}) }}"
+
+- name: Rename a team
   ansible.platform.team:
     name: Gateway Developers
     organization: Ansible Product Development
     new_name: Gateway Dev Team
 
-- name: Delete Team
+- name: Move a team to a different organization
   ansible.platform.team:
-    name: Gateway Developers
+    name: Gateway Dev Team
     organization: Ansible Product Development
+    new_organization: Platform Engineering
+
+- name: Reference a team by its numeric id
+  ansible.platform.team:
+    name: "{{ created_team.team.id }}"
+    organization: Ansible Product Development
+    description: Updated via id
+
+- name: Check whether a team exists (no change)
+  ansible.platform.team:
+    name: Gateway Dev Team
+    organization: Platform Engineering
+    state: exists
+
+- name: Delete a team
+  ansible.platform.team:
+    name: Gateway Dev Team
+    organization: Platform Engineering
     state: absent
+...
+"""
+
+RETURN = """
+changed:
+  description: Whether the team was created, updated, or deleted.
+  returned: always
+  type: bool
+
+team:
+  description: >
+    The team resource as it exists after the operation.
+    Contains only the fields accepted as module input (argspec fields) plus C(id).
+    API-managed fields (C(created), C(modified), C(url)) and Ansible directives
+    (C(state), C(new_name), C(new_organization)) are excluded so that
+    C(result.team) can be fed back as module parameters unchanged (idempotent round-trip).
+  returned: when state is present, exists, or enforced
+  type: dict
+  contains:
+    id:
+      description: Numeric database ID of the team.
+      type: int
+    name:
+      description: Name of the team.
+      type: str
+    description:
+      description: Description of the team.
+      type: str
+    organization:
+      description: Name of the organization this team belongs to.
+      type: str
 ...
 """

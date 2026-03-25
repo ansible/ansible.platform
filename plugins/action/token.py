@@ -121,7 +121,7 @@ class ActionModule(BaseResourceActionPlugin):
             else:
                 # state == 'present': create a new token (always creates, never idempotent)
                 token_obj_data = {}
-                for field in ('description', 'scope', 'application'):
+                for field in ('description', 'scope', 'application', 'organization'):
                     val = validated_params.get(field)
                     if val is not None:
                         token_obj_data[field] = val

@@ -63,11 +63,27 @@ class ActionModule(BaseResourceActionPlugin):
                 result['_ansible_facts_cacheable'] = True
 
             validated_params = validated_input.validated_parameters
+
+            # Client-side validation: mTLS and gateway auth are mutually exclusive
+            if validated_params.get('enable_mtls') and validated_params.get('enable_gateway_auth'):
+                raise ValueError("Mutual TLS can only be enabled when gateway auth is disabled")
+
             resource_data = {
                 k: v for k, v in validated_params.items()
                 if v is not None and k not in auth_params
             }
             resource = AnsibleRoute(**resource_data)
+
+            # Null out dataclass fields NOT explicitly provided by the user so that
+            # the manager's secondary idempotency comparison skips them.  Without
+            # this, dataclass defaults (e.g. enable_mtls=False, is_service_https=False)
+            # are serialised into ansible_data and compared against the API response
+            # which may not return those fields, triggering spurious changed=True.
+            user_provided_keys = set(resource_data.keys())
+            for _field in list(vars(resource).keys()):
+                if _field not in user_provided_keys:
+                    setattr(resource, _field, None)
+
             operation = self._detect_operation(validated_params)
 
             # Idempotent create: find by name, then update if exists

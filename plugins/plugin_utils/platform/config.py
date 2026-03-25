@@ -104,7 +104,12 @@ def extract_gateway_config(
     gateway_token_raw = (
         task_args.get('gateway_token') or
         host_vars.get('gateway_token') or
-        host_vars.get('aap_token')
+        # Only fall back to the aap_token ansible_fact when no username/password
+        # credentials are available.  The token module stores a read-scoped token
+        # in aap_token after creation; picking it up here would cause all
+        # subsequent tasks in the same play to authenticate as that limited token
+        # instead of the admin user, leading to 403 errors.
+        (host_vars.get('aap_token') if not gateway_username and not gateway_password else None)
     )
     # The token module sets aap_token as a dict ({"token": "...", "id": ...}).
     # Extract the actual token string if we got a dict.

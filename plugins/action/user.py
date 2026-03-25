@@ -47,16 +47,11 @@ class ActionModule(BaseResourceActionPlugin):
         Returns:
             Result dictionary with user data
         """
-        import time
-
         if task_vars is None:
             task_vars = dict()
 
         # Store task_vars for cleanup() method
         self._task_vars = task_vars
-
-        # Performance timing: Action plugin start
-        action_start = time.perf_counter()
 
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp  # not used
@@ -243,16 +238,12 @@ class ActionModule(BaseResourceActionPlugin):
                         'changed': True,
                         'failed': False,
                         self.MODULE_NAME: {'username': user.username},
-                        'id': None,
-                        'username': user.username,
                     })
                 elif operation == 'update':
                     result.update({
                         'changed': True,
                         'failed': False,
                         self.MODULE_NAME: {'username': user.username, 'id': getattr(user, 'id', None)},
-                        'id': getattr(user, 'id', None),
-                        'username': user.username,
                     })
                 else:  # delete
                     result.update({
@@ -281,72 +272,61 @@ class ActionModule(BaseResourceActionPlugin):
                 raise
 
             # Validate output
-            read_only_fields = {'id', 'created', 'modified', 'url'}
+            # Keys excluded from the resource sub-dict ('user'):
+            #
+            #   _internal_keys     — injected by the manager/RPC layer; not resource data.
+            #
+            #   _api_readonly      — fields the API returns but does not accept as input
+            #                        (created, modified, url). Including them breaks
+            #                        idempotent round-trip.
+            #
+            #   _ansible_directives — argspec fields that are Ansible control parameters
+            #                        (state). 'state' defaults to 'present' so omitting it
+            #                        from the returned dict does not affect round-trip.
+            #
+            # 'id' is NOT in the argspec but IS included in the resource dict because it
+            # is the stable numeric identifier needed by subsequent tasks.
+            _internal_keys = {'_timing', 'changed'}
+            _api_readonly = {'created', 'modified', 'url'}
+            _ansible_directives = {'state'}
+            _excluded = _internal_keys | _api_readonly | _ansible_directives
             argspec_fields = set(argspec.get('argument_spec', {}).keys())
+
+            # Build a clean view: argspec fields (minus directives) + id.
+            argspec_resource_fields = (argspec_fields - _ansible_directives) | {'id'}
             filtered_result = {
                 k: v for k, v in manager_result.items()
-                if k in argspec_fields or k in read_only_fields
+                if k in argspec_resource_fields
+                and k not in _internal_keys
             }
             try:
                 validated_output = self._validate_data(
-                    {k: v for k, v in filtered_result.items() if k in argspec_fields},
+                    {k: v for k, v in filtered_result.items() if k in argspec_fields and k not in _ansible_directives},
                     argspec,
                     'output'
                 )
-                for field in read_only_fields:
-                    if field in filtered_result:
-                        validated_output[field] = filtered_result[field]
+                # Restore id after argspec validation (not an argspec field but needed).
+                if 'id' in filtered_result:
+                    validated_output['id'] = filtered_result['id']
             except Exception:
-                validated_output = manager_result
+                # Output validation failed — fall back to filtered view, still strip excluded keys.
+                validated_output = {
+                    k: v for k, v in manager_result.items()
+                    if k not in _excluded
+                }
+                if 'id' in manager_result:
+                    validated_output['id'] = manager_result['id']
 
-            # Format return dict (top-level id/username so playbooks can use user1.id, user1.username)
+            # Top-level result: Ansible control keys + the clean resource sub-dict only.
             result.update({
                 'changed': manager_result.get('changed', False),
                 'failed': False,
                 self.MODULE_NAME: validated_output,
-                'id': validated_output.get('id'),
-                'username': validated_output.get('username'),
             })
             if operation == 'find':
                 result['exists'] = bool(validated_output.get('id'))
             elif operation == 'delete':
                 result[self.MODULE_NAME]['state'] = 'absent'
-
-            # Performance timing: Action plugin end
-            action_end = time.perf_counter()
-            action_elapsed = action_end - action_start
-
-            # Extract timing info from manager result if available
-            timing = {}
-            if isinstance(manager_result, dict) and '_timing' in manager_result:
-                timing = manager_result['_timing']
-
-            # Calculate our code time (excluding AAP response time)
-            rpc_time = timing.get('rpc_time', 0)
-            manager_time = timing.get('manager_processing_time', 0)
-            api_time = timing.get('api_call_time', 0)
-
-            # Our code time = RPC + Manager processing (excluding API call which is AAP's time)
-            our_code_time = rpc_time + manager_time
-
-            # Add timing to result
-            result.setdefault('_timing', {})['action_plugin_time'] = action_elapsed
-            result['_timing']['action_plugin_start'] = action_start
-            result['_timing']['action_plugin_end'] = action_end
-            result['_timing']['total_time'] = action_elapsed
-
-            # Add component times
-            result['_timing']['rpc_time'] = rpc_time
-            result['_timing']['manager_processing_time'] = manager_time
-            result['_timing']['api_call_time'] = api_time  # AAP response time
-
-            # Key metric: Our code execution time (excluding AAP)
-            result['_timing']['our_code_time'] = our_code_time
-            result['_timing']['aap_response_time'] = api_time
-
-            # Add HTTP and TLS metrics from manager
-            result['_timing']['http_request_count'] = timing.get('http_request_count', 0)
-            result['_timing']['tls_handshake_count'] = timing.get('tls_handshake_count', 0)
 
             self._display.vvv("Action plugin completed successfully")
 

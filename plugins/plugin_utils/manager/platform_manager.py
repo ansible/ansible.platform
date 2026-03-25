@@ -771,6 +771,13 @@ class PlatformService(BaseAPIClient):
                         changed = True
                         break
                     if current_val is not None and norm(v) != norm(current_val):
+                        # FK fields: user may provide a name string while the API
+                        # stores an integer ID (e.g. http_port, service_cluster).
+                        # The primary comparison already resolved both sides to
+                        # integers via the API response, so skip string-vs-int
+                        # mismatches here to avoid spurious changed=True.
+                        if isinstance(v, str) and isinstance(current_val, int):
+                            continue
                         changed = True
                         break
 
