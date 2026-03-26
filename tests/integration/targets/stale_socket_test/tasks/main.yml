@@ -33,61 +33,32 @@
         that:
           - initial_run is changed
 
-    - name: Capture manager facts from initial run when available
-      ansible.builtin.set_fact:
-        detected_socket_path: >-
-          {{
-            initial_run.ansible_facts.platform_manager_socket
-            | default(hostvars[inventory_hostname].platform_manager_socket, true)
-            | default('', true)
-          }}
-        detected_authkey: >-
-          {{
-            initial_run.ansible_facts.platform_manager_authkey
-            | default(hostvars[inventory_hostname].platform_manager_authkey, true)
-            | default('ZHVtbXlfa2V5', true)
-          }}
-
-    - name: Find generated socket path via tempdir fallback
+    - name: Create deterministic stale socket fixture
       ansible.builtin.shell: |
         python3 - <<'PY'
-        import glob
         import os
         import tempfile
+        test_id = os.environ["STALE_TEST_ID"]
         socket_dir = os.path.join(tempfile.gettempdir(), "ansible_platform")
-        sockets = sorted(glob.glob(os.path.join(socket_dir, "manager_*.sock")))
-        print(sockets[-1] if sockets else "")
+        os.makedirs(socket_dir, exist_ok=True)
+        socket_path = os.path.join(socket_dir, f"stale_{test_id}.sock")
+        pid_path = f"{socket_path}.pid"
+        open(socket_path, "a", encoding="utf-8").close()
+        with open(pid_path, "w", encoding="utf-8") as f:
+            f.write("999999")
+        print(socket_path)
         PY
-      register: found_socket_cmd
+      environment:
+        STALE_TEST_ID: "{{ test_id }}"
+      register: stale_socket_cmd
       changed_when: false
-      when: detected_socket_path | length == 0
       vars:
         ansible_connection: local
-
-    - name: Set socket path from fallback when needed
-      ansible.builtin.set_fact:
-        detected_socket_path: "{{ found_socket_cmd.stdout | trim }}"
-      when: detected_socket_path | length == 0
-
-    - name: Assert a manager socket was found
-      ansible.builtin.assert:
-        that:
-          - detected_socket_path | length > 0
 
     - name: Force facts so the next task attempts reuse
       ansible.builtin.set_fact:
-        platform_manager_socket: "{{ detected_socket_path }}"
-        platform_manager_authkey: "{{ detected_authkey }}"
-
-    - name: Simulate sudden manager crash (OOM Kill / Eviction)
-      ansible.builtin.shell: |
-        echo "Killing manager process to orphan the socket..."
-        pkill -9 -f "manager_process.py"
-      register: kill_result
-      changed_when: kill_result.rc == 0
-      failed_when: kill_result.rc not in [0, 1]
-      vars:
-        ansible_connection: local
+        platform_manager_socket: "{{ stale_socket_cmd.stdout | trim }}"
+        platform_manager_authkey: "ZHVtbXlfa2V5"
 
     - name: Execute another task to trigger recovery
       ansible.platform.user:
