@@ -1,0 +1,39 @@
+---
+- name: Cleanup stale socket scenario artifacts
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ansible.platform.http
+    ansible_platform_persistent: true
+    molecule_stale_user: "molecule-stale-user"
+  tasks:
+    - name: Delete molecule stale socket user if present
+      ansible.platform.user:
+        username: "{{ molecule_stale_user }}"
+        state: absent
+      register: delete_user_result
+      failed_when: false
+
+    - name: Assert cleanup user task did not hard-fail
+      ansible.builtin.assert:
+        that:
+          - delete_user_result is not failed
+
+    - name: Cleanup stale socket files from temp dir
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import glob
+        import os
+        import tempfile
+        socket_dir = os.path.join(tempfile.gettempdir(), "ansible_platform")
+        for path in glob.glob(os.path.join(socket_dir, "molecule_stale_*.sock*")):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+        PY
+      register: rm_result
+      changed_when: false
+      failed_when: rm_result.rc != 0
+      vars:
+        ansible_connection: local

@@ -1,0 +1,80 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+- name: Converge stale socket recovery (persistent http connection)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_connection: ansible.platform.http
+    ansible_platform_persistent: true
+    molecule_stale_user: "molecule-stale-user"
+    stale_fixture_id: "molecule"
+  tasks:
+    - name: Initial run to ensure manager usage
+      ansible.platform.user:
+        username: "{{ molecule_stale_user }}"
+        first_name: "Initial"
+        password: "{{ 65535 | random | to_uuid }}"
+        state: present
+      register: initial_run
+
+    - name: Assert initial run succeeded
+      ansible.builtin.assert:
+        that:
+          - initial_run is changed
+
+    - name: Create deterministic stale socket fixture
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import os
+        import tempfile
+        test_id = os.environ["MOLECULE_STALE_TEST_ID"]
+        socket_dir = os.path.join(tempfile.gettempdir(), "ansible_platform")
+        os.makedirs(socket_dir, exist_ok=True)
+        socket_path = os.path.join(socket_dir, f"molecule_stale_{test_id}.sock")
+        pid_path = f"{socket_path}.pid"
+        open(socket_path, "a", encoding="utf-8").close()
+        with open(pid_path, "w", encoding="utf-8") as f:
+            f.write("999999")
+        print(socket_path)
+        PY
+      environment:
+        MOLECULE_STALE_TEST_ID: "{{ stale_fixture_id }}"
+      register: stale_socket_cmd
+      changed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Force stale manager facts for next request
+      ansible.builtin.set_fact:
+        platform_manager_socket: "{{ stale_socket_cmd.stdout | trim }}"
+        platform_manager_authkey: "ZHVtbXlfa2V5"
+
+    - name: Trigger recovery with next request
+      ansible.platform.user:
+        username: "{{ molecule_stale_user }}"
+        first_name: "Recovered"
+        state: present
+      register: recovery_run
+
+    - name: Assert stale socket recovery succeeded
+      ansible.builtin.assert:
+        that:
+          - recovery_run is not failed
+          - recovery_run is changed
+          - recovery_run.user.first_name == "Recovered"
