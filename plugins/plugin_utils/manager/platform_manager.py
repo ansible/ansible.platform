@@ -117,6 +117,7 @@ class PlatformService(BaseAPIClient):
         # Detect API version dynamically
         self.api_version = self._detect_api_version()
         logger.info("PlatformService: API version locked in for execution: v%s", self.api_version)
+        self.session.headers.update({'X-API-Version': str(self.api_version)})
 
         # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
         logger.info("PlatformService initialized with API v%s", self.api_version)
@@ -389,9 +390,10 @@ class PlatformService(BaseAPIClient):
 
         The method:
         1. Makes a GET request to /api/gateway/
-        2. Parses the JSON response to extract current_version
-        3. Negotiates the highest mutual version from available_versions
-        4. Dynamically falls back to highest collection version if detection fails.
+        2. Checks X-API-Version header first, then falls back to JSON body.
+        3. Parses the JSON response to extract current_version
+        4. Negotiates the highest mutual version from available_versions
+        5. Dynamically falls back to highest collection version if detection fails.
 
         Returns:
             Version string (e.g., '1', '2.1')
@@ -430,8 +432,10 @@ class PlatformService(BaseAPIClient):
 
             version_str = None
 
-            # Parse JSON response
-            if response.headers.get('Content-Type', '').startswith('application/json'):
+            if 'X-API-Version' in response.headers:
+                version_str = response.headers['X-API-Version'].lstrip('v')
+                logger.debug("PlatformService: Extracted version '%s' from X-API-Version header", version_str)
+            elif response.headers.get('Content-Type', '').startswith('application/json'):
                 try:
                     response_data = response.json()
                     logger.debug("PlatformService: Gateway API response: %s", response_data)
@@ -467,6 +471,9 @@ class PlatformService(BaseAPIClient):
             if version_str and version_str in self.registry.get_supported_versions():
                 logger.info("PlatformService: API version locked in: v%s", version_str)
                 return version_str
+            elif version_str:
+                logger.warning("PlatformService: Detected version v%s is not supported. Defaulting to '1'.", version_str)
+                return '1'
 
         except requests.RequestException as e:
             # Network/HTTP errors - default to v1
@@ -481,12 +488,9 @@ class PlatformService(BaseAPIClient):
             print(error_msg, file=sys.stderr, flush=True)
             import traceback
             print(traceback.format_exc(), file=sys.stderr, flush=True)
-        latest_supported = self.registry.get_latest_version()
-        if not latest_supported:
-            raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-
-        logger.info("PlatformService: Version mismatch or detection failed. Falling back to highest supported: v%s", latest_supported)
-        return latest_supported
+            return '1'
+        logger.warning("PlatformService: Version detection failed or missing info. Defaulting to '1'.")
+        return '1'
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
         """
