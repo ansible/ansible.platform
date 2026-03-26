@@ -116,7 +116,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
         try:
-            url = f"{self.base_url.rstrip('/')}/api/gateway/"
+            url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
             response = self.session.open(
                 'GET',
                 url,
@@ -135,29 +135,13 @@ class DirectHTTPClient(BaseAPIClient):
                 response_body = response.read()
                 api_data = json.loads(response_body) if response_body else {}
 
-                # Extract from current_version (e.g., "/api/gateway/v1/" -> "1")
-                if 'current_version' in api_data:
+                if 'version' in api_data:
+                    version_str = str(api_data['version']).lstrip('v')
+                elif 'current_version' in api_data:
                     match = re.search(r'/v(\d+(?:\.\d+)?)/?$', api_data['current_version'])
                     if match:
                         version_str = match.group(1)
 
-                # Negotiate highest mutual version from available_versions
-                if not version_str and 'available_versions' in api_data:
-                    available = api_data['available_versions']
-                    if isinstance(available, dict) and available:
-                        platform_versions = [v.lstrip('v') for v in available.keys()]
-                        collection_supported = self.registry.get_supported_versions()
-                        mutual_versions = [v for v in platform_versions if v in collection_supported]
-
-                        if mutual_versions:
-                            try:
-                                from packaging.version import parse as parse_version
-                            except ImportError:
-                                from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
-                                parse_version = version.parse
-                            version_str = max(mutual_versions, key=parse_version)
-
-            # Validate negotiated version
             if version_str and version_str in self.registry.get_supported_versions():
                 logger.info("DirectHTTPClient: Negotiated mutual API version: v%s", version_str)
                 return version_str

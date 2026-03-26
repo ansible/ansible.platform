@@ -379,52 +379,30 @@ class PlatformService(BaseAPIClient):
     def _detect_api_version(self) -> str:
         """
         Detect platform API version.
-
-        Uses the /api/gateway/ endpoint which returns version information in JSON format:
-        {
-          "current_version": "/api/gateway/v1/",
-          "available_versions": {
-            "v1": "/api/gateway/v1/"
-          }
-        }
-
-        The method:
-        1. Makes a GET request to /api/gateway/
-        2. Checks X-API-Version header first, then falls back to JSON body.
-        3. Parses the JSON response to extract current_version
-        4. Negotiates the highest mutual version from available_versions
-        5. Dynamically falls back to highest collection version if detection fails.
-
-        Returns:
-            Version string (e.g., '1', '2.1')
+        Checks X-API-Version header first, then falls back to JSON body.
+        Defaults to '1' if detection fails or an unsupported version is returned.
         """
         requests = _get_requests()
-        # Write to both logger and stderr for visibility in manager process logs
         import sys
         import os
         import re
         from pathlib import Path
 
-        # Get error_log path from environment (set by process_manager.py when spawning)
         error_log_path = None
         try:
             socket_dir = os.environ.get('ANSIBLE_PLATFORM_SOCKET_DIR')
             if socket_dir:
                 inventory_hostname = os.environ.get('ANSIBLE_PLATFORM_HOSTNAME', 'localhost')
                 error_log_path = Path(socket_dir) / f'manager_error_{inventory_hostname}.log'
-                # Note: error_log is created by manager_process.py before PlatformService is instantiated
-                # so it should exist, but we'll try to write anyway
         except Exception:
             pass
 
         try:
-            # Use the /api/gateway/ endpoint which provides version information
-            gateway_url = f'{self.base_url.rstrip("/")}/api/gateway/'
-            logger.debug("PlatformService: Detecting API version via %s", gateway_url)
+            ping_url = f'{self.base_url.rstrip("/")}/api/gateway/v1/ping/'
+            logger.debug("PlatformService: Detecting API version via %s", ping_url)
 
-            # Make request using session (authentication headers already set)
             response = self.session.get(
-                gateway_url,
+                ping_url,
                 timeout=self.request_timeout,
                 verify=self.verify_ssl
             )
@@ -438,32 +416,13 @@ class PlatformService(BaseAPIClient):
             elif response.headers.get('Content-Type', '').startswith('application/json'):
                 try:
                     response_data = response.json()
-                    logger.debug("PlatformService: Gateway API response: %s", response_data)
-
-                    # Extract version from current_version field (e.g., "/api/gateway/v1/" -> "1")
-                    if 'current_version' in response_data:
+                    if 'version' in response_data:
+                        version_str = str(response_data['version']).lstrip('v')
+                    elif 'current_version' in response_data:
                         current_version_path = response_data['current_version']
                         version_match = re.search(r'/v(\d+(?:\.\d+)?)/?$', current_version_path)
                         if version_match:
                             version_str = version_match.group(1)
-                            logger.debug("PlatformService: Extracted version '%s' from current_version path", version_str)
-
-                    # 2. Negotiate highest mutual version from available_versions
-                    if not version_str and 'available_versions' in response_data:
-                        available = response_data['available_versions']
-                        if isinstance(available, dict) and available:
-                            platform_versions = [v.lstrip('v') for v in available.keys()]
-                            collection_supported = self.registry.get_supported_versions()
-                            mutual_versions = [v for v in platform_versions if v in collection_supported]
-
-                            if mutual_versions:
-                                try:
-                                    from packaging.version import parse as parse_version
-                                except ImportError:
-                                    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
-                                    parse_version = version.parse
-                                version_str = max(mutual_versions, key=parse_version)
-                                logger.debug("PlatformService: Negotiated mutual version '%s' from available_versions", version_str)
 
                 except (ValueError, KeyError, AttributeError) as e:
                     logger.debug("PlatformService: Could not parse version from response: %s", e)
@@ -476,18 +435,14 @@ class PlatformService(BaseAPIClient):
                 return '1'
 
         except requests.RequestException as e:
-            # Network/HTTP errors - default to v1
             error_msg = f"PlatformService: Version detection failed (HTTP error): {e}, defaulting to v1"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
             return '1'
         except Exception as e:
-            # Any other errors - default to v1
             error_msg = f"PlatformService: Version detection failed (unexpected error): {e}, defaulting to v1"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
-            import traceback
-            print(traceback.format_exc(), file=sys.stderr, flush=True)
             return '1'
         logger.warning("PlatformService: Version detection failed or missing info. Defaulting to '1'.")
         return '1'
