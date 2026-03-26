@@ -5,7 +5,7 @@ from sys import exit
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 modules_that_need_development = ['authenticator_users']
-tests_to_ignore = ['lookup_test', 'setup_gateway', 'users_examples_test']
+tests_to_ignore = ['lookup_test', 'setup_gateway', 'users_examples_test', 'stale_socket_test']
 
 
 def get_files(dir_name):

@@ -33,21 +33,51 @@
         that:
           - initial_run is changed
 
-    - name: Find the generated socket path locally
+    - name: Capture manager facts from initial run when available
+      ansible.builtin.set_fact:
+        detected_socket_path: >-
+          {{
+            initial_run.ansible_facts.platform_manager_socket
+            | default(hostvars[inventory_hostname].platform_manager_socket, true)
+            | default('', true)
+          }}
+        detected_authkey: >-
+          {{
+            initial_run.ansible_facts.platform_manager_authkey
+            | default(hostvars[inventory_hostname].platform_manager_authkey, true)
+            | default('ZHVtbXlfa2V5', true)
+          }}
+
+    - name: Find generated socket path via tempdir fallback
       ansible.builtin.shell: |
-        set -o pipefail
-        ls -1 /tmp/ansible_platform/manager_*.sock | head -n 1
-      args:
-        executable: /bin/bash
+        python3 - <<'PY'
+        import glob
+        import os
+        import tempfile
+        socket_dir = os.path.join(tempfile.gettempdir(), "ansible_platform")
+        sockets = sorted(glob.glob(os.path.join(socket_dir, "manager_*.sock")))
+        print(sockets[-1] if sockets else "")
+        PY
       register: found_socket_cmd
       changed_when: false
+      when: detected_socket_path | length == 0
       vars:
         ansible_connection: local
 
+    - name: Set socket path from fallback when needed
+      ansible.builtin.set_fact:
+        detected_socket_path: "{{ found_socket_cmd.stdout | trim }}"
+      when: detected_socket_path | length == 0
+
+    - name: Assert a manager socket was found
+      ansible.builtin.assert:
+        that:
+          - detected_socket_path | length > 0
+
     - name: Force facts so the next task attempts reuse
       ansible.builtin.set_fact:
-        platform_manager_socket: "{{ found_socket_cmd.stdout }}"
-        platform_manager_authkey: "ZHVtbXlfa2V5"
+        platform_manager_socket: "{{ detected_socket_path }}"
+        platform_manager_authkey: "{{ detected_authkey }}"
 
     - name: Simulate sudden manager crash (OOM Kill / Eviction)
       ansible.builtin.shell: |
@@ -87,7 +117,18 @@
         - "'404' not in delete_results.msg | default('')"
 
     - name: Cleanup orphaned test sockets
-      ansible.builtin.shell: rm -f /tmp/ansible_platform/manager_*.sock*
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import glob
+        import os
+        import tempfile
+        socket_dir = os.path.join(tempfile.gettempdir(), "ansible_platform")
+        for path in glob.glob(os.path.join(socket_dir, "manager_*.sock*")):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+        PY
       register: rm_result
       changed_when: false
       failed_when: rm_result.rc != 0
