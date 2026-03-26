@@ -17,7 +17,7 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
   vars:
     ansible_connection: ansible.platform.http
-    ansible_platform_persistent: true
+    ansible_platform_use_persistent_connection: true
 
   block:
     - name: Trigger the initial manager spawn
