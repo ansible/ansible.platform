@@ -121,7 +121,7 @@ EXAMPLES = """
 """
 
 from ansible.errors import AnsibleError  # noqa
-from ansible.module_utils._text import to_native  # noqa
+from ansible.module_utils.common.text.converters import to_native  # noqa
 from ansible.module_utils.six.moves.urllib.parse import urlparse  # noqa
 from ansible.plugins.lookup import LookupBase  # noqa
 from ansible.utils.display import Display  # noqa
