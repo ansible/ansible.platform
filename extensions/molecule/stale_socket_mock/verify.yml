@@ -2,7 +2,17 @@
 - name: Verify stale socket recovery result
   hosts: localhost
   gather_facts: false
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
   vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
     ansible_connection: ansible.platform.http
     ansible_platform_persistent: true
     molecule_stale_user: "molecule-stale-user"
@@ -19,3 +29,4 @@
           - verify_result is not failed
           - verify_result.get('exists') | default(false) | bool
           - verify_result.user.first_name == "Recovered"
+...

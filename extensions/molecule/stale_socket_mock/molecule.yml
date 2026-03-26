@@ -9,7 +9,7 @@ ansible:
   executor:
     args:
       ansible_playbook:
-        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/inventory.yml
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
 
 provisioner:
   name: ansible
