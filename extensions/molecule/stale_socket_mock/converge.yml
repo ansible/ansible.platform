@@ -3,6 +3,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
   tasks:
     - name: Wait for mock Gateway health endpoint
       ansible.builtin.uri:
