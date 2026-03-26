@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class APICACertificate_v1(BaseTransformMixin):
     """API v1 representation of a CA certificate."""
 
-    name: str
+    name: Optional[str] = None
     pem_data: Optional[str] = None
     sha256: Optional[str] = None
     related_id_reference: Optional[str] = None

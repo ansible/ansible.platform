@@ -134,8 +134,8 @@ class Connection(ConnectionBase):
         2. Check variable 'ansible_platform_use_persistent_connection' or 'ansible_platform_persistent' (if set)
         3. Default: False (direct mode)
         4. Route to:
-           - persistent: true → _get_persistent_client() → ManagerRPCClient
-           - persistent: false → _get_direct_client() → DirectHTTPClient
+           - persistent: true -> _get_persistent_client() -> ManagerRPCClient
+           - persistent: false -> _get_direct_client() -> DirectHTTPClient
 
         Args:
             task_vars: Task variables from Ansible

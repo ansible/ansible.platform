@@ -20,7 +20,7 @@ class APIRoleDefinition_v1(BaseTransformMixin):
     API v1 representation of a role definition.
     """
 
-    name: str
+    name: Optional[str] = None
     description: Optional[str] = None
     content_type: Optional[str] = None
     permissions: Optional[List[str]] = None
@@ -55,7 +55,10 @@ class RoleDefinitionTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data['name'] = name
 
         if description is not None:
             api_data['description'] = description

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class APIServiceKey_v1(BaseTransformMixin):
     """API v1 representation of a service key."""
 
-    name: str
+    name: Optional[str] = None
     is_active: Optional[bool] = None
     service_cluster: Optional[int] = None
     algorithm: Optional[str] = None
@@ -42,7 +42,10 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data['name'] = name
         for field in ('is_active', 'algorithm', 'secret', 'secret_length', 'mark_previous_inactive'):
             val = getattr(ansible_instance, field, None)
             if val is not None:

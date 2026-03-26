@@ -1,7 +1,9 @@
 """
 API v1 AuthenticatorUser dataclass and transform mixin.
 
-AuthenticatorUser supports moving a user to a new authenticator via PATCH.
+AuthenticatorUser supports moving a user to a new authenticator via the
+POST /authenticator_users/{id}/move/ sub-resource (the spec does not expose
+a PATCH on the detail endpoint).
 Lookup is done by authenticator_user_id (the numeric ID in the API).
 """
 
@@ -30,12 +32,13 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
 class APIAuthenticatorUser_v1(BaseTransformMixin):
     """API v1 representation of a gateway authenticator user."""
 
-    authenticator: Optional[int] = None
+    # Fields for POST /authenticator_users/{id}/move/
+    new_authenticator: Optional[int] = None   # required by spec (was: authenticator)
+    keep_memberships: Optional[bool] = None   # required by spec
+    merge_accounts_with_same_uid: Optional[bool] = None  # required by spec
+    remove_other_authenticators: Optional[bool] = None   # required by spec
     new_uid: Optional[str] = None
-    keep_memberships: Optional[bool] = None
     merge_with_user: Optional[str] = None
-    merge_accounts_with_same_uid: Optional[bool] = None
-    remove_other_authenticators: Optional[bool] = None
 
     # Read-only / path param
     id: Optional[int] = None
@@ -61,15 +64,17 @@ class AuthenticatorUserTransformMixin_v1(BaseTransformMixin):
             if str(authenticator_user_id).isdigit():
                 api_data["id"] = int(authenticator_user_id)
 
-        # Resolve FK: authenticator name/id -> int
+        # Resolve FK: new_authenticator name/id -> int
+        # The spec field is "new_authenticator"; the module exposes it as
+        # "authenticator" for user-facing simplicity.
         authenticator = getattr(ansible_instance, "authenticator", None)
         if authenticator is not None and manager:
             resolved = _resolve_fk(manager, "authenticators", "name", authenticator)
             if resolved is not None:
-                api_data["authenticator"] = resolved
+                api_data["new_authenticator"] = resolved
         elif authenticator is not None:
             if str(authenticator).isdigit():
-                api_data["authenticator"] = int(authenticator)
+                api_data["new_authenticator"] = int(authenticator)
 
         for field in (
             "new_uid",
@@ -86,12 +91,15 @@ class AuthenticatorUserTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
+        # The spec exposes a dedicated POST /move/ sub-resource for updating an
+        # authenticator user's authenticator.  There is no PATCH on the detail
+        # endpoint — the spec only allows GET there.
         return {
             "update": EndpointOperation(
-                path="/api/gateway/v1/authenticator_users/{id}/",
-                method="PATCH",
+                path="/api/gateway/v1/authenticator_users/{id}/move/",
+                method="POST",
                 fields=[
-                    "authenticator",
+                    "new_authenticator",
                     "new_uid",
                     "keep_memberships",
                     "merge_with_user",

@@ -36,7 +36,7 @@ class ActionModule(BaseResourceActionPlugin):
             task_vars = dict()
 
         self._task_vars = task_vars
-        result = super(ActionModule, self).run(tmp, task_vars)
+        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
 
         action_start = time.perf_counter()

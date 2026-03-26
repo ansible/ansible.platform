@@ -44,7 +44,10 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data['name'] = name
         else:
             # find / other operations — include name when available
             if name is not None:
@@ -57,8 +60,15 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
                     api_data['authenticator'] = manager.lookup_resource_id('authenticators', 'name', str(auth))
                 except Exception as e:
                     logger.debug("Lookup authenticator for authenticator_map: %s", e)
-            if 'authenticator' not in api_data and str(auth).isdigit():
-                api_data['authenticator'] = int(auth)
+            if 'authenticator' not in api_data:
+                if str(auth).strip().isdigit():
+                    api_data['authenticator'] = int(auth)
+                else:
+                    # Authenticator name given but not resolvable to an ID.
+                    # Use sentinel 0 so find queries return nothing (no resource
+                    # can belong to a non-existent authenticator), and create/
+                    # update will fail with a clear FK validation error from the API.
+                    api_data['authenticator'] = 0
         new_auth = getattr(ansible_instance, 'new_authenticator', None)
         if new_auth is not None and op == 'update':
             manager = context.manager if isinstance(context, TransformContext) else context.get('manager')
@@ -112,7 +122,10 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
     @classmethod
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
         """Include authenticator id for composite find (name + authenticator)."""
-        aid = getattr(ansible_data, 'authenticator_id', None)
+        # ansible_data here is an APIAuthenticatorMap_v1 (post-transform), which
+        # stores the resolved FK integer in the 'authenticator' field — not
+        # 'authenticator_id' (which lives on AnsibleAuthenticatorMap pre-transform).
+        aid = getattr(ansible_data, 'authenticator', None)
         if aid is not None:
             return {'authenticator': aid}
         return {}

@@ -224,16 +224,11 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 required_for='find',
                 order=1
             ),
-            # Secondary operation for organization associations
-            'associate_organizations': EndpointOperation(
-                path='/api/gateway/v1/users/{id}/organizations/',
-                method='POST',
-                fields=['organizations'],
-                path_params=['id'],
-                depends_on='create',
-                required_for='create',
-                order=2
-            ),
+            # NOTE: Organization membership is managed from the organization side.
+            # The spec exposes POST /organizations/{id}/users/associate/ and
+            # /disassociate/ but NOT POST /users/{id}/organizations/.
+            # The associate_organizations operation has been removed because
+            # /users/{id}/organizations/ only supports GET in the spec.
         }
 
     @classmethod

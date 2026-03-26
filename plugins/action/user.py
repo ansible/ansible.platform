@@ -53,7 +53,7 @@ class ActionModule(BaseResourceActionPlugin):
         # Store task_vars for cleanup() method
         self._task_vars = task_vars
 
-        result = super(ActionModule, self).run(tmp, task_vars)
+        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp  # not used
 
         try:

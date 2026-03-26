@@ -24,7 +24,7 @@ _SCALAR_FIELDS = (
 class APIServiceCluster_v1(BaseTransformMixin):
     """API v1 representation of a service cluster."""
 
-    name: str
+    name: Optional[str] = None
     service_type: Optional[int] = None
     auth_type: Optional[str] = None
     upstream_hostname: Optional[str] = None
@@ -60,7 +60,10 @@ class ServiceClusterTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data['name'] = name
         st = getattr(ansible_instance, 'service_type', None)
         if st is not None:
             manager = context.manager if isinstance(context, TransformContext) else context.get('manager')

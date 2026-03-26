@@ -66,7 +66,7 @@
       ansible.builtin.assert:
         that:
           - recreate_local is not changed
-          - recreate_local.id == local.id
+          - recreate_local.authenticator.id == local.authenticator.id
 
     - name: Create Azure Authenticator
       ansible.platform.authenticator:
@@ -127,7 +127,7 @@
 
     - name: Test exists does not change
       ansible.platform.authenticator:
-        name: "{{ local.id }}"
+        name: "{{ local.authenticator.id }}"
         state: exists
       register: exists
 
@@ -138,7 +138,7 @@
 
     - name: Change Azure configuration
       ansible.platform.authenticator:
-        name: "{{ azure.id }}"
+        name: "{{ azure.authenticator.id }}"
         configuration:
           CALLBACK_URL: "https://www.example.com/callback"
           KEY: 'oidc'
@@ -149,11 +149,11 @@
       ansible.builtin.assert:
         that:
           - azure_change is changed
-          - azure.id == azure_change.id
+          - azure.authenticator.id == azure_change.authenticator.id
 
     - name: Rename an Authenticator
       ansible.platform.authenticator:
-        name: "{{ github.id }}"
+        name: "{{ github.authenticator.id }}"
         new_name: "{{ name_prefix }}-github-new"
         # You can not currently rename an authenticator if it has configuration because that gets validated.
         configuration:
@@ -166,7 +166,7 @@
       ansible.builtin.assert:
         that:
           - renamed_github is changed
-          - renamed_github.id == renamed_github.id
+          - renamed_github.authenticator.id == github.authenticator.id
 
     - name: Delete a non-existent Authenticator
       ansible.platform.authenticator:
@@ -181,7 +181,7 @@
 
     - name: Delete a real authenticator
       ansible.platform.authenticator:
-        name: "{{ local.id }}"
+        name: "{{ local.authenticator.id }}"
         state: absent
       register: delete
 
@@ -194,8 +194,8 @@
     - name: Delete authenticators
       ansible.platform.authenticator:
         state: absent
-        name: "{{ vars[item].id }}"
-      when: "item in vars and 'id' in vars[item]"
+        name: "{{ vars[item].authenticator.id }}"
+      when: "item in vars and 'authenticator' in vars[item] and 'id' in vars[item].authenticator"
       loop:
         - "local"
         - "azure"

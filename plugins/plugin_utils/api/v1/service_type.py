@@ -20,7 +20,7 @@ class APIServiceType_v1(BaseTransformMixin):
     API v1 representation of a service type.
     """
 
-    name: str
+    name: Optional[str] = None
     ping_url: Optional[str] = None
     login_path: Optional[str] = None
     logout_path: Optional[str] = None
@@ -57,7 +57,10 @@ class ServiceTypeTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data['name'] = name
 
         for field in ('ping_url', 'login_path', 'logout_path', 'service_index_path'):
             val = getattr(ansible_instance, field, None)

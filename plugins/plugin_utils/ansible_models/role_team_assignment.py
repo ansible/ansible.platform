@@ -36,5 +36,8 @@ class AnsibleRoleTeamAssignment:
     created: Optional[str] = None
     modified: Optional[str] = None
 
+    # Multi-object input: list of {name, type} / {object_id} / {object_ansible_id} dicts
+    assignment_objects: Optional[List] = None
+
     # Multi-object result list (populated by action plugin)
     assignments: Optional[List[dict]] = None

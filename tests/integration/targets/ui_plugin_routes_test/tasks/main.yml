@@ -165,11 +165,11 @@
       vars:
         gateway_service_clusters:
           - name: "{{ hub_service_name }}"
-            service_type: "{{ __service_types_create_result.results[0].id }}"
+            service_type: "{{ __service_types_create_result.results[0].service_type.id }}"
           - name: "{{ controller_service_name }}"
-            service_type: "{{ __service_types_create_result.results[1].id }}"
+            service_type: "{{ __service_types_create_result.results[1].service_type.id }}"
           - name: "{{ eda_service_name }}"
-            service_type: "{{ __service_types_create_result.results[2].id }}"
+            service_type: "{{ __service_types_create_result.results[2].service_type.id }}"
 
     ### Create UI Plugin Routes ###
     - name: Create UI Plugin Routes with check mode
@@ -239,7 +239,7 @@
             order: 50
           - name: "{{ controller_plugin_name }}"
             ui_plugin_path: "custom-plugin"
-            http_port: "{{ __http_port_create_result.results[0].id }}" # Port 9086
+            http_port: "{{ __http_port_create_result.results[0].http_port.id }}" # Port 9086
             service_cluster: "{{ controller_service_name }}"
             is_service_https: true
             service_port: "{{ controller_service_port }}"

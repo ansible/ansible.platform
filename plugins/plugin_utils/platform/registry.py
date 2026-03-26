@@ -68,9 +68,6 @@ class APIVersionRegistry:
             ansible_models_path: Path to ansible_models/ (auto-detected if None)
         """
         # Auto-detect paths if not provided
-        # q("Inside APIVersionRegistry init")
-        # q("api_base_path: {api_base_path}")
-        # q("ansible_models_path: {ansible_models_path}")
 
         if api_base_path is None:
             # Assume we're in plugin_utils/platform/
@@ -85,19 +82,13 @@ class APIVersionRegistry:
 
         self.api_base_path = Path(api_base_path)
         self.ansible_models_path = Path(ansible_models_path)
-        # q("self.api_base_path: {self.api_base_path}")
-        # q("self.ansible_models_path: {self.ansible_models_path}")
 
         # Storage for discovered information
         self.versions: Dict[str, List[str]] = {}  # version -> [modules]
         self.module_versions: Dict[str, List[str]] = {}  # module -> [versions]
 
-        # q("self.versions: {self.versions}")
-        # q("self.module_versions: {self.module_versions}")
         # Discover on init
         self._discover_versions()
-        # q("self.versions: {self.versions}")
-        # q("self.module_versions: {self.module_versions}")
 
     def _discover_versions(self) -> None:
         """Scan filesystem to discover API versions and modules."""

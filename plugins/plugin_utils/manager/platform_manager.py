@@ -958,11 +958,21 @@ class PlatformService(BaseAPIClient):
         if not unique_value and not composite_params:
             raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
 
-        # If we have an ID, use get endpoint
+        # Resolve the resource ID to use for a direct GET lookup.
+        # Priority: explicit id field → numeric name field (caller passed an int PK).
+        resolved_id = None
         if hasattr(ansible_data, 'id') and ansible_data.id:
+            resolved_id = ansible_data.id
+        elif unique_value is not None and str(unique_value).strip().isdigit():
+            # Caller passed an integer as the lookup field (e.g. name=1001),
+            # meaning "look up by primary key".  Use GET /resource/{id}/ directly.
+            resolved_id = int(str(unique_value).strip())
+
+        # If we have an ID, use get endpoint
+        if resolved_id:
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
-            url = self._build_url(get_op.path.replace('{id}', str(ansible_data.id)))
+            url = self._build_url(get_op.path.replace('{id}', str(resolved_id)))
             response = self.session.get(
                 url,
                 timeout=self.request_timeout,
@@ -970,6 +980,30 @@ class PlatformService(BaseAPIClient):
             )
             response.raise_for_status()
             api_result = response.json()
+
+            # Validate composite-key constraints against the fetched resource.
+            # Example: team looked up by integer PK must still belong to the
+            # expected organization.  If any composite filter field doesn't match
+            # what the API returned, treat the resource as not found so that
+            # callers (e.g. state: absent with a wrong org) get a no-op.
+            if composite_params:
+                for param_key, param_val in composite_params.items():
+                    result_val = api_result.get(param_key)
+                    # Normalise both sides to int when possible for FK comparisons.
+                    try:
+                        param_val_cmp = int(param_val)
+                    except (TypeError, ValueError):
+                        param_val_cmp = param_val
+                    try:
+                        result_val_cmp = int(result_val) if result_val is not None else None
+                    except (TypeError, ValueError):
+                        result_val_cmp = result_val
+                    if result_val_cmp != param_val_cmp:
+                        raise ValueError(
+                            f"Resource {resolved_id} found but composite key "
+                            f"{param_key}={param_val} does not match "
+                            f"actual value {result_val}"
+                        )
         else:
             # Use list endpoint and filter by lookup field or composite params
             if not list_op:

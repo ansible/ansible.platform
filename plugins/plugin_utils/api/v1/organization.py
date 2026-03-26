@@ -20,7 +20,7 @@ class APIOrganization_v1(BaseTransformMixin):
     API v1 representation of an organization.
     """
 
-    name: str
+    name: Optional[str] = None
     description: Optional[str] = None
 
     # Read-only fields from API
@@ -56,8 +56,16 @@ class OrganizationTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            # Always set name so APIOrganization_v1 can be built; use new_name when renaming
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                # Explicit rename: send new_name as the new name field in the PATCH body.
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                # Regular update looked up by name: echo the name back so the record
+                # keeps its current name (API is fine with name==current_name in PATCH).
+                api_data['name'] = name
+            # If name is a digit string the caller used the integer PK for lookup only
+            # (e.g. name: "1001").  Don't include name in the PATCH body so we don't
+            # accidentally rename the org to its own ID string.
 
         if description is not None:
             api_data['description'] = description

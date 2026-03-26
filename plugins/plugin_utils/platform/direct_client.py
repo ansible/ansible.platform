@@ -844,13 +844,67 @@ class DirectHTTPClient(BaseAPIClient):
         lookup_field = mixin_class.get_lookup_field()
         logger.info("DirectHTTPClient: Lookup field for %s: %s", mixin_class.__name__, lookup_field)
         lookup_value = getattr(ansible_data, lookup_field, None)
-        logger.info("DirectHTTPClient: Lookup value for %s: %s", mixin_class.__name__, lookup_value)
-        # Support composite-key lookups via get_find_list_query_params.
-        # Use FK-resolved API data so query params contain IDs, not names.
+        logger.info("DirectHTTPClient: Lookup value for %s: %s", mixin_class.__name__, lookup_field)
+
+        # Compute composite-key query params first so they can be used both in
+        # ID-based validation and in the list-based fallback path.
         composite_params = {}
         if hasattr(mixin_class, 'get_find_list_query_params'):
-            api_data_for_find = mixin_class.from_ansible_data(ansible_data, context)
-            composite_params = mixin_class.get_find_list_query_params(api_data_for_find) or {}
+            try:
+                api_data_for_find = mixin_class.from_ansible_data(ansible_data, context)
+                composite_params = mixin_class.get_find_list_query_params(api_data_for_find) or {}
+            except Exception as cp_exc:
+                logger.debug("DirectHTTPClient: composite params computation failed: %s", cp_exc)
+                raise
+
+        # --- ID-based direct lookup: if the lookup value is a bare integer ---
+        # (or a digit string), the caller is referencing the resource by its
+        # primary key rather than its name.  Use GET /resource/{id}/ directly
+        # instead of a list-filter, which would find nothing.
+        if get_op and lookup_value is not None and str(lookup_value).strip().isdigit():
+            try:
+                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())))
+                logger.info("DirectHTTPClient: ID-based lookup URL for %s: %s", mixin_class.__name__, id_url)
+                with self._lock:
+                    self._http_request_count += 1
+                id_response = self._make_request(
+                    get_op.method, id_url, operation='find', resource=mixin_class.__name__
+                )
+                id_body = id_response.read()
+                id_data = json.loads(id_body) if id_body else {}
+                if id_data.get('id'):
+                    # Validate composite-key constraints against the fetched resource.
+                    # E.g. a team looked up by integer PK must still belong to the
+                    # expected organization.  If a composite field doesn't match,
+                    # treat the resource as not found so callers get a no-op.
+                    composite_match = True
+                    for param_key, param_val in composite_params.items():
+                        result_val = id_data.get(param_key)
+                        try:
+                            pv = int(param_val)
+                        except (TypeError, ValueError):
+                            pv = param_val
+                        try:
+                            rv = int(result_val) if result_val is not None else None
+                        except (TypeError, ValueError):
+                            rv = result_val
+                        if rv != pv:
+                            composite_match = False
+                            break
+                    if composite_match:
+                        ansible_instance = mixin_class.from_api(id_data, context)
+                        from dataclasses import asdict
+                        logger.info("DirectHTTPClient: ID-based lookup succeeded for %s id=%s", mixin_class.__name__, lookup_value)
+                        return asdict(ansible_instance)
+                    else:
+                        raise ValueError(
+                            f"Resource {lookup_value} found but composite key "
+                            f"constraints {composite_params} do not match"
+                        )
+            except Exception as id_exc:
+                logger.info("DirectHTTPClient: ID-based lookup failed for %s id=%s: %s", mixin_class.__name__, lookup_value, id_exc)
+                raise
+
         if not lookup_value and not composite_params:
             raise ValueError(f"Lookup field '{lookup_field}' not found in data")
         query_params = {}

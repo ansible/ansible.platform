@@ -156,46 +156,68 @@ def main():
                 f.flush()
             raise
 
-        # Create service
-        try:
-            with open(error_log, 'a') as f:
-                f.write("=" * 80 + "\n")
-                f.write("About to create PlatformService...\n")
-                f.write("=" * 80 + "\n")
-                f.flush()
-            service = PlatformService(config)
-            with open(error_log, 'a') as f:
-                f.write("=" * 80 + "\n")
-                f.write("✅ Service created successfully\n")
-                f.write(f"   API Version: {service.api_version}\n")
-                f.write(f"   Base URL: {config.base_url}\n")
-                f.write("=" * 80 + "\n")
-                f.flush()
-        except Exception as service_err:
-            with open(error_log, 'a') as f:
-                f.write(f"Service creation failed: {service_err}\n")
-                f.write(traceback.format_exc())
-                f.flush()
-            raise
+        # Lazy-init: start the socket server first so the action plugin can connect
+        # immediately, then initialize PlatformService in a background thread.
+        import threading
 
-        with open(error_log, 'a') as f:
-            f.write("Service created\n")
-            f.flush()
+        _service_container = {'service': None, 'error': None}
+        _service_ready = threading.Event()
 
-        # Register with manager
+        def _init_service():
+            """Initialize PlatformService in background thread."""
+            try:
+                with open(error_log, 'a') as f:
+                    f.write("=" * 80 + "\n")
+                    f.write("About to create PlatformService (background thread)...\n")
+                    f.write("=" * 80 + "\n")
+                    f.flush()
+                svc = PlatformService(config)
+                _service_container['service'] = svc
+                with open(error_log, 'a') as f:
+                    f.write("=" * 80 + "\n")
+                    f.write("✅ Service created successfully\n")
+                    f.write(f"   API Version: {svc.api_version}\n")
+                    f.write(f"   Base URL: {config.base_url}\n")
+                    f.write("=" * 80 + "\n")
+                    f.flush()
+            except Exception as service_err:
+                _service_container['error'] = service_err
+                with open(error_log, 'a') as f:
+                    f.write(f"Service creation failed: {service_err}\n")
+                    f.write(traceback.format_exc())
+                    f.flush()
+            finally:
+                _service_ready.set()
+
+        def _get_service():
+            """Callable registered with manager — blocks until service is ready."""
+            # Wait up to 60 s (covers two 10-s HTTP calls plus overhead)
+            if not _service_ready.wait(timeout=60):
+                raise RuntimeError("PlatformService initialization timed out (>60s)")
+            if _service_container['error'] is not None:
+                raise _service_container['error']
+            return _service_container['service']
+
+        def _shutdown_service():
+            """Callable registered with manager — blocks until service is ready, then shuts down."""
+            _service_ready.wait(timeout=60)
+            svc = _service_container.get('service')
+            if svc is not None:
+                svc.shutdown()
+
+        # Register callables BEFORE creating the socket so they're available
+        # as soon as the action plugin connects.
         PlatformManager.register(
             'get_platform_service',
-            callable=lambda: service
+            callable=_get_service
         )
-
-        # Register shutdown method
         PlatformManager.register(
             'shutdown',
-            callable=service.shutdown
+            callable=_shutdown_service
         )
 
         with open(error_log, 'a') as f:
-            f.write("Service registered with shutdown method\n")
+            f.write("Lazy callables registered\n")
             f.flush()
 
         # Set up signal handlers for graceful shutdown
@@ -207,7 +229,7 @@ def main():
                 f.write(f"Received signal {signum}, shutting down...\n")
                 f.flush()
             try:
-                service.shutdown()
+                _shutdown_service()
             except Exception as e:
                 with open(error_log, 'a') as f:
                     f.write(f"Error during shutdown: {e}\n")
@@ -222,7 +244,7 @@ def main():
             f.write("Signal handlers registered\n")
             f.flush()
 
-        # Start manager server
+        # Start manager server (creates socket file — action plugin can now connect)
         manager = PlatformManager(address=socket_path, authkey=authkey)
 
         with open(error_log, 'a') as f:
@@ -232,8 +254,12 @@ def main():
         server = manager.get_server()
 
         with open(error_log, 'a') as f:
-            f.write("Server obtained, starting serve_forever()\n")
+            f.write("Server obtained, starting service init thread and serve_forever()\n")
             f.flush()
+
+        # NOW start PlatformService init in background (socket already bound)
+        _init_thread = threading.Thread(target=_init_service, daemon=True)
+        _init_thread.start()
 
         try:
             server.serve_forever()
@@ -241,7 +267,7 @@ def main():
             with open(error_log, 'a') as f:
                 f.write("Keyboard interrupt received, shutting down...\n")
                 f.flush()
-            service.shutdown()
+            _shutdown_service()
             sys.exit(0)
 
     except Exception as e:

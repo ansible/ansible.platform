@@ -19,7 +19,7 @@ class BaseAPIClient(ABC):
     """
     Abstract base class for platform API clients.
 
-    Both standard mode (DirectHTTPClient) and experimental mode (PlatformService)
+    Both standard mode (DirectHTTPClient) and optional persistent mode (PlatformService)
     inherit from this class and share the same interface and shared layers.
 
     Shared layers used by both:

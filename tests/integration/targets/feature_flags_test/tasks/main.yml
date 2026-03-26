@@ -79,8 +79,8 @@
       ansible.builtin.assert:
         that:
           - flag_exists is not changed
-          - flag_exists.name == test_flag_name
-          - flag_exists.id is defined
+          - flag_exists.feature_flag.name == test_flag_name
+          - flag_exists.feature_flag.id is defined
 
     # Test updating feature flag value (enable)
     - name: Enable feature flag
@@ -94,7 +94,7 @@
       ansible.builtin.assert:
         that:
           - flag_enable is changed or (flag_enable is not changed and original_flag_value == "True")
-          - flag_enable.value == "True"
+          - flag_enable.feature_flag.value == "True"
 
     # Test idempotency
     - name: Enable feature flag again (test idempotency)
@@ -121,7 +121,7 @@
       ansible.builtin.assert:
         that:
           - flag_disable is changed
-          - flag_disable.value == "False"
+          - flag_disable.feature_flag.value == "False"
 
     # Test idempotency again
     - name: Disable feature flag again (test idempotency)
@@ -148,7 +148,7 @@
       ansible.builtin.assert:
         that:
           - flag_enforce is changed
-          - flag_enforce.value == "True"
+          - flag_enforce.feature_flag.value == "True"
 
     # Test check mode
     - name: Test check mode
@@ -174,7 +174,7 @@
     - name: Assert flag value unchanged by check mode
       ansible.builtin.assert:
         that:
-          - flag_after_check.value == "True"
+          - flag_after_check.feature_flag.value == "True"
 
     # Test error handling - non-existent flag
     - name: Try to access non-existent feature flag

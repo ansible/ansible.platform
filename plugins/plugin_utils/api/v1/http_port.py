@@ -20,7 +20,7 @@ class APIHttpPort_v1(BaseTransformMixin):
     API v1 representation of an http port.
     """
 
-    name: str
+    name: Optional[str] = None
     number: Optional[int] = None
     use_https: bool = False
     is_api_port: bool = False
@@ -55,7 +55,13 @@ class HttpPortTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                # Regular update by name: keep it (idempotent).
+                # Digit-string names are integer PK lookups — omit from PATCH
+                # to avoid accidentally renaming the port to its own ID string.
+                api_data['name'] = name
 
         if number is not None:
             api_data['number'] = number

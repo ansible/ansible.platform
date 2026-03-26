@@ -64,13 +64,26 @@ class TeamTransformMixin_v1(BaseTransformMixin):
                         api_data['organization'] = ids[0]
                 except Exception as e:
                     logger.debug("Lookup organization for team: %s", e)
+                    # Re-raise for non-digit names: the caller specified an org that
+                    # doesn't exist.  Propagate the "not found" message so that action
+                    # plugins (and tests) can surface a clear failure instead of
+                    # silently sending a wrong/missing organization in the API request.
+                    if not str(organization).strip().isdigit():
+                        raise
             if 'organization' not in api_data and str(organization).isdigit():
                 api_data['organization'] = int(organization)
 
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                # Regular update by name: echo the name back (idempotent).
+                # If name is a digit string the caller used the integer PK for
+                # lookup only — omit name from the PATCH body so we don't
+                # accidentally rename the team to its own ID string.
+                api_data['name'] = name
         else:
             # find / other operations — include name when available
             if name is not None:
@@ -149,7 +162,11 @@ class TeamTransformMixin_v1(BaseTransformMixin):
     @classmethod
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
         """Extra query params for list find (e.g. organization scoping)."""
-        org_id = getattr(ansible_data, 'organization_id', None)
+        # ansible_data is an APITeam_v1 instance whose 'organization' field already
+        # holds the resolved integer FK (set by from_ansible_data).  The old name
+        # 'organization_id' doesn't exist on the dataclass and always returned None,
+        # causing the org filter to be silently omitted from every list query.
+        org_id = getattr(ansible_data, 'organization', None)
         if org_id is not None:
             return {'organization': org_id}
         return {}

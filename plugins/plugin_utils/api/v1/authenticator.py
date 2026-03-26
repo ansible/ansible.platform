@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class APIAuthenticator_v1(BaseTransformMixin):
     """API v1 representation of an authenticator."""
 
-    name: str
+    name: Optional[str] = None
     slug: Optional[str] = None
     enabled: Optional[bool] = None
     create_objects: Optional[bool] = None
@@ -44,7 +44,10 @@ class AuthenticatorTransformMixin_v1(BaseTransformMixin):
         if op == 'create':
             api_data['name'] = name or new_name
         elif op == 'update':
-            api_data['name'] = new_name if new_name is not None else (name or '')
+            if new_name is not None:
+                api_data['name'] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data['name'] = name
         for field in ('slug', 'enabled', 'create_objects', 'remove_users', 'type', 'configuration', 'order'):
             val = getattr(ansible_instance, field, None)
             if val is not None:

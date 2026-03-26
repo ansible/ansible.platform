@@ -15,7 +15,7 @@ from ...platform.types import EndpointOperation, TransformContext
 class APIRoute_v1(BaseTransformMixin):
     """API v1 representation of a gateway route."""
 
-    name: str
+    name: Optional[str] = None
 
     description: Optional[str] = None
     gateway_path: Optional[str] = None
@@ -65,8 +65,11 @@ class RouteTransformMixin_v1(BaseTransformMixin):
 
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
-        if op in ("update", "enforced") and new_name is not None:
-            api_data["name"] = new_name
+        if op in ("update", "enforced"):
+            if new_name is not None:
+                api_data["name"] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data["name"] = str(name)
         elif name is not None:
             api_data["name"] = str(name)
 

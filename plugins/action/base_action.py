@@ -199,6 +199,32 @@ class BaseResourceActionPlugin(ActionBase):
 
     MODULE_NAME = None  # Subclass must override
 
+    # -----------------------------------------------------------------
+    # Declarative class variables: set these in a subclass to get a
+    # fully-working action plugin without overriding run().
+    #
+    #   MODEL_CLASS   – the AnsibleXxx dataclass for this resource
+    #   LOOKUP_FIELD  – field used for existence checks (default 'name')
+    #
+    # Example:
+    #   class ActionModule(BaseResourceActionPlugin):
+    #       MODULE_NAME  = 'service'
+    #       MODEL_CLASS  = AnsibleService
+    #       LOOKUP_FIELD = 'name'   # optional; 'name' is the default
+    # -----------------------------------------------------------------
+    MODEL_CLASS = None   # type: Optional[type]
+    LOOKUP_FIELD = 'name'
+
+    # Shared constants used by the standard run() and concrete subclasses
+    _AUTH_PARAMS = frozenset({
+        'gateway_hostname', 'gateway_username', 'gateway_password',
+        'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',
+        'aap_hostname', 'aap_username', 'aap_password', 'aap_token',
+        'aap_validate_certs', 'aap_request_timeout',
+    })
+    _ANSIBLE_DIRECTIVES = frozenset({'state', 'new_name'})
+    _READ_ONLY_FIELDS = frozenset({'id', 'created', 'modified', 'url'})
+
     # Class-level tracking of spawned manager processes
     # Key: socket_path, Value: (process, socket_path, authkey_b64)
     _spawned_processes = {}  # type: dict
@@ -1046,6 +1072,343 @@ class BaseResourceActionPlugin(ActionBase):
 
         # Remove from tracking
         BaseResourceActionPlugin._spawned_processes.pop(socket_path, None)
+
+    def _should_update(self, desired_data, current_data):
+        """
+        Return True if any explicitly-provided writable field differs between
+        the desired task args and the current API state.
+
+        Comparison rules:
+        - Only fields that are present in BOTH desired_data and current_data
+          are compared (fields missing from the API response are ignored).
+        - Auth params, Ansible directives (state, new_name), and read-only
+          fields (id, created, …) are excluded.
+        - FK fields: when desired is a str but current is an int (i.e. the
+          task supplied a name that the API stored as a resolved integer id),
+          the comparison is skipped to avoid false positives.  The reverse
+          (int desired, str current) is also skipped.  Additionally, when
+          desired is a non-numeric str (a name) and current is a digit str
+          (an int FK that from_api converted to str), the comparison is
+          skipped — e.g. authenticator='my-auth' vs '3100'.
+        - new_name: always triggers an update (it's a rename operation).
+        - Dict/list fields are compared via equality; type mismatches skip.
+        """
+        if desired_data.get('new_name'):
+            return True
+
+        skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS
+
+        for key, desired_val in desired_data.items():
+            if key in skip_keys or desired_val is None:
+                continue
+            if key not in current_data:
+                # Field not returned by API — cannot compare, assume no change
+                continue
+            current_val = current_data[key]
+            # Skip unresolved FK: str name provided, API stores int id
+            if isinstance(desired_val, str) and isinstance(current_val, int):
+                continue
+            if isinstance(desired_val, int) and isinstance(current_val, str):
+                continue
+            # Skip FK stored as int but converted to str by from_api:
+            # desired = 'my-auth-name' (non-numeric str), current = '3100' (digit str)
+            if (
+                isinstance(desired_val, str) and isinstance(current_val, str)
+                and not desired_val.isdigit() and current_val.isdigit()
+            ):
+                continue
+            # Same type: direct equality
+            if type(desired_val) is type(current_val):
+                if desired_val != current_val:
+                    return True
+            else:
+                # Coerce to string for cross-type scalars (e.g. int vs float)
+                if str(desired_val) != str(current_val):
+                    return True
+
+        return False
+
+    def run(self, tmp=None, task_vars=None):
+        """
+        Standard run() for resource action plugins.
+
+        Subclasses that set MODEL_CLASS (and optionally LOOKUP_FIELD) get
+        full CRUD idempotency for free — no need to override this method.
+
+        State machine:
+          present -> find by LOOKUP_FIELD; update if found, create if not
+          absent -> find by LOOKUP_FIELD; delete if found, no-op if not
+          exists -> find; return exists=True/False without changes
+          enforced -> find; merge declared fields; update or create
+          check_mode is honoured for create / update / delete
+        """
+        if task_vars is None:
+            task_vars = {}
+        self._task_vars = task_vars
+        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
+        del tmp
+
+        if self.MODEL_CLASS is None:
+            raise AnsibleError(
+                "%s must set MODEL_CLASS or override run()" % type(self).__name__
+            )
+
+        from dataclasses import asdict
+        import time as _time
+        action_start = _time.perf_counter()
+
+        try:
+            # ---- argspec & input validation --------------------------------
+            doc = self._get_documentation()
+            argspec = self._build_argspec_from_docs(doc) if doc else None
+            if not argspec:
+                raise AnsibleError(
+                    "Could not load DOCUMENTATION for %s module" % self.MODULE_NAME
+                )
+            validated_input = self._validate_data(
+                self._task.args.copy(), argspec, 'input'
+            )
+
+            # ---- manager connection ----------------------------------------
+            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+            self._client = manager
+            if facts_to_set:
+                result['ansible_facts'] = facts_to_set
+                result['_ansible_facts_cacheable'] = True
+
+            # ---- build resource object -------------------------------------
+            validated_params = validated_input.validated_parameters
+            resource_data = {
+                k: v for k, v in validated_params.items()
+                if v is not None and k not in self._AUTH_PARAMS
+            }
+            resource = self.MODEL_CLASS(**resource_data)
+            operation = self._detect_operation(validated_params)
+            state = validated_params.get('state', 'present')
+            lookup_val = getattr(resource, self.LOOKUP_FIELD, None)
+
+            # ---- state: exists (read-only) ----------------------------------
+            if state == 'exists':
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=resource_data,
+                    )
+                    exists = bool(find_result and find_result.get('id'))
+                except Exception:
+                    find_result, exists = {}, False
+                result.update({
+                    'changed': False, 'failed': False,
+                    'exists': exists,
+                    self.MODULE_NAME: find_result if exists else {},
+                })
+                return result
+
+            # ---- present: idempotent create (find -> compare ->  update only if changed) -----
+            if operation == 'create' and state == 'present':
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=resource_data,
+                    )
+                    if find_result and find_result.get('id'):
+                        if not self._should_update(resource_data, find_result):
+                            # Nothing changed — return current state without touching API
+                            result.update({
+                                'changed': False, 'failed': False,
+                                self.MODULE_NAME: find_result,
+                            })
+                            return result
+                        operation = 'update'
+                        resource.id = find_result['id']
+                except Exception:
+                    pass
+
+            # ---- absent: find by lookup field to get id --------------------
+            if operation == 'delete' and not getattr(resource, 'id', None):
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=resource_data,
+                    )
+                    if find_result and find_result.get('id'):
+                        resource.id = find_result['id']
+                    else:
+                        result.update({
+                            'changed': False, 'failed': False,
+                            self.MODULE_NAME: {'state': 'absent'},
+                            'msg': "%s '%s' does not exist (already absent)"
+                            % (self.MODULE_NAME, lookup_val),
+                        })
+                        return result
+                except Exception:
+                    result.update({
+                        'changed': False, 'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                        'msg': "%s '%s' does not exist (already absent)"
+                        % (self.MODULE_NAME, lookup_val),
+                    })
+                    return result
+
+            # ---- enforced: find → merge declared fields → update/create ----
+            if operation == 'enforced':
+                argspec_fields = set(argspec.get('argument_spec', {}).keys())
+                try:
+                    find_result = manager.execute(
+                        operation='find',
+                        module_name=self.MODULE_NAME,
+                        ansible_data=resource_data,
+                    )
+                except ValueError:
+                    find_result = None
+                if find_result and find_result.get('id'):
+                    merged = {}
+                    for k in argspec_fields:
+                        if k in self._AUTH_PARAMS:
+                            continue
+                        if k in validated_params:
+                            merged[k] = validated_params[k]
+                        elif k == self.LOOKUP_FIELD:
+                            merged[k] = find_result.get(k) or lookup_val
+                        else:
+                            merged[k] = None
+                    for ro in self._READ_ONLY_FIELDS:
+                        if ro in find_result:
+                            merged[ro] = find_result[ro]
+                    merged.setdefault(self.LOOKUP_FIELD, lookup_val)
+                    # Short-circuit if the merged desired state matches current
+                    if not self._should_update(merged, find_result):
+                        result.update({
+                            'changed': False, 'failed': False,
+                            self.MODULE_NAME: find_result,
+                        })
+                        return result
+                    resource = self.MODEL_CLASS(**{
+                        k: v for k, v in merged.items()
+                        if hasattr(self.MODEL_CLASS, k)
+                    })
+                    operation = 'update'
+                else:
+                    operation = 'create'
+
+            # ---- check mode ------------------------------------------------
+            ansible_data = asdict(resource)
+            if operation == 'update' and state == 'enforced':
+                ansible_data['_platform_enforced'] = True
+
+            if self._task.check_mode and operation in ('create', 'update', 'delete'):
+                if operation == 'delete':
+                    result.update({
+                        'changed': bool(getattr(resource, 'id', None)),
+                        'failed': False,
+                        self.MODULE_NAME: {'state': 'absent'},
+                    })
+                else:
+                    result.update({
+                        'changed': True, 'failed': False,
+                        self.MODULE_NAME: {
+                            self.LOOKUP_FIELD: lookup_val,
+                            'id': getattr(resource, 'id', None),
+                        },
+                    })
+                return result
+
+            # ---- execute ---------------------------------------------------
+            try:
+                manager_result = manager.execute(
+                    operation=operation,
+                    module_name=self.MODULE_NAME,
+                    ansible_data=ansible_data,
+                )
+            except ValueError as exc:
+                if operation == 'find' and (
+                    'not found' in str(exc).lower()
+                    or 'resource with' in str(exc).lower()
+                ):
+                    result.update({
+                        'changed': False, 'failed': False,
+                        self.MODULE_NAME: {}, 'exists': False,
+                        'msg': "%s '%s' does not exist" % (self.MODULE_NAME, lookup_val),
+                    })
+                    return result
+                raise
+
+            # ---- build clean result ----------------------------------------
+            # Keys that must NEVER appear in the nested resource dict
+            # (ANSTRAT-1640): Ansible directives, read-only API metadata, and
+            # internal debug keys.
+            _strip_from_resource = (
+                self._ANSIBLE_DIRECTIVES
+                | (self._READ_ONLY_FIELDS - {'id'})  # keep id, strip created/modified/url
+                | {'_timing', 'changed'}
+            )
+
+            argspec_fields = set(argspec.get('argument_spec', {}).keys())
+            argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {'id'}
+            filtered = {
+                k: v for k, v in manager_result.items()
+                if k in argspec_resource_fields
+            }
+            try:
+                validated_output = self._validate_data(
+                    {k: v for k, v in filtered.items()
+                     if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},
+                    argspec, 'output',
+                )
+                if 'id' in filtered:
+                    validated_output['id'] = filtered['id']
+            except Exception:
+                validated_output = {
+                    k: v for k, v in manager_result.items()
+                    if k not in _strip_from_resource
+                }
+                if 'id' in manager_result:
+                    validated_output['id'] = manager_result['id']
+
+            # Final pass: strip any banned keys that slipped through argspec
+            # validation (e.g. read-only fields declared in module DOCUMENTATION
+            # but not writable by the user).
+            # Also strip:
+            #   - 'new_*' fields (rename/move directives, e.g. new_organization)
+            #   - '*_id' fields that are internal resolved FK integers
+            #     (e.g. organization_id) — the resolved FK is not a user-visible
+            #     return value; the user sees the original name field instead.
+            validated_output = {
+                k: v for k, v in validated_output.items()
+                if k not in _strip_from_resource
+                and not k.startswith('new_')
+                and not (k.endswith('_id') and k != 'id')
+            }
+
+            result.update({
+                'changed': manager_result.get('changed', False),
+                'failed': False,
+                self.MODULE_NAME: validated_output,
+            })
+            if operation == 'find':
+                result['exists'] = bool(validated_output.get('id'))
+
+            # Collect timing at vvv+ verbosity only; never leak _timing into
+            # normal playbook output (ANSTRAT-1640).
+            if self._display.verbosity >= 3:
+                result.setdefault('_timing', {})['action_plugin_time'] = (
+                    _time.perf_counter() - action_start
+                )
+
+        except Exception as exc:
+            import traceback as _tb
+            self._display.vvv(
+                "Error in %s action plugin: %s" % (self.MODULE_NAME, exc)
+            )
+            result['failed'] = True
+            result['msg'] = str(exc)
+            if self._display.verbosity >= 3:
+                result['exception'] = _tb.format_exc()
+
+        return result
 
     def _detect_operation(self, args: dict) -> str:
         """
