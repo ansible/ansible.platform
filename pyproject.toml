@@ -83,3 +83,11 @@ style = "google"
 exclude = '\.(tox|git)|aap-dev|services|migrations'
 skip-checking-short-docstrings = true
 allow-init-docstring = true
+# Disable type-hint enforcement — the existing codebase predates this requirement.
+# DOC105/109/110: type hints in docstring args don't match / are missing
+# DOC203: return type in docstring doesn't match annotation
+arg-type-hints-in-docstring = false
+# DOC106/107: type hints missing from function signature
+arg-type-hints-in-signature = false
+# DOC501/503: Raises section missing or mismatched — not enforced on existing code
+skip-checking-raises = true
