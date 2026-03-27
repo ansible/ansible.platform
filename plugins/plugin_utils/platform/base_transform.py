@@ -7,12 +7,12 @@ and API dataclasses.
 import logging
 from abc import ABC
 from dataclasses import asdict
-from typing import TypeVar, Type, Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Type, TypeVar, Union
 
 from .types import TransformContext
 
 logger = logging.getLogger(__name__)
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class BaseTransformMixin(ABC):
@@ -44,11 +44,7 @@ class BaseTransformMixin(ABC):
         """
         logger.debug("Transforming %s to Ansible format", self.__class__.__name__)
         ctx = self._normalize_context(context)
-        result = self._transform(
-            target_class=self._get_ansible_class(),
-            direction='reverse',
-            context=ctx
-        )
+        result = self._transform(target_class=self._get_ansible_class(), direction="reverse", context=ctx)
         logger.debug("Transformation to Ansible format completed: %s", result.__class__.__name__)
         return result
 
@@ -72,20 +68,12 @@ class BaseTransformMixin(ABC):
         if isinstance(context, dict):
             # Convert dict to TransformContext for backward compatibility
             return TransformContext(
-                manager=context['manager'],
-                session=context['session'],
-                cache=context.get('cache', {}),
-                api_version=context.get('api_version', '1')
+                manager=context["manager"], session=context["session"], cache=context.get("cache", {}), api_version=context.get("api_version", "1")
             )
 
         raise TypeError(f"Context must be TransformContext or dict, got {type(context)}")
 
-    def _transform(
-        self,
-        target_class: Type[T],
-        direction: str,
-        context: TransformContext
-    ) -> T:
+    def _transform(self, target_class: Type[T], direction: str, context: TransformContext) -> T:
         """
         Generic bidirectional transformation logic.
 
@@ -110,35 +98,24 @@ class BaseTransformMixin(ABC):
         logger.debug("Field mapping contains %s fields", len(mapping))
 
         # Apply mapping based on direction
-        if direction == 'forward':
-            transformed_data = self._apply_forward_mapping(
-                source_data, mapping, context
-            )
-        elif direction == 'reverse':
-            transformed_data = self._apply_reverse_mapping(
-                source_data, mapping, context
-            )
+        if direction == "forward":
+            transformed_data = self._apply_forward_mapping(source_data, mapping, context)
+        elif direction == "reverse":
+            transformed_data = self._apply_reverse_mapping(source_data, mapping, context)
         else:
             raise ValueError(f"Invalid direction: {direction}")
 
         logger.debug("Transformed data keys: %s", list(transformed_data.keys()))
 
         # Allow subclass post-processing hook
-        transformed_data = self._post_transform_hook(
-            transformed_data, direction, context
-        )
+        transformed_data = self._post_transform_hook(transformed_data, direction, context)
 
         # Create and return target class instance
         result = target_class(**transformed_data)
         logger.debug("Created %s instance successfully", target_class.__name__)
         return result
 
-    def _apply_forward_mapping(
-        self,
-        source_data: dict,
-        mapping: dict,
-        context: TransformContext
-    ) -> dict:
+    def _apply_forward_mapping(self, source_data: dict, mapping: dict, context: TransformContext) -> dict:
         """
         Apply forward mapping (Ansible → API).
 
@@ -160,15 +137,15 @@ class BaseTransformMixin(ABC):
                 continue
 
             # Apply forward transformation if specified
-            if isinstance(spec, dict) and 'forward_transform' in spec:
-                transform_name = spec['forward_transform']
+            if isinstance(spec, dict) and "forward_transform" in spec:
+                transform_name = spec["forward_transform"]
                 value = self._apply_transform(value, transform_name, context)
 
             # Get target field name
             if isinstance(spec, str):
                 target_field = spec
             elif isinstance(spec, dict):
-                target_field = spec.get('api_field', ansible_field)
+                target_field = spec.get("api_field", ansible_field)
             else:
                 target_field = ansible_field
 
@@ -177,12 +154,7 @@ class BaseTransformMixin(ABC):
 
         return result
 
-    def _apply_reverse_mapping(
-        self,
-        source_data: dict,
-        mapping: dict,
-        context: TransformContext
-    ) -> dict:
+    def _apply_reverse_mapping(self, source_data: dict, mapping: dict, context: TransformContext) -> dict:
         """
         Apply reverse mapping (API → Ansible).
 
@@ -201,7 +173,7 @@ class BaseTransformMixin(ABC):
             if isinstance(spec, str):
                 source_field = spec
             elif isinstance(spec, dict):
-                source_field = spec.get('api_field', ansible_field)
+                source_field = spec.get("api_field", ansible_field)
             else:
                 source_field = ansible_field
 
@@ -212,8 +184,8 @@ class BaseTransformMixin(ABC):
                 continue
 
             # Apply reverse transformation if specified
-            if isinstance(spec, dict) and 'reverse_transform' in spec:
-                transform_name = spec['reverse_transform']
+            if isinstance(spec, dict) and "reverse_transform" in spec:
+                transform_name = spec["reverse_transform"]
                 value = self._apply_transform(value, transform_name, context)
 
             # Set in result
@@ -221,12 +193,7 @@ class BaseTransformMixin(ABC):
 
         return result
 
-    def _apply_transform(
-        self,
-        value: Any,
-        transform_name: str,
-        context: TransformContext
-    ) -> Any:
+    def _apply_transform(self, value: Any, transform_name: str, context: TransformContext) -> Any:
         """
         Apply a named transformation function.
 
@@ -258,7 +225,7 @@ class BaseTransformMixin(ABC):
         Returns:
             Value at path, or None if not found
         """
-        keys = path.split('.')
+        keys = path.split(".")
         current = data
 
         for key in keys:
@@ -280,7 +247,7 @@ class BaseTransformMixin(ABC):
             path: Dot-delimited path
             value: Value to set
         """
-        keys = path.split('.')
+        keys = path.split(".")
         current = data
 
         # Navigate to parent
@@ -292,12 +259,7 @@ class BaseTransformMixin(ABC):
         # Set final value
         current[keys[-1]] = value
 
-    def _post_transform_hook(
-        self,
-        data: dict,
-        direction: str,
-        context: TransformContext
-    ) -> dict:
+    def _post_transform_hook(self, data: dict, direction: str, context: TransformContext) -> dict:
         """
         Hook for module-specific post-processing after transformation.
 
@@ -326,9 +288,7 @@ class BaseTransformMixin(ABC):
         Raises:
             NotImplementedError: If not overridden
         """
-        raise NotImplementedError(
-            f"{cls.__name__} must implement _get_api_class()"
-        )
+        raise NotImplementedError(f"{cls.__name__} must implement _get_api_class()")
 
     @classmethod
     def _get_ansible_class(cls) -> Type:
@@ -343,9 +303,7 @@ class BaseTransformMixin(ABC):
         Raises:
             NotImplementedError: If not overridden
         """
-        raise NotImplementedError(
-            f"{cls.__name__} must implement _get_ansible_class()"
-        )
+        raise NotImplementedError(f"{cls.__name__} must implement _get_ansible_class()")
 
     def validate(self) -> bool:
         """

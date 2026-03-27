@@ -138,44 +138,44 @@ def main():
         description=dict(),
         application=dict(),
         organization=dict(),
-        scope=dict(choices=['read', 'write']),
-        existing_token=dict(type='dict', no_log=False),
+        scope=dict(choices=["read", "write"]),
+        existing_token=dict(type="dict", no_log=False),
         existing_token_id=dict(),
-        state=dict(choices=['present', 'absent'], default='present'),
+        state=dict(choices=["present", "absent"], default="present"),
     )
 
     # Create a module for ourselves
     module = AAPModule(
         argument_spec=argument_spec,
         mutually_exclusive=[
-            ('existing_token', 'existing_token_id'),
+            ("existing_token", "existing_token_id"),
         ],
         required_if=[
             [
-                'state',
-                'absent',
-                ('existing_token', 'existing_token_id'),
+                "state",
+                "absent",
+                ("existing_token", "existing_token_id"),
                 True,
             ],
         ],
     )
 
     # Extract our parameters
-    description = module.params.get('description')
-    application = module.params.get('application')
-    organization = module.params.get('organization')
-    scope = module.params.get('scope')
-    existing_token = module.params.get('existing_token')
-    existing_token_id = module.params.get('existing_token_id')
-    state = module.params.get('state')
+    description = module.params.get("description")
+    application = module.params.get("application")
+    organization = module.params.get("organization")
+    scope = module.params.get("scope")
+    existing_token = module.params.get("existing_token")
+    existing_token_id = module.params.get("existing_token_id")
+    state = module.params.get("state")
 
-    if state == 'absent':
+    if state == "absent":
         if not existing_token:
             existing_token = module.get_one(
-                'tokens',
+                "tokens",
                 **{
-                    'data': {
-                        'id': existing_token_id,
+                    "data": {
+                        "id": existing_token_id,
                     }
                 },
             )
@@ -189,29 +189,29 @@ def main():
     search_fields = {}
     if application:
         if organization:
-            organization_id = module.get_one('organizations', name_or_id=organization, allow_none=False)['id']
-            search_fields['organization'] = organization_id
-        application_id = module.get_one('applications', name_or_id=application, allow_none=False, **{'data': search_fields})['id']
+            organization_id = module.get_one("organizations", name_or_id=organization, allow_none=False)["id"]
+            search_fields["organization"] = organization_id
+        application_id = module.get_one("applications", name_or_id=application, allow_none=False, **{"data": search_fields})["id"]
 
     # Create the data that gets sent for create and update
     new_fields = {}
     if description is not None:
-        new_fields['description'] = description
+        new_fields["description"] = description
     if application_id is not None:
-        new_fields['application'] = application_id
+        new_fields["application"] = application_id
     if scope is not None:
-        new_fields['scope'] = scope
+        new_fields["scope"] = scope
 
     # If the state was present and we can let the module build or update the existing item, this will return on its own
     module.create_or_update_if_needed(
         None,
         new_fields,
-        endpoint='tokens',
-        item_type='token',
+        endpoint="tokens",
+        item_type="token",
         associations={},
         on_create=return_token,
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ API v1 Route dataclass and transform mixin.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -67,9 +67,7 @@ class RouteTransformMixin_v1(BaseTransformMixin):
         enable_gateway_auth = getattr(ansible_instance, "enable_gateway_auth", None)
         enable_mtls = getattr(ansible_instance, "enable_mtls", None)
         if op in ("create", "update", "enforced") and enable_gateway_auth and enable_mtls:
-            raise ValueError(
-                "Mutual TLS can only be enabled when gateway auth is disabled"
-            )
+            raise ValueError("Mutual TLS can only be enabled when gateway auth is disabled")
 
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)

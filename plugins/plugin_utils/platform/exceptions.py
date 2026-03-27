@@ -6,7 +6,7 @@ enabling proper error classification and retry logic.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +19,7 @@ class PlatformError(Exception):
     catch-all error handling when needed.
     """
 
-    def __init__(
-        self,
-        message: str,
-        operation: Optional[str] = None,
-        resource: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, message: str, operation: Optional[str] = None, resource: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         """
         Initialize platform error.
 
@@ -57,13 +51,7 @@ class PlatformError(Exception):
         Returns:
             Dictionary representation of error
         """
-        return {
-            'error_type': self.__class__.__name__,
-            'message': self.message,
-            'operation': self.operation,
-            'resource': self.resource,
-            'details': self.details
-        }
+        return {"error_type": self.__class__.__name__, "message": self.message, "operation": self.operation, "resource": self.resource, "details": self.details}
 
 
 class AuthenticationError(PlatformError):
@@ -76,21 +64,15 @@ class AuthenticationError(PlatformError):
     - Authentication endpoint returns 401/403
     """
 
-    def __init__(
-        self,
-        message: str,
-        operation: Optional[str] = None,
-        resource: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, message: str, operation: Optional[str] = None, resource: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, operation, resource, details)
         self.retryable = False  # Authentication errors are not retryable
 
     def get_suggestion(self) -> str:
         """Get suggestion for fixing authentication error."""
-        if 'token' in self.message.lower() or 'expired' in self.message.lower():
+        if "token" in self.message.lower() or "expired" in self.message.lower():
             return "Check if token has expired. Provide a valid token or refresh token."
-        elif 'password' in self.message.lower() or 'username' in self.message.lower():
+        elif "password" in self.message.lower() or "username" in self.message.lower():
             return "Verify username and password are correct."
         else:
             return "Check gateway credentials (username/password or token) are valid and have proper permissions."
@@ -114,7 +96,7 @@ class NetworkError(PlatformError):
         operation: Optional[str] = None,
         resource: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
-        original_exception: Optional[Exception] = None
+        original_exception: Optional[Exception] = None,
     ):
         super().__init__(message, operation, resource, details)
         self.retryable = True  # Network errors are retryable
@@ -122,13 +104,13 @@ class NetworkError(PlatformError):
 
     def get_suggestion(self) -> str:
         """Get suggestion for fixing network error."""
-        if 'timeout' in self.message.lower():
+        if "timeout" in self.message.lower():
             return "Check network connectivity and gateway availability. Consider increasing timeout."
-        elif 'connection' in self.message.lower() or 'refused' in self.message.lower():
+        elif "connection" in self.message.lower() or "refused" in self.message.lower():
             return "Verify gateway URL is correct and gateway service is running."
-        elif 'dns' in self.message.lower() or 'resolve' in self.message.lower():
+        elif "dns" in self.message.lower() or "resolve" in self.message.lower():
             return "Check DNS resolution for gateway hostname."
-        elif 'ssl' in self.message.lower() or 'tls' in self.message.lower():
+        elif "ssl" in self.message.lower() or "tls" in self.message.lower():
             return "Verify SSL certificate is valid. Use gateway_validate_certs=false for testing only."
         else:
             return "Check network connectivity and gateway availability."
@@ -151,7 +133,7 @@ class ValidationError(PlatformError):
         operation: Optional[str] = None,
         resource: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
-        invalid_fields: Optional[list] = None
+        invalid_fields: Optional[list] = None,
     ):
         super().__init__(message, operation, resource, details)
         self.retryable = False  # Validation errors are not retryable
@@ -184,7 +166,7 @@ class APIError(PlatformError):
         resource: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
         status_code: Optional[int] = None,
-        response_body: Optional[Dict[str, Any]] = None
+        response_body: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(message, operation, resource, details)
         self.status_code = status_code
@@ -235,7 +217,7 @@ class TimeoutError(PlatformError):
         operation: Optional[str] = None,
         resource: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
-        timeout_seconds: Optional[float] = None
+        timeout_seconds: Optional[float] = None,
     ):
         super().__init__(message, operation, resource, details)
         self.retryable = True  # Timeout errors are retryable
@@ -249,11 +231,7 @@ class TimeoutError(PlatformError):
             return "Operation timed out. Consider increasing gateway_request_timeout or check network/gateway performance."
 
 
-def classify_exception(
-    exception: Exception,
-    operation: Optional[str] = None,
-    resource: Optional[str] = None
-) -> PlatformError:
+def classify_exception(exception: Exception, operation: Optional[str] = None, resource: Optional[str] = None) -> PlatformError:
     """
     Classify a generic exception into platform error taxonomy.
 
@@ -277,8 +255,8 @@ def classify_exception(
             message=f"Request timed out: {str(exception)}",
             operation=operation,
             resource=resource,
-            details={'original_exception': str(exception)},
-            timeout_seconds=getattr(exception, 'timeout', None)
+            details={"original_exception": str(exception)},
+            timeout_seconds=getattr(exception, "timeout", None),
         )
 
     elif isinstance(exception, requests.exceptions.ConnectionError):
@@ -286,8 +264,8 @@ def classify_exception(
             message=f"Connection error: {str(exception)}",
             operation=operation,
             resource=resource,
-            details={'original_exception': str(exception)},
-            original_exception=exception
+            details={"original_exception": str(exception)},
+            original_exception=exception,
         )
 
     elif isinstance(exception, requests.exceptions.SSLError):
@@ -295,24 +273,18 @@ def classify_exception(
             message=f"SSL error: {str(exception)}",
             operation=operation,
             resource=resource,
-            details={'original_exception': str(exception), 'error_type': 'ssl'},
-            original_exception=exception
+            details={"original_exception": str(exception), "error_type": "ssl"},
+            original_exception=exception,
         )
 
-    elif isinstance(exception, ValueError) and ('auth' in str(exception).lower() or 'credential' in str(exception).lower()):
+    elif isinstance(exception, ValueError) and ("auth" in str(exception).lower() or "credential" in str(exception).lower()):
         return AuthenticationError(
-            message=f"Authentication error: {str(exception)}",
-            operation=operation,
-            resource=resource,
-            details={'original_exception': str(exception)}
+            message=f"Authentication error: {str(exception)}", operation=operation, resource=resource, details={"original_exception": str(exception)}
         )
 
     elif isinstance(exception, ValueError):
         return ValidationError(
-            message=f"Validation error: {str(exception)}",
-            operation=operation,
-            resource=resource,
-            details={'original_exception': str(exception)}
+            message=f"Validation error: {str(exception)}", operation=operation, resource=resource, details={"original_exception": str(exception)}
         )
 
     else:
@@ -321,5 +293,5 @@ def classify_exception(
             message=f"Unexpected error: {str(exception)}",
             operation=operation,
             resource=resource,
-            details={'original_exception': str(exception), 'exception_type': type(exception).__name__}
+            details={"original_exception": str(exception), "exception_type": type(exception).__name__},
         )

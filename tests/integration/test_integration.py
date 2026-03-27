@@ -12,7 +12,4 @@ def test_molecule_scenario(molecule_scenario: MoleculeScenario) -> None:
     molecule test -s <scenario_name> so converge, verify, and cleanup run.
     """
     proc = molecule_scenario.test()
-    assert proc.returncode == 0, (
-        f"molecule test failed for scenario {molecule_scenario.name!r}: "
-        f"returncode={proc.returncode}"
-    )
+    assert proc.returncode == 0, f"molecule test failed for scenario {molecule_scenario.name!r}: returncode={proc.returncode}"

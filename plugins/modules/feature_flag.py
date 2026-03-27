@@ -157,19 +157,19 @@ from ..module_utils.aap_feature_flag import AAPFeatureFlag  # noqa
 def main():
     # Define the argument specification for the module
     argument_spec = dict(
-        name=dict(required=True, type='str'),
-        value=dict(type='str'),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="exists", type='str'),
+        name=dict(required=True, type="str"),
+        value=dict(type="str"),
+        state=dict(choices=["present", "absent", "exists", "enforced"], default="exists", type="str"),
     )
 
     # Create a module for ourselves
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
 
     # Validate that value is provided when state requires it
-    state = module.params.get('state')
-    value = module.params.get('value')
+    state = module.params.get("state")
+    value = module.params.get("value")
 
-    if state in ['present', 'enforced'] and value is None:
+    if state in ["present", "enforced"] and value is None:
         module.fail_json(msg="Parameter 'value' is required when state is 'present' or 'enforced'")
 
     # Use the AAPFeatureFlag class to manage the feature flag

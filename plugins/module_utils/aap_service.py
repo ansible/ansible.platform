@@ -16,30 +16,22 @@ class AAPService(AAPObject):
 
     def manage(self, **kwargs):
         if self.present():
-            if self.params.get('service_cluster') is not None:
+            if self.params.get("service_cluster") is not None:
                 self.get_service_cluster()
-            if self.params.get('http_port') is not None:
+            if self.params.get("http_port") is not None:
                 self.get_http_port()
 
         super().manage(**kwargs)
 
     def get_service_cluster(self):
         # Resolve service_cluster name to id via API (service_cluster module is manager-based)
-        item = self.module.get_one(
-            'service_clusters',
-            name_or_id=self.params.get('service_cluster'),
-            allow_none=False
-        )
-        self.service_cluster = type('_Ref', (), {'data': item})()
+        item = self.module.get_one("service_clusters", name_or_id=self.params.get("service_cluster"), allow_none=False)
+        self.service_cluster = type("_Ref", (), {"data": item})()
 
     def get_http_port(self):
         # Resolve http_port name to id via API (http_port module is manager-based; no AAPHttpPort)
-        item = self.module.get_one(
-            'http_ports',
-            name_or_id=self.params.get('http_port'),
-            allow_none=False
-        )
-        self.http_port = type('_Ref', (), {'data': item})()
+        item = self.module.get_one("http_ports", name_or_id=self.params.get("http_port"), allow_none=False)
+        self.http_port = type("_Ref", (), {"data": item})()
 
     def unique_field(self):
         return self.module.IDENTITY_FIELDS["services"]
@@ -47,73 +39,73 @@ class AAPService(AAPObject):
     def set_new_fields(self):
         self.set_name_field()
 
-        api_slug = self.params.get('api_slug')
+        api_slug = self.params.get("api_slug")
         if api_slug is not None:
-            self.new_fields['api_slug'] = api_slug
+            self.new_fields["api_slug"] = api_slug
 
-        description = self.params.get('description')
+        description = self.params.get("description")
         if description is not None:
-            self.new_fields['description'] = description
+            self.new_fields["description"] = description
 
         gateway_path = self.get_gateway_path()
         if gateway_path is not None:
-            self.new_fields['gateway_path'] = gateway_path
+            self.new_fields["gateway_path"] = gateway_path
 
         if self.http_port:
-            http_port_id = (self.http_port.data or {}).get('id')
+            http_port_id = (self.http_port.data or {}).get("id")
             if http_port_id is not None:
-                self.new_fields['http_port'] = http_port_id
+                self.new_fields["http_port"] = http_port_id
 
         if self.service_cluster:
-            service_cluster_id = (self.service_cluster.data or {}).get('id')
+            service_cluster_id = (self.service_cluster.data or {}).get("id")
             if service_cluster_id is not None:
-                self.new_fields['service_cluster'] = service_cluster_id
+                self.new_fields["service_cluster"] = service_cluster_id
 
-        enable_gateway_auth = self.params.get('enable_gateway_auth')
+        enable_gateway_auth = self.params.get("enable_gateway_auth")
         if enable_gateway_auth is not None:
-            self.new_fields['enable_gateway_auth'] = enable_gateway_auth
+            self.new_fields["enable_gateway_auth"] = enable_gateway_auth
 
-        enable_mtls = self.params.get('enable_mtls')
+        enable_mtls = self.params.get("enable_mtls")
         if enable_mtls is not None:
-            self.new_fields['enable_mtls'] = enable_mtls
+            self.new_fields["enable_mtls"] = enable_mtls
 
-        is_service_https = self.params.get('is_service_https')
+        is_service_https = self.params.get("is_service_https")
         if is_service_https is not None:
-            self.new_fields['is_service_https'] = is_service_https
+            self.new_fields["is_service_https"] = is_service_https
 
-        service_path = self.params.get('service_path')
+        service_path = self.params.get("service_path")
         if service_path is not None:
-            self.new_fields['service_path'] = service_path
+            self.new_fields["service_path"] = service_path
 
-        service_port = self.params.get('service_port')
+        service_port = self.params.get("service_port")
         if service_port is not None:
-            self.new_fields['service_port'] = service_port
+            self.new_fields["service_port"] = service_port
 
-        order = self.params.get('order')
+        order = self.params.get("order")
         if order is not None:
-            self.new_fields['order'] = order
+            self.new_fields["order"] = order
 
-        node_tags = self.params.get('node_tags')
+        node_tags = self.params.get("node_tags")
         if node_tags is not None:
-            self.new_fields['node_tags'] = node_tags
+            self.new_fields["node_tags"] = node_tags
 
-        idle_timeout_seconds = self.params.get('idle_timeout_seconds')
+        idle_timeout_seconds = self.params.get("idle_timeout_seconds")
         if idle_timeout_seconds is not None:
-            self.new_fields['idle_timeout_seconds'] = idle_timeout_seconds
+            self.new_fields["idle_timeout_seconds"] = idle_timeout_seconds
 
-        request_timeout_seconds = self.params.get('request_timeout_seconds')
+        request_timeout_seconds = self.params.get("request_timeout_seconds")
         if request_timeout_seconds is not None:
-            self.new_fields['request_timeout_seconds'] = request_timeout_seconds
+            self.new_fields["request_timeout_seconds"] = request_timeout_seconds
 
     def get_gateway_path(self):
         if self.data:
-            gateway_path = self.data.get('gateway_path')
+            gateway_path = self.data.get("gateway_path")
         else:
-            api_slug = self.params.get('api_slug')
+            api_slug = self.params.get("api_slug")
             # Taken from:
             # https://github.com/ansible/aap-gateway/blob/382b27f458b5f957b49b2e8d4c86a72cc36eebfa/aap_gateway_api/models/service.py#L248  # noqa
-            if api_slug == 'gateway':
-                gateway_path = '/'
+            if api_slug == "gateway":
+                gateway_path = "/"
             elif api_slug:
                 gateway_path = API_PREFIX + api_slug + "/"
             else:

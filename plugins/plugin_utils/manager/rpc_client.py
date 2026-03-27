@@ -26,12 +26,7 @@ class ManagerRPCClient:
         service_proxy: Proxy to PlatformService
     """
 
-    def __init__(
-        self,
-        base_url: str,
-        socket_path: str,
-        authkey: bytes
-    ):
+    def __init__(self, base_url: str, socket_path: str, authkey: bytes):
         """
         Initialize RPC client.
 
@@ -58,7 +53,7 @@ class ManagerRPCClient:
         from .platform_manager import PlatformManager
 
         # Register remote service
-        PlatformManager.register('get_platform_service')
+        PlatformManager.register("get_platform_service")
 
         # Connect to manager
         # CRITICAL: BaseManager.address must be a plain str type (not subclass)
@@ -68,22 +63,14 @@ class ManagerRPCClient:
         if socket_path_str is not None and not isinstance(socket_path_str, str):
             socket_path_str = str(socket_path_str)
         logger.debug("Connecting to manager at %s (type: %s, is plain str: %s)", socket_path_str, type(socket_path_str), isinstance(socket_path_str, str))
-        self.manager = PlatformManager(
-            address=socket_path_str,
-            authkey=authkey
-        )
+        self.manager = PlatformManager(address=socket_path_str, authkey=authkey)
         self.manager.connect()
 
         # Get service proxy
         self.service_proxy = self.manager.get_platform_service()
         logger.info("Connected to Platform Manager")
 
-    def execute(
-        self,
-        operation: str,
-        module_name: str,
-        ansible_data: Any
-    ) -> Any:
+    def execute(self, operation: str, module_name: str, ansible_data: Any) -> Any:
         """
         Execute operation via manager.
 
@@ -107,11 +94,7 @@ class ManagerRPCClient:
             data_dict = ansible_data
 
         # Execute via proxy
-        result_dict = self.service_proxy.execute(
-            operation,
-            module_name,
-            data_dict
-        )
+        result_dict = self.service_proxy.execute(operation, module_name, data_dict)
 
         # Performance timing: RPC call end
         rpc_end = time.perf_counter()
@@ -119,18 +102,13 @@ class ManagerRPCClient:
 
         # Add timing info to result if it's a dict
         if isinstance(result_dict, dict):
-            result_dict.setdefault('_timing', {})['rpc_time'] = rpc_elapsed
-            result_dict['_timing']['rpc_start'] = rpc_start
-            result_dict['_timing']['rpc_end'] = rpc_end
+            result_dict.setdefault("_timing", {})["rpc_time"] = rpc_elapsed
+            result_dict["_timing"]["rpc_start"] = rpc_start
+            result_dict["_timing"]["rpc_end"] = rpc_end
 
         return result_dict
 
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str
-    ):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
         """
         Resolve a resource name to its integer ID via the manager process.
 
@@ -158,7 +136,7 @@ class ManagerRPCClient:
             dict with shutdown status
         """
         try:
-            if hasattr(self, 'service_proxy') and self.service_proxy:
+            if hasattr(self, "service_proxy") and self.service_proxy:
                 result = self.service_proxy.shutdown()
                 logger.debug("Manager shutdown response: %s", result)
                 return result
@@ -169,6 +147,6 @@ class ManagerRPCClient:
 
     def close(self) -> None:
         """Close connection to manager."""
-        if hasattr(self, 'manager'):
+        if hasattr(self, "manager"):
             self.manager.shutdown()
             logger.debug("Disconnected from Platform Manager")

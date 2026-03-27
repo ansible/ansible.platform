@@ -9,10 +9,10 @@ from __future__ import annotations
 import base64
 import logging
 import threading
+from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-from dataclasses import asdict
 from urllib.parse import urlencode
 
 if TYPE_CHECKING:
@@ -20,9 +20,9 @@ if TYPE_CHECKING:
 
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
-from ..platform.exceptions import AuthenticationError
 from ..platform.credential_manager import get_credential_manager
-from ..platform.retry import retry_http_request, RetryConfig
+from ..platform.exceptions import AuthenticationError
+from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 def _get_requests():
     """Lazy import of requests to avoid ModuleNotFoundError during sanity import test."""
     import requests
+
     return requests
 
 
@@ -80,7 +81,7 @@ class PlatformService(BaseAPIClient):
             username=config.username,
             password=config.password,
             oauth_token=config.oauth_token,
-            process_id=str(id(self))  # Use object ID as process identifier
+            process_id=str(id(self)),  # Use object ID as process identifier
         )
 
         # Store namespace ID for credential operations
@@ -92,11 +93,7 @@ class PlatformService(BaseAPIClient):
         # Initialize persistent session (thread-safe)
         requests = _get_requests()
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Ansible Platform Collection',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        })
+        self.session.headers.update({"User-Agent": "Ansible Platform Collection", "Accept": "application/json", "Content-Type": "application/json"})
 
         # Track authentication state
         self._auth_lock = threading.Lock()
@@ -131,22 +128,9 @@ class PlatformService(BaseAPIClient):
         self._shutdown_lock = threading.Lock()
 
         # Retry configuration
-        self.retry_config = RetryConfig(
-            max_attempts=3,
-            initial_delay=1.0,
-            max_delay=60.0,
-            exponential_base=2.0,
-            jitter=True
-        )
+        self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
 
-    def _make_request(
-        self,
-        method: str,
-        url: str,
-        operation: str = 'http_request',
-        resource: str = 'unknown',
-        **kwargs
-    ) -> "requests.Response":
+    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -165,15 +149,16 @@ class PlatformService(BaseAPIClient):
         Raises:
             PlatformError: Classified platform error
         """
+
         # Create a retried version of the request function
         @retry_http_request(config=self.retry_config)
         def _execute_with_retry():
             # Set default timeout and verify_ssl if not provided
             request_kwargs = kwargs.copy()
-            if 'timeout' not in request_kwargs:
-                request_kwargs['timeout'] = self.request_timeout
-            if 'verify' not in request_kwargs:
-                request_kwargs['verify'] = self.verify_ssl
+            if "timeout" not in request_kwargs:
+                request_kwargs["timeout"] = self.request_timeout
+            if "verify" not in request_kwargs:
+                request_kwargs["verify"] = self.verify_ssl
 
             # Get the appropriate session method
             session_method = getattr(self.session, method.lower())
@@ -199,12 +184,8 @@ class PlatformService(BaseAPIClient):
                                 message=f"Authentication failed: HTTP {response.status_code}",
                                 operation=operation,
                                 resource=resource,
-                                details={
-                                    'status_code': response.status_code,
-                                    'url': url,
-                                    'response_body': response.text[:500]
-                                },
-                                status_code=response.status_code
+                                details={"status_code": response.status_code, "url": url, "response_body": response.text[:500]},
+                                status_code=response.status_code,
                             )
                     else:
                         # Authentication recovery failed
@@ -212,12 +193,8 @@ class PlatformService(BaseAPIClient):
                             message=f"Authentication failed: HTTP {response.status_code}",
                             operation=operation,
                             resource=resource,
-                            details={
-                                'status_code': response.status_code,
-                                'url': url,
-                                'response_body': response.text[:500]
-                            },
-                            status_code=response.status_code
+                            details={"status_code": response.status_code, "url": url, "response_body": response.text[:500]},
+                            status_code=response.status_code,
                         )
 
                 # For other HTTP errors, raise APIError
@@ -252,9 +229,7 @@ class PlatformService(BaseAPIClient):
                     raise ValueError(f"Authentication error with token: {e}") from e
             elif username and password:
                 # Basic authentication
-                basic_str = base64.b64encode(
-                    f"{username}:{password}".encode("ascii")
-                )
+                basic_str = base64.b64encode(f"{username}:{password}".encode("ascii"))
                 header = {"Authorization": f"Basic {basic_str.decode('ascii')}"}
                 self.session.headers.update(header)
                 try:
@@ -301,28 +276,19 @@ class PlatformService(BaseAPIClient):
                 # Gateway token refresh endpoint (if available)
                 refresh_url = f"{self.base_url}/api/gateway/v1/auth/token/refresh/"
                 response = self.session.post(
-                    refresh_url,
-                    json={"refresh_token": token_info.refresh_token},
-                    timeout=self.request_timeout,
-                    verify=self.verify_ssl
+                    refresh_url, json={"refresh_token": token_info.refresh_token}, timeout=self.request_timeout, verify=self.verify_ssl
                 )
 
                 if response.status_code == 200:
                     data = response.json()
-                    new_token = data.get('access_token')
-                    new_refresh_token = data.get('refresh_token', token_info.refresh_token)
-                    expires_in = data.get('expires_in')
+                    new_token = data.get("access_token")
+                    new_refresh_token = data.get("refresh_token", token_info.refresh_token)
+                    expires_in = data.get("expires_in")
 
                     if new_token:
-                        self.credential_store.update_token(
-                            token=new_token,
-                            refresh_token=new_refresh_token,
-                            expires_in=expires_in
-                        )
+                        self.credential_store.update_token(token=new_token, refresh_token=new_refresh_token, expires_in=expires_in)
                         # Update session header
-                        self.session.headers.update({
-                            "Authorization": f"Bearer {new_token}"
-                        })
+                        self.session.headers.update({"Authorization": f"Bearer {new_token}"})
                         logger.info("Token refreshed successfully")
                         return True
             except Exception as e:
@@ -398,18 +364,18 @@ class PlatformService(BaseAPIClient):
         """
         requests = _get_requests()
         # Write to both logger and stderr for visibility in manager process logs
-        import sys
         import os
         import re
+        import sys
         from pathlib import Path
 
         # Get error_log path from environment (set by process_manager.py when spawning)
-        error_log_path = None
+        _error_log_path = None
         try:
-            socket_dir = os.environ.get('ANSIBLE_PLATFORM_SOCKET_DIR')
+            socket_dir = os.environ.get("ANSIBLE_PLATFORM_SOCKET_DIR")
             if socket_dir:
-                inventory_hostname = os.environ.get('ANSIBLE_PLATFORM_HOSTNAME', 'localhost')
-                error_log_path = Path(socket_dir) / f'manager_error_{inventory_hostname}.log'
+                inventory_hostname = os.environ.get("ANSIBLE_PLATFORM_HOSTNAME", "localhost")
+                _error_log_path = Path(socket_dir) / f"manager_error_{inventory_hostname}.log"
                 # Note: error_log is created by manager_process.py before PlatformService is instantiated
                 # so it should exist, but we'll try to write anyway
         except Exception:
@@ -417,38 +383,34 @@ class PlatformService(BaseAPIClient):
 
         try:
             # Use the /api/gateway/ endpoint which provides version information
-            gateway_url = f'{self.base_url.rstrip("/")}/api/gateway/'
+            gateway_url = f"{self.base_url.rstrip('/')}/api/gateway/"
             logger.debug("PlatformService: Detecting API version via %s", gateway_url)
 
             # Make request using session (authentication headers already set)
-            response = self.session.get(
-                gateway_url,
-                timeout=self.request_timeout,
-                verify=self.verify_ssl
-            )
+            response = self.session.get(gateway_url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
 
             version_str = None
 
             # Parse JSON response
-            if response.headers.get('Content-Type', '').startswith('application/json'):
+            if response.headers.get("Content-Type", "").startswith("application/json"):
                 try:
                     response_data = response.json()
                     logger.debug("PlatformService: Gateway API response: %s", response_data)
 
                     # Extract version from current_version field (e.g., "/api/gateway/v1/" -> "1")
-                    if 'current_version' in response_data:
-                        current_version_path = response_data['current_version']
-                        version_match = re.search(r'/v(\d+(?:\.\d+)?)/?$', current_version_path)
+                    if "current_version" in response_data:
+                        current_version_path = response_data["current_version"]
+                        version_match = re.search(r"/v(\d+(?:\.\d+)?)/?$", current_version_path)
                         if version_match:
                             version_str = version_match.group(1)
                             logger.debug("PlatformService: Extracted version '%s' from current_version path", version_str)
 
                     # 2. Negotiate highest mutual version from available_versions
-                    if not version_str and 'available_versions' in response_data:
-                        available = response_data['available_versions']
+                    if not version_str and "available_versions" in response_data:
+                        available = response_data["available_versions"]
                         if isinstance(available, dict) and available:
-                            platform_versions = [v.lstrip('v') for v in available.keys()]
+                            platform_versions = [v.lstrip("v") for v in available.keys()]
                             collection_supported = self.registry.get_supported_versions()
                             mutual_versions = [v for v in platform_versions if v in collection_supported]
 
@@ -457,6 +419,7 @@ class PlatformService(BaseAPIClient):
                                     from packaging.version import parse as parse_version
                                 except ImportError:
                                     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
+
                                     parse_version = version.parse
                                 version_str = max(mutual_versions, key=parse_version)
                                 logger.debug("PlatformService: Negotiated mutual version '%s' from available_versions", version_str)
@@ -473,13 +436,14 @@ class PlatformService(BaseAPIClient):
             error_msg = f"PlatformService: Version detection failed (HTTP error): {e}, defaulting to v1"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
-            return '1'
+            return "1"
         except Exception as e:
             # Any other errors - default to v1
             error_msg = f"PlatformService: Version detection failed (unexpected error): {e}, defaulting to v1"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
             import traceback
+
             print(traceback.format_exc(), file=sys.stderr, flush=True)
         latest_supported = self.registry.get_latest_version()
         if not latest_supported:
@@ -514,12 +478,7 @@ class PlatformService(BaseAPIClient):
 
         return url
 
-    def execute(
-        self,
-        operation: str,
-        module_name: str,
-        ansible_data_dict: dict
-    ) -> dict:
+    def execute(self, operation: str, module_name: str, ansible_data_dict: dict) -> dict:
         """
         Execute a generic operation on any resource.
 
@@ -544,45 +503,29 @@ class PlatformService(BaseAPIClient):
         logger.info("Executing %s on %s", operation, module_name)
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
-        include_nulls = ansible_data_dict.pop('_platform_enforced', False)
+        include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
         # Load version-appropriate classes
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(
-            module_name,
-            self.api_version
-        )
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
 
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self,
-            session=self.session,
-            cache=self.cache,
-            api_version=self.api_version,
-            operation=operation,
-            include_nulls_for_update=include_nulls
+            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
         )
 
         # Execute operation
         try:
-            if operation == 'create':
-                result = self._create_resource(
-                    ansible_instance, MixinClass, context
-                )
-            elif operation == 'update':
-                result = self._update_resource(
-                    ansible_instance, MixinClass, context
-                )
-            elif operation == 'delete':
-                result = self._delete_resource(
-                    ansible_instance, MixinClass, context
-                )
-            elif operation == 'find':
-                result = self._find_resource(
-                    ansible_instance, MixinClass, context
-                )
+            if operation == "create":
+                result = self._create_resource(ansible_instance, MixinClass, context)
+            elif operation == "update":
+                result = self._update_resource(ansible_instance, MixinClass, context)
+            elif operation == "delete":
+                result = self._delete_resource(ansible_instance, MixinClass, context)
+            elif operation == "find":
+                result = self._find_resource(ansible_instance, MixinClass, context)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
 
@@ -592,10 +535,10 @@ class PlatformService(BaseAPIClient):
 
             # Extract API call time from context if available
             api_time = 0
-            if isinstance(context, dict) and 'timing' in context:
-                api_time = context['timing'].get('api_call_time', 0)
-            elif hasattr(context, 'timing'):
-                api_time = getattr(context.timing, 'api_call_time', 0)
+            if isinstance(context, dict) and "timing" in context:
+                api_time = context["timing"].get("api_call_time", 0)
+            elif hasattr(context, "timing"):
+                api_time = getattr(context.timing, "api_call_time", 0)
 
             # Calculate our code time in manager (excluding API call which is AAP's time)
             # Manager time includes: transformations, class loading, etc.
@@ -604,16 +547,16 @@ class PlatformService(BaseAPIClient):
 
             # Add timing info to result
             if isinstance(result, dict):
-                result.setdefault('_timing', {})['manager_processing_time'] = manager_elapsed
-                result['_timing']['manager_start'] = manager_start
-                result['_timing']['manager_end'] = manager_end
-                result['_timing']['api_call_time'] = api_time
-                result['_timing']['our_manager_code_time'] = our_manager_code_time
+                result.setdefault("_timing", {})["manager_processing_time"] = manager_elapsed
+                result["_timing"]["manager_start"] = manager_start
+                result["_timing"]["manager_end"] = manager_end
+                result["_timing"]["api_call_time"] = api_time
+                result["_timing"]["our_manager_code_time"] = our_manager_code_time
 
                 # Add HTTP and TLS metrics (thread-safe read)
                 with self._lock:
-                    result['_timing']['http_request_count'] = self._http_request_count
-                    result['_timing']['tls_handshake_count'] = self._tls_handshake_count
+                    result["_timing"]["http_request_count"] = self._http_request_count
+                    result["_timing"]["tls_handshake_count"] = self._tls_handshake_count
 
             return result
 
@@ -625,19 +568,10 @@ class PlatformService(BaseAPIClient):
                 logger.error("Operation %s on %s failed: %s", operation, module_name, e)
             raise
         except Exception as e:
-            logger.error(
-                "Operation %s on %s failed: %s",
-                operation, module_name, e,
-                exc_info=True
-            )
+            logger.error("Operation %s on %s failed: %s", operation, module_name, e, exc_info=True)
             raise
 
-    def _create_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: dict
-    ) -> dict:
+    def _create_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """
         Create resource with transformation.
 
@@ -656,9 +590,7 @@ class PlatformService(BaseAPIClient):
         operations = mixin_class.get_endpoint_operations()
 
         # Execute operations (potentially multi-endpoint)
-        api_result = self._execute_operations(
-            operations, api_data, context, required_for='create'
-        )
+        api_result = self._execute_operations(operations, api_data, context, required_for="create")
 
         # REVERSE TRANSFORM: API → Ansible
         if api_result:
@@ -666,18 +598,14 @@ class PlatformService(BaseAPIClient):
             ansible_instance = mixin_class.from_api(api_result, context)
             # Convert to dict and add 'changed' field for Ansible return
             from dataclasses import asdict
+
             ansible_result = asdict(ansible_instance)
-            ansible_result['changed'] = True
+            ansible_result["changed"] = True
             return ansible_result
 
-        return {'changed': True}
+        return {"changed": True}
 
-    def _update_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: dict
-    ) -> dict:
+    def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """
         Update resource with transformation.
 
@@ -690,8 +618,8 @@ class PlatformService(BaseAPIClient):
             Updated resource as dict (Ansible format) with 'changed': True/False
         """
         # Get the resource ID (not required for singleton resources)
-        resource_id = getattr(ansible_data, 'id', None)
-        is_singleton = getattr(mixin_class, 'is_singleton', False)
+        resource_id = getattr(ansible_data, "id", None)
+        is_singleton = getattr(mixin_class, "is_singleton", False)
         if not resource_id and not is_singleton:
             raise ValueError("Resource ID required for update operation")
 
@@ -711,20 +639,15 @@ class PlatformService(BaseAPIClient):
         # For update, some APIs require all required fields in the PATCH body (e.g. http_port
         # requires "number"). Merge current resource values for any update-operation field
         # that is missing/None in api_data so the request body is valid.
-        update_op = next(
-            (op for op in operations.values() if getattr(op, 'required_for', None) == 'update'),
-            None
-        )
+        update_op = next((op for op in operations.values() if getattr(op, "required_for", None) == "update"), None)
         if update_op and current_data:
             current_dict = current_data if isinstance(current_data, dict) else current_data
-            for field in getattr(update_op, 'fields', []) or []:
+            for field in getattr(update_op, "fields", []) or []:
                 if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
                     setattr(api_data, field, current_dict[field])
 
         # Execute update operation
-        api_result = self._execute_operations(
-            operations, api_data, context, required_for='update'
-        )
+        api_result = self._execute_operations(operations, api_data, context, required_for="update")
 
         # REVERSE TRANSFORM: API → Ansible
         if api_result:
@@ -735,7 +658,7 @@ class PlatformService(BaseAPIClient):
             # Convert to dict for comparison and return
             new_dict = asdict(ansible_instance)
             current_dict = current_data if isinstance(current_data, dict) else {}
-            read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
+            read_only_fields = {"id", "created", "modified", "url", "changed"}
 
             # Merge current + PATCH response; don't let None from sparse response
             # overwrite existing values (e.g. associated_authenticators: {} → None).
@@ -757,9 +680,9 @@ class PlatformService(BaseAPIClient):
             # resolved fields (e.g. organization_id set by action plugin but not in API state).
             if not changed:
                 lookup_field = mixin_class.get_lookup_field()
-                api_normalized_fields = {'slug'}
-                internal_fields = {'organization_id'}
-                skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields | internal_fields
+                api_normalized_fields = {"slug"}
+                internal_fields = {"organization_id"}
+                skip_fields = read_only_fields | {"state", lookup_field} | api_normalized_fields | internal_fields
                 requested = asdict(ansible_data)
                 for k, v in requested.items():
                     if k in skip_fields or v is None:
@@ -783,26 +706,26 @@ class PlatformService(BaseAPIClient):
                         # cannot be compared against a digit string without resolving it.
                         # The primary state comparison already handled the real change
                         # detection, so skip here to avoid false changed=True.
-                        if (isinstance(v, str) and isinstance(current_val, str)
-                                and not v.isdigit() and current_val.isdigit()):
+                        if isinstance(v, str) and isinstance(current_val, str) and not v.isdigit() and current_val.isdigit():
                             continue
                         changed = True
                         break
 
-            new_dict['changed'] = changed
+            new_dict["changed"] = changed
             return new_dict
 
         # No PATCH was needed (all requested fields are non-PATCH, e.g. organizations).
         # Still compare requested intent against current state so we report the change.
         from dataclasses import asdict
+
         current_dict = current_data if isinstance(current_data, dict) else {}
         if current_dict:
-            read_only_fields = {'id', 'created', 'modified', 'url', 'changed'}
-            api_normalized_fields = {'slug'}
-            internal_fields = {'organization_id'}
+            read_only_fields = {"id", "created", "modified", "url", "changed"}
+            api_normalized_fields = {"slug"}
+            internal_fields = {"organization_id"}
             norm = self._normalize_for_compare
             lookup_field = mixin_class.get_lookup_field()
-            skip_fields = read_only_fields | {'state', lookup_field} | api_normalized_fields | internal_fields
+            skip_fields = read_only_fields | {"state", lookup_field} | api_normalized_fields | internal_fields
             requested = asdict(ansible_data)
             changed = False
             for k, v in requested.items():
@@ -820,16 +743,15 @@ class PlatformService(BaseAPIClient):
                         continue
                     # FK: non-digit name string vs digit string (from_api str() conversion)
                     # e.g. role_definition='my-role' vs '3100' — can't resolve without manager.
-                    if (isinstance(v, str) and isinstance(current_val, str)
-                            and not v.isdigit() and current_val.isdigit()):
+                    if isinstance(v, str) and isinstance(current_val, str) and not v.isdigit() and current_val.isdigit():
                         continue
                     changed = True
                     break
             result = dict(current_dict)
-            result['changed'] = changed
+            result["changed"] = changed
             return result
 
-        return {'changed': False}
+        return {"changed": False}
 
     @staticmethod
     def _normalize_for_compare(value: Any) -> Any:
@@ -863,12 +785,7 @@ class PlatformService(BaseAPIClient):
                 result[key] = r
         return result
 
-    def _delete_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: dict
-    ) -> dict:
+    def _delete_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """
         Delete resource.
 
@@ -886,7 +803,7 @@ class PlatformService(BaseAPIClient):
         # Find delete operation
         delete_op = None
         for op_name, op in operations.items():
-            if op_name == 'delete' or (op.required_for == 'delete'):
+            if op_name == "delete" or (op.required_for == "delete"):
                 delete_op = op
                 break
 
@@ -902,29 +819,20 @@ class PlatformService(BaseAPIClient):
         path = delete_op.path
         if delete_op.path_params:
             for param in delete_op.path_params:
-                if param == 'id':
-                    path = path.replace(f'{{{param}}}', str(resource_id))
+                if param == "id":
+                    path = path.replace(f"{{{param}}}", str(resource_id))
 
         url = self._build_url(path)
 
         # Make DELETE request
         logger.debug("Calling DELETE %s", url)
-        response = self.session.delete(
-            url,
-            timeout=self.request_timeout,
-            verify=self.verify_ssl
-        )
+        response = self.session.delete(url, timeout=self.request_timeout, verify=self.verify_ssl)
         response.raise_for_status()
 
         # Deleting a resource always results in a change
-        return {'changed': True}
+        return {"changed": True}
 
-    def _find_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: dict
-    ) -> dict:
+    def _find_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """
         Find resource by identifier.
 
@@ -943,31 +851,30 @@ class PlatformService(BaseAPIClient):
         """
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
-        get_op = operations.get('get')
-        list_op = operations.get('list')
+        get_op = operations.get("get")
+        list_op = operations.get("list")
 
         # --- Singleton resources (e.g. settings) ---
-        if getattr(mixin_class, 'is_singleton', False):
+        if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
             url = self._build_url(get_op.path)
-            response = self.session.get(
-                url, timeout=self.request_timeout, verify=self.verify_ssl
-            )
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
+
             return asdict(ansible_instance)
 
         # --- Standard CRUD resources ---
         lookup_field = mixin_class.get_lookup_field()
-        unique_value = getattr(ansible_data, lookup_field, None) or getattr(ansible_data, 'id', None)
+        unique_value = getattr(ansible_data, lookup_field, None) or getattr(ansible_data, "id", None)
 
         # Support composite-key lookups via get_find_list_query_params.
         # Use FK-resolved API data so query params contain IDs, not names.
         composite_params = {}
-        if hasattr(mixin_class, 'get_find_list_query_params'):
+        if hasattr(mixin_class, "get_find_list_query_params"):
             api_data = mixin_class.from_ansible_data(ansible_data, context)
             composite_params = mixin_class.get_find_list_query_params(api_data) or {}
 
@@ -977,7 +884,7 @@ class PlatformService(BaseAPIClient):
         # Resolve the resource ID to use for a direct GET lookup.
         # Priority: explicit id field → numeric name field (caller passed an int PK).
         resolved_id = None
-        if hasattr(ansible_data, 'id') and ansible_data.id:
+        if hasattr(ansible_data, "id") and ansible_data.id:
             resolved_id = ansible_data.id
         elif unique_value is not None and str(unique_value).strip().isdigit():
             # Caller passed an integer as the lookup field (e.g. name=1001),
@@ -988,12 +895,8 @@ class PlatformService(BaseAPIClient):
         if resolved_id:
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
-            url = self._build_url(get_op.path.replace('{id}', str(resolved_id)))
-            response = self.session.get(
-                url,
-                timeout=self.request_timeout,
-                verify=self.verify_ssl
-            )
+            url = self._build_url(get_op.path.replace("{id}", str(resolved_id)))
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
             api_result = response.json()
 
@@ -1015,11 +918,7 @@ class PlatformService(BaseAPIClient):
                     except (TypeError, ValueError):
                         result_val_cmp = result_val
                     if result_val_cmp != param_val_cmp:
-                        raise ValueError(
-                            f"Resource {resolved_id} found but composite key "
-                            f"{param_key}={param_val} does not match "
-                            f"actual value {result_val}"
-                        )
+                        raise ValueError(f"Resource {resolved_id} found but composite key {param_key}={param_val} does not match actual value {result_val}")
         else:
             # Use list endpoint and filter by lookup field or composite params
             if not list_op:
@@ -1031,16 +930,12 @@ class PlatformService(BaseAPIClient):
                 query_params.update(composite_params)
             url = self._build_url(list_op.path, query_params=query_params)
             logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-            response = self.session.get(
-                url,
-                timeout=self.request_timeout,
-                verify=self.verify_ssl
-            )
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
             list_result = response.json()
 
             # Find matching item in results
-            results = list_result.get('results', [])
+            results = list_result.get("results", [])
             if not results:
                 raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
 
@@ -1050,15 +945,10 @@ class PlatformService(BaseAPIClient):
         # REVERSE TRANSFORM: API → Ansible
         ansible_instance = mixin_class.from_api(api_result, context)
         from dataclasses import asdict
+
         return asdict(ansible_instance)
 
-    def _execute_operations(
-        self,
-        operations: Dict,
-        api_data: Any,
-        context: dict,
-        required_for: str = None
-    ) -> dict:
+    def _execute_operations(self, operations: Dict, api_data: Any, context: dict, required_for: str = None) -> dict:
         """
         Execute potentially multiple API endpoint operations.
 
@@ -1072,10 +962,7 @@ class PlatformService(BaseAPIClient):
             Combined API response dict
         """
         # Filter operations
-        relevant_ops = {
-            name: op for name, op in operations.items()
-            if op.required_for is None or op.required_for == required_for
-        }
+        relevant_ops = {name: op for name, op in operations.items() if op.required_for is None or op.required_for == required_for}
 
         # Sort by dependencies and order
         sorted_ops = self._sort_operations(relevant_ops)
@@ -1099,7 +986,7 @@ class PlatformService(BaseAPIClient):
                 request_data[field] = val
 
             # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, 'flatten_body', False) and len(request_data) == 1:
+            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
                 request_data = next(iter(request_data.values()))
 
             if not request_data:
@@ -1111,9 +998,9 @@ class PlatformService(BaseAPIClient):
             if endpoint_op.path_params:
                 for param in endpoint_op.path_params:
                     if param in results:
-                        path = path.replace(f'{{{param}}}', str(results[param]))
-                    elif param == 'id' and 'id' in api_data_dict:
-                        path = path.replace(f'{{{param}}}', str(api_data_dict['id']))
+                        path = path.replace(f"{{{param}}}", str(results[param]))
+                    elif param == "id" and "id" in api_data_dict:
+                        path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
 
             url = self._build_url(path)
 
@@ -1121,6 +1008,7 @@ class PlatformService(BaseAPIClient):
             logger.debug("Calling %s %s", endpoint_op.method, url)
             # Performance timing: API call start
             import time
+
             api_start = time.perf_counter()
 
             try:
@@ -1128,13 +1016,7 @@ class PlatformService(BaseAPIClient):
                 with self._lock:
                     self._http_request_count += 1
 
-                response = self.session.request(
-                    endpoint_op.method,
-                    url,
-                    json=request_data,
-                    timeout=self.request_timeout,
-                    verify=self.verify_ssl
-                )
+                response = self.session.request(endpoint_op.method, url, json=request_data, timeout=self.request_timeout, verify=self.verify_ssl)
                 response.raise_for_status()
 
                 # Performance timing: API call end
@@ -1142,22 +1024,22 @@ class PlatformService(BaseAPIClient):
                 api_elapsed = api_end - api_start
 
                 # Store timing in context for later retrieval
-                if hasattr(context, 'timing'):
-                    context.timing['api_call_time'] = api_elapsed
-                    context.timing['api_call_start'] = api_start
-                    context.timing['api_call_end'] = api_end
+                if hasattr(context, "timing"):
+                    context.timing["api_call_time"] = api_elapsed
+                    context.timing["api_call_start"] = api_start
+                    context.timing["api_call_end"] = api_end
                 elif isinstance(context, dict):
-                    context.setdefault('timing', {})['api_call_time'] = api_elapsed
-                    context['timing']['api_call_start'] = api_start
-                    context['timing']['api_call_end'] = api_end
+                    context.setdefault("timing", {})["api_call_time"] = api_elapsed
+                    context["timing"]["api_call_start"] = api_start
+                    context["timing"]["api_call_end"] = api_end
 
             except Exception as e:
                 logger.error("API call failed: %s", e)
-                if hasattr(e, 'response') and e.response is not None:
+                if hasattr(e, "response") and e.response is not None:
                     logger.error("Response status: %s", e.response.status_code)
                     logger.error("Response body: %s", e.response.text)
                     # Include response body in message so callers (e.g. tests) can assert on validation errors
-                    body = getattr(e.response, 'text', '') or ''
+                    body = getattr(e.response, "text", "") or ""
                     if body and body not in str(e):
                         raise ValueError(f"{e}\nResponse body: {body[:1000]}") from e
                 raise
@@ -1167,11 +1049,11 @@ class PlatformService(BaseAPIClient):
             results[op_name] = result_data
 
             # Store ID for dependent operations
-            if 'id' in result_data and 'id' not in results:
-                results['id'] = result_data['id']
+            if "id" in result_data and "id" not in results:
+                results["id"] = result_data["id"]
 
         # Return main result
-        return results.get('create') or results.get('update') or results.get('main') or {}
+        return results.get("create") or results.get("update") or results.get("main") or {}
 
     def _sort_operations(self, operations: Dict) -> list:
         """
@@ -1189,16 +1071,10 @@ class PlatformService(BaseAPIClient):
         # Topological sort based on depends_on
         while remaining:
             # Find operations with no unmet dependencies
-            ready = [
-                name for name, op in remaining.items()
-                if op.depends_on is None or op.depends_on in sorted_ops
-            ]
+            ready = [name for name, op in remaining.items() if op.depends_on is None or op.depends_on in sorted_ops]
 
             if not ready:
-                raise ValueError(
-                    f"Circular dependency in operations: "
-                    f"{list(remaining.keys())}"
-                )
+                raise ValueError(f"Circular dependency in operations: {list(remaining.keys())}")
 
             # Sort ready operations by order field
             ready.sort(key=lambda name: remaining[name].order)
@@ -1224,23 +1100,19 @@ class PlatformService(BaseAPIClient):
         ids = []
         for name in org_names:
             # Check cache
-            cache_key = f'org_name:{name}'
+            cache_key = f"org_name:{name}"
             if cache_key in self.cache:
                 ids.append(self.cache[cache_key])
                 continue
 
             # API lookup
-            url = self._build_url('organizations', query_params={'name': name})
-            response = self.session.get(
-                url,
-                timeout=self.request_timeout,
-                verify=self.verify_ssl
-            )
+            url = self._build_url("organizations", query_params={"name": name})
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
-            results = response.json().get('results', [])
+            results = response.json().get("results", [])
 
             if results:
-                org_id = results[0]['id']
+                org_id = results[0]["id"]
                 self.cache[cache_key] = org_id
                 ids.append(org_id)
             else:
@@ -1261,24 +1133,20 @@ class PlatformService(BaseAPIClient):
         names = []
         for org_id in org_ids:
             # Check reverse cache
-            cache_key = f'org_id:{org_id}'
+            cache_key = f"org_id:{org_id}"
             if cache_key in self.cache:
                 names.append(self.cache[cache_key])
                 continue
 
             # API lookup
-            url = self._build_url(f'organizations/{org_id}/')
-            response = self.session.get(
-                url,
-                timeout=self.request_timeout,
-                verify=self.verify_ssl
-            )
+            url = self._build_url(f"organizations/{org_id}/")
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
             org = response.json()
 
-            name = org['name']
+            name = org["name"]
             self.cache[cache_key] = name
-            self.cache[f'org_name:{name}'] = org_id  # Store both directions
+            self.cache[f"org_name:{name}"] = org_id  # Store both directions
             names.append(name)
 
         return names
@@ -1292,12 +1160,7 @@ class PlatformService(BaseAPIClient):
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
 
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str
-    ) -> Optional[int]:
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str) -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
@@ -1310,11 +1173,7 @@ class PlatformService(BaseAPIClient):
         if cache_key in self.cache:
             return self.cache[cache_key]
         url = self._build_url(endpoint, query_params={lookup_field: lookup_value})
-        response = self.session.get(
-            url,
-            timeout=self.request_timeout,
-            verify=self.verify_ssl
-        )
+        response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
         response.raise_for_status()
         results = response.json().get("results", [])
         if not results:
@@ -1346,7 +1205,7 @@ class PlatformService(BaseAPIClient):
 
         # Close HTTP session
         try:
-            if hasattr(self, 'session') and self.session:
+            if hasattr(self, "session") and self.session:
                 self.session.close()
                 logger.debug("HTTP session closed")
         except Exception as e:
@@ -1369,9 +1228,10 @@ class PlatformManager(ThreadingMixIn, BaseManager):
 
     Uses ThreadingMixIn to handle concurrent client connections.
     """
+
     daemon_threads = True
 
     @staticmethod
     def register_shutdown_method(service):
         """Register shutdown method with manager."""
-        PlatformManager.register('shutdown', callable=service.shutdown)
+        PlatformManager.register("shutdown", callable=service.shutdown)

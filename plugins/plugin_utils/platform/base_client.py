@@ -7,10 +7,11 @@ error handling, credential management, CRUD operations) is used by both modes.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from ..platform.config import GatewayConfig
-from ..platform.registry import APIVersionRegistry
 from ..platform.loader import DynamicClassLoader
+from ..platform.registry import APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class BaseAPIClient(ABC):
             config: Gateway configuration
         """
         self.config = config
-        self.base_url = config.base_url.rstrip('/')
+        self.base_url = config.base_url.rstrip("/")
         self.verify_ssl = config.verify_ssl
         self.request_timeout = config.request_timeout
 
@@ -83,12 +84,7 @@ class BaseAPIClient(ABC):
         pass
 
     @abstractmethod
-    def execute(
-        self,
-        operation: str,
-        module_name: str,
-        ansible_data_dict: dict
-    ) -> dict:
+    def execute(self, operation: str, module_name: str, ansible_data_dict: dict) -> dict:
         """
         Execute a generic operation on any resource.
 

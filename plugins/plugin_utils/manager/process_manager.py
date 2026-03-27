@@ -4,17 +4,17 @@ Generic process management utilities for spawning and connecting to manager proc
 This module is part of the platform SDK and is not Ansible-specific.
 """
 
-import sys
-import os
-import subprocess
-import secrets
 import base64
 import json
-import time
 import logging
-from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+import os
+import secrets
+import subprocess
+import sys
+import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ..platform.config import GatewayConfig
@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ProcessConnectionInfo:
     """Information needed to connect to a manager process."""
+
     socket_path: str
     authkey: bytes
     authkey_b64: str
@@ -44,11 +45,7 @@ class ProcessManager:
     """
 
     @staticmethod
-    def generate_connection_info(
-        identifier: str,
-        socket_dir: Optional[Path] = None,
-        gateway_config: Optional['GatewayConfig'] = None
-    ) -> ProcessConnectionInfo:
+    def generate_connection_info(identifier: str, socket_dir: Optional[Path] = None, gateway_config: Optional["GatewayConfig"] = None) -> ProcessConnectionInfo:
         """
         Generate connection information for a new manager process.
 
@@ -64,11 +61,13 @@ class ProcessManager:
 
         if socket_dir is None:
             import tempfile
-            socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
+
+            socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
 
         # Create socket directory with user-only permissions (0700)
         # This prevents other users from enumerating running jobs or accessing error logs
         import os
+
         socket_dir.mkdir(exist_ok=True)
         try:
             # Set permissions to 0700 (user read/write/execute only)
@@ -81,30 +80,27 @@ class ProcessManager:
         # User ID ensures different users on same jump host don't collide
         # Credential hash ensures different credentials get different managers
         import hashlib
+
         user_id = os.getuid()
 
         if gateway_config:
             # Create a hash of credentials to include in socket path
             # This ensures different credentials = different socket path = different manager
             cred_string = f"{gateway_config.username or ''}:{gateway_config.password or ''}:{gateway_config.oauth_token or ''}"
-            cred_hash = hashlib.sha256(cred_string.encode('utf-8')).hexdigest()[:8]
-            socket_path = str(socket_dir / f'manager_{user_id}_{identifier}_{cred_hash}.sock')
+            cred_hash = hashlib.sha256(cred_string.encode("utf-8")).hexdigest()[:8]
+            socket_path = str(socket_dir / f"manager_{user_id}_{identifier}_{cred_hash}.sock")
             logger.debug("Including user ID (%s) and credentials in socket path (hash: %s...)", user_id, cred_hash[:4])
         else:
             # Backward compatibility: if no gateway_config, use old format but still include user ID
-            socket_path = str(socket_dir / f'manager_{user_id}_{identifier}.sock')
+            socket_path = str(socket_dir / f"manager_{user_id}_{identifier}.sock")
             logger.debug("Including user ID (%s) in socket path (no gateway_config provided)", user_id)
 
         authkey = secrets.token_bytes(32)
-        authkey_b64 = base64.b64encode(authkey).decode('utf-8')
+        authkey_b64 = base64.b64encode(authkey).decode("utf-8")
 
         logger.debug("Connection info generated: socket_path=%s, socket_dir=%s, authkey_length=%s", socket_path, socket_dir, len(authkey))
 
-        return ProcessConnectionInfo(
-            socket_path=socket_path,
-            authkey=authkey,
-            authkey_b64=authkey_b64
-        )
+        return ProcessConnectionInfo(socket_path=socket_path, authkey=authkey, authkey_b64=authkey_b64)
 
     @staticmethod
     def cleanup_old_socket(socket_path: str) -> None:
@@ -128,9 +124,9 @@ class ProcessManager:
         socket_path: str,
         socket_dir: str,
         identifier: str,
-        gateway_config: 'GatewayConfig',  # type: ignore
+        gateway_config: "GatewayConfig",  # type: ignore
         authkey_b64: str,
-        sys_path: Optional[list] = None
+        sys_path: Optional[list] = None,
     ) -> subprocess.Popen:
         """
         Spawn a manager process.
@@ -160,12 +156,12 @@ class ProcessManager:
 
         # Encode sys.path for passing via environment
         sys_path_json = json.dumps(sys_path)
-        sys_path_b64 = base64.b64encode(sys_path_json.encode('utf-8')).decode('utf-8')
+        sys_path_b64 = base64.b64encode(sys_path_json.encode("utf-8")).decode("utf-8")
 
         # Prepare environment
         env = os.environ.copy()
-        env['ANSIBLE_PLATFORM_SYS_PATH'] = sys_path_b64
-        env['ANSIBLE_PLATFORM_AUTHKEY'] = authkey_b64
+        env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
+        env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
 
         # Build command
         cmd = [
@@ -175,11 +171,11 @@ class ProcessManager:
             socket_dir,
             identifier,
             gateway_config.base_url,
-            gateway_config.username or '',
-            gateway_config.password or '',
-            gateway_config.oauth_token or '',
+            gateway_config.username or "",
+            gateway_config.password or "",
+            gateway_config.oauth_token or "",
             str(gateway_config.verify_ssl),
-            str(gateway_config.request_timeout)
+            str(gateway_config.request_timeout),
         ]
 
         logger.debug("Command: %s %s [args: socket_path, socket_dir, identifier, gateway_url, ...]", sys.executable, script_path)
@@ -190,24 +186,19 @@ class ProcessManager:
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                start_new_session=True  # Detach from parent
+                start_new_session=True,  # Detach from parent
             )
             logger.info("Manager process started successfully with PID: %s", process.pid)
             return process
         except Exception as e:
             logger.error("Failed to start manager process: %s", e)
             import traceback
+
             logger.error(traceback.format_exc())
             raise RuntimeError(f"Failed to start manager process: {e}") from e
 
     @staticmethod
-    def wait_for_process_startup(
-        socket_path: str,
-        socket_dir: Path,
-        identifier: str,
-        process: subprocess.Popen,
-        max_wait: int = 50
-    ) -> None:
+    def wait_for_process_startup(socket_path: str, socket_dir: Path, identifier: str, process: subprocess.Popen, max_wait: int = 50) -> None:
         """
         Wait for manager process to start and create socket.
 
@@ -232,7 +223,7 @@ class ProcessManager:
                 logger.debug("Still waiting for socket... (%ss elapsed)", attempt * 0.1)
 
         # Check if there's an error log
-        error_log = socket_dir / f'manager_error_{identifier}.log'
+        error_log = socket_dir / f"manager_error_{identifier}.log"
         error_msg = f"Manager failed to start within {max_wait * 0.1} seconds"
 
         if error_log.exists():
@@ -251,8 +242,7 @@ class ProcessManager:
 def _af_unix_available():
     """Return True if AF_UNIX sockets can be created on this system."""
     import socket as _socket
-    import tempfile
-    import os
+
     try:
         s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
         s.close()
@@ -282,32 +272,30 @@ def spawn_ephemeral_client(task_vars, gateway_config):
         Tuple of (client, None). Facts are never set for ephemeral (local) path.
     """
     import hashlib
+
     from .rpc_client import ManagerRPCClient
 
     # Fallback to DirectHTTPClient when AF_UNIX sockets are not available
     if not _af_unix_available():
         logger.info("AF_UNIX sockets unavailable; falling back to DirectHTTPClient for ephemeral connection: local")
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+
         client = DirectHTTPClient(gateway_config)
         client._ephemeral = True
         return (client, None)
 
-    inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
+    inventory_hostname = task_vars.get("inventory_hostname", "localhost")
     host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
     identifier = f"e{host_hash}"
-    socket_dir = Path('/tmp') / 'ap'
+    socket_dir = Path("/tmp") / "ap"
     socket_dir.mkdir(exist_ok=True, parents=True)
 
-    conn_info = ProcessManager.generate_connection_info(
-        identifier=identifier,
-        socket_dir=socket_dir,
-        gateway_config=gateway_config
-    )
+    conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config)
     socket_path = conn_info.socket_path
     authkey = conn_info.authkey
     ProcessManager.cleanup_old_socket(socket_path)
 
-    script_path = Path(__file__).parent / 'manager_process.py'
+    script_path = Path(__file__).parent / "manager_process.py"
     if not script_path.exists():
         raise FileNotFoundError(f"Manager process script not found at: {script_path}")
 
@@ -318,15 +306,9 @@ def spawn_ephemeral_client(task_vars, gateway_config):
         identifier=identifier,
         gateway_config=gateway_config,
         authkey_b64=conn_info.authkey_b64,
-        sys_path=list(sys.path)
+        sys_path=list(sys.path),
     )
-    ProcessManager.wait_for_process_startup(
-        socket_path=socket_path,
-        socket_dir=socket_dir,
-        identifier=identifier,
-        process=process,
-        max_wait=50
-    )
+    ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=identifier, process=process, max_wait=50)
 
     client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
     client._ephemeral = True

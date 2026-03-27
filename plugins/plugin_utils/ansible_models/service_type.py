@@ -28,7 +28,7 @@ class AnsibleServiceType:
     login_path: Optional[str] = None
     logout_path: Optional[str] = None
     service_index_path: Optional[str] = None
-    state: str = 'present'
+    state: str = "present"
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None

@@ -8,22 +8,23 @@ without a persistent manager process, but shares all the same layers
 
 import base64
 import json
-import re
 import logging
+import re
 import threading
 import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-# Use Ansible's HTTP client instead of requests library for better worker process compatibility
-from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
+
+# Use Ansible's HTTP client instead of requests library for better worker process compatibility
+from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
 from .base_client import BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
-from .exceptions import AuthenticationError, APIError
+from .exceptions import APIError, AuthenticationError
 from .retry import RetryConfig
 from .types import TransformContext
 
@@ -62,7 +63,7 @@ class DirectHTTPClient(BaseAPIClient):
             username=config.username,
             password=config.password,
             oauth_token=config.oauth_token,
-            process_id=str(id(self))  # Use object ID as process identifier
+            process_id=str(id(self)),  # Use object ID as process identifier
         )
 
         # Store namespace ID for credential operations
@@ -73,16 +74,8 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Initialize session using Ansible's Request (like current collection)
         # This is more compatible with Ansible worker processes
-        self.session = Request(
-            cookies=CookieJar(),
-            validate_certs=self.verify_ssl,
-            timeout=self.request_timeout
-        )
-        self.session.headers.update({
-            'User-Agent': 'Ansible Platform Collection',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        })
+        self.session = Request(cookies=CookieJar(), validate_certs=self.verify_ssl, timeout=self.request_timeout)
+        self.session.headers.update({"User-Agent": "Ansible Platform Collection", "Accept": "application/json", "Content-Type": "application/json"})
 
         # Track authentication state
         self._auth_lock = threading.Lock()
@@ -94,13 +87,7 @@ class DirectHTTPClient(BaseAPIClient):
         self._lock = threading.Lock()
 
         # Retry configuration
-        self.retry_config = RetryConfig(
-            max_attempts=3,
-            initial_delay=1.0,
-            max_delay=60.0,
-            exponential_base=2.0,
-            jitter=True
-        )
+        self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
 
         # Defer authentication and version detection until first request
         # This prevents HTTP requests during worker process initialization
@@ -116,28 +103,23 @@ class DirectHTTPClient(BaseAPIClient):
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
         try:
             url = f"{self.base_url.rstrip('/')}/api/gateway/"
-            response = self.session.open(
-                'GET',
-                url,
-                validate_certs=self.verify_ssl,
-                timeout=self.request_timeout
-            )
+            response = self.session.open("GET", url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
 
             response_body = response.read()
             api_data = json.loads(response_body) if response_body else {}
             version_str = None
 
             # Extract from current_version (e.g., "/api/gateway/v1/" -> "1")
-            if 'current_version' in api_data:
-                match = re.search(r'/v(\d+(?:\.\d+)?)/?$', api_data['current_version'])
+            if "current_version" in api_data:
+                match = re.search(r"/v(\d+(?:\.\d+)?)/?$", api_data["current_version"])
                 if match:
                     version_str = match.group(1)
 
             # Negotiate highest mutual version from available_versions
-            if not version_str and 'available_versions' in api_data:
-                available = api_data['available_versions']
+            if not version_str and "available_versions" in api_data:
+                available = api_data["available_versions"]
                 if isinstance(available, dict) and available:
-                    platform_versions = [v.lstrip('v') for v in available.keys()]
+                    platform_versions = [v.lstrip("v") for v in available.keys()]
                     collection_supported = self.registry.get_supported_versions()
                     mutual_versions = [v for v in platform_versions if v in collection_supported]
 
@@ -146,6 +128,7 @@ class DirectHTTPClient(BaseAPIClient):
                             from packaging.version import parse as parse_version
                         except ImportError:
                             from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
+
                             parse_version = version.parse
                         version_str = max(mutual_versions, key=parse_version)
 
@@ -186,29 +169,15 @@ class DirectHTTPClient(BaseAPIClient):
                 logger.info("DirectHTTPClient: OAuth token configured")
             elif username and password:
                 # Basic authentication - just set header
-                basic_str = base64.b64encode(
-                    f"{username}:{password}".encode("ascii")
-                )
+                basic_str = base64.b64encode(f"{username}:{password}".encode("ascii"))
                 header = {"Authorization": f"Basic {basic_str.decode('ascii')}"}
                 self.session.headers.update(header)
                 self._last_auth_error = None
                 logger.info("DirectHTTPClient: Basic auth configured")
             else:
-                raise AuthenticationError(
-                    message="No authentication credentials provided",
-                    operation='authenticate',
-                    resource='auth',
-                    details={}
-                )
+                raise AuthenticationError(message="No authentication credentials provided", operation="authenticate", resource="auth", details={})
 
-    def _make_request(
-        self,
-        method: str,
-        url: str,
-        operation: str = 'http_request',
-        resource: str = 'unknown',
-        **kwargs
-    ):
+    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs):
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -229,15 +198,15 @@ class DirectHTTPClient(BaseAPIClient):
         """
         # Set default timeout and verify_ssl if not provided
         request_kwargs = kwargs.copy()
-        timeout = request_kwargs.pop('timeout', self.request_timeout)
-        verify = request_kwargs.pop('verify', self.verify_ssl)
+        timeout = request_kwargs.pop("timeout", self.request_timeout)
+        verify = request_kwargs.pop("verify", self.verify_ssl)
 
         # Prepare data for JSON requests
         data = None
-        if 'json' in request_kwargs:
-            data = json.dumps(request_kwargs.pop('json'))
-        elif 'data' in request_kwargs:
-            data = request_kwargs.pop('data')
+        if "json" in request_kwargs:
+            data = json.dumps(request_kwargs.pop("json"))
+        elif "data" in request_kwargs:
+            data = request_kwargs.pop("data")
 
         # Parse URL (Ansible's Request.open() expects a parsed URL or string)
         if isinstance(url, str):
@@ -251,19 +220,19 @@ class DirectHTTPClient(BaseAPIClient):
             logger.info("DirectHTTPClient: Making %s request to %s", method.upper(), url)
 
             # Ensure session is properly initialized
-            if not hasattr(self.session, 'open'):
+            if not hasattr(self.session, "open"):
                 raise RuntimeError("Session does not have 'open' method. Session type: %s" % type(self.session))
 
             # Get URL string - Ansible's Request.open() accepts string URLs
             # Use geturl() if it's a ParseResult, otherwise use the string directly
-            if hasattr(parsed_url, 'geturl'):
+            if hasattr(parsed_url, "geturl"):
                 url_str = parsed_url.geturl()
             else:
                 url_str = str(url)
 
             logger.info("DirectHTTPClient: Calling session.open() with method=%s, url=%s", method.upper(), url_str)
             logger.info("DirectHTTPClient: Session type: %s", type(self.session))
-            logger.info("DirectHTTPClient: Session has open method: %s", hasattr(self.session, 'open'))
+            logger.info("DirectHTTPClient: Session has open method: %s", hasattr(self.session, "open"))
 
             # Ansible's Request.open() makes the HTTP request
             # This is the same approach used by current ansible.platform collection
@@ -277,12 +246,13 @@ class DirectHTTPClient(BaseAPIClient):
                     follow_redirects=True,
                     data=data,
                 )
-                status = getattr(response, 'status', getattr(response, 'code', 'unknown'))
+                status = getattr(response, "status", getattr(response, "code", "unknown"))
                 logger.info("DirectHTTPClient: Response received: status=%s", status)
             except BaseException as open_err:
                 # Catch ALL exceptions including SystemExit, KeyboardInterrupt, etc.
                 logger.error("DirectHTTPClient: session.open() raised exception: %s: %s", type(open_err).__name__, open_err)
                 import traceback
+
                 logger.error("DirectHTTPClient: session.open() traceback: %s", traceback.format_exc())
                 # Re-raise to let upper-level handlers deal with it
                 raise
@@ -304,7 +274,7 @@ class DirectHTTPClient(BaseAPIClient):
                     try:
                         response = self.session.open(
                             method.upper(),
-                            parsed_url.geturl() if hasattr(parsed_url, 'geturl') else str(url),
+                            parsed_url.geturl() if hasattr(parsed_url, "geturl") else str(url),
                             validate_certs=verify,
                             timeout=timeout,
                             follow_redirects=True,
@@ -316,59 +286,47 @@ class DirectHTTPClient(BaseAPIClient):
                         if he2.code == 401:
                             # Still 401 after recovery attempt
                             try:
-                                response_body = he2.read()[:500] if hasattr(he2, 'read') else str(he2)
+                                response_body = he2.read()[:500] if hasattr(he2, "read") else str(he2)
                             except Exception:
                                 response_body = str(he2)
                             raise AuthenticationError(
                                 message=f"Authentication failed: HTTP {he2.code}",
                                 operation=operation,
                                 resource=resource,
-                                details={
-                                    'status_code': he2.code,
-                                    'url': url,
-                                    'response_body': response_body
-                                },
-                                status_code=he2.code
+                                details={"status_code": he2.code, "url": url, "response_body": response_body},
+                                status_code=he2.code,
                             )
                         raise
                 else:
-
                     # Authentication recovery failed
                     try:
-                        response_body = he.read()[:500] if hasattr(he, 'read') else str(he)
+                        response_body = he.read()[:500] if hasattr(he, "read") else str(he)
                     except Exception:
                         response_body = str(he)
                     raise AuthenticationError(
                         message=f"Authentication failed: HTTP {he.code}",
                         operation=operation,
                         resource=resource,
-                        details={
-                            'status_code': he.code,
-                            'url': url,
-                            'response_body': response_body
-                        },
-                        status_code=he.code
+                        details={"status_code": he.code, "url": url, "response_body": response_body},
+                        status_code=he.code,
                     )
 
             # For other HTTP errors, raise appropriate exception
             try:
-                response_body = he.read()[:500] if hasattr(he, 'read') else str(he)
+                response_body = he.read()[:500] if hasattr(he, "read") else str(he)
             except Exception:
                 response_body = str(he)
             raise APIError(
                 message=f"API request failed: HTTP {he.code}",
                 operation=operation,
                 resource=resource,
-                details={
-                    'status_code': he.code,
-                    'url': url,
-                    'response_body': response_body
-                },
-                status_code=he.code
+                details={"status_code": he.code, "url": url, "response_body": response_body},
+                status_code=he.code,
             )
         except Exception as e:
             logger.error("DirectHTTPClient: HTTP request failed: %s", e)
             import traceback
+
             logger.error("DirectHTTPClient: Traceback: %s", traceback.format_exc())
             raise
 
@@ -386,9 +344,9 @@ class DirectHTTPClient(BaseAPIClient):
             True if authentication was recovered, False otherwise
         """
         # Check if it's an HTTPError with 401 status
-        if hasattr(response, 'code'):
+        if hasattr(response, "code"):
             status = response.code
-        elif hasattr(response, 'status'):
+        elif hasattr(response, "status"):
             status = response.status
         else:
             return False
@@ -449,8 +407,8 @@ class DirectHTTPClient(BaseAPIClient):
             Full URL
         """
         # Ensure endpoint starts with /
-        if not endpoint.startswith('/'):
-            endpoint = f'/{endpoint}'
+        if not endpoint.startswith("/"):
+            endpoint = f"/{endpoint}"
 
         # Build base URL
         url = f"{self.base_url}{endpoint}"
@@ -458,16 +416,12 @@ class DirectHTTPClient(BaseAPIClient):
         # Add query parameters if provided
         if query_params:
             from urllib.parse import urlencode
+
             url = f"{url}?{urlencode(query_params)}"
 
         return url
 
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str
-    ):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
         """
         Resolve a resource name to ID by GET list with filter.
         Compatible with PlatformService.lookup_resource_id interface.
@@ -495,13 +449,13 @@ class DirectHTTPClient(BaseAPIClient):
             try:
                 self.api_version = self._detect_api_version()
             except Exception:
-                self.api_version = '1'
+                self.api_version = "1"
 
         # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
         api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
-        response = self._make_request('GET', url, operation='lookup', resource=endpoint)
+        response = self._make_request("GET", url, operation="lookup", resource=endpoint)
 
         try:
             response_body = response.read()
@@ -509,22 +463,16 @@ class DirectHTTPClient(BaseAPIClient):
         except Exception:
             response_data = {}
 
-        results = response_data.get('results', [])
+        results = response_data.get("results", [])
         if not results:
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
 
-        rid = results[0].get('id')
+        rid = results[0].get("id")
         if rid is not None:
             self.cache[cache_key] = rid
         return rid
 
-    def execute(
-        self,
-        operation: str,
-        module_name: str,
-        ansible_data_dict=None,
-        **kwargs
-    ) -> dict:
+    def execute(self, operation: str, module_name: str, ansible_data_dict=None, **kwargs) -> dict:
         """
         Execute a generic operation on any resource.
 
@@ -576,54 +524,38 @@ class DirectHTTPClient(BaseAPIClient):
                 logger.info("DirectHTTPClient: API version detected: v%s", self.api_version)
             except Exception as e:
                 logger.warning("DirectHTTPClient: Version detection failed: %s, defaulting to v1", e)
-                self.api_version = '1'
+                self.api_version = "1"
 
         # Load version-appropriate classes (shared layer)
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(
-            module_name,
-            self.api_version
-        )
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
         logger.info("DirectHTTPClient: Loaded classes for %s (API version %s): %s, %s, %s", module_name, self.api_version, AnsibleClass, APIClass, MixinClass)
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
-        include_nulls = ansible_data_dict.pop('_platform_enforced', False)
+        include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
         logger.info("DirectHTTPClient: Reconstructed Ansible dataclass for %s: %s", module_name, ansible_instance)
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self,
-            session=self.session,
-            cache=self.cache,
-            api_version=self.api_version,
-            operation=operation,
-            include_nulls_for_update=include_nulls
+            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
         )
         logger.info("DirectHTTPClient: Built transformation context for %s: %s", module_name, context)
 
         # Execute operation (shared CRUD logic)
         try:
-            if operation == 'create':
+            if operation == "create":
                 logger.info("DirectHTTPClient: Executing create operation for %s", module_name)
-                result = self._create_resource(
-                    ansible_instance, MixinClass, context
-                )
+                result = self._create_resource(ansible_instance, MixinClass, context)
                 logger.info("DirectHTTPClient: Create operation result for %s: %s", module_name, result)
-            elif operation == 'update':
+            elif operation == "update":
                 logger.info("DirectHTTPClient: Executing update operation for %s", module_name)
-                result = self._update_resource(
-                    ansible_instance, MixinClass, context
-                )
-            elif operation == 'delete':
-                result = self._delete_resource(
-                    ansible_instance, MixinClass, context
-                )
-            elif operation == 'find':
+                result = self._update_resource(ansible_instance, MixinClass, context)
+            elif operation == "delete":
+                result = self._delete_resource(ansible_instance, MixinClass, context)
+            elif operation == "find":
                 logger.info("DirectHTTPClient: Executing find operation for %s", module_name)
-                result = self._find_resource(
-                    ansible_instance, MixinClass, context
-                )
+                result = self._find_resource(ansible_instance, MixinClass, context)
                 logger.info("DirectHTTPClient: Find operation result for %s: %s", module_name, result)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
@@ -634,26 +566,26 @@ class DirectHTTPClient(BaseAPIClient):
 
             # Extract API call time from context if available
             api_time = 0
-            if isinstance(context, dict) and 'timing' in context:
-                api_time = context['timing'].get('api_call_time', 0)
-            elif hasattr(context, 'timing'):
-                api_time = getattr(context.timing, 'api_call_time', 0)
+            if isinstance(context, dict) and "timing" in context:
+                api_time = context["timing"].get("api_call_time", 0)
+            elif hasattr(context, "timing"):
+                api_time = getattr(context.timing, "api_call_time", 0)
 
             # Calculate our code time (excluding API call which is AAP's time)
             our_code_time = processing_elapsed - api_time
 
             # Add timing info to result
             if isinstance(result, dict):
-                result.setdefault('_timing', {})['processing_time'] = processing_elapsed
-                result['_timing']['processing_start'] = processing_start
-                result['_timing']['processing_end'] = processing_end
-                result['_timing']['api_call_time'] = api_time
-                result['_timing']['our_code_time'] = our_code_time
+                result.setdefault("_timing", {})["processing_time"] = processing_elapsed
+                result["_timing"]["processing_start"] = processing_start
+                result["_timing"]["processing_end"] = processing_end
+                result["_timing"]["api_call_time"] = api_time
+                result["_timing"]["our_code_time"] = our_code_time
 
                 # Add HTTP and TLS metrics (thread-safe read)
                 with self._lock:
-                    result['_timing']['http_request_count'] = self._http_request_count
-                    result['_timing']['tls_handshake_count'] = self._tls_handshake_count
+                    result["_timing"]["http_request_count"] = self._http_request_count
+                    result["_timing"]["tls_handshake_count"] = self._tls_handshake_count
 
             return result
 
@@ -665,12 +597,7 @@ class DirectHTTPClient(BaseAPIClient):
     # These will be extracted to a shared module later, but for now
     # we'll duplicate them here to get standard mode working
 
-    def _create_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: TransformContext
-    ) -> dict:
+    def _create_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Create resource with transformation."""
         # FORWARD TRANSFORM: Ansible → API
         logger.info("DirectHTTPClient: Forward transform for %s: %s", mixin_class.__name__, ansible_data)
@@ -680,9 +607,7 @@ class DirectHTTPClient(BaseAPIClient):
         operations = mixin_class.get_endpoint_operations()
         logger.info("DirectHTTPClient: Operations for %s: %s", mixin_class.__name__, operations)
         # Execute operations (potentially multi-endpoint)
-        api_result = self._execute_operations(
-            operations, api_data, context, required_for='create'
-        )
+        api_result = self._execute_operations(operations, api_data, context, required_for="create")
         logger.info("DirectHTTPClient: API result for %s: %s", mixin_class.__name__, api_result)
 
         # REVERSE TRANSFORM: API → Ansible
@@ -690,23 +615,19 @@ class DirectHTTPClient(BaseAPIClient):
             # from_api returns AnsibleUser dataclass
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
+
             ansible_result = asdict(ansible_instance)
-            ansible_result['changed'] = True
+            ansible_result["changed"] = True
             logger.info("DirectHTTPClient: Ansible result for %s: %s", mixin_class.__name__, ansible_result)
             return ansible_result
 
-        return {'changed': True}
+        return {"changed": True}
 
-    def _update_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: TransformContext
-    ) -> dict:
+    def _update_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Update resource with transformation."""
         # Get the resource ID (not required for singleton resources)
-        resource_id = getattr(ansible_data, 'id', None)
-        is_singleton = getattr(mixin_class, 'is_singleton', False)
+        resource_id = getattr(ansible_data, "id", None)
+        is_singleton = getattr(mixin_class, "is_singleton", False)
         if not resource_id and not is_singleton:
             raise ValueError("Resource ID required for update operation")
 
@@ -725,8 +646,8 @@ class DirectHTTPClient(BaseAPIClient):
         # Pre-PATCH idempotency check: compare only the fields we'd update.
         # Timestamps (modified, created, url) change on every PATCH so they
         # must be excluded from the comparison.
-        _skip_for_idempotency = {'modified', 'created', 'url', 'state'}
-        update_op = operations.get('update')
+        _skip_for_idempotency = {"modified", "created", "url", "state"}
+        update_op = operations.get("update")
         if update_op and update_op.fields and current_data:
             would_update = {}
             for field in update_op.fields:
@@ -742,46 +663,40 @@ class DirectHTTPClient(BaseAPIClient):
                 # can never be meaningfully compared to the plaintext desired value,
                 # so we always treat them as already correct and skip the PATCH for
                 # that field — same logic as AAPModule.fields_could_be_same().
-                and current_data.get(f) != '$encrypted$'
+                and current_data.get(f) != "$encrypted$"
             )
             if not needs_update:
                 # Nothing to change — return current state with changed=False
                 result = dict(current_data)
-                result['changed'] = False
+                result["changed"] = False
                 return result
 
         # Execute update operation
-        api_result = self._execute_operations(
-            operations, api_data, context, required_for='update'
-        )
+        api_result = self._execute_operations(operations, api_data, context, required_for="update")
 
         # REVERSE TRANSFORM: API → Ansible
         if api_result:
             # from_api returns AnsibleUser dataclass
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
+
             ansible_result = asdict(ansible_instance)
             # We actually sent a PATCH so this is a real change
-            ansible_result['changed'] = True
+            ansible_result["changed"] = True
             return ansible_result
 
-        return {'changed': False}
+        return {"changed": False}
 
-    def _delete_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: TransformContext
-    ) -> dict:
+    def _delete_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Delete resource."""
         # Get the resource ID
-        resource_id = getattr(ansible_data, 'id', None)
+        resource_id = getattr(ansible_data, "id", None)
         if not resource_id:
             raise ValueError("Resource ID required for delete operation")
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
-        delete_op = operations.get('delete')
+        delete_op = operations.get("delete")
 
         if not delete_op:
             raise ValueError(f"Delete operation not defined for {mixin_class.__name__}")
@@ -790,21 +705,11 @@ class DirectHTTPClient(BaseAPIClient):
         url = self._build_url(delete_op.path.format(id=resource_id))
 
         # Execute delete
-        response = self._make_request(
-            delete_op.method,
-            url,
-            operation='delete',
-            resource=mixin_class.__name__
-        )
+        _response = self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
 
-        return {'changed': True, 'deleted': True}
+        return {"changed": True, "deleted": True}
 
-    def _find_resource(
-        self,
-        ansible_data: Any,
-        mixin_class: type,
-        context: TransformContext
-    ) -> dict:
+    def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Find resource by lookup field.
 
         Supports three modes:
@@ -814,19 +719,17 @@ class DirectHTTPClient(BaseAPIClient):
         """
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
-        get_op = operations.get('get')
-        list_op = operations.get('list')
+        get_op = operations.get("get")
+        list_op = operations.get("list")
 
         # --- Singleton resources (e.g. settings) ---
-        if getattr(mixin_class, 'is_singleton', False):
+        if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
             url = self._build_url(get_op.path)
             with self._lock:
                 self._http_request_count += 1
-            response = self._make_request(
-                get_op.method, url, operation='find', resource=mixin_class.__name__
-            )
+            response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
             try:
                 response_body = response.read()
                 api_result = json.loads(response_body) if response_body else {}
@@ -834,6 +737,7 @@ class DirectHTTPClient(BaseAPIClient):
                 api_result = {}
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
+
             return asdict(ansible_instance)
 
         # --- Standard CRUD resources ---
@@ -849,7 +753,7 @@ class DirectHTTPClient(BaseAPIClient):
         # Compute composite-key query params first so they can be used both in
         # ID-based validation and in the list-based fallback path.
         composite_params = {}
-        if hasattr(mixin_class, 'get_find_list_query_params'):
+        if hasattr(mixin_class, "get_find_list_query_params"):
             try:
                 api_data_for_find = mixin_class.from_ansible_data(ansible_data, context)
                 composite_params = mixin_class.get_find_list_query_params(api_data_for_find) or {}
@@ -867,12 +771,10 @@ class DirectHTTPClient(BaseAPIClient):
                 logger.info("DirectHTTPClient: ID-based lookup URL for %s: %s", mixin_class.__name__, id_url)
                 with self._lock:
                     self._http_request_count += 1
-                id_response = self._make_request(
-                    get_op.method, id_url, operation='find', resource=mixin_class.__name__
-                )
+                id_response = self._make_request(get_op.method, id_url, operation="find", resource=mixin_class.__name__)
                 id_body = id_response.read()
                 id_data = json.loads(id_body) if id_body else {}
-                if id_data.get('id'):
+                if id_data.get("id"):
                     # Validate composite-key constraints against the fetched resource.
                     # E.g. a team looked up by integer PK must still belong to the
                     # expected organization.  If a composite field doesn't match,
@@ -894,13 +796,11 @@ class DirectHTTPClient(BaseAPIClient):
                     if composite_match:
                         ansible_instance = mixin_class.from_api(id_data, context)
                         from dataclasses import asdict
+
                         logger.info("DirectHTTPClient: ID-based lookup succeeded for %s id=%s", mixin_class.__name__, lookup_value)
                         return asdict(ansible_instance)
                     else:
-                        raise ValueError(
-                            f"Resource {lookup_value} found but composite key "
-                            f"constraints {composite_params} do not match"
-                        )
+                        raise ValueError(f"Resource {lookup_value} found but composite key constraints {composite_params} do not match")
             except Exception as id_exc:
                 logger.info("DirectHTTPClient: ID-based lookup failed for %s id=%s: %s", mixin_class.__name__, lookup_value, id_exc)
                 raise
@@ -922,16 +822,12 @@ class DirectHTTPClient(BaseAPIClient):
             with self._lock:
                 self._http_request_count += 1
             logger.info("DirectHTTPClient: HTTP request counter incremented for find: %s", self._http_request_count)
-            response = self._make_request(
-                list_op.method,
-                url,
-                operation='find',
-                resource=mixin_class.__name__
-            )
+            response = self._make_request(list_op.method, url, operation="find", resource=mixin_class.__name__)
             logger.info("DirectHTTPClient: Response for %s: %s", mixin_class.__name__, response)
         except Exception as req_e:
             logger.error("DirectHTTPClient: _make_request for find raised exception: %s", req_e)
             import traceback
+
             logger.error("DirectHTTPClient: _make_request for find traceback: %s", traceback.format_exc())
             raise
         # Parse response - Ansible's Request response uses .read() to get body
@@ -941,7 +837,7 @@ class DirectHTTPClient(BaseAPIClient):
         except Exception as e:
             logger.error("DirectHTTPClient: Failed to parse response: %s", e)
             response_data = {}
-        results = response_data.get('results', [])
+        results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
         if results:
             # Return first match
@@ -950,18 +846,13 @@ class DirectHTTPClient(BaseAPIClient):
             ansible_instance = mixin_class.from_api(api_data, context)
             logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
             from dataclasses import asdict
+
             return asdict(ansible_instance)
 
         # Not found
         raise ValueError(f"Resource not found: {lookup_field}={lookup_value}")
 
-    def _execute_operations(
-        self,
-        operations: Dict,
-        api_data: Any,
-        context: TransformContext,
-        required_for: str = None
-    ) -> dict:
+    def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None) -> dict:
         """
         Execute endpoint operations (potentially multi-endpoint).
 
@@ -972,10 +863,7 @@ class DirectHTTPClient(BaseAPIClient):
         logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
 
         # Filter operations by required_for
-        relevant_ops = {
-            name: op for name, op in operations.items()
-            if op.required_for == required_for or required_for is None
-        }
+        relevant_ops = {name: op for name, op in operations.items() if op.required_for == required_for or required_for is None}
         logger.info("DirectHTTPClient: Relevant operations for %s: %s", operations, relevant_ops)
         # Sort by order
         sorted_ops = sorted(relevant_ops.items(), key=lambda x: x[1].order)
@@ -991,9 +879,9 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.path_params:
                 # Replace path parameters
                 for param in endpoint_op.path_params:
-                    param_value = results.get('id') or getattr(api_data, 'id', None)
+                    param_value = results.get("id") or getattr(api_data, "id", None)
                     if param_value:
-                        url = url.replace(f'{{{param}}}', str(param_value))
+                        url = url.replace(f"{{{param}}}", str(param_value))
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
             url = self._build_url(url)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
@@ -1007,7 +895,7 @@ class DirectHTTPClient(BaseAPIClient):
                     request_data[field] = value
 
             # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, 'flatten_body', False) and len(request_data) == 1:
+            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
                 request_data = next(iter(request_data.values()))
 
             # Skip secondary (dependent) operations that have no data to send.
@@ -1031,12 +919,13 @@ class DirectHTTPClient(BaseAPIClient):
                         url,
                         json=request_data,
                         operation=op_name,
-                        resource=endpoint_op.path.split('/')[-2] if '/' in endpoint_op.path else 'unknown'
+                        resource=endpoint_op.path.split("/")[-2] if "/" in endpoint_op.path else "unknown",
                     )
                     logger.info("DirectHTTPClient: Response for %s: %s", endpoint_op, response)
                 except Exception as req_e:
                     logger.error("DirectHTTPClient: _make_request raised exception: %s", req_e)
                     import traceback
+
                     logger.error("DirectHTTPClient: _make_request traceback: %s", traceback.format_exc())
                     raise
                 # Performance timing: API call end
@@ -1044,21 +933,21 @@ class DirectHTTPClient(BaseAPIClient):
                 api_elapsed = api_end - api_start
                 logger.info("DirectHTTPClient: API call elapsed for %s: %s", endpoint_op, api_elapsed)
                 # Store timing in context
-                if hasattr(context, 'timing'):
-                    context.timing['api_call_time'] = api_elapsed
-                    context.timing['api_call_start'] = api_start
-                    context.timing['api_call_end'] = api_end
+                if hasattr(context, "timing"):
+                    context.timing["api_call_time"] = api_elapsed
+                    context.timing["api_call_start"] = api_start
+                    context.timing["api_call_end"] = api_end
                 elif isinstance(context, dict):
-                    context.setdefault('timing', {})['api_call_time'] = api_elapsed
-                    context['timing']['api_call_start'] = api_start
-                    context['timing']['api_call_end'] = api_end
+                    context.setdefault("timing", {})["api_call_time"] = api_elapsed
+                    context["timing"]["api_call_start"] = api_start
+                    context["timing"]["api_call_end"] = api_end
 
             except Exception as e:
                 logger.error("DirectHTTPClient: API call failed: %s", e)
-                if hasattr(e, 'code'):
+                if hasattr(e, "code"):
                     logger.error("Response status: %s", e.code)
-                elif hasattr(e, 'response') and e.response is not None:
-                    status = getattr(e.response, 'status', getattr(e.response, 'code', 'unknown'))
+                elif hasattr(e, "response") and e.response is not None:
+                    status = getattr(e.response, "status", getattr(e.response, "code", "unknown"))
                     logger.error("Response status: %s", status)
                 raise
 
@@ -1072,11 +961,11 @@ class DirectHTTPClient(BaseAPIClient):
             results[op_name] = result_data
 
             # Store ID for dependent operations
-            if 'id' in result_data and 'id' not in results:
-                results['id'] = result_data['id']
+            if "id" in result_data and "id" not in results:
+                results["id"] = result_data["id"]
 
         # Return main result
-        return results.get('create') or results.get('update') or results.get('get') or results
+        return results.get("create") or results.get("update") or results.get("get") or results
 
     def lookup_organization_ids(self, names: list) -> list:
         """Lookup organization IDs from names (shared helper)."""
@@ -1112,20 +1001,14 @@ class DirectHTTPClient(BaseAPIClient):
             try:
                 self.api_version = self._detect_api_version()
             except Exception:
-                self.api_version = '1'
+                self.api_version = "1"
 
         url = self._build_url(path)
         kwargs = {}
         if data is not None:
-            kwargs['data'] = json.dumps(data).encode('utf-8')
+            kwargs["data"] = json.dumps(data).encode("utf-8")
 
-        response = self._make_request(
-            method.upper(),
-            url,
-            operation='direct_request',
-            resource=path,
-            **kwargs
-        )
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
         try:
             response_body = response.read()
             return json.loads(response_body) if response_body else {}

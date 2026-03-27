@@ -10,7 +10,7 @@ Lookup is done by authenticator_user_id (the numeric ID in the API).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -33,10 +33,10 @@ class APIAuthenticatorUser_v1(BaseTransformMixin):
     """API v1 representation of a gateway authenticator user."""
 
     # Fields for POST /authenticator_users/{id}/move/
-    new_authenticator: Optional[int] = None   # required by spec (was: authenticator)
-    keep_memberships: Optional[bool] = None   # required by spec
+    new_authenticator: Optional[int] = None  # required by spec (was: authenticator)
+    keep_memberships: Optional[bool] = None  # required by spec
     merge_accounts_with_same_uid: Optional[bool] = None  # required by spec
-    remove_other_authenticators: Optional[bool] = None   # required by spec
+    remove_other_authenticators: Optional[bool] = None  # required by spec
     new_uid: Optional[str] = None
     merge_with_user: Optional[str] = None
 

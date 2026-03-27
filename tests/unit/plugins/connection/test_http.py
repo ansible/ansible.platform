@@ -232,9 +232,7 @@ def test_get_client_persistent_returns_client_and_facts():
 
     with patch.object(conn, "get_option", return_value=True):
         with patch.object(conn, "_get_direct_client", MagicMock()):
-            with patch.object(
-                conn, "_get_persistent_client", MagicMock(return_value=(mock_client, facts_dict))
-            ):
+            with patch.object(conn, "_get_persistent_client", MagicMock(return_value=(mock_client, facts_dict))):
                 client, facts = conn.get_client(task_vars, gateway_config)
 
     assert client is mock_client

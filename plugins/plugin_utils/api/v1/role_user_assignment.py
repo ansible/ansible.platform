@@ -4,14 +4,12 @@ API v1 RoleUserAssignment dataclass and transform mixin.
 
 from __future__ import annotations
 
+import logging as _logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
-
-
-import logging as _logging
 
 _logger = _logging.getLogger(__name__)
 
@@ -29,16 +27,10 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
     try:
         result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
         if result is None:
-            _logger.debug(
-                "_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'",
-                lookup_field, value, endpoint
-            )
+            _logger.debug("_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'", lookup_field, value, endpoint)
         return result
     except Exception as exc:
-        _logger.debug(
-            "_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s",
-            lookup_field, value, endpoint, type(exc).__name__, exc
-        )
+        _logger.debug("_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s", lookup_field, value, endpoint, type(exc).__name__, exc)
         return None
 
 
@@ -124,15 +116,11 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
                     raise ValueError(
                         "Cannot resolve object name '%s' to an integer ID. "
                         "Checked endpoints: %s. "
-                        "Ensure the resource exists or pass an integer object_id directly."
-                        % (object_id, ", ".join(_entity_candidates))
+                        "Ensure the resource exists or pass an integer object_id directly." % (object_id, ", ".join(_entity_candidates))
                     )
             else:
                 # No manager available — we have no way to resolve the name.
-                raise ValueError(
-                    "object_id '%s' is not an integer and no manager is available to resolve it. "
-                    "Please provide an integer object_id." % object_id
-                )
+                raise ValueError("object_id '%s' is not an integer and no manager is available to resolve it. Please provide an integer object_id." % object_id)
 
         object_ansible_id = getattr(ansible_instance, "object_ansible_id", None)
         if object_ansible_id is not None:

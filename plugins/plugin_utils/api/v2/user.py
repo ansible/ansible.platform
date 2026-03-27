@@ -15,7 +15,7 @@ we can exercise it against the local mock server.
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, ClassVar, Union
+from typing import Any, ClassVar, Dict, List, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -79,12 +79,10 @@ class UserTransformMixin_v2(BaseTransformMixin):
     }
 
     @classmethod
-    def from_ansible_data(
-        cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]
-    ) -> "APIUser_v2":
+    def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIUser_v2":
         logger.info(
             "[v2] Transforming AnsibleUser -> APIUser_v2: username=%s",
-            getattr(ansible_instance, 'username', None),
+            getattr(ansible_instance, "username", None),
         )
         api_data: Dict[str, Any] = {}
 
@@ -104,11 +102,10 @@ class UserTransformMixin_v2(BaseTransformMixin):
         read_only = {"id", "created", "modified", "url"}
         # Only send null for these on enforced update; many APIs reject null for password/booleans
         clearable_string_fields = {"email", "first_name", "last_name"}
-        op = (getattr(context, "operation", None) if isinstance(context, TransformContext)
-              else context.get("operation"))
-        include_nulls = (getattr(context, "include_nulls_for_update", False)
-                         if isinstance(context, TransformContext)
-                         else context.get("include_nulls_for_update", False))
+        op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
+        include_nulls = (
+            getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        )
 
         for field in simple_fields:
             value = getattr(ansible_instance, field, None)
@@ -199,9 +196,7 @@ class UserTransformMixin_v2(BaseTransformMixin):
         return "username"
 
     @classmethod
-    def from_api(
-        cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> Dict[str, Any]:
         # Keep identical to v1 behavior: return dict so manager can add 'changed'
         ansible_data: Dict[str, Any] = {}
         for ansible_field, mapping in cls._field_mapping.items():

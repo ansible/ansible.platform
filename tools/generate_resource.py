@@ -28,7 +28,6 @@ import sys
 from textwrap import indent
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-
 # ---------------------------------------------------------------------------
 # Spec helpers
 # ---------------------------------------------------------------------------
@@ -42,8 +41,7 @@ _SCALAR_TYPE_MAP = {
     "array": "List[Any]",
 }
 
-_READ_ONLY_NAMES = {"id", "url", "created", "modified", "created_by", "modified_by",
-                    "related", "summary_fields"}
+_READ_ONLY_NAMES = {"id", "url", "created", "modified", "created_by", "modified_by", "related", "summary_fields"}
 
 
 def resolve_ref(spec: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
@@ -91,16 +89,11 @@ def collect_properties_with_meta(
     return result
 
 
-def get_schema_for_operation(
-    spec: Dict[str, Any], path: str, method: str
-) -> Dict[str, Any]:
+def get_schema_for_operation(spec: Dict[str, Any], path: str, method: str) -> Dict[str, Any]:
     """Return the resolved schema for the request body of (path, method)."""
     op = spec.get("paths", {}).get(path, {}).get(method.lower(), {})
     content = op.get("requestBody", {}).get("content", {})
-    schema = (
-        content.get("application/json", {}).get("schema", {})
-        or content.get("application/x-www-form-urlencoded", {}).get("schema", {})
-    )
+    schema = content.get("application/json", {}).get("schema", {}) or content.get("application/x-www-form-urlencoded", {}).get("schema", {})
     if "$ref" in schema:
         schema = resolve_ref(spec, schema)
     return schema
@@ -121,6 +114,7 @@ def get_paths_for_tag(spec: Dict[str, Any], tag: str) -> List[Tuple[str, str, st
 # ---------------------------------------------------------------------------
 # Resource model
 # ---------------------------------------------------------------------------
+
 
 class ResourceSpec:
     """Encapsulates the spec-derived information for one resource type."""
@@ -170,26 +164,11 @@ class ResourceSpec:
                     self.required_fields.append(name)
 
         # Available CRUD operations
-        self.has_create = (
-            self.list_path is not None
-            and "POST" in self.methods.get(self.list_path, set())
-        )
-        self.has_update = (
-            self.detail_path is not None
-            and "PATCH" in self.methods.get(self.detail_path, set())
-        )
-        self.has_delete = (
-            self.detail_path is not None
-            and "DELETE" in self.methods.get(self.detail_path, set())
-        )
-        self.has_list = (
-            self.list_path is not None
-            and "GET" in self.methods.get(self.list_path, set())
-        )
-        self.has_get = (
-            self.detail_path is not None
-            and "GET" in self.methods.get(self.detail_path, set())
-        )
+        self.has_create = self.list_path is not None and "POST" in self.methods.get(self.list_path, set())
+        self.has_update = self.detail_path is not None and "PATCH" in self.methods.get(self.detail_path, set())
+        self.has_delete = self.detail_path is not None and "DELETE" in self.methods.get(self.detail_path, set())
+        self.has_list = self.list_path is not None and "GET" in self.methods.get(self.list_path, set())
+        self.has_get = self.detail_path is not None and "GET" in self.methods.get(self.detail_path, set())
 
         # Lookup field (first required writable string field, fallback "name")
         self.lookup_field = "name"
@@ -204,8 +183,7 @@ class ResourceSpec:
             f"Resource: {self.name} (tag={self.tag})",
             f"  list_path   : {self.list_path}",
             f"  detail_path : {self.detail_path}",
-            f"  CRUD        : create={self.has_create} update={self.has_update} "
-            f"delete={self.has_delete} list={self.has_list}",
+            f"  CRUD        : create={self.has_create} update={self.has_update} delete={self.has_delete} list={self.has_list}",
             f"  required    : {self.required_fields}",
             f"  writable    : {self.writable_fields}",
             f"  read-only   : {self.read_only_fields}",
@@ -216,6 +194,7 @@ class ResourceSpec:
 # ---------------------------------------------------------------------------
 # Code generators
 # ---------------------------------------------------------------------------
+
 
 def _py_type_hint(meta: Dict[str, Any]) -> str:
     base = meta.get("type", "Any")
@@ -253,15 +232,10 @@ def gen_api_v1(res: ResourceSpec) -> str:
 
     # Build from_ansible_data body
     simple_fields = [f for f in res.writable_fields if f not in ("id",)]
-    field_loop = "\n".join(
-        f'        "{f}",' for f in simple_fields
-    )
+    field_loop = "\n".join(f'        "{f}",' for f in simple_fields)
 
     # Build from_api body
-    from_api_fields = "\n".join(
-        f"            {f}=api_data.get(\"{f}\"),"
-        for f in list(res.writable_fields) + list(res.read_only_fields)
-    )
+    from_api_fields = "\n".join(f'            {f}=api_data.get("{f}"),' for f in list(res.writable_fields) + list(res.read_only_fields))
 
     # Build EndpointOperations
     ops = []
@@ -403,7 +377,7 @@ def gen_ansible_model(res: ResourceSpec) -> str:
         hint = _py_type_hint(meta)
         dc_lines.append(f"    {name}: {hint} = None")
 
-    dc_lines.append("    state: str = \"present\"")
+    dc_lines.append('    state: str = "present"')
     dc_lines.append("")
     dc_lines.append("    # Read-only fields (populated from API)")
     for name in res.read_only_fields:
@@ -723,13 +697,13 @@ def gen_integration_test(res: ResourceSpec) -> str:
     lf = res.lookup_field
 
     # Build create args
-    create_args_lines = [f"    {lf}: \"{{{{ name_prefix }}}}-Test-{res.class_prefix}\""]
+    create_args_lines = [f'    {lf}: "{{{{ name_prefix }}}}-Test-{res.class_prefix}"']
     for name in res.required_fields:
         if name == lf:
             continue
         meta = res.properties[name]
         if meta["type"] == "str":
-            create_args_lines.append(f"    {name}: \"example-{name}\"")
+            create_args_lines.append(f'    {name}: "example-{name}"')
         elif meta["type"] == "int":
             create_args_lines.append(f"    {name}: 1  # TODO: set a valid value")
         elif meta["type"] == "bool":
@@ -867,6 +841,7 @@ def write_files(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate boilerplate files for a new platform collection resource.",
@@ -951,9 +926,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     write_files(files, args.collection_root, dry_run=args.dry_run, overwrite=args.overwrite)
 
     if not args.dry_run:
-        print(f"\nDone. Run the spec validator to confirm:\n"
-              f"  python tools/validate_spec.py "
-              f"--spec {args.spec}")
+        print(f"\nDone. Run the spec validator to confirm:\n  python tools/validate_spec.py --spec {args.spec}")
     return 0
 
 

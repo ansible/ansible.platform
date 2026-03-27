@@ -5,7 +5,7 @@ API v1 Application dataclass and transform mixin.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext

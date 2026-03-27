@@ -23,19 +23,19 @@ import sys
 from collections import defaultdict
 from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
-
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------
 
+
 class OperationRecord(NamedTuple):
-    module_file: str          # relative path to the api/v1 file
-    class_name: str           # e.g. ServiceTransformMixin_v1
-    op_name: str              # key in get_endpoint_operations dict (create/update/…)
-    path: str                 # declared path
-    method: str               # declared HTTP method (uppercase)
-    fields: List[str]         # body field names declared in fields=[…]
-    line: int                 # line number in source file (for error messages)
+    module_file: str  # relative path to the api/v1 file
+    class_name: str  # e.g. ServiceTransformMixin_v1
+    op_name: str  # key in get_endpoint_operations dict (create/update/…)
+    path: str  # declared path
+    method: str  # declared HTTP method (uppercase)
+    fields: List[str]  # body field names declared in fields=[…]
+    line: int  # line number in source file (for error messages)
 
 
 class ValidationError(NamedTuple):
@@ -51,6 +51,7 @@ class ValidationError(NamedTuple):
 # ---------------------------------------------------------------------------
 # AST extraction
 # ---------------------------------------------------------------------------
+
 
 def _ast_constant(node: ast.expr) -> Optional[Any]:
     """Return the Python value of a constant AST node, or None."""
@@ -119,14 +120,12 @@ def extract_operations_from_file(filepath: str) -> List[OperationRecord]:
         class_name = node.name
 
         for item in node.body:
-            if not (isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and item.name == "get_endpoint_operations"):
+            if not (isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "get_endpoint_operations"):
                 continue
 
             # Walk the method body looking for Return with a Dict value
             for stmt in ast.walk(item):
-                if not (isinstance(stmt, ast.Return)
-                        and isinstance(stmt.value, ast.Dict)):
+                if not (isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Dict)):
                     continue
 
                 dict_node: ast.Dict = stmt.value
@@ -145,15 +144,17 @@ def extract_operations_from_file(filepath: str) -> List[OperationRecord]:
                     if extracted is None:
                         continue
 
-                    records.append(OperationRecord(
-                        module_file=rel_path,
-                        class_name=class_name,
-                        op_name=op_name,
-                        path=extracted["path"],
-                        method=extracted["method"],
-                        fields=extracted.get("fields", []),
-                        line=extracted["line"],
-                    ))
+                    records.append(
+                        OperationRecord(
+                            module_file=rel_path,
+                            class_name=class_name,
+                            op_name=op_name,
+                            path=extracted["path"],
+                            method=extracted["method"],
+                            fields=extracted.get("fields", []),
+                            line=extracted["line"],
+                        )
+                    )
     return records
 
 
@@ -171,15 +172,14 @@ def collect_all_operations(api_dir: str) -> List[OperationRecord]:
                 fpath_display = os.path.relpath(fpath)
             except ValueError:
                 fpath_display = fpath
-            all_records.extend(
-                op._replace(module_file=fpath_display) for op in ops
-            )
+            all_records.extend(op._replace(module_file=fpath_display) for op in ops)
     return all_records
 
 
 # ---------------------------------------------------------------------------
 # Spec indexing
 # ---------------------------------------------------------------------------
+
 
 def _resolve_ref(spec: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
     """Follow a single $ref to components/schemas."""
@@ -228,10 +228,7 @@ def _body_fields(spec: Dict[str, Any], path: str, method: str) -> Optional[Set[s
         return None
     req_body = op.get("requestBody", {})
     content = req_body.get("content", {})
-    schema = (
-        content.get("application/json", {}).get("schema", {})
-        or content.get("application/x-www-form-urlencoded", {}).get("schema", {})
-    )
+    schema = content.get("application/json", {}).get("schema", {}) or content.get("application/x-www-form-urlencoded", {}).get("schema", {})
     if not schema:
         return None
     props = _collect_properties(spec, schema)
@@ -262,13 +259,15 @@ _WRITE_METHODS = {"POST", "PUT", "PATCH"}
 
 # Paths that intentionally deviate from the spec (document known exceptions).
 # Format: frozenset of (path, METHOD) tuples.
-_KNOWN_EXCEPTIONS: frozenset = frozenset({
-    # /settings/all/ is a convenience endpoint not in the Gateway OpenAPI spec.
-    # The canonical spec path is /settings/{category_slug}/.
-    # TODO: migrate SettingsTransformMixin_v1 to use the canonical endpoint.
-    ("/api/gateway/v1/settings/all/", "GET"),
-    ("/api/gateway/v1/settings/all/", "PUT"),
-})
+_KNOWN_EXCEPTIONS: frozenset = frozenset(
+    {
+        # /settings/all/ is a convenience endpoint not in the Gateway OpenAPI spec.
+        # The canonical spec path is /settings/{category_slug}/.
+        # TODO: migrate SettingsTransformMixin_v1 to use the canonical endpoint.
+        ("/api/gateway/v1/settings/all/", "GET"),
+        ("/api/gateway/v1/settings/all/", "PUT"),
+    }
+)
 
 
 def validate(
@@ -278,7 +277,7 @@ def validate(
     known_exceptions: frozenset = _KNOWN_EXCEPTIONS,
 ) -> List[ValidationError]:
     errors: List[ValidationError] = []
-    warnings: List[str] = []
+    _warnings: List[str] = []
 
     # Build a set of all (path, method) pairs in the spec for fast lookup
     spec_pairs = set(spec_index.keys())
@@ -298,32 +297,33 @@ def validate(
             hint = ""
             if similar:
                 hint = f" (similar spec paths: {', '.join(similar[:3])})"
-            errors.append(ValidationError(
-                module_file=op.module_file,
-                class_name=op.class_name,
-                op_name=op.op_name,
-                path=op.path,
-                method=op.method,
-                message=f"Path not found in spec{hint}",
-                line=op.line,
-            ))
+            errors.append(
+                ValidationError(
+                    module_file=op.module_file,
+                    class_name=op.class_name,
+                    op_name=op.op_name,
+                    path=op.path,
+                    method=op.method,
+                    message=f"Path not found in spec{hint}",
+                    line=op.line,
+                )
+            )
             continue
 
         # 2. HTTP method must be allowed at that path
         if op.method not in spec_path_methods:
             allowed = ", ".join(sorted(spec_path_methods))
-            errors.append(ValidationError(
-                module_file=op.module_file,
-                class_name=op.class_name,
-                op_name=op.op_name,
-                path=op.path,
-                method=op.method,
-                message=(
-                    f"Method {op.method} not in spec for this path "
-                    f"(allowed: {allowed})"
-                ),
-                line=op.line,
-            ))
+            errors.append(
+                ValidationError(
+                    module_file=op.module_file,
+                    class_name=op.class_name,
+                    op_name=op.op_name,
+                    path=op.path,
+                    method=op.method,
+                    message=(f"Method {op.method} not in spec for this path (allowed: {allowed})"),
+                    line=op.line,
+                )
+            )
             continue
 
         # 3. For write operations with declared fields, check all fields are in spec
@@ -332,18 +332,17 @@ def validate(
             if spec_fields is not None:
                 unknown = sorted(set(op.fields) - spec_fields)
                 if unknown:
-                    errors.append(ValidationError(
-                        module_file=op.module_file,
-                        class_name=op.class_name,
-                        op_name=op.op_name,
-                        path=op.path,
-                        method=op.method,
-                        message=(
-                            f"Field(s) declared in EndpointOperation.fields not "
-                            f"found in spec request body schema: {unknown}"
-                        ),
-                        line=op.line,
-                    ))
+                    errors.append(
+                        ValidationError(
+                            module_file=op.module_file,
+                            class_name=op.class_name,
+                            op_name=op.op_name,
+                            path=op.path,
+                            method=op.method,
+                            message=(f"Field(s) declared in EndpointOperation.fields not found in spec request body schema: {unknown}"),
+                            line=op.line,
+                        )
+                    )
 
     return errors
 
@@ -352,11 +351,9 @@ def validate(
 # Reporting
 # ---------------------------------------------------------------------------
 
+
 def _fmt_location(err: ValidationError) -> str:
-    return (
-        f"{err.module_file}:{err.line} "
-        f"[{err.class_name}.get_endpoint_operations → '{err.op_name}']"
-    )
+    return f"{err.module_file}:{err.line} [{err.class_name}.get_endpoint_operations → '{err.op_name}']"
 
 
 def report(
@@ -366,9 +363,9 @@ def report(
     known_exceptions: frozenset = _KNOWN_EXCEPTIONS,
 ) -> None:
     if errors:
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"  SPEC VALIDATION FAILED — {len(errors)} error(s) found")
-        print(f"{'='*70}\n")
+        print(f"{'=' * 70}\n")
 
         # Group by file for readability
         by_file: Dict[str, List[ValidationError]] = defaultdict(list)
@@ -388,18 +385,11 @@ def report(
 
     if show_summary:
         # Print known exceptions as informational
-        exc_count = sum(
-            1 for op in operations
-            if (op.path, op.method) in known_exceptions
-        )
+        exc_count = sum(1 for op in operations if (op.path, op.method) in known_exceptions)
         if exc_count:
             print(
                 f"  ℹ  {exc_count} operation(s) skipped (listed in _KNOWN_EXCEPTIONS):\n"
-                + "\n".join(
-                    f"     {op.method} {op.path}  ({op.module_file})"
-                    for op in operations
-                    if (op.path, op.method) in known_exceptions
-                )
+                + "\n".join(f"     {op.method} {op.path}  ({op.module_file})" for op in operations if (op.path, op.method) in known_exceptions)
                 + "\n"
             )
 
@@ -407,6 +397,7 @@ def report(
 # ---------------------------------------------------------------------------
 # Coverage report (optional)
 # ---------------------------------------------------------------------------
+
 
 def coverage_report(
     operations: List[OperationRecord],
@@ -419,10 +410,7 @@ def coverage_report(
 
     all_spec_paths = set(spec.get("paths", {}).keys())
     # Only report resource paths (skip root/version discovery paths)
-    resource_paths = {
-        p for p in all_spec_paths
-        if p.startswith("/api/gateway/v1/") and p not in ("/api/", "/api/gateway/", "/api/gateway/v1/")
-    }
+    resource_paths = {p for p in all_spec_paths if p.startswith("/api/gateway/v1/") and p not in ("/api/", "/api/gateway/", "/api/gateway/v1/")}
 
     uncovered = sorted(resource_paths - covered)
     print(f"\n  Coverage: {len(covered & resource_paths)}/{len(resource_paths)} spec paths have a module.\n")
@@ -437,6 +425,7 @@ def coverage_report(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -496,8 +485,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # -- Extract operations -----------------------------------------------
     print(f"Scanning {api_dir} …")
     operations = collect_all_operations(api_dir)
-    print(f"Found {len(operations)} EndpointOperation(s) across "
-          f"{len({op.module_file for op in operations})} file(s).")
+    print(f"Found {len(operations)} EndpointOperation(s) across {len({op.module_file for op in operations})} file(s).")
 
     if not operations:
         print("WARNING: no EndpointOperation records found — check --api-dir.", file=sys.stderr)
@@ -506,8 +494,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # -- Build spec index -------------------------------------------------
     print(f"Loading spec: {spec_path}")
     spec_index = build_spec_index(spec)
-    print(f"Spec contains {len(spec_index)} path+method pair(s) across "
-          f"{len(spec.get('paths', {}))} path(s).\n")
+    print(f"Spec contains {len(spec_index)} path+method pair(s) across {len(spec.get('paths', {}))} path(s).\n")
 
     # -- Validate ---------------------------------------------------------
     effective_exceptions = frozenset() if args.strict else _KNOWN_EXCEPTIONS
