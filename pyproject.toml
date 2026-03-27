@@ -1,3 +1,59 @@
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 python_files = ["test_*.py", "*_test.py"]
+
+# ---------------------------------------------------------------------------
+# Ruff — replaces flake8 + black + isort
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+exclude = [
+    ".tox",
+    "aap-dev",
+    "services",
+    "aap_gateway_api/migrations",
+    "django-ansible-base",
+]
+
+[tool.ruff.lint]
+# E/W: pycodestyle  F: pyflakes  I: isort
+select = ["E", "W", "F", "I"]
+# E203: whitespace before ':' — black-compatible, kept to match old flake8 config
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+"plugins/modules/*" = ["E402"]
+
+[tool.ruff.format]
+line-length = 160
+skip-magic-trailing-comma = false
+
+# ---------------------------------------------------------------------------
+# Mypy — static type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+# Permissive baseline — existing codebase has limited type annotations
+ignore_missing_imports = true
+warn_unused_ignores = false
+warn_return_any = false
+no_implicit_optional = true
+strict_optional = false
+
+[[tool.mypy.overrides]]
+module = "ansible.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "ansible_collections.*"
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pydoclint — docstring style enforcement (Google style)
+# ---------------------------------------------------------------------------
+[tool.pydoclint]
+style = "google"
+exclude = '\.(tox|git)|aap-dev|services|migrations'
+skip-checking-short-docstrings = true
+allow-init-docstring = true
