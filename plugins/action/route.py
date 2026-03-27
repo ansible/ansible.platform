@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ro
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'route'
-    MODEL_CLASS  = AnsibleRoute
-
+    MODULE_NAME = 'route'
+    MODEL_CLASS = AnsibleRoute

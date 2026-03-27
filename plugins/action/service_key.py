@@ -9,6 +9,9 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.se
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'service_key'
-    MODEL_CLASS  = AnsibleServiceKey
-
+    MODULE_NAME = 'service_key'
+    MODEL_CLASS = AnsibleServiceKey
+    # mark_previous_inactive: operation-time directive; API never returns it.
+    # secret: write-only; API returns null/hash, not the original value.
+    # Including either in _should_update() causes false positives.
+    _WRITE_ONLY_FIELDS = frozenset({'mark_previous_inactive', 'secret'})

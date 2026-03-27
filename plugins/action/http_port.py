@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ht
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'http_port'
-    MODEL_CLASS  = AnsibleHttpPort
-
+    MODULE_NAME = 'http_port'
+    MODEL_CLASS = AnsibleHttpPort

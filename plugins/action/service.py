@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.se
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'service'
-    MODEL_CLASS  = AnsibleService
-
+    MODULE_NAME = 'service'
+    MODEL_CLASS = AnsibleService

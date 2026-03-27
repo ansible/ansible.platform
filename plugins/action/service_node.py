@@ -9,6 +9,8 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.se
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'service_node'
-    MODEL_CLASS  = AnsibleServiceNode
-
+    MODULE_NAME = 'service_node'
+    MODEL_CLASS = AnsibleServiceNode
+    # service_cluster is a mutable FK: allow change-by-name detection even
+    # when from_api() returns the current cluster as a digit string.
+    _MUTABLE_FK_FIELDS = frozenset({'service_cluster'})

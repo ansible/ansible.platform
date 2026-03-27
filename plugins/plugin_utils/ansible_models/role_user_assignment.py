@@ -10,8 +10,8 @@ from typing import Optional, List
 class AnsibleRoleUserAssignment:
     """Ansible representation of a role-user assignment."""
 
-    # Required
-    role_definition: str
+    # Required for create/find; optional internally (delete only needs id)
+    role_definition: Optional[str] = None
 
     # Target user (mutually exclusive)
     user: Optional[str] = None

@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.or
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'organization'
-    MODEL_CLASS  = AnsibleOrganization
-
+    MODULE_NAME = 'organization'
+    MODEL_CLASS = AnsibleOrganization

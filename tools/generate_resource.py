@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate boilerplate files for a new platform collection resource from the
 Gateway OpenAPI specification.
@@ -25,9 +24,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
-from textwrap import dedent, indent
+from textwrap import indent
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
@@ -141,7 +139,7 @@ class ResourceSpec:
         self.list_path: Optional[str] = None
         self.detail_path: Optional[str] = None
         self.methods: Dict[str, Set[str]] = {}  # path -> set of methods
-        for path, method, _ in all_ops:
+        for path, method, _op_info in all_ops:
             self.methods.setdefault(path, set()).add(method)
             if path.endswith("}/") and "{" in path:
                 if self.detail_path is None:

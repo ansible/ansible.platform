@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ui
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'ui_plugin_route'
-    MODEL_CLASS  = AnsibleUIPluginRoute
-
+    MODULE_NAME = 'ui_plugin_route'
+    MODEL_CLASS = AnsibleUIPluginRoute

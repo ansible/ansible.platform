@@ -9,6 +9,6 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.au
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'authenticator_user'
-    MODEL_CLASS  = AnsibleAuthenticatorUser
+    MODULE_NAME = 'authenticator_user'
+    MODEL_CLASS = AnsibleAuthenticatorUser
     LOOKUP_FIELD = 'id'

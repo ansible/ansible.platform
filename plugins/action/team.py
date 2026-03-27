@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.te
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'team'
-    MODEL_CLASS  = AnsibleTeam
-
+    MODULE_NAME = 'team'
+    MODEL_CLASS = AnsibleTeam

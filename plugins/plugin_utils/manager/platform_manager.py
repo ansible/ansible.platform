@@ -778,6 +778,14 @@ class PlatformService(BaseAPIClient):
                         # mismatches here to avoid spurious changed=True.
                         if isinstance(v, str) and isinstance(current_val, int):
                             continue
+                        # FK fields where from_api() converts int IDs to digit strings
+                        # (e.g. service_cluster='5'): a non-digit name like 'eda-cluster'
+                        # cannot be compared against a digit string without resolving it.
+                        # The primary state comparison already handled the real change
+                        # detection, so skip here to avoid false changed=True.
+                        if (isinstance(v, str) and isinstance(current_val, str)
+                                and not v.isdigit() and current_val.isdigit()):
+                            continue
                         changed = True
                         break
 
@@ -807,6 +815,14 @@ class PlatformService(BaseAPIClient):
                     changed = True
                     break
                 if current_val is not None and norm(v) != norm(current_val):
+                    # FK: str name vs int ID
+                    if isinstance(v, str) and isinstance(current_val, int):
+                        continue
+                    # FK: non-digit name string vs digit string (from_api str() conversion)
+                    # e.g. role_definition='my-role' vs '3100' — can't resolve without manager.
+                    if (isinstance(v, str) and isinstance(current_val, str)
+                            and not v.isdigit() and current_val.isdigit()):
+                        continue
                     changed = True
                     break
             result = dict(current_dict)

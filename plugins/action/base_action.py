@@ -216,6 +216,21 @@ class BaseResourceActionPlugin(ActionBase):
     LOOKUP_FIELD = 'name'
 
     # Shared constants used by the standard run() and concrete subclasses
+    # Fields that are sent TO the API as operation directives but never returned
+    # by GET/LIST responses.  Including them in idempotency comparisons always
+    # produces false positives because find_result will have None for them while
+    # the task may supply a concrete value (e.g. mark_previous_inactive=False).
+    # Subclasses should override this with module-specific write-only fields.
+    _WRITE_ONLY_FIELDS: frozenset = frozenset()
+
+    # FK fields whose values CAN change via an update operation.  For these
+    # fields the case-3 skip in _should_update() (non-digit name string vs
+    # digit string from from_api()) is suppressed so that a name change like
+    # service_cluster='eda' vs current '3' actually triggers the update path.
+    # Without this, the skip would mask genuine FK changes.
+    # Subclasses override this to list mutable FK fields for their resource.
+    _MUTABLE_FK_FIELDS: frozenset = frozenset()
+
     _AUTH_PARAMS = frozenset({
         'gateway_hostname', 'gateway_username', 'gateway_password',
         'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',
@@ -1096,7 +1111,7 @@ class BaseResourceActionPlugin(ActionBase):
         if desired_data.get('new_name'):
             return True
 
-        skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS
+        skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS | self._WRITE_ONLY_FIELDS
 
         for key, desired_val in desired_data.items():
             if key in skip_keys or desired_val is None:
@@ -1105,17 +1120,15 @@ class BaseResourceActionPlugin(ActionBase):
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
-            # Skip unresolved FK: str name provided, API stores int id
-            if isinstance(desired_val, str) and isinstance(current_val, int):
-                continue
-            if isinstance(desired_val, int) and isinstance(current_val, str):
-                continue
-            # Skip FK stored as int but converted to str by from_api:
-            # desired = 'my-auth-name' (non-numeric str), current = '3100' (digit str)
-            if (
-                isinstance(desired_val, str) and isinstance(current_val, str)
-                and not desired_val.isdigit() and current_val.isdigit()
-            ):
+            # FK stored as digit string by from_api() (e.g. role_definition='3100'):
+            # when the task supplies a name like 'my-role', skip the comparison so
+            # we don't trigger a spurious update for an unchanged FK.
+            # Exception: fields in _MUTABLE_FK_FIELDS (e.g. service_cluster on
+            # service_node) CAN change to a different resource, so let those through
+            # — _update_resource() will resolve both sides to integers and decide.
+            if (key not in self._MUTABLE_FK_FIELDS
+                    and isinstance(desired_val, str) and isinstance(current_val, str)
+                    and not desired_val.isdigit() and current_val.isdigit()):
                 continue
             # Same type: direct equality
             if type(desired_val) is type(current_val):

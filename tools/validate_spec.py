@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Validate all EndpointOperation declarations in api/v1/*.py against the
 Gateway OpenAPI specification.

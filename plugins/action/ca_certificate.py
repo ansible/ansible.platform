@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ca
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'ca_certificate'
-    MODEL_CLASS  = AnsibleCACertificate
-
+    MODULE_NAME = 'ca_certificate'
+    MODEL_CLASS = AnsibleCACertificate

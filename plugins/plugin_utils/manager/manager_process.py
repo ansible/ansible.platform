@@ -194,8 +194,9 @@ def main():
             # Wait up to 60 s (covers two 10-s HTTP calls plus overhead)
             if not _service_ready.wait(timeout=60):
                 raise RuntimeError("PlatformService initialization timed out (>60s)")
-            if _service_container['error'] is not None:
-                raise _service_container['error']
+            svc_error = _service_container['error']
+            if svc_error is not None:
+                raise svc_error
             return _service_container['service']
 
         def _shutdown_service():

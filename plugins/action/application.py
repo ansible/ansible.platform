@@ -9,6 +9,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ap
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME  = 'application'
-    MODEL_CLASS  = AnsibleApplication
-
+    MODULE_NAME = 'application'
+    MODEL_CLASS = AnsibleApplication
