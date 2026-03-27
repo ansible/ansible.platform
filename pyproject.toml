@@ -45,13 +45,26 @@ warn_unused_ignores = false
 warn_return_any = false
 no_implicit_optional = true
 strict_optional = false
-# Exclude Ansible boilerplate dirs — relative imports like `from ..module_utils`
-# use Ansible's custom namespace resolution which mypy cannot follow, causing
-# spurious "Relative import climbs too many namespaces" [misc] errors.
+# File-path exclusions (regex matched against absolute paths).
+# More reliable than module-name overrides when the internal module naming
+# depends on how mypy resolves the `plugins` namespace package.
+#
+# Excluded for the following reasons:
+#   plugins/modules/, plugins/module_utils/, plugins/lookup/
+#     → Ansible boilerplate — relative imports use Ansible's own resolver,
+#       not Python's, causing "Relative import climbs too many namespaces".
+#   plugins/plugin_utils/, plugins/connection/
+#     → Two structural type issues pending dedicated refactoring:
+#       1. Model classes stored as bare `type` instead of a typed Protocol/TypeVar
+#          (~30 "type has no attribute from_ansible_data" errors).
+#       2. Forward-reference issues in api/* model files ([name-defined]).
+#     Action plugins (plugins/action/) remain fully checked.
 exclude = [
     "plugins/modules/",
     "plugins/module_utils/",
     "plugins/lookup/",
+    "plugins/plugin_utils/",
+    "plugins/connection/",
 ]
 
 [[tool.mypy.overrides]]
@@ -61,18 +74,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "ansible_collections.*"
 ignore_missing_imports = true
-
-# plugin_utils has two structural type issues that require dedicated refactoring:
-#   1. Model classes passed as bare `type` instead of a typed Protocol/TypeVar —
-#      causes ~30 "type has no attribute from_ansible_data" [attr-defined] errors.
-#   2. Forward references in api/* model files — causes [name-defined] errors.
-# Suppress until that work lands; action plugins remain fully checked.
-[[tool.mypy.overrides]]
-module = [
-    "plugins.plugin_utils.*",
-    "plugins.connection.*",
-]
-ignore_errors = true
 
 # ---------------------------------------------------------------------------
 # Pydoclint — docstring style enforcement (Google style)
