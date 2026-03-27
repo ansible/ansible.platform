@@ -1,0 +1,49 @@
+digraph process_architecture {
+    rankdir=TB;
+    node [shape=box, style=rounded];
+    
+    subgraph cluster_ansible {
+        label="Process 1: Ansible Playbook Process";
+        style=filled;
+        color=lightblue;
+        
+        AP1 [label="Action Plugin 1\n(user.py)", fillcolor="#e1f5ff", style="filled,rounded"];
+        AP2 [label="Action Plugin 2\n(user.py)", fillcolor="#e1f5ff", style="filled,rounded"];
+        APN [label="Action Plugin N\n(user.py)", fillcolor="#e1f5ff", style="filled,rounded"];
+        RPC1 [label="ManagerRPCClient 1", fillcolor="#b3e5fc", style="filled,rounded"];
+        RPC2 [label="ManagerRPCClient 2", fillcolor="#b3e5fc", style="filled,rounded"];
+        RPCN [label="ManagerRPCClient N", fillcolor="#b3e5fc", style="filled,rounded"];
+        
+        AP1 -> RPC1;
+        AP2 -> RPC2;
+        APN -> RPCN;
+    }
+    
+    subgraph cluster_manager {
+        label="Process 2: Manager Process\n(manager_process.py)";
+        style=filled;
+        color=lightyellow;
+        
+        PM [label="PlatformManager\nMain Thread\nserver.serve_forever()", fillcolor="#fff9c4", style="filled,rounded"];
+        WT1 [label="Worker Thread 1\nhandles RPC call", fillcolor="#fff9c4", style="filled,rounded"];
+        WT2 [label="Worker Thread 2\nhandles RPC call", fillcolor="#fff9c4", style="filled,rounded"];
+        WTN [label="Worker Thread N\nhandles RPC call", fillcolor="#fff9c4", style="filled,rounded"];
+        PS [label="PlatformService\nSHARED INSTANCE\n- requests.Session\n- API version cache\n- Lookup cache", fillcolor="#c8e6c9", style="filled,rounded"];
+        
+        PM -> WT1 [label="spawns worker"];
+        PM -> WT2 [label="spawns worker"];
+        PM -> WTN [label="spawns worker"];
+        WT1 -> PS [label="direct call"];
+        WT2 -> PS [label="direct call"];
+        WTN -> PS [label="direct call"];
+    }
+    
+    API [label="Platform API\n(AAP Gateway)", fillcolor="#ffccbc", style="filled,rounded"];
+    
+    RPC1 -> PM [label="Unix Socket\n/tmp/ansible_platform/\nmanager_*.sock\n(RPC via BaseManager)", style="dashed"];
+    RPC2 -> PM [label="Unix Socket\n(RPC via BaseManager)", style="dashed"];
+    RPCN -> PM [label="Unix Socket\n(RPC via BaseManager)", style="dashed"];
+    
+    PS -> API [label="HTTP/HTTPS\nPersistent Session"];
+}
+

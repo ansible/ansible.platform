@@ -1,0 +1,46 @@
+@startuml Process Architecture
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam processColor #E1F5FF
+skinparam threadColor #FFF9C4
+skinparam serviceColor #C8E6C9
+skinparam apiColor #FFCCBC
+
+package "Process 1: Ansible Playbook Process" {
+    [Action Plugin 1\n(user.py)] as AP1
+    [Action Plugin 2\n(user.py)] as AP2
+    [Action Plugin N\n(user.py)] as APN
+    [ManagerRPCClient 1] as RPC1
+    [ManagerRPCClient 2] as RPC2
+    [ManagerRPCClient N] as RPCN
+    
+    AP1 --> RPC1
+    AP2 --> RPC2
+    APN --> RPCN
+}
+
+package "Process 2: Manager Process\n(manager_process.py)" {
+    [PlatformManager\nMain Thread\nserver.serve_forever()] as PM
+    [Worker Thread 1\nhandles RPC call] as WT1
+    [Worker Thread 2\nhandles RPC call] as WT2
+    [Worker Thread N\nhandles RPC call] as WTN
+    [PlatformService\nSHARED INSTANCE\n- requests.Session\n- API version cache\n- Lookup cache] as PS
+    
+    PM -->|spawns worker| WT1
+    PM -->|spawns worker| WT2
+    PM -->|spawns worker| WTN
+    WT1 -->|direct call| PS
+    WT2 -->|direct call| PS
+    WTN -->|direct call| PS
+}
+
+[Platform API\n(AAP Gateway)] as API
+
+RPC1 -->|Unix Socket\n/tmp/ansible_platform/\nmanager_*.sock\n(RPC via BaseManager)| PM
+RPC2 -->|Unix Socket\n(RPC via BaseManager)| PM
+RPCN -->|Unix Socket\n(RPC via BaseManager)| PM
+
+PS -->|HTTP/HTTPS\nPersistent Session| API
+
+@enduml
+

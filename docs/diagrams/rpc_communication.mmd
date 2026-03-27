@@ -1,0 +1,44 @@
+sequenceDiagram
+    participant AP as Ansible Process<br/>(Action Plugin)
+    participant RPC as ManagerRPCClient
+    participant SOCKET as Unix Socket
+    participant PM as PlatformManager<br/>(Main Thread)
+    participant WT as Worker Thread<br/>(ThreadingMixIn)
+    participant PS as PlatformService<br/>(Shared Resource)
+    participant API as AAP Gateway API
+    
+    Note over AP: Task Execution
+    
+    AP->>RPC: manager.execute(<br/>operation, module_name,<br/>ansible_data)
+    
+    RPC->>RPC: Convert dataclass to dict
+    
+    RPC->>SOCKET: service_proxy.execute(<br/>operation, module_name,<br/>data_dict)
+    
+    Note over SOCKET: BaseManager RPC<br/>(pickle serialization)
+    
+    SOCKET->>PM: RPC call received
+    
+    PM->>WT: Create worker thread<br/>(ThreadingMixIn)
+    
+    Note over WT: Thread handles this<br/>specific RPC call
+    
+    WT->>PS: service.execute(<br/>operation, module_name,<br/>ansible_data_dict)
+    
+    PS->>PS: Load version-specific classes
+    PS->>PS: Forward transform<br/>(Ansible → API)
+    
+    PS->>API: HTTP POST/PUT/DELETE<br/>(via persistent session)
+    API-->>PS: API response
+    
+    PS->>PS: Reverse transform<br/>(API → Ansible)
+    PS-->>WT: Return ansible_result dict
+    
+    WT->>WT: Serialize result (pickle)
+    WT->>SOCKET: Send response
+    
+    SOCKET->>RPC: Receive response
+    RPC-->>AP: Return result dict
+    
+    Note over AP: Task completes
+

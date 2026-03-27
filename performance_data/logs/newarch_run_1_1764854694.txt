@@ -1,0 +1,475 @@
+ansible-playbook [core 2.19.4]
+  config file = /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/ansible.cfg
+  configured module search path = ['/Users/rohit/.ansible/plugins/modules', '/usr/share/ansible/plugins/modules']
+  ansible python module location = /Users/rohit/venvs/ansible312/lib/python3.12/site-packages/ansible
+  ansible collection location = /Users/rohit/dev-workspace/ansible-dev/ansible_collections
+  executable location = /Users/rohit/venvs/ansible312/bin/ansible-playbook
+  python version = 3.12.12 (main, Oct  9 2025, 11:07:00) [Clang 17.0.0 (clang-1700.0.13.3)] (/Users/rohit/venvs/ansible312/bin/python3.12)
+  jinja version = 3.1.6
+  pyyaml version = 6.0.3 (with libyaml v0.2.5)
+Using /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/ansible.cfg as config file
+host_list declined parsing /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/inventory as it did not pass its verify_file() method
+script declined parsing /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/inventory as it did not pass its verify_file() method
+auto declined parsing /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/inventory as it did not pass its verify_file() method
+Parsed /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/inventory inventory source with ini plugin
+running playbook inside collection ansible.platform
+Skipping callback 'minimal', as we already have a stdout callback.
+Skipping callback 'oneline', as we already have a stdout callback.
+
+PLAYBOOK: new_arch_user_get.yml ************************************************
+1 plays in /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/tests/performance/new_arch_user_get.yml
+
+PLAY [New Architecture Performance Test - Persistent Manager] ******************
+
+TASK [New Architecture: Create 10 users (persistent manager)] ******************
+task path: /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/tests/performance/new_arch_user_get.yml:17
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=1) => {
+    "ansible_facts": {
+        "gateway_url": "https://18.205.116.155/",
+        "platform_manager_authkey": "unSo02Ol7v+ggZWDrGCKMQRgDfGglYnlo0XGyRV8Fok=",
+        "platform_manager_socket": "/var/folders/w4/hq8jsfcj5w362n5l7n17g2nm0000gn/T/ansible_platform/manager_127.0.0.1.sock"
+    },
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 845,
+    "item": 1,
+    "user": {
+        "created": "2025-12-04T13:24:56.424205Z",
+        "email": "user1@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 845,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User1",
+        "modified": "2025-12-04T13:24:56.424196Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/845/",
+        "username": "perf-newarch-1764854694-1"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=2) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 846,
+    "item": 2,
+    "user": {
+        "created": "2025-12-04T13:24:57.457938Z",
+        "email": "user2@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 846,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User2",
+        "modified": "2025-12-04T13:24:57.457929Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/846/",
+        "username": "perf-newarch-1764854696-2"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=3) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 847,
+    "item": 3,
+    "user": {
+        "created": "2025-12-04T13:24:58.485245Z",
+        "email": "user3@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 847,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User3",
+        "modified": "2025-12-04T13:24:58.485237Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/847/",
+        "username": "perf-newarch-1764854697-3"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=4) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 848,
+    "item": 4,
+    "user": {
+        "created": "2025-12-04T13:24:59.524076Z",
+        "email": "user4@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 848,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User4",
+        "modified": "2025-12-04T13:24:59.524067Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/848/",
+        "username": "perf-newarch-1764854698-4"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=5) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 849,
+    "item": 5,
+    "user": {
+        "created": "2025-12-04T13:25:00.558661Z",
+        "email": "user5@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 849,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User5",
+        "modified": "2025-12-04T13:25:00.558652Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/849/",
+        "username": "perf-newarch-1764854699-5"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=6) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 850,
+    "item": 6,
+    "user": {
+        "created": "2025-12-04T13:25:01.580211Z",
+        "email": "user6@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 850,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User6",
+        "modified": "2025-12-04T13:25:01.580203Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/850/",
+        "username": "perf-newarch-1764854700-6"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=7) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 851,
+    "item": 7,
+    "user": {
+        "created": "2025-12-04T13:25:02.596706Z",
+        "email": "user7@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 851,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User7",
+        "modified": "2025-12-04T13:25:02.596698Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/851/",
+        "username": "perf-newarch-1764854701-7"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=8) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 852,
+    "item": 8,
+    "user": {
+        "created": "2025-12-04T13:25:03.765663Z",
+        "email": "user8@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 852,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User8",
+        "modified": "2025-12-04T13:25:03.765651Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/852/",
+        "username": "perf-newarch-1764854702-8"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=9) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 853,
+    "item": 9,
+    "user": {
+        "created": "2025-12-04T13:25:04.841928Z",
+        "email": "user9@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 853,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User9",
+        "modified": "2025-12-04T13:25:04.841920Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/853/",
+        "username": "perf-newarch-1764854704-9"
+    }
+}
+================================================================================
+🚀 NEW ARCHITECTURE: User action plugin running!
+================================================================================
+📋 Building argument spec from DOCUMENTATION...
+✓ Validating input parameters...
+🔌 Getting or spawning manager...
+✅ Connected to manager
+📦 Creating user dataclass...
+🎯 Operation detected: create
+🔍 Checking if user already exists (idempotency check)...
+📤 Sending 'create' request to manager...
+📥 Received result from manager
+✓ Validating output...
+================================================================================
+✅ Action plugin completed successfully
+================================================================================
+changed: [127.0.0.1] => (item=10) => {
+    "ansible_loop_var": "item",
+    "changed": true,
+    "id": 854,
+    "item": 10,
+    "user": {
+        "created": "2025-12-04T13:25:05.926474Z",
+        "email": "user10@example.com",
+        "first_name": "Test",
+        "gateway_hostname": null,
+        "gateway_password": null,
+        "gateway_request_timeout": 10.0,
+        "gateway_token": null,
+        "gateway_username": null,
+        "gateway_validate_certs": true,
+        "id": 854,
+        "is_platform_auditor": false,
+        "is_superuser": false,
+        "last_name": "User10",
+        "modified": "2025-12-04T13:25:05.926466Z",
+        "organizations": null,
+        "password": "Password Disabled",
+        "state": "present",
+        "url": "/api/gateway/v1/users/854/",
+        "username": "perf-newarch-1764854705-10"
+    }
+}
+
+TASK [Display summary] *********************************************************
+task path: /Users/rohit/dev-workspace/ansible-dev/ansible_collections/ansible/platform/tests/performance/new_arch_user_get.yml:34
+ok: [127.0.0.1] => {
+    "msg": [
+        "New architecture test complete",
+        "Created 10 users",
+        "First task spawned manager, subsequent tasks reused persistent session",
+        "✅ Performance improvement expected!"
+    ]
+}
+
+PLAY RECAP *********************************************************************
+127.0.0.1                  : ok=2    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
