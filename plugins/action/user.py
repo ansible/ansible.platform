@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import logging
+from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -36,7 +37,7 @@ class ActionModule(BaseResourceActionPlugin):
         """Initialize action plugin."""
         super().__init__(*args, **kwargs)
 
-    def run(self, tmp=None, task_vars=None):
+    def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """
         Execute the user module using persistent manager or direct HTTP client.
 
@@ -45,7 +46,7 @@ class ActionModule(BaseResourceActionPlugin):
             task_vars: Task variables from Ansible
 
         Returns:
-            Result dictionary with user data
+            dict: Result dictionary with user data
         """
         if task_vars is None:
             task_vars = dict()

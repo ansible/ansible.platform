@@ -279,9 +279,10 @@ class BaseResourceActionPlugin(ActionBase):
             task_vars: Task variables from Ansible
 
         Returns:
-            Tuple of (client, facts_dict):
-            - client: ManagerRPCClient (persistent or ephemeral)
-            - facts_dict: Dict with facts to set (only for persistent mode), None otherwise
+            Tuple[Union[DirectHTTPClient, ManagerRPCClient], Optional[Dict[str, Any]]]:
+            (client, facts_dict) where client is ManagerRPCClient (persistent or
+            ephemeral) and facts_dict contains facts to set for persistent mode
+            (None for direct mode).
 
         Raises:
             AnsibleError: If gateway URL is missing or connection plugin doesn't support get_client()
@@ -344,10 +345,10 @@ class BaseResourceActionPlugin(ActionBase):
             gateway_config: Gateway configuration
 
         Returns:
-            Tuple of (ManagerRPCClient, facts_dict):
-            - ManagerRPCClient: The manager client instance
-            - facts_dict: Dict with facts to set (socket, authkey, gateway_url)
-              if new manager was spawned, or None if reusing existing manager.
+            Tuple[ManagerRPCClient, Optional[Dict[str, Any]]]:
+            (client, facts_dict) where client is the ManagerRPCClient instance and
+            facts_dict contains socket/authkey/gateway_url facts if a new manager
+            was spawned, or None if reusing an existing manager.
         """
         import sys
 
@@ -596,7 +597,7 @@ class BaseResourceActionPlugin(ActionBase):
             documentation: DOCUMENTATION string from module
 
         Returns:
-            ArgumentSpec dict suitable for ArgumentSpecValidator
+            dict: ArgumentSpec dict suitable for ArgumentSpecValidator
 
         Raises:
             ValueError: If documentation cannot be parsed
@@ -638,7 +639,7 @@ class BaseResourceActionPlugin(ActionBase):
             fragment_name: Fragment name (e.g., 'ansible.platform.auth')
 
         Returns:
-            Dict of options from fragment, or empty dict if not found
+            dict: Options from fragment, or empty dict if not found
         """
         try:
             # Fragment name format: 'ansible.platform.auth' or 'auth'
@@ -694,7 +695,7 @@ class BaseResourceActionPlugin(ActionBase):
             direction: 'input' or 'output' (for error messages)
 
         Returns:
-            Validated and normalized data dict
+            dict: Validated and normalized data dict
 
         Raises:
             AnsibleError: If validation fails
@@ -756,7 +757,7 @@ class BaseResourceActionPlugin(ActionBase):
         task_uuid = getattr(task, "_uuid", None) or f"{play_name}::{task_name}::{hostname}"
         return str(task_uuid)
 
-    def _get_tracking_file_path(self, play_id):
+    def _get_tracking_file_path(self, play_id: str) -> Path:
         """
         Get path to tracking file for this play (process-safe).
 
@@ -764,7 +765,7 @@ class BaseResourceActionPlugin(ActionBase):
             play_id: Unique play identifier
 
         Returns:
-            Path to tracking file
+            Path: Path to tracking file
         """
         import tempfile
 
@@ -774,7 +775,7 @@ class BaseResourceActionPlugin(ActionBase):
         safe_play_id = play_id.replace("/", "_").replace(":", "_").replace(" ", "_")
         return tracking_dir / f"playbook_{safe_play_id}.json"
 
-    def _read_tracking_file(self, play_id):
+    def _read_tracking_file(self, play_id: str) -> Optional[dict]:
         """
         Read tracking data from file (process-safe with file locking).
 
@@ -782,7 +783,7 @@ class BaseResourceActionPlugin(ActionBase):
             play_id: Unique play identifier
 
         Returns:
-            dict with tracking data, or None if file doesn't exist
+            Optional[dict]: Tracking data dict, or None if file doesn't exist
         """
         file_path = self._get_tracking_file_path(play_id)
         if file_path.exists():
@@ -802,13 +803,13 @@ class BaseResourceActionPlugin(ActionBase):
                 return None
         return None
 
-    def _write_tracking_file(self, play_id, data):
+    def _write_tracking_file(self, play_id: str, data: dict) -> None:
         """
         Write tracking data to file (process-safe with file locking).
 
         Args:
             play_id: Unique play identifier
-            data: dict with tracking data
+            data: Tracking data to write
         """
         file_path = self._get_tracking_file_path(play_id)
         try:
@@ -827,7 +828,7 @@ class BaseResourceActionPlugin(ActionBase):
         except IOError as e:
             logger.warning("Error writing tracking file %s: %s", file_path, e)
 
-    def _delete_tracking_file(self, play_id):
+    def _delete_tracking_file(self, play_id: str) -> None:
         """
         Delete tracking file for this play.
 
@@ -892,7 +893,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         logger.info("Initialized playbook tracking for play '%s': %s total tasks (file-based, process-safe)", play_id, total_tasks)
 
-    def cleanup(self, force=False):
+    def cleanup(self, force: bool = False) -> None:
         """
         Clean up manager processes when all tasks in playbook complete.
 
@@ -967,7 +968,7 @@ class BaseResourceActionPlugin(ActionBase):
         else:
             logger.debug("Play '%s' still has %s task(s) remaining, keeping managers alive", play_id, total_tasks - completed_tasks)
 
-    def _shutdown_manager_process(self, socket_path, ProcessManager):
+    def _shutdown_manager_process(self, socket_path: str, ProcessManager: type) -> None:
         """
         Shutdown a specific manager process.
 
@@ -1096,7 +1097,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         return False
 
-    def run(self, tmp=None, task_vars=None):
+    def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """
         Standard run() for resource action plugins.
 
@@ -1109,6 +1110,13 @@ class BaseResourceActionPlugin(ActionBase):
           exists -> find; return exists=True/False without changes
           enforced -> find; merge declared fields; update or create
           check_mode is honoured for create / update / delete
+
+        Args:
+            tmp: Temporary directory (deprecated, unused)
+            task_vars: Task variables from Ansible
+
+        Returns:
+            dict: Ansible result dictionary
         """
         if task_vars is None:
             task_vars = {}
@@ -1386,7 +1394,7 @@ class BaseResourceActionPlugin(ActionBase):
             args: Module arguments
 
         Returns:
-            Operation name ('create', 'update', 'delete', 'find', 'enforced').
+            str: Operation name ('create', 'update', 'delete', 'find', 'enforced').
             'enforced' is handled by the action plugin (find then merge and create/update).
         """
         state = args.get("state", "present")
