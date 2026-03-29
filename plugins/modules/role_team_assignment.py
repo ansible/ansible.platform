@@ -20,10 +20,15 @@ description:
 notes:
   - This module is subject to limitations of the RBAC system in AAP 2.6.
   - Global roles (e.g. Platform Auditor) cannot be assigned to teams.
-  - Team roles cannot be assigned to another team (Team Admin → Team is not supported).
   - Organization Member role cannot be assigned to teams.
   - Only resource-scoped organization roles (e.g. "Organization Inventory Admin", "Organization Credential Admin") can be meaningfully assigned to teams.
   - Attempting unsupported role assignments will result in errors.
+  - The ansible.platform RBAC modules currently perform role assignments via the AAP Gateway unified RBAC APIs.
+  - As a result, team-scoped role assignments are limited to what is supported by Gateway API today.
+  - Component-specific APIs (Controller, Hub, EDA) expose different RBAC semantics and are not yet supported for these operations
+    within ansible.platform role_team_assignment module.
+  - This reflects current public API capabilities, not a limitation of the module design.
+  - Support for additional APIs may be introduced as RBAC capabilities converge across services.
 options:
     assignment_objects:
         description:
@@ -80,7 +85,39 @@ extends_documentation_fragment:
 
 
 EXAMPLES = '''
-- name: Assign roles for multiple objects using names
+# SUCCESSFUL SCENARIOS - These work correctly with supported roles
+
+- name: Assign Organization Inventory Admin role to a team
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "{{ organization.name }}"
+        type: "organizations"
+    role_definition: Organization Inventory Admin
+    team: "{{ team.name }}"
+    state: present
+  register: result
+
+- name: Assign Organization Credential Admin role to a team
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "{{ organization.name }}"
+        type: "organizations"
+    role_definition: Organization Credential Admin
+    team: "{{ team.name }}"
+    state: present
+  register: result
+
+- name: Assign Team Admin role to a team
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "{{ organization.name }}"
+        type: "organizations"
+    role_definition: Team Admin
+    team: "{{ team.name }}"
+    state: present
+  register: result
+
+- name: Assign roles for multiple organizations using names
   ansible.platform.role_team_assignment:
     assignment_objects:
       - name: "{{ org1.name }}"
@@ -111,7 +148,7 @@ EXAMPLES = '''
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     role_definition: Organization Inventory Admin
     state: present
-    register: result
+  register: result
 
 - name: Check Role Team assignment exists
   ansible.platform.role_team_assignment:
@@ -120,7 +157,7 @@ EXAMPLES = '''
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     role_definition: Organization Inventory Admin
     state: exists
-    register: result
+  register: result
 
 - name: Role Team assignment
   ansible.platform.role_team_assignment:
@@ -129,9 +166,39 @@ EXAMPLES = '''
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     role_definition: Organization Inventory Admin
     state: absent
-    register: result
+  register: result
+
+# FAILED SCENARIOS - These demonstrate unsupported role assignments that will fail
+
+- name: Attempt to assign Platform Auditor role to a team (WILL FAIL)
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "{{ organization.name }}"
+        type: "organizations"
+    role_definition: Platform Auditor
+    team: "{{ team.name }}"
+    state: present
+  register: result
+  ignore_errors: true
+  # Error: Teams can only be assigned roles where all permissions are for the 'galaxy' service.
+  # Role 'Platform Auditor' has non-galaxy permissions from EDA and Controller services.
+  # This is expected and will fail.
+
+- name: Attempt to assign Organization Member role to a team (WILL FAIL)
+  ansible.platform.role_team_assignment:
+    assignment_objects:
+      - name: "org1"
+        type: "organizations"
+    role_definition: Organization Member
+    team: "akash"
+    state: present
+  register: result
+  ignore_errors: true
+  # Error: "Assigning organization member permission to teams is not allowed"
+  # This is expected and will fail.
 ...
 '''
+
 
 from ..module_utils.aap_module import AAPModule
 
