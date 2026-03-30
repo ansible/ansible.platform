@@ -8,7 +8,7 @@ team/team_ansible_id for user/user_ansible_id.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext

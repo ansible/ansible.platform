@@ -59,7 +59,7 @@
     - name: Create Controller Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
-        service_type: "{{ controller_st.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
       register: controller_sc
 
     - name: Create Hub Service Type
@@ -74,7 +74,7 @@
     - name: Create Hub Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Hub"
-        service_type: "{{ hub_st.id }}"
+        service_type: "{{ hub_st.service_type.id }}"
       register: hub_sc
 
     - name: Create EDA Service Type
@@ -89,14 +89,14 @@
     - name: Create Event Driven Automation Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Event-Driven-Automation"
-        service_type: "{{ eda_st.id }}"
+        service_type: "{{ eda_st.service_type.id }}"
       register: eda_sc
 
     - name: Create Service Node1 with check mode
       ansible.platform.service_node:
         name: "Controller on 10.10.0.1"
         address: 10.10.0.1
-        service_cluster: "{{ controller_sc.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
       check_mode: true
 
     - name: Search for Service Node 1
@@ -120,7 +120,7 @@
       ansible.platform.service_node:
         name: "Controller on 10.10.0.1"
         address: 10.10.0.1
-        service_cluster: "{{ controller_sc.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
       register: service_node_1
 
     - name: Assert that we created service node 1
@@ -132,7 +132,7 @@
       ansible.platform.service_node:
         name: "Controller on 10.10.0.1"
         address: 10.10.0.1
-        service_cluster: "{{ controller_sc.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
       register: recreate_service_node_1
 
     - name: Assert that a recreate does not change the system
@@ -144,7 +144,7 @@
       ansible.platform.service_node:
         name: "Hub on 10.10.0.2"
         address: 10.10.0.2
-        service_cluster: "{{ hub_sc.id }}"
+        service_cluster: "{{ hub_sc.service_cluster.id }}"
       register: service_node_2
 
     - name: Assert that we created service node 2
@@ -156,7 +156,7 @@
       ansible.platform.service_node:
         name: "Controller on 10.10.0.3"
         address: 10.10.0.3
-        service_cluster: "{{ controller_sc.id }}"  # Controller
+        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller
       register: service_node_3
 
     - name: Assert that we created service node 3
@@ -168,7 +168,7 @@
       ansible.platform.service_node:
         name: "Controller on 10.10.0.5"
         address: 10.10.0.5
-        service_cluster: "{{ controller_sc.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
       register: service_node_4
 
     - name: Assert that we created service node 4
@@ -180,7 +180,7 @@
       ansible.platform.service_node:
         name: "Controller on 10.10.0.7"
         address: 10.10.0.7
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
       register: service_node_5
 
     - name: Assert that we created service node 5
@@ -190,9 +190,9 @@
 
     - name: Test state exists with parameters
       ansible.platform.service_node:
-        name: "{{ service_node_1.name }}"
+        name: "{{ service_node_1.service_node.name }}"
         address: 10.10.0.1
-        service_cluster: "{{ controller_sc.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
         state: exists
       register: exists_service_node_1
 
@@ -203,7 +203,7 @@
 
     - name: Test exists
       ansible.platform.service_node:
-        name: "{{ service_node_2.id }}"
+        name: "{{ service_node_2.service_node.id }}"
         state: exists
       register: exists_service_node_2
 
@@ -214,8 +214,8 @@
 
     - name: Test exists with parameters
       ansible.platform.service_node:
-        name: "{{ service_node_3.name }}"
-        service_cluster: "{{ controller_sc.name }}"
+        name: "{{ service_node_3.service_node.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
         state: exists
       register: exists_service_node_3
 
@@ -237,8 +237,8 @@
 
     - name: Test delete node with wrong service
       ansible.platform.service_node:
-        name: "{{ service_node_2.name }}"
-        service_cluster: "{{ controller_sc.id }}"
+        name: "{{ service_node_2.service_node.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         state: absent
       register: delete
 
@@ -249,7 +249,7 @@
 
     - name: Change the address of a node
       ansible.platform.service_node:
-        name: "{{ service_node_4.name }}"
+        name: "{{ service_node_4.service_node.name }}"
         address: 10.10.0.255  # changed
       register: change_service_node_4
 
@@ -257,31 +257,31 @@
       ansible.builtin.assert:
         that:
           - change_service_node_4 is changed
-          - change_service_node_4.id == change_service_node_4.id
+          - change_service_node_4.service_node.id == service_node_4.service_node.id
 
     - name: Change a nodes service cluster
       ansible.platform.service_node:
-        name: "{{ service_node_5.name }}"
-        service_cluster: "{{ eda_sc.name }}"
+        name: "{{ service_node_5.service_node.name }}"
+        service_cluster: "{{ eda_sc.service_cluster.name }}"
       register: change_service_node_5
 
     - name: Assert that change a service_nodes cluster
       ansible.builtin.assert:
         that:
           - change_service_node_5 is changed
-          - change_service_node_5.id == service_node_5.id
+          - change_service_node_5.service_node.id == service_node_5.service_node.id
 
     - name: Rename Service Nodes
       ansible.platform.service_node:
-        name: "{{ service_node_1.name }}"
-        new_name: "{{ service_node_1.name }}-New"
+        name: "{{ service_node_1.service_node.name }}"
+        new_name: "{{ service_node_1.service_node.name }}-New"
       register: rename_service_node_1
 
     - name: Assert that we can rename a service node
       ansible.builtin.assert:
         that:
           - rename_service_node_1 is changed
-          - rename_service_node_1.id == service_node_1.id
+          - rename_service_node_1.service_node.id == service_node_1.service_node.id
 
   always:
     - name: Delete Service Nodes

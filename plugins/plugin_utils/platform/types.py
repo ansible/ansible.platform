@@ -5,10 +5,11 @@ the framework.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from requests import Session
+
     from ..manager.platform_manager import PlatformService
 
 
@@ -77,8 +78,9 @@ class TransformContext:
         include_nulls_for_update: When True and operation is 'update', transforms include null
             for optional fields so the API can clear them (enforced state only; present must not send nulls).
     """
-    manager: 'PlatformService'
-    session: 'Session'
+
+    manager: "PlatformService"
+    session: "Session"
     cache: Dict[str, Any]
     api_version: str
     operation: Optional[str] = None

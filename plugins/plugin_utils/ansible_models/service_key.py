@@ -18,7 +18,7 @@ class AnsibleServiceKey:
     secret: Optional[str] = None
     secret_length: Optional[int] = None
     mark_previous_inactive: Optional[bool] = None
-    state: str = 'present'
+    state: str = "present"
 
     id: Optional[int] = None
     created: Optional[str] = None

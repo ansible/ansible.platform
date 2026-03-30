@@ -117,7 +117,7 @@
 
     - name: Check existence of a port
       ansible.platform.http_port:
-        name: "{{  http_port2.name }}"
+        name: "{{ http_port2.http_port.name }}"
         state: exists
       register: exists_http_port2
 
@@ -128,7 +128,7 @@
 
     - name: Change a port
       ansible.platform.http_port:
-        name: "{{ http_port3.id }}"
+        name: "{{ http_port3.http_port.id }}"
         use_https: false
       register: change_http_port3
 
@@ -136,19 +136,19 @@
       ansible.builtin.assert:
         that:
           - change_http_port3 is changed
-          - change_http_port3.id == http_port3.id
+          - change_http_port3.http_port.id == http_port3.http_port.id
 
     - name: Rename a port
       ansible.platform.http_port:
-        name: "{{ http_port4.id }}"
-        new_name: "{{ http_port4.name }}-New"
+        name: "{{ http_port4.http_port.id }}"
+        new_name: "{{ http_port4.http_port.name }}-New"
       register: rename_http_port4
 
     - name: Validate that a rename changed an existing http port
       ansible.builtin.assert:
         that:
           - rename_http_port4 is changed
-          - rename_http_port4.id == http_port4.id
+          - rename_http_port4.http_port.id == http_port4.http_port.id
 
     - name: Delete a non-existent port
       ansible.platform.http_port:
@@ -163,7 +163,7 @@
 
     - name: Delete an existing http port
       ansible.platform.http_port:
-        name: "{{ http_port1.id }}"
+        name: "{{ http_port1.http_port.id }}"
         state: absent
       register: delete
 
@@ -212,28 +212,28 @@
     - name: Delete http port 1
       ansible.platform.http_port:
         state: absent
-        name: "{{ http_port1.id }}"
-      when: http_port1 is defined and http_port1.id is defined
+        name: "{{ http_port1.http_port.id }}"
+      when: "http_port1 is defined and http_port1.http_port is defined and 'id' in http_port1.http_port"
       failed_when: false
 
     - name: Delete http port 2
       ansible.platform.http_port:
         state: absent
-        name: "{{ http_port2.id }}"
-      when: http_port2 is defined and http_port2.id is defined
+        name: "{{ http_port2.http_port.id }}"
+      when: "http_port2 is defined and http_port2.http_port is defined and 'id' in http_port2.http_port"
       failed_when: false
 
     - name: Delete http port 3
       ansible.platform.http_port:
         state: absent
-        name: "{{ http_port3.id }}"
-      when: http_port3 is defined and http_port3.id is defined
+        name: "{{ http_port3.http_port.id }}"
+      when: "http_port3 is defined and http_port3.http_port is defined and 'id' in http_port3.http_port"
       failed_when: false
 
     - name: Delete http port 4
       ansible.platform.http_port:
         state: absent
-        name: "{{ http_port4.id }}"
-      when: http_port4 is defined and http_port4.id is defined
+        name: "{{ http_port4.http_port.id }}"
+      when: "http_port4 is defined and http_port4.http_port is defined and 'id' in http_port4.http_port"
       failed_when: false
 ...

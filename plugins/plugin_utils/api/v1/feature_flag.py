@@ -1,11 +1,19 @@
 """
 API v1 FeatureFlag dataclass and transform mixin.
+
+The Gateway spec exposes feature flags at two endpoints:
+  GET  /api/gateway/v1/feature_flags/           — list all flags
+  GET  /api/gateway/v1/feature_flags/{id}/      — detail
+  PATCH /api/gateway/v1/feature_flags/{id}/     — update (field: value)
+
+There is also a read-only state endpoint /feature_flags_state/ but that
+is not used here; the writable CRUD endpoint is /feature_flags/.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union, List
+from typing import Any, Dict, List, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -15,7 +23,7 @@ from ...platform.types import EndpointOperation, TransformContext
 class APIFeatureFlag_v1(BaseTransformMixin):
     """API v1 representation of a gateway feature flag."""
 
-    name: str
+    name: Optional[str] = None
 
     value: Optional[str] = None
     id: Optional[int] = None
@@ -59,12 +67,11 @@ class FeatureFlagTransformMixin_v1(BaseTransformMixin):
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
-            "update": EndpointOperation(
-                path="/api/gateway/v1/feature_flags/{id}/",
-                method="PATCH",
-                fields=["value"],
-                path_params=["id"],
-                required_for="update",
+            "list": EndpointOperation(
+                path="/api/gateway/v1/feature_flags/",
+                method="GET",
+                fields=[],
+                required_for="find",
                 order=1,
             ),
             "get": EndpointOperation(
@@ -75,11 +82,12 @@ class FeatureFlagTransformMixin_v1(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
-            "list": EndpointOperation(
-                path="/api/gateway/v1/feature_flags/",
-                method="GET",
-                fields=[],
-                required_for="find",
+            "update": EndpointOperation(
+                path="/api/gateway/v1/feature_flags/{id}/",
+                method="PATCH",
+                fields=["value"],
+                path_params=["id"],
+                required_for="update",
                 order=1,
             ),
         }

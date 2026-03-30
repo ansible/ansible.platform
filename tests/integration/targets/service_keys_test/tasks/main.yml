@@ -79,7 +79,7 @@
     - name: Create Controller Service Cluster
       ansible.platform.service_cluster:
         name: "Automation Controller"
-        service_type: "{{ controller_st.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
       register: controller_sc
 
     - name: Create Hub Service Type
@@ -94,7 +94,7 @@
     - name: Create Hub Service Cluster
       ansible.platform.service_cluster:
         name: Automation Hub
-        service_type: "{{ hub_st.id }}"
+        service_type: "{{ hub_st.service_type.id }}"
       register: hub_sc
 
     - name: Create EDA Service Type
@@ -109,7 +109,7 @@
     - name: "Create EDA Service Cluster"
       ansible.platform.service_cluster:
         name: Event Driven Automation
-        service_type: "{{ eda_st.id }}"
+        service_type: "{{ eda_st.service_type.id }}"
       register: eda_sc
     # </Service Clusters> ----------------------------
 
@@ -118,7 +118,7 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         is_active: true
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         algorithm: HS384
         secret: "gateway-secret"
         mark_previous_inactive: false
@@ -145,7 +145,7 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         is_active: true
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         algorithm: HS384
         secret: "gateway-secret"
         mark_previous_inactive: false
@@ -161,7 +161,7 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         is_active: true
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         algorithm: HS384
         mark_previous_inactive: false
       register: recreate_service_key1
@@ -174,7 +174,7 @@
     - name: Create Service Key 2
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 2"
-        service_cluster: "{{ hub_sc.name }}"
+        service_cluster: "{{ hub_sc.service_cluster.name }}"
         secret: "gateway-secret"
         mark_previous_inactive: true
       register: service_key2
@@ -188,7 +188,7 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 3"
         is_active: false
-        service_cluster: "{{ controller_sc.id }}"  # Controller
+        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller
         mark_previous_inactive: false
       register: service_key3
 
@@ -200,7 +200,7 @@
     - name: Create Service Key 4
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 4"
-        service_cluster: "{{ eda_sc.id }}"  # EDA
+        service_cluster: "{{ eda_sc.service_cluster.id }}"  # EDA
         mark_previous_inactive: false
       register: service_key4
 
@@ -212,7 +212,7 @@
     - name: Create Service Key 5
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 5"
-        service_cluster: "{{ controller_sc.id }}"  # Controller, have to set others as inactive
+        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller, have to set others as inactive
         mark_previous_inactive: true
       register: service_key5
 
@@ -223,7 +223,7 @@
 
     - name: Deactivate a key
       ansible.platform.service_key:
-        name: "{{ service_key2.name }}"
+        name: "{{ service_key2.service_key.name }}"
         is_active: false
       register: change_service_key2
 
@@ -231,11 +231,11 @@
       ansible.builtin.assert:
         that:
           - change_service_key2 is changed
-          - change_service_key2.id == change_service_key2.id
+          - change_service_key2.service_key.id == service_key2.service_key.id
 
     - name: See if a key exists
       ansible.platform.service_key:
-        name: "{{ service_key3.id }}"
+        name: "{{ service_key3.service_key.id }}"
         state: exists
       register: exists_service_key3
 
@@ -246,15 +246,15 @@
 
     - name: Rename a key
       ansible.platform.service_key:
-        name: "{{ service_key4.id }}"
-        new_name: "{{ service_key4.id }}-New"
+        name: "{{ service_key4.service_key.id }}"
+        new_name: "{{ service_key4.service_key.id }}-New"
       register: rename_service_key4
 
     - name: Assert that the rename changed an existing service key
       ansible.builtin.assert:
         that:
           - rename_service_key4 is changed
-          - rename_service_key4.id == service_key4.id
+          - rename_service_key4.service_key.id == service_key4.service_key.id
 
     - name: Delete a non-existing service key
       ansible.platform.service_key:
@@ -269,7 +269,7 @@
 
     - name: Delete an actual service key
       ansible.platform.service_key:
-        name: "{{ service_key5.id }}"
+        name: "{{ service_key5.service_key.id }}"
         state: absent
       register: delete
 

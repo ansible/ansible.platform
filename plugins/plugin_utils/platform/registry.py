@@ -4,9 +4,10 @@ This module provides filesystem-based discovery of available API versions
 and module implementations without hardcoded version lists.
 """
 
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional
-import logging
+
 # Commented out for production - q library causes worker crashes
 # import q
 
@@ -20,10 +21,11 @@ except ImportError:
 
     class SimpleVersion:
         """Simple version parser for basic version comparison."""
+
         def __init__(self, version_str: str):
             self.version_str = version_str
             # Extract numeric parts
-            parts = re.findall(r'\d+', version_str)
+            parts = re.findall(r"\d+", version_str)
             self.parts = [int(p) for p in parts] if parts else [0]
 
         def __le__(self, other):
@@ -38,7 +40,7 @@ except ImportError:
     def version_parse(v: str):
         return SimpleVersion(v)
 
-    version = type('version', (), {'parse': version_parse})()
+    version = type("version", (), {"parse": version_parse})()
 
 
 class APIVersionRegistry:
@@ -55,11 +57,7 @@ class APIVersionRegistry:
         module_versions: Dict mapping module name to available versions
     """
 
-    def __init__(
-        self,
-        api_base_path: Optional[str] = None,
-        ansible_models_path: Optional[str] = None
-    ):
+    def __init__(self, api_base_path: Optional[str] = None, ansible_models_path: Optional[str] = None):
         """
         Initialize registry and discover versions.
 
@@ -68,36 +66,27 @@ class APIVersionRegistry:
             ansible_models_path: Path to ansible_models/ (auto-detected if None)
         """
         # Auto-detect paths if not provided
-        # q("Inside APIVersionRegistry init")
-        # q("api_base_path: {api_base_path}")
-        # q("ansible_models_path: {ansible_models_path}")
 
         if api_base_path is None:
             # Assume we're in plugin_utils/platform/
             current_file = Path(__file__)
             plugin_utils = current_file.parent.parent
-            api_base_path = str(plugin_utils / 'api')
+            api_base_path = str(plugin_utils / "api")
 
         if ansible_models_path is None:
             current_file = Path(__file__)
             plugin_utils = current_file.parent.parent
-            ansible_models_path = str(plugin_utils / 'ansible_models')
+            ansible_models_path = str(plugin_utils / "ansible_models")
 
         self.api_base_path = Path(api_base_path)
         self.ansible_models_path = Path(ansible_models_path)
-        # q("self.api_base_path: {self.api_base_path}")
-        # q("self.ansible_models_path: {self.ansible_models_path}")
 
         # Storage for discovered information
         self.versions: Dict[str, List[str]] = {}  # version -> [modules]
         self.module_versions: Dict[str, List[str]] = {}  # module -> [versions]
 
-        # q("self.versions: {self.versions}")
-        # q("self.module_versions: {self.module_versions}")
         # Discover on init
         self._discover_versions()
-        # q("self.versions: {self.versions}")
-        # q("self.module_versions: {self.module_versions}")
 
     def _discover_versions(self) -> None:
         """Scan filesystem to discover API versions and modules."""
@@ -111,17 +100,14 @@ class APIVersionRegistry:
                 continue
 
             # Must start with 'v' and contain digits
-            if not version_dir.name.startswith('v'):
+            if not version_dir.name.startswith("v"):
                 continue
 
             # Extract version string: v1 -> 1, v2_1 -> 2.1
-            version_str = version_dir.name[1:].replace('_', '.')
+            version_str = version_dir.name[1:].replace("_", ".")
 
             # Find module implementations in this version
-            module_files = [
-                f for f in version_dir.glob('*.py')
-                if not f.name.startswith('_') and f.name != 'generated'
-            ]
+            module_files = [f for f in version_dir.glob("*.py") if not f.name.startswith("_") and f.name != "generated"]
 
             module_names = [f.stem for f in module_files]
 
@@ -138,11 +124,7 @@ class APIVersionRegistry:
         for module_name in self.module_versions:
             self.module_versions[module_name].sort(key=version.parse)
 
-        logger.info(
-            "Discovered %s API versions: %s",
-            len(self.versions),
-            sorted(self.versions.keys(), key=version.parse)
-        )
+        logger.info("Discovered %s API versions: %s", len(self.versions), sorted(self.versions.keys(), key=version.parse))
 
     def get_supported_versions(self) -> List[str]:
         """
@@ -187,11 +169,7 @@ class APIVersionRegistry:
         """
         return self.module_versions.get(module_name, [])
 
-    def find_best_version(
-        self,
-        requested_version: str,
-        module_name: str
-    ) -> Optional[str]:
+    def find_best_version(self, requested_version: str, module_name: str) -> Optional[str]:
         """
         Find the best available version for a module.
 
@@ -210,10 +188,7 @@ class APIVersionRegistry:
         available = self.get_versions_for_module(module_name)
 
         if not available:
-            logger.error(
-                "Module '%s' not found in any API version",
-                module_name
-            )
+            logger.error("Module '%s' not found in any API version", module_name)
             return None
 
         requested = version.parse(requested_version)
@@ -224,38 +199,26 @@ class APIVersionRegistry:
             return requested_version
 
         # Find closest lower version (prefer backward compatibility)
-        lower_versions = [
-            (v, vp) for v, vp in available_parsed if vp <= requested
-        ]
+        lower_versions = [(v, vp) for v, vp in available_parsed if vp <= requested]
 
         if lower_versions:
             best = max(lower_versions, key=lambda x: x[1])[0]
-            logger.warning(
-                "Using version %s for %s (requested %s, closest lower version)",
-                best, module_name, requested_version
-            )
+            logger.warning("Using version %s for %s (requested %s, closest lower version)", best, module_name, requested_version)
             return best
 
         # Fallback: closest higher version
-        higher_versions = [
-            (v, vp) for v, vp in available_parsed if vp > requested
-        ]
+        higher_versions = [(v, vp) for v, vp in available_parsed if vp > requested]
 
         if higher_versions:
             best = min(higher_versions, key=lambda x: x[1])[0]
             logger.warning(
-                "Using version %s for %s (requested %s, closest higher version - may have compatibility issues)",
-                best, module_name, requested_version
+                "Using version %s for %s (requested %s, closest higher version - may have compatibility issues)", best, module_name, requested_version
             )
             return best
 
         return None
 
-    def module_supports_version(
-        self,
-        module_name: str,
-        api_version: str
-    ) -> bool:
+    def module_supports_version(self, module_name: str, api_version: str) -> bool:
         """
         Check if a module has an implementation for an API version.
 

@@ -64,7 +64,7 @@
     - name: Update Joe with associated_authenticators
       ansible.platform.user:
         username: "{{ username }}"
-        associated_authenticators: "{{ { test_authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
+        associated_authenticators: "{{ { test_authenticator.authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
       register: joe_authenticators
 
     - name: Assert the user changed in the system
@@ -75,7 +75,7 @@
     - name: Ensure Idempotency of Joe with associated_authenticators
       ansible.platform.user:
         username: "{{ username }}"
-        associated_authenticators: "{{ { test_authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
+        associated_authenticators: "{{ { test_authenticator.authenticator.id: {'uid': username, 'email': username ~ '@example.com'} } }}"
       register: joe_authenticators
 
     - name: Assert the user is not changed the system

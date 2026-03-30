@@ -12,6 +12,7 @@ PYTHON_VERSION:
 	@echo "$(subst python,,$(PYTHON))"
 
 .PHONY: PYTHON_VERSION clean git_hooks_config \
+	check_ruff check_mypy check_pydoclint \
 	collection-install collection-test collection-docs \
 	collection-lint collection-sanity  collection-test-completeness \
 	collection-test-integration-check \
@@ -29,17 +30,17 @@ clean:
 	@-find . -type d -name "__pycache__" -print0 \
 			 -o -type d -name ".pytest_cache" -print0 | xargs -0 $(RM) -rf
 
-## Run black syntax check
-check_black:
-	tox -e black -- --check $(CHECK_SYNTAX_FILES)
+## Run ruff lint and format check (replaces flake8, black, isort)
+check_ruff:
+	tox -e ruff
 
-## Run flake8 syntax check
-check_flake8:
-	tox -e flake8 -- $(CHECK_SYNTAX_FILES)
+## Run mypy static type check
+check_mypy:
+	tox -e mypy
 
-## Run isort syntax check
-check_isort:
-	tox -e isort -- --check $(CHECK_SYNTAX_FILES)
+## Run pydoclint docstring style check
+check_pydoclint:
+	tox -e pydoclint
 
 ## Install the collection locally on your machine
 collection-install:

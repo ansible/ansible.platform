@@ -10,8 +10,8 @@ Requires ansible-core (or ansible) to be installed in the same environment (conn
 imports from ansible.plugins.connection). For full matrix testing use tox-ansible instead.
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add parent of ansible_collections to sys.path so "import ansible_collections.ansible.platform" works
 # Path: .../ansible_collections/ansible/platform/tests/unit/conftest.py -> 4x parent = ansible_collections dir

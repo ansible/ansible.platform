@@ -6,7 +6,7 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List, Optional
 
 
 @dataclass
@@ -27,7 +27,7 @@ class AnsibleRoleDefinition:
     description: Optional[str] = None
     content_type: Optional[str] = None
     permissions: Optional[List[str]] = None
-    state: str = 'present'
+    state: str = "present"
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None

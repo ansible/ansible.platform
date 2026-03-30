@@ -18,12 +18,12 @@ jobs:
       fail-fast: false
       matrix:
         tests:
-          - name: flake8
-            command: check_flake8
-          - name: black
-            command: check_black
-          - name: isort
-            command: check_isort
+          - name: ruff
+            command: check_ruff
+          - name: mypy
+            command: check_mypy
+          - name: pydoclint
+            command: check_pydoclint
     steps:
       - name: Install make
         run: sudo apt install make

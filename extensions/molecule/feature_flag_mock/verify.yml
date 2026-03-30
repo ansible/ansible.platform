@@ -25,7 +25,7 @@
       ansible.builtin.assert:
         that:
           - verify_result is not failed
-          - verify_result.get('value') | string | lower == 'true'
+          - verify_result.feature_flag.value | string | lower == 'true'
         fail_msg: "Verify: feature_flag FEATURE_EXAMPLE_ENABLED value is not True."
       vars:
         ansible_connection: local

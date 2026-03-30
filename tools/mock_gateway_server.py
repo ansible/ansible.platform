@@ -41,11 +41,11 @@ def _now_iso() -> str:
 # Generic in-memory CRUD store for a single resource type
 # ---------------------------------------------------------------------------
 
+
 class GenericResource:
     """Thread-safe CRUD store for any named resource."""
 
-    def __init__(self, resource_name: str, required_fields: Optional[List[str]] = None,
-                 start_id: int = 2000, patch_fields: Optional[List[str]] = None):
+    def __init__(self, resource_name: str, required_fields: Optional[List[str]] = None, start_id: int = 2000, patch_fields: Optional[List[str]] = None):
         self.lock = threading.Lock()
         self.resource_name = resource_name
         self.required_fields: List[str] = required_fields or []
@@ -92,6 +92,7 @@ class GenericResource:
                     items = [i for i in items if str(i.get(k, "")) == str(v)]
                 # Apply OR-filter: match by numeric id OR by name
                 if or_id_val is not None or or_name_val is not None:
+
                     def _or_match(item: Dict[str, Any]) -> bool:
                         if or_id_val is not None:
                             try:
@@ -103,6 +104,7 @@ class GenericResource:
                             if str(item.get("name", "")) == str(or_name_val):
                                 return True
                         return False
+
                     items = [i for i in items if _or_match(i)]
             return {"count": len(items), "results": items}
 
@@ -151,6 +153,7 @@ class GenericResource:
 # ---------------------------------------------------------------------------
 # Top-level Store — holds all resources
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Store:
@@ -221,16 +224,30 @@ class Store:
         ff_store = self._resources.get("feature_flags")
         if ff_store and not ff_store._items:
             flags = [
-                {"id": 3401, "name": "FEATURE_EXAMPLE_ENABLED", "value": "False",
-                 "toggle_type": "run-time", "condition": "boolean",
-                 "description": "Example runtime feature flag", "required": False,
-                 "support_level": "DEVELOPER_PREVIEW", "visibility": True,
-                 "labels": []},
-                {"id": 3402, "name": "FEATURE_EXPERIMENTAL_UI", "value": "False",
-                 "toggle_type": "run-time", "condition": "boolean",
-                 "description": "Experimental UI features", "required": False,
-                 "support_level": "DEVELOPER_PREVIEW", "visibility": True,
-                 "labels": []},
+                {
+                    "id": 3401,
+                    "name": "FEATURE_EXAMPLE_ENABLED",
+                    "value": "False",
+                    "toggle_type": "run-time",
+                    "condition": "boolean",
+                    "description": "Example runtime feature flag",
+                    "required": False,
+                    "support_level": "DEVELOPER_PREVIEW",
+                    "visibility": True,
+                    "labels": [],
+                },
+                {
+                    "id": 3402,
+                    "name": "FEATURE_EXPERIMENTAL_UI",
+                    "value": "False",
+                    "toggle_type": "run-time",
+                    "condition": "boolean",
+                    "description": "Experimental UI features",
+                    "required": False,
+                    "support_level": "DEVELOPER_PREVIEW",
+                    "visibility": True,
+                    "labels": [],
+                },
             ]
             ff_store.seed("1", flags)
 
@@ -287,8 +304,7 @@ class Store:
                 raise KeyError("not found")
             user = dict(self.users[user_id])
             for k, v in payload.items():
-                if k in {"username", "email", "first_name", "last_name",
-                         "password", "is_superuser", "is_platform_auditor"}:
+                if k in {"username", "email", "first_name", "last_name", "password", "is_superuser", "is_platform_auditor"}:
                     user[k] = "$encrypted$" if k == "password" and v else v
             user["modified"] = _now_iso()
             self.users[user_id] = user
@@ -402,8 +418,7 @@ class Store:
             self.teams_by_id[team_id] = team
             return team
 
-    def list_teams(self, name: Optional[str] = None,
-                   organization: Optional[int] = None) -> Dict[str, Any]:
+    def list_teams(self, name: Optional[str] = None, organization: Optional[int] = None) -> Dict[str, Any]:
         with self.lock:
             items = list(self.teams_by_id.values())
             if name is not None:
@@ -460,6 +475,7 @@ class Store:
 # HTTP Request Handler
 # ---------------------------------------------------------------------------
 
+
 class MockGatewayHandler(BaseHTTPRequestHandler):
     server_version = "MockGateway/0.1"
 
@@ -469,8 +485,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         return  # suppress per-request noise
 
-    def _send_json(self, code: int, payload: Any,
-                   headers: Optional[Dict[str, str]] = None) -> None:
+    def _send_json(self, code: int, payload: Any, headers: Optional[Dict[str, str]] = None) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -501,9 +516,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     # Generic CRUD helper
     # ------------------------------------------------------------------
 
-    def _handle_generic_resource(
-        self, resource_name: str, parts: list, version: str, qs: Dict[str, list]
-    ) -> bool:
+    def _handle_generic_resource(self, resource_name: str, parts: list, version: str, qs: Dict[str, list]) -> bool:
         """
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
@@ -575,19 +588,17 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         # without an Authorization header to discover API versions before adding credentials.
         if self.command == "GET":
             _vparts = [p for p in path.split("/") if p]
-            _is_gateway_root = (len(_vparts) == 2
-                                and _vparts[0] == "api"
-                                and _vparts[1] == "gateway")
-            _is_versioned_root = (len(_vparts) == 3
-                                  and _vparts[0] == "api"
-                                  and _vparts[1] == "gateway"
-                                  and _vparts[2].startswith("v"))
+            _is_gateway_root = len(_vparts) == 2 and _vparts[0] == "api" and _vparts[1] == "gateway"
+            _is_versioned_root = len(_vparts) == 3 and _vparts[0] == "api" and _vparts[1] == "gateway" and _vparts[2].startswith("v")
             if _is_gateway_root or _is_versioned_root:
                 v = self.reported_api_version
-                self._send_json(200, {
-                    "current_version": f"/api/gateway/v{v}/",
-                    "available_versions": {"v1": "/api/gateway/v1/", "v2": "/api/gateway/v2/"},
-                })
+                self._send_json(
+                    200,
+                    {
+                        "current_version": f"/api/gateway/v{v}/",
+                        "available_versions": {"v1": "/api/gateway/v1/", "v2": "/api/gateway/v2/"},
+                    },
+                )
                 return
 
         if not self._require_auth():
@@ -773,16 +784,16 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         self._send_json(404, {"detail": "Not Found"})
 
-    def do_GET(self) -> None:    # noqa: N802
+    def do_GET(self) -> None:  # noqa: N802
         self._route()
 
-    def do_POST(self) -> None:   # noqa: N802
+    def do_POST(self) -> None:  # noqa: N802
         self._route()
 
     def do_PATCH(self) -> None:  # noqa: N802
         self._route()
 
-    def do_PUT(self) -> None:    # noqa: N802
+    def do_PUT(self) -> None:  # noqa: N802
         self._route()
 
     def do_DELETE(self) -> None:  # noqa: N802
@@ -793,9 +804,9 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 # Server bootstrap
 # ---------------------------------------------------------------------------
 
+
 class MockGatewayServer(ThreadingHTTPServer):
-    def __init__(self, server_address, RequestHandlerClass, *,
-                 store: Store, reported_api_version: str):
+    def __init__(self, server_address, RequestHandlerClass, *, store: Store, reported_api_version: str):
         super().__init__(server_address, RequestHandlerClass)
         self.store = store
         self.reported_api_version = reported_api_version
@@ -806,8 +817,7 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--reported-api-version", default="1")
-    parser.add_argument("--daemon", action="store_true",
-                        help="Fork and print child PID (for Molecule create/destroy).")
+    parser.add_argument("--daemon", action="store_true", help="Fork and print child PID (for Molecule create/destroy).")
     args = parser.parse_args()
 
     store = Store()
@@ -826,6 +836,7 @@ def main() -> int:
 
     if args.daemon:
         import os
+
         pid = os.fork()
         if pid:
             print(str(pid))
@@ -834,8 +845,7 @@ def main() -> int:
         return 0
 
     resources = ", ".join(sorted(store._resources.keys()))
-    print(f"Mock Gateway on http://{args.host}:{args.port} "
-          f"(api_version={args.reported_api_version})")
+    print(f"Mock Gateway on http://{args.host}:{args.port} (api_version={args.reported_api_version})")
     print(f"Generic resources: {resources}")
     print("Legacy: users, organizations, teams | Special: settings, settings/all")
     httpd.serve_forever()

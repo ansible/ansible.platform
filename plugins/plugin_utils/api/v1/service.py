@@ -5,7 +5,7 @@ API v1 Service dataclass and transform mixin.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, Union
+from typing import Any, Dict, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -17,7 +17,7 @@ _API_PREFIX = "/api/"
 class APIService_v1(BaseTransformMixin):
     """API v1 representation of a gateway service."""
 
-    name: str
+    name: Optional[str] = None
 
     description: Optional[str] = None
     api_slug: Optional[str] = None
@@ -78,8 +78,11 @@ class ServiceTransformMixin_v1(BaseTransformMixin):
 
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
-        if op in ("update", "enforced") and new_name is not None:
-            api_data["name"] = new_name
+        if op in ("update", "enforced"):
+            if new_name is not None:
+                api_data["name"] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data["name"] = str(name)
         elif name is not None:
             api_data["name"] = str(name)
 

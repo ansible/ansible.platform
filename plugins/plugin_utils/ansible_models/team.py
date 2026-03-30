@@ -27,7 +27,7 @@ class AnsibleTeam:
     new_name: Optional[str] = None
     description: Optional[str] = None
     new_organization: Optional[str] = None
-    state: str = 'present'
+    state: str = "present"
 
     # Resolved id for API (set by action plugin for find; not from playbook)
     organization_id: Optional[int] = None

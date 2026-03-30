@@ -116,14 +116,14 @@ def main():
         merge_with_user=dict(),
         merge_accounts_with_same_uid=dict(type="bool", default=False),
         remove_other_authenticators=dict(type="bool", default=False),
-        state=dict(default='present', choices=['present', 'exists']),
+        state=dict(default="present", choices=["present", "exists"]),
     )
 
     # Create a module for ourselves
     module = AAPModule(
         argument_spec=argument_spec,
         mutually_exclusive=[
-            ('merge_with_user', 'merge_accounts_with_same_uid'),
+            ("merge_with_user", "merge_accounts_with_same_uid"),
         ],
     )
     AAPAuthenticatorUserMove(module).manage()

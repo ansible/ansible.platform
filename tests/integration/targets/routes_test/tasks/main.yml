@@ -130,11 +130,11 @@
       vars:
         gateway_service_clusters:
           - name: "{{ test_id }}gateway"
-            service_type: "{{ __service_types_create_result.results[0].id }}"
+            service_type: "{{ __service_types_create_result.results[0].service_type.id }}"
           - name: "{{ test_id }}hub"
-            service_type: "{{ __service_types_create_result.results[1].id }}"
+            service_type: "{{ __service_types_create_result.results[1].service_type.id }}"
           - name: "{{ test_id }}controller"
-            service_type: "{{ __service_types_create_result.results[2].id }}"
+            service_type: "{{ __service_types_create_result.results[2].service_type.id }}"
 
     ### Create Routes ###
     - name: Create Routes with check mode
@@ -208,7 +208,7 @@
             service_port: 1234
           - name: "{{ test_id }}Gateway Svc Route 2"
             gateway_path: '/gw-svc-2/v1/'
-            http_port: "{{ __http_port_create_result.results[0].id }}"  # Port 9082
+            http_port: "{{ __http_port_create_result.results[0].http_port.id }}"  # Port 9082
             service_cluster: "{{ test_id }}gateway"
             is_service_https: true
             service_path: '/bbb/v2/'

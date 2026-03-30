@@ -7,12 +7,12 @@ This module provides secure credential handling, including:
 - Secure credential lifecycle management
 """
 
+import hashlib
 import logging
 import threading
-import hashlib
-from typing import Optional, Dict, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ class CredentialNamespace:
     This ensures that different credentials for the same gateway
     get separate manager processes and isolated storage.
     """
+
     gateway_url: str
     credential_hash: str
     process_id: Optional[str] = None
@@ -43,8 +44,8 @@ class CredentialNamespace:
         components = [self.gateway_url, self.credential_hash]
         if self.process_id:
             components.append(self.process_id)
-        namespace_str = ':'.join(components)
-        return hashlib.sha256(namespace_str.encode('utf-8')).hexdigest()[:16]
+        namespace_str = ":".join(components)
+        return hashlib.sha256(namespace_str.encode("utf-8")).hexdigest()[:16]
 
     @classmethod
     def from_credentials(
@@ -53,8 +54,8 @@ class CredentialNamespace:
         username: Optional[str] = None,
         password: Optional[str] = None,
         oauth_token: Optional[str] = None,
-        process_id: Optional[str] = None
-    ) -> 'CredentialNamespace':
+        process_id: Optional[str] = None,
+    ) -> "CredentialNamespace":
         """
         Create namespace from credentials.
 
@@ -76,18 +77,15 @@ class CredentialNamespace:
         else:
             cred_string = "none"
 
-        credential_hash = hashlib.sha256(cred_string.encode('utf-8')).hexdigest()[:16]
+        credential_hash = hashlib.sha256(cred_string.encode("utf-8")).hexdigest()[:16]
 
-        return cls(
-            gateway_url=gateway_url,
-            credential_hash=credential_hash,
-            process_id=process_id
-        )
+        return cls(gateway_url=gateway_url, credential_hash=credential_hash, process_id=process_id)
 
 
 @dataclass
 class TokenInfo:
     """Information about an OAuth token."""
+
     token: str
     refresh_token: Optional[str] = None
     expires_at: Optional[datetime] = None
@@ -130,6 +128,7 @@ class CredentialStore:
     Credentials are stored only in memory and are never written to disk.
     Each namespace has its own isolated credential store.
     """
+
     namespace: CredentialNamespace
     username: Optional[str] = None
     password: Optional[str] = None
@@ -163,12 +162,7 @@ class CredentialStore:
             if expires_in:
                 expires_at = datetime.now() + timedelta(seconds=expires_in)
 
-            self.token_info = TokenInfo(
-                token=token,
-                refresh_token=refresh_token,
-                expires_at=expires_at,
-                issued_at=datetime.now()
-            )
+            self.token_info = TokenInfo(token=token, refresh_token=refresh_token, expires_at=expires_at, issued_at=datetime.now())
             self.last_used = datetime.now()
             logger.info("Token updated for namespace %s, expires_at=%s", self.namespace.namespace_id, expires_at)
 
@@ -204,7 +198,7 @@ class CredentialManager:
         username: Optional[str] = None,
         password: Optional[str] = None,
         oauth_token: Optional[str] = None,
-        process_id: Optional[str] = None
+        process_id: Optional[str] = None,
     ) -> CredentialStore:
         """
         Get or create credential store for namespace.
@@ -220,20 +214,13 @@ class CredentialManager:
             CredentialStore for the namespace
         """
         namespace = CredentialNamespace.from_credentials(
-            gateway_url=gateway_url,
-            username=username,
-            password=password,
-            oauth_token=oauth_token,
-            process_id=process_id
+            gateway_url=gateway_url, username=username, password=password, oauth_token=oauth_token, process_id=process_id
         )
 
         with self._lock:
             if namespace.namespace_id not in self._stores:
                 store = CredentialStore(
-                    namespace=namespace,
-                    username=username,
-                    password=password,
-                    token_info=TokenInfo(token=oauth_token) if oauth_token else None
+                    namespace=namespace, username=username, password=password, token_info=TokenInfo(token=oauth_token) if oauth_token else None
                 )
                 self._stores[namespace.namespace_id] = store
                 logger.info("Created credential store for namespace %s", namespace.namespace_id)
