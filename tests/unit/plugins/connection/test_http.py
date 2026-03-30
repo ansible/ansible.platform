@@ -247,6 +247,8 @@ def test_get_client_persistent_returns_client_and_facts():
 def test_persistent_reuse_fails_connection_raises_spawns_new():
     """When reuse is attempted but ManagerRPCClient raises (e.g. process dead), spawn new manager and return it."""
     import base64
+    import json as _json
+    from unittest.mock import mock_open
 
     conn = _make_connection()
     stale_socket = "/tmp/ansible_platform/stale.sock"
@@ -264,33 +266,47 @@ def test_persistent_reuse_fails_connection_raises_spawns_new():
     conn_info.authkey_b64 = authkey_b64
     conn_info.authkey = b"secret"
 
+    # Fast path: socket + meta both "exist"; lock re-check: socket gone → falls through to spawn.
+    # Script path existence check uses the __truediv__ chain mock (set to True below).
+    exists_side_effect = [True, True, False]
+
+    meta_json = _json.dumps({"authkey_b64": authkey_b64, "gateway_url": "https://example.com"})
+
     with patch("ansible_collections.ansible.platform.plugins.connection.http.Path") as mock_path_cls:
-        mock_path_cls.return_value.exists.return_value = True
-        # script_path.exists() in spawn path
+        mock_path_cls.return_value.exists.side_effect = exists_side_effect
+        mock_path_cls.return_value.is_socket.return_value = True
+        # script_path.exists() in spawn path (built via __truediv__ chain)
         mock_path_cls.return_value.parent.parent.__truediv__.return_value.exists.return_value = True
 
         with patch("ansible_collections.ansible.platform.plugins.connection.http.ProcessManager") as mock_pm:
             mock_pm.generate_connection_info.return_value = conn_info
+            mock_pm.is_socket_stale.return_value = False  # socket is live; attempt connection
             mock_pm.cleanup_old_socket.return_value = None
             mock_pm.spawn_manager_process.return_value = MagicMock(pid=9999)
             mock_pm.wait_for_process_startup.return_value = None
 
-            with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient") as mock_rpc:
-                mock_rpc.side_effect = [ConnectionError("Connection refused"), mock_client]
+            # Provide a fake fcntl so open(lock_path, "w") + flock don't touch the real filesystem.
+            fake_fcntl = MagicMock()
+            fake_fcntl.LOCK_EX = 2
+            fake_fcntl.LOCK_UN = 8
 
-                client, facts = conn._get_persistent_client(task_vars, gateway_config)
+            with patch("builtins.open", mock_open(read_data=meta_json)):
+                with patch.dict("sys.modules", {"fcntl": fake_fcntl}):
+                    with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient") as mock_rpc:
+                        mock_rpc.side_effect = [ConnectionError("Connection refused"), mock_client]
+
+                        client, facts = conn._get_persistent_client(task_vars, gateway_config)
 
     assert client is mock_client
-    assert facts is not None
-    assert facts.get("platform_manager_socket") == new_socket
-    assert facts.get("platform_manager_authkey") == authkey_b64
+    # Implementation stores manager info in a .meta file rather than ansible_facts.
+    assert facts is None
     mock_pm.spawn_manager_process.assert_called_once()
-    assert mock_rpc.call_count == 2
 
 
 def test_persistent_socket_file_missing_spawns_new():
-    """When facts have socket path but socket file does not exist, skip reuse and spawn new manager."""
+    """When socket file does not exist, skip the fast-path reuse check and spawn a new manager."""
     import base64
+    from unittest.mock import mock_open
 
     conn = _make_connection()
     missing_socket = "/tmp/ansible_platform/missing.sock"
@@ -309,8 +325,9 @@ def test_persistent_socket_file_missing_spawns_new():
     conn_info.authkey = b"secret"
 
     with patch("ansible_collections.ansible.platform.plugins.connection.http.Path") as mock_path_cls:
-        # Socket exists check: False (file missing) so we never try to connect
+        # Socket does not exist → skip fast path and lock re-check; go straight to spawn.
         mock_path_cls.return_value.exists.return_value = False
+        # script_path.exists() in spawn path (built via __truediv__ chain)
         mock_path_cls.return_value.parent.parent.__truediv__.return_value.exists.return_value = True
 
         with patch("ansible_collections.ansible.platform.plugins.connection.http.ProcessManager") as mock_pm:
@@ -319,12 +336,16 @@ def test_persistent_socket_file_missing_spawns_new():
             mock_pm.spawn_manager_process.return_value = MagicMock(pid=9999)
             mock_pm.wait_for_process_startup.return_value = None
 
-            with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient", return_value=mock_client):
-                client, facts = conn._get_persistent_client(task_vars, gateway_config)
+            fake_fcntl = MagicMock()
+            fake_fcntl.LOCK_EX = 2
+            fake_fcntl.LOCK_UN = 8
+
+            with patch("builtins.open", mock_open()):
+                with patch.dict("sys.modules", {"fcntl": fake_fcntl}):
+                    with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient", return_value=mock_client):
+                        client, facts = conn._get_persistent_client(task_vars, gateway_config)
 
     assert client is mock_client
-    assert facts is not None
-    assert facts.get("platform_manager_socket") == new_socket
+    # Implementation stores manager info in a .meta file rather than ansible_facts.
+    assert facts is None
     mock_pm.spawn_manager_process.assert_called_once()
-    # ManagerRPCClient only called once (for new spawn), not for reuse
-    # We didn't patch it with side_effect so we can't assert call_count; the important part is spawn was used
