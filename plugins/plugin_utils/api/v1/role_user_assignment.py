@@ -4,14 +4,14 @@ API v1 RoleUserAssignment dataclass and transform mixin.
 
 from __future__ import annotations
 
-import logging as _logging
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
 
-_logger = _logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
@@ -27,10 +27,10 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
     try:
         result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
         if result is None:
-            _logger.debug("_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'", lookup_field, value, endpoint)
+            logger.debug("_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'", lookup_field, value, endpoint)
         return result
     except Exception as exc:
-        _logger.debug("_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s", lookup_field, value, endpoint, type(exc).__name__, exc)
+        logger.debug("_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s", lookup_field, value, endpoint, type(exc).__name__, exc)
         return None
 
 

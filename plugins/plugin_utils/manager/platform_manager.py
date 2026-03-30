@@ -114,8 +114,8 @@ class PlatformService(BaseAPIClient):
         # Detect API version dynamically
         self.api_version = self._detect_api_version()
         logger.info("PlatformService: API version locked in for execution: v%s", self.api_version)
+        self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Final validation - ensure api_version is '1' (AAP Gateway currently only supports v1)
         logger.info("PlatformService initialized with API v%s", self.api_version)
 
         # Performance counters (thread-safe)
@@ -345,111 +345,82 @@ class PlatformService(BaseAPIClient):
         """
         Detect platform API version.
 
-        Uses the /api/gateway/ endpoint which returns version information in JSON format:
-        {
-          "current_version": "/api/gateway/v1/",
-          "available_versions": {
-            "v1": "/api/gateway/v1/"
-          }
-        }
-
-        The method:
-        1. Makes a GET request to /api/gateway/
-        2. Parses the JSON response to extract current_version
-        3. Negotiates the highest mutual version from available_versions
-        4. Dynamically falls back to highest collection version if detection fails.
+        Pings /api/gateway/v1/ping/ and reads the X-API-Version response header
+        first; falls back to parsing the JSON body if the header is absent.
+        If the detected version is not supported by this collection, falls back
+        to the highest locally-supported version rather than hardcoding '1'.
 
         Returns:
-            Version string (e.g., '1', '2.1')
+            Version string (e.g., '1', '2')
         """
         requests = _get_requests()
-        # Write to both logger and stderr for visibility in manager process logs
         import os
         import re
         import sys
         from pathlib import Path
 
-        # Get error_log path from environment (set by process_manager.py when spawning)
         _error_log_path = None
         try:
             socket_dir = os.environ.get("ANSIBLE_PLATFORM_SOCKET_DIR")
             if socket_dir:
                 inventory_hostname = os.environ.get("ANSIBLE_PLATFORM_HOSTNAME", "localhost")
                 _error_log_path = Path(socket_dir) / f"manager_error_{inventory_hostname}.log"
-                # Note: error_log is created by manager_process.py before PlatformService is instantiated
-                # so it should exist, but we'll try to write anyway
         except Exception:
             pass
 
         try:
-            # Use the /api/gateway/ endpoint which provides version information
-            gateway_url = f"{self.base_url.rstrip('/')}/api/gateway/"
-            logger.debug("PlatformService: Detecting API version via %s", gateway_url)
+            ping_url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
+            logger.debug("PlatformService: Detecting API version via %s", ping_url)
 
-            # Make request using session (authentication headers already set)
-            response = self.session.get(gateway_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(ping_url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
 
             version_str = None
 
-            # Parse JSON response
-            if response.headers.get("Content-Type", "").startswith("application/json"):
+            # 1. Prefer the X-API-Version response header (fast, no body parsing needed)
+            if "X-API-Version" in response.headers:
+                version_str = response.headers["X-API-Version"].lstrip("v")
+                logger.debug("PlatformService: Extracted version '%s' from X-API-Version header", version_str)
+
+            # 2. Fall back to JSON body
+            if not version_str and response.headers.get("Content-Type", "").startswith("application/json"):
                 try:
                     response_data = response.json()
-                    logger.debug("PlatformService: Gateway API response: %s", response_data)
-
-                    # Extract version from current_version field (e.g., "/api/gateway/v1/" -> "1")
-                    if "current_version" in response_data:
-                        current_version_path = response_data["current_version"]
-                        version_match = re.search(r"/v(\d+(?:\.\d+)?)/?$", current_version_path)
+                    if "version" in response_data:
+                        version_str = str(response_data["version"]).lstrip("v")
+                    elif "current_version" in response_data:
+                        version_match = re.search(r"/v(\d+(?:\.\d+)?)/?$", response_data["current_version"])
                         if version_match:
                             version_str = version_match.group(1)
-                            logger.debug("PlatformService: Extracted version '%s' from current_version path", version_str)
-
-                    # 2. Negotiate highest mutual version from available_versions
-                    if not version_str and "available_versions" in response_data:
-                        available = response_data["available_versions"]
-                        if isinstance(available, dict) and available:
-                            platform_versions = [v.lstrip("v") for v in available.keys()]
-                            collection_supported = self.registry.get_supported_versions()
-                            mutual_versions = [v for v in platform_versions if v in collection_supported]
-
-                            if mutual_versions:
-                                try:
-                                    from packaging.version import parse as parse_version
-                                except ImportError:
-                                    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
-
-                                    parse_version = version.parse
-                                version_str = max(mutual_versions, key=parse_version)
-                                logger.debug("PlatformService: Negotiated mutual version '%s' from available_versions", version_str)
-
                 except (ValueError, KeyError, AttributeError) as e:
-                    logger.debug("PlatformService: Could not parse version from response: %s", e)
+                    logger.debug("PlatformService: Could not parse version from response body: %s", e)
 
             if version_str and version_str in self.registry.get_supported_versions():
                 logger.info("PlatformService: API version locked in: v%s", version_str)
                 return version_str
+            elif version_str:
+                # Gateway returned a version this collection doesn't support yet.
+                # Fall back to the highest version we do support rather than '1'.
+                logger.warning(
+                    "PlatformService: Detected version v%s is not supported by this collection. "
+                    "Falling back to highest supported version.",
+                    version_str,
+                )
 
         except requests.RequestException as e:
-            # Network/HTTP errors - default to v1
-            error_msg = f"PlatformService: Version detection failed (HTTP error): {e}, defaulting to v1"
+            error_msg = f"PlatformService: Version detection failed (HTTP error): {e}"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
-            return "1"
         except Exception as e:
-            # Any other errors - default to v1
-            error_msg = f"PlatformService: Version detection failed (unexpected error): {e}, defaulting to v1"
+            error_msg = f"PlatformService: Version detection failed (unexpected error): {e}"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
-            import traceback
 
-            print(traceback.format_exc(), file=sys.stderr, flush=True)
         latest_supported = self.registry.get_latest_version()
         if not latest_supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
 
-        logger.info("PlatformService: Version mismatch or detection failed. Falling back to highest supported: v%s", latest_supported)
+        logger.info("PlatformService: Falling back to highest collection version: v%s", latest_supported)
         return latest_supported
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
@@ -495,11 +466,6 @@ class PlatformService(BaseAPIClient):
         Raises:
             ValueError: If operation is unknown or execution fails
         """
-        import time
-
-        # Performance timing: Manager processing start
-        manager_start = time.perf_counter()
-
         logger.info("Executing %s on %s", operation, module_name)
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
@@ -528,35 +494,6 @@ class PlatformService(BaseAPIClient):
                 result = self._find_resource(ansible_instance, MixinClass, context)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
-
-            # Performance timing: Manager processing end
-            manager_end = time.perf_counter()
-            manager_elapsed = manager_end - manager_start
-
-            # Extract API call time from context if available
-            api_time = 0
-            if isinstance(context, dict) and "timing" in context:
-                api_time = context["timing"].get("api_call_time", 0)
-            elif hasattr(context, "timing"):
-                api_time = getattr(context.timing, "api_call_time", 0)
-
-            # Calculate our code time in manager (excluding API call which is AAP's time)
-            # Manager time includes: transformations, class loading, etc.
-            # But API call time is AAP response time, so subtract it
-            our_manager_code_time = manager_elapsed - api_time
-
-            # Add timing info to result
-            if isinstance(result, dict):
-                result.setdefault("_timing", {})["manager_processing_time"] = manager_elapsed
-                result["_timing"]["manager_start"] = manager_start
-                result["_timing"]["manager_end"] = manager_end
-                result["_timing"]["api_call_time"] = api_time
-                result["_timing"]["our_manager_code_time"] = our_manager_code_time
-
-                # Add HTTP and TLS metrics (thread-safe read)
-                with self._lock:
-                    result["_timing"]["http_request_count"] = self._http_request_count
-                    result["_timing"]["tls_handshake_count"] = self._tls_handshake_count
 
             return result
 
@@ -1006,10 +943,6 @@ class PlatformService(BaseAPIClient):
 
             # Make API call
             logger.debug("Calling %s %s", endpoint_op.method, url)
-            # Performance timing: API call start
-            import time
-
-            api_start = time.perf_counter()
 
             try:
                 # Increment HTTP request counter (thread-safe)
@@ -1018,20 +951,6 @@ class PlatformService(BaseAPIClient):
 
                 response = self.session.request(endpoint_op.method, url, json=request_data, timeout=self.request_timeout, verify=self.verify_ssl)
                 response.raise_for_status()
-
-                # Performance timing: API call end
-                api_end = time.perf_counter()
-                api_elapsed = api_end - api_start
-
-                # Store timing in context for later retrieval
-                if hasattr(context, "timing"):
-                    context.timing["api_call_time"] = api_elapsed
-                    context.timing["api_call_start"] = api_start
-                    context.timing["api_call_end"] = api_end
-                elif isinstance(context, dict):
-                    context.setdefault("timing", {})["api_call_time"] = api_elapsed
-                    context["timing"]["api_call_start"] = api_start
-                    context["timing"]["api_call_end"] = api_end
 
             except Exception as e:
                 logger.error("API call failed: %s", e)

@@ -16,14 +16,10 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import logging
-import time
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.settings import AnsibleSettings
-
-logger = logging.getLogger(__name__)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -38,8 +34,6 @@ class ActionModule(BaseResourceActionPlugin):
         self._task_vars = task_vars
         result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
-
-        action_start = time.perf_counter()
 
         try:
             doc = self._get_documentation()
@@ -124,8 +118,6 @@ class ActionModule(BaseResourceActionPlugin):
                     },
                 }
             )
-
-            result.setdefault("_timing", {})["action_plugin_time"] = time.perf_counter() - action_start
 
         except Exception as e:
             import traceback

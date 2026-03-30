@@ -5,7 +5,6 @@ with the persistent Platform Manager service.
 """
 
 import logging
-import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -84,9 +83,6 @@ class ManagerRPCClient:
         """
         from dataclasses import asdict, is_dataclass
 
-        # Performance timing: RPC call start
-        rpc_start = time.perf_counter()
-
         # Convert to dict for RPC
         if is_dataclass(ansible_data):
             data_dict = asdict(ansible_data)
@@ -94,19 +90,7 @@ class ManagerRPCClient:
             data_dict = ansible_data
 
         # Execute via proxy
-        result_dict = self.service_proxy.execute(operation, module_name, data_dict)
-
-        # Performance timing: RPC call end
-        rpc_end = time.perf_counter()
-        rpc_elapsed = rpc_end - rpc_start
-
-        # Add timing info to result if it's a dict
-        if isinstance(result_dict, dict):
-            result_dict.setdefault("_timing", {})["rpc_time"] = rpc_elapsed
-            result_dict["_timing"]["rpc_start"] = rpc_start
-            result_dict["_timing"]["rpc_end"] = rpc_end
-
-        return result_dict
+        return self.service_proxy.execute(operation, module_name, data_dict)
 
     def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
         """

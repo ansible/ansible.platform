@@ -52,12 +52,14 @@ def main():
     gateway_request_timeout = float(sys.argv[9])
     log_marker("Arguments parsed successfully")
 
-    # Read sys.path and authkey from environment
+    # Read sys.path, authkey, and owner PID from environment
     log_marker("Reading environment variables...")
     sys_path_b64 = os.environ.get("ANSIBLE_PLATFORM_SYS_PATH", "")
     authkey_b64 = os.environ.get("ANSIBLE_PLATFORM_AUTHKEY", "")
+    owner_pid_str = os.environ.get("ANSIBLE_PLATFORM_OWNER_PID", "")
     log_marker(f"Got sys_path_b64 length: {len(sys_path_b64)}")
     log_marker(f"Got authkey_b64 length: {len(authkey_b64)}")
+    log_marker(f"Got owner_pid: {owner_pid_str}")
 
     # Decode sys.path
     log_marker("Decoding sys.path...")
@@ -236,6 +238,50 @@ def main():
         with open(error_log, "a") as f:
             f.write("Signal handlers registered\n")
             f.flush()
+
+        # ------------------------------------------------------------------ #
+        # Owner-process watchdog                                              #
+        # ------------------------------------------------------------------ #
+        # When ansible-playbook exits the manager should also exit — with no
+        # Ansible callback config required.  We watch the main ansible-playbook
+        # process PID (passed via ANSIBLE_PLATFORM_OWNER_PID) and shut down
+        # automatically once that process is gone.
+        _owner_pid = None
+        if owner_pid_str:
+            try:
+                _owner_pid = int(owner_pid_str)
+            except ValueError:
+                pass
+
+        if _owner_pid:
+            with open(error_log, "a") as f:
+                f.write(f"Starting owner watchdog for PID {_owner_pid}\n")
+                f.flush()
+
+            def _owner_watchdog():
+                import time as _time
+                while True:
+                    _time.sleep(3)
+                    try:
+                        os.kill(_owner_pid, 0)  # signal 0 = liveness check
+                    except ProcessLookupError:
+                        # Owner (ansible-playbook) has exited — clean shutdown.
+                        with open(error_log, "a") as _f:
+                            _f.write(f"Owner PID {_owner_pid} gone, shutting down manager\n")
+                            _f.flush()
+                        try:
+                            _shutdown_service()
+                        except Exception:
+                            pass
+                        os._exit(0)
+                    except PermissionError:
+                        pass  # Process exists but owned by another user — keep running
+
+            _watchdog_thread = threading.Thread(target=_owner_watchdog, daemon=True, name="owner-watchdog")
+            _watchdog_thread.start()
+            with open(error_log, "a") as f:
+                f.write("Owner watchdog thread started\n")
+                f.flush()
 
         # Start manager server (creates socket file — action plugin can now connect)
         manager = PlatformManager(address=socket_path, authkey=authkey)

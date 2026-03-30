@@ -146,7 +146,7 @@ class ActionModule(BaseResourceActionPlugin):
                 raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
 
             # ---- build clean result -------------------------------------------
-            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"_timing", "changed", "assignment_objects", "assignments"}
+            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "assignment_objects", "assignments"}
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
 
@@ -187,7 +187,7 @@ class ActionModule(BaseResourceActionPlugin):
         operation = self._detect_operation(validated_params)
         _lookup_val = getattr(resource, self.LOOKUP_FIELD, None)
 
-        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"_timing", "changed", "assignment_objects", "assignments"}
+        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "assignment_objects", "assignments"}
 
         if state == "present" and operation == "create":
             try:

@@ -123,7 +123,7 @@ class ActionModule(BaseResourceActionPlugin):
                         pass
 
             # ---- build clean result -------------------------------------------
-            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"_timing", "changed", "object_ids", "assignments"}
+            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
 
             # For state=exists: fail (without setting MODULE_NAME key) if nothing
             # was found — mirrors the single-object path's "not found" behaviour
@@ -171,7 +171,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         operation = self._detect_operation(validated_params)
 
-        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"_timing", "changed", "object_ids", "assignments"}
+        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
 
         if state == "present" and operation == "create":
             try:

@@ -103,9 +103,61 @@ class ProcessManager:
         return ProcessConnectionInfo(socket_path=socket_path, authkey=authkey, authkey_b64=authkey_b64)
 
     @staticmethod
+    def is_socket_stale(socket_path: str) -> bool:
+        """
+        Check whether the manager process that owns this socket is still alive.
+
+        Uses the companion .meta file (written by base_action.py / http.py at
+        spawn time) to retrieve the manager PID, then sends signal 0 to check
+        liveness without actually signalling the process.
+
+        Returns:
+            True  — socket file exists but the owning process is gone (stale).
+            False — socket does not exist, or the owning process is still alive.
+        """
+        import os as _os
+
+        socket_file = Path(socket_path)
+        if not socket_file.exists():
+            return False  # nothing to check
+
+        meta_path = Path(f"{socket_path}.meta")
+        if not meta_path.exists():
+            # No meta file means either the socket is from old code that didn't
+            # write meta files, or it hasn't been written yet.  Treat as live
+            # so we don't destroy a valid socket on upgrade/rollout.
+            logger.debug("is_socket_stale: no meta file for %s — treating as live", socket_path)
+            return False
+
+        try:
+            import json as _json
+            meta = _json.loads(meta_path.read_text())
+            pid = meta.get("pid")
+            if not pid or not str(pid).isdigit():
+                logger.warning("is_socket_stale: meta file has no valid pid for %s", socket_path)
+                return True
+
+            pid = int(pid)
+            try:
+                _os.kill(pid, 0)        # signal 0 = liveness probe, no side-effects
+                return False            # process is alive
+            except ProcessLookupError:
+                logger.warning("is_socket_stale: manager PID %s is gone — stale socket %s", pid, socket_path)
+                return True             # PID doesn't exist
+            except PermissionError:
+                # PID exists but we can't signal it (different owner / security policy).
+                # Treat as live — do NOT delete a socket we can't verify is dead.
+                logger.debug("is_socket_stale: cannot probe PID %s (PermissionError) — treating as live", pid)
+                return False
+
+        except Exception as e:
+            logger.warning("is_socket_stale: error reading meta file %s: %s — treating as live", meta_path, e)
+            return False
+
+    @staticmethod
     def cleanup_old_socket(socket_path: str) -> None:
         """
-        Clean up old socket file if it exists.
+        Clean up an old socket file and its companion .meta file if they exist.
 
         Args:
             socket_path: Path to socket file
@@ -118,6 +170,14 @@ class ProcessManager:
             except Exception as e:
                 logger.warning("Failed to remove old socket: %s", e)
 
+        meta_file = Path(f"{socket_path}.meta")
+        if meta_file.exists():
+            try:
+                meta_file.unlink()
+                logger.debug("Removed old meta file: %s", meta_file)
+            except Exception as e:
+                logger.warning("Failed to remove old meta file: %s", e)
+
     @staticmethod
     def spawn_manager_process(
         script_path: Path,
@@ -127,6 +187,7 @@ class ProcessManager:
         gateway_config: "GatewayConfig",  # type: ignore
         authkey_b64: str,
         sys_path: Optional[list] = None,
+        owner_pid: Optional[int] = None,
     ) -> subprocess.Popen:
         """
         Spawn a manager process.
@@ -162,6 +223,11 @@ class ProcessManager:
         env = os.environ.copy()
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
+        if owner_pid is not None:
+            # The manager will watch this PID and self-terminate when it exits.
+            # Pass the main ansible-playbook process PID so the manager dies
+            # automatically when the playbook finishes — zero user config needed.
+            env["ANSIBLE_PLATFORM_OWNER_PID"] = str(owner_pid)
 
         # Build command
         cmd = [

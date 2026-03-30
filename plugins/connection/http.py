@@ -95,27 +95,6 @@ class Connection(ConnectionBase):
         self._connected = True
         return self
 
-    def _benchmark_record_sessions(self, http_delta: int = 1, tls_delta: int = 1) -> None:
-        """
-        When BENCHMARK_STATS_FILE is set, increment http_sessions and tls_sessions in that JSON file.
-        Used by the benchmark script to report actual session counts (direct vs persistent).
-        """
-        stats_path = os.environ.get("BENCHMARK_STATS_FILE")
-        if not stats_path:
-            return
-        try:
-            data = {"http_sessions": 0, "tls_sessions": 0}
-            path = Path(stats_path)
-            if path.exists():
-                with open(path, "r") as f:
-                    data = json.load(f)
-            data["http_sessions"] = data.get("http_sessions", 0) + http_delta
-            data["tls_sessions"] = data.get("tls_sessions", 0) + tls_delta
-            with open(path, "w") as f:
-                json.dump(data, f)
-        except Exception as e:
-            logger.warning("Benchmark stats file update failed: %s", e)
-
     def get_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get the appropriate client based on connection configuration.
@@ -258,6 +237,7 @@ class Connection(ConnectionBase):
                 gateway_config=gateway_config,
                 authkey_b64=authkey_b64,
                 sys_path=list(sys.path),
+                owner_pid=os.getppid(),
             )
             logger.debug("Manager process spawned with PID: %s", process.pid)
 
@@ -289,9 +269,6 @@ class Connection(ConnectionBase):
 
         logger.info("Ephemeral manager spawned for %s at %s", gateway_config.base_url, socket_path)
 
-        # Benchmark: each new manager = 1 HTTP session + 1 TLS session
-        self._benchmark_record_sessions(1, 1)
-
         # Return client without facts (direct mode doesn't persist facts)
         return client, None
 
@@ -311,38 +288,50 @@ class Connection(ConnectionBase):
         # Get inventory hostname
         inventory_hostname = task_vars.get("inventory_hostname", "localhost")
 
-        # Check for existing manager in hostvars
-        hostvars = task_vars.get("hostvars", {})
-        host_vars = hostvars.get(inventory_hostname, {})
-
-        # Check for manager info in facts
-        socket_path_raw = host_vars.get("platform_manager_socket") or task_vars.get("platform_manager_socket")
-        authkey_b64 = host_vars.get("platform_manager_authkey") or task_vars.get("platform_manager_authkey")
-
-        # Convert to plain string (Fedora/_AnsibleTaggedStr compatibility)
-        socket_path = None
-        if socket_path_raw:
-            socket_path = f"{socket_path_raw}"
-            if not isinstance(socket_path, str):
-                socket_path = str(socket_path)
-
-        # Validate socket if found
-        if socket_path and Path(socket_path).exists() and authkey_b64:
-            # Reuse existing manager (no new HTTP/TLS session)
-            try:
-                authkey = base64.b64decode(authkey_b64)
-                client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-                logger.info("Reusing existing persistent manager: %s", socket_path)
-                return client, None
-            except Exception as e:
-                logger.warning("Failed to connect to existing manager: %s, spawning new one", e)
-
-        # Spawn new manager
-        logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
-
-        # Generate connection info
+        # Generate deterministic connection info based on credentials + host.
+        # If an existing manager is already running for these credentials, the
+        # socket path will match and we can reuse it.
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
         conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
+
+        expected_socket_path = str(conn_info.socket_path)
+        meta_path = expected_socket_path + ".meta"
+
+        # ------------------------------------------------------------------ #
+        # Discover an existing manager via its companion .meta file.          #
+        # This replaces the old hostvars/ansible_facts approach so that       #
+        # no secrets are ever exposed in task output.                         #
+        # ------------------------------------------------------------------ #
+        if Path(expected_socket_path).exists() and Path(meta_path).exists():
+            # Proactive stale check: if the manager process is gone, clean up
+            # before attempting a connection — avoids a slow connection timeout.
+            if ProcessManager.is_socket_stale(expected_socket_path):
+                logger.warning(
+                    "Stale socket detected at %s (manager process gone). Cleaning up.",
+                    expected_socket_path,
+                )
+                ProcessManager.cleanup_old_socket(expected_socket_path)
+            else:
+                try:
+                    with open(meta_path, "r") as _mf:
+                        _meta = json.load(_mf)
+                    candidate_authkey_b64 = _meta.get("authkey_b64")
+                    if candidate_authkey_b64 and Path(expected_socket_path).is_socket():
+                        authkey = base64.b64decode(candidate_authkey_b64)
+                        client = ManagerRPCClient(gateway_config.base_url, expected_socket_path, authkey)
+                        logger.info("Reusing existing persistent manager via meta file: %s", expected_socket_path)
+                        return client, None  # No ansible_facts — secrets stay on disk
+                except Exception as _e:
+                    logger.warning(
+                        "Could not connect to manager at %s: %s — cleaning up and spawning new",
+                        expected_socket_path, _e,
+                    )
+                    ProcessManager.cleanup_old_socket(expected_socket_path)
+
+        # ------------------------------------------------------------------ #
+        # No live manager found — spawn a new one.                            #
+        # ------------------------------------------------------------------ #
+        logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
 
         socket_path = conn_info.socket_path
         authkey = conn_info.authkey
@@ -360,6 +349,9 @@ class Connection(ConnectionBase):
             raise FileNotFoundError(f"Manager script not found at: {script_path}")
 
         # Spawn manager process
+        # Pass os.getppid() as owner_pid — in a worker fork this is the main
+        # ansible-playbook process.  The manager's watchdog thread will watch
+        # that PID and self-terminate when the playbook process exits.
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -368,6 +360,7 @@ class Connection(ConnectionBase):
             gateway_config=gateway_config,
             authkey_b64=authkey_b64,
             sys_path=list(sys.path),
+            owner_pid=os.getppid(),
         )
 
         # Wait for manager to start and create socket
@@ -381,18 +374,25 @@ class Connection(ConnectionBase):
         )
         logger.debug("Persistent manager process is ready")
 
+        # Write companion .meta file so the cleanup callback (and any other
+        # process) can discover this manager without going through ansible_facts.
+        # Secrets stay on disk — they never appear in task output.
+        socket_path_str = str(socket_path)
+        _meta_path = socket_path_str + ".meta"
+        try:
+            with open(_meta_path, "w") as _mf:
+                json.dump({"pid": process.pid, "authkey_b64": authkey_b64, "gateway_url": gateway_config.base_url}, _mf)
+            logger.debug("Wrote manager meta file: %s", _meta_path)
+        except Exception as _e:
+            logger.warning("Could not write manager meta file %s: %s", _meta_path, _e)
+
         # Connect to manager
-        client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
+        client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
 
-        # Benchmark: one new manager = 1 HTTP session + 1 TLS session
-        self._benchmark_record_sessions(1, 1)
+        logger.info("Successfully spawned and connected to persistent manager: %s", socket_path_str)
 
-        # Return facts to set
-        facts_dict = {"platform_manager_socket": socket_path, "platform_manager_authkey": authkey_b64, "gateway_url": gateway_config.base_url}
-
-        logger.info("Successfully spawned and connected to persistent manager: %s", socket_path)
-
-        return client, facts_dict
+        # Return None for facts — no secrets in ansible_facts output
+        return client, None
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         """Not used for platform connection - API calls go through get_client()."""

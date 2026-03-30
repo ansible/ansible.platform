@@ -97,48 +97,51 @@ class DirectHTTPClient(BaseAPIClient):
 
     def _detect_api_version(self) -> str:
         """
-        Detect API version dynamically by querying the platform and negotiating
-        with the collection's registry.
+        Detect API version dynamically by querying the platform.
+
+        Pings /api/gateway/v1/ping/ and reads the X-API-Version response header
+        first; falls back to parsing the JSON body if the header is absent.
+        If the detected version is unsupported, falls back to the highest locally
+        supported version rather than hardcoding '1'.
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
         try:
-            url = f"{self.base_url.rstrip('/')}/api/gateway/"
+            url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
             response = self.session.open("GET", url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
 
-            response_body = response.read()
-            api_data = json.loads(response_body) if response_body else {}
             version_str = None
 
-            # Extract from current_version (e.g., "/api/gateway/v1/" -> "1")
-            if "current_version" in api_data:
-                match = re.search(r"/v(\d+(?:\.\d+)?)/?$", api_data["current_version"])
-                if match:
-                    version_str = match.group(1)
+            # 1. Prefer the X-API-Version response header
+            headers = getattr(response, "headers", {})
+            x_api_version = headers.get("X-API-Version") if hasattr(headers, "get") else None
+            if x_api_version:
+                version_str = x_api_version.lstrip("v")
+                logger.debug("DirectHTTPClient: Detected version '%s' from X-API-Version header", version_str)
 
-            # Negotiate highest mutual version from available_versions
-            if not version_str and "available_versions" in api_data:
-                available = api_data["available_versions"]
-                if isinstance(available, dict) and available:
-                    platform_versions = [v.lstrip("v") for v in available.keys()]
-                    collection_supported = self.registry.get_supported_versions()
-                    mutual_versions = [v for v in platform_versions if v in collection_supported]
+            # 2. Fall back to JSON body
+            if not version_str:
+                response_body = response.read()
+                api_data = json.loads(response_body) if response_body else {}
 
-                    if mutual_versions:
-                        try:
-                            from packaging.version import parse as parse_version
-                        except ImportError:
-                            from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import version
+                if "version" in api_data:
+                    version_str = str(api_data["version"]).lstrip("v")
+                elif "current_version" in api_data:
+                    match = re.search(r"/v(\d+(?:\.\d+)?)/?$", api_data["current_version"])
+                    if match:
+                        version_str = match.group(1)
 
-                            parse_version = version.parse
-                        version_str = max(mutual_versions, key=parse_version)
-
-            # Validate negotiated version
             if version_str and version_str in self.registry.get_supported_versions():
-                logger.info("DirectHTTPClient: Negotiated mutual API version: v%s", version_str)
+                logger.info("DirectHTTPClient: Negotiated API version: v%s", version_str)
                 return version_str
+            elif version_str:
+                logger.warning(
+                    "DirectHTTPClient: Detected version v%s is not supported by this collection. "
+                    "Falling back to highest supported version.",
+                    version_str,
+                )
 
         except Exception as e:
-            logger.warning("DirectHTTPClient: Failed to query platform for versions: %s. Falling back to registry discovery.", e)
+            logger.warning("DirectHTTPClient: Failed to query platform for version: %s. Falling back to registry.", e)
 
         latest_supported = self.registry.get_latest_version()
         if not latest_supported:
@@ -450,6 +453,7 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = self._detect_api_version()
             except Exception:
                 self.api_version = "1"
+            self.session.headers.update({"X-API-Version": str(self.api_version)})
 
         # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
         api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
@@ -501,8 +505,6 @@ class DirectHTTPClient(BaseAPIClient):
         if is_dataclass(ansible_data_dict):
             ansible_data_dict = asdict(ansible_data_dict)
         # else: already a dict
-        # Performance timing: Processing start
-        processing_start = time.perf_counter()
 
         logger.info("Executing %s on %s", operation, module_name)
 
@@ -525,67 +527,33 @@ class DirectHTTPClient(BaseAPIClient):
             except Exception as e:
                 logger.warning("DirectHTTPClient: Version detection failed: %s, defaulting to v1", e)
                 self.api_version = "1"
+            self.session.headers.update({"X-API-Version": str(self.api_version)})
 
         # Load version-appropriate classes (shared layer)
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
-        logger.info("DirectHTTPClient: Loaded classes for %s (API version %s): %s, %s, %s", module_name, self.api_version, AnsibleClass, APIClass, MixinClass)
-
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
-        logger.info("DirectHTTPClient: Reconstructed Ansible dataclass for %s: %s", module_name, ansible_instance)
+
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
             manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
         )
-        logger.info("DirectHTTPClient: Built transformation context for %s: %s", module_name, context)
 
         # Execute operation (shared CRUD logic)
         try:
             if operation == "create":
-                logger.info("DirectHTTPClient: Executing create operation for %s", module_name)
                 result = self._create_resource(ansible_instance, MixinClass, context)
-                logger.info("DirectHTTPClient: Create operation result for %s: %s", module_name, result)
             elif operation == "update":
-                logger.info("DirectHTTPClient: Executing update operation for %s", module_name)
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
                 result = self._delete_resource(ansible_instance, MixinClass, context)
             elif operation == "find":
-                logger.info("DirectHTTPClient: Executing find operation for %s", module_name)
                 result = self._find_resource(ansible_instance, MixinClass, context)
-                logger.info("DirectHTTPClient: Find operation result for %s: %s", module_name, result)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
-
-            # Performance timing: Processing end
-            processing_end = time.perf_counter()
-            processing_elapsed = processing_end - processing_start
-
-            # Extract API call time from context if available
-            api_time = 0
-            if isinstance(context, dict) and "timing" in context:
-                api_time = context["timing"].get("api_call_time", 0)
-            elif hasattr(context, "timing"):
-                api_time = getattr(context.timing, "api_call_time", 0)
-
-            # Calculate our code time (excluding API call which is AAP's time)
-            our_code_time = processing_elapsed - api_time
-
-            # Add timing info to result
-            if isinstance(result, dict):
-                result.setdefault("_timing", {})["processing_time"] = processing_elapsed
-                result["_timing"]["processing_start"] = processing_start
-                result["_timing"]["processing_end"] = processing_end
-                result["_timing"]["api_call_time"] = api_time
-                result["_timing"]["our_code_time"] = our_code_time
-
-                # Add HTTP and TLS metrics (thread-safe read)
-                with self._lock:
-                    result["_timing"]["http_request_count"] = self._http_request_count
-                    result["_timing"]["tls_handshake_count"] = self._tls_handshake_count
 
             return result
 
@@ -904,43 +872,17 @@ class DirectHTTPClient(BaseAPIClient):
                 logger.info("DirectHTTPClient: Skipping secondary operation %s (no data to send)", op_name)
                 continue
 
-            # Performance timing: API call start
-            api_start = time.perf_counter()
-            logger.info("DirectHTTPClient: API call start for %s: %s", endpoint_op, api_start)
             try:
                 # Increment HTTP request counter (thread-safe)
                 with self._lock:
                     self._http_request_count += 1
-                logger.info("DirectHTTPClient: HTTP request counter incremented: %s", self._http_request_count)
-                logger.info("DirectHTTPClient: About to call _make_request: method=%s, url=%s, request_data=%s", endpoint_op.method, url, request_data)
-                try:
-                    response = self._make_request(
-                        endpoint_op.method,
-                        url,
-                        json=request_data,
-                        operation=op_name,
-                        resource=endpoint_op.path.split("/")[-2] if "/" in endpoint_op.path else "unknown",
-                    )
-                    logger.info("DirectHTTPClient: Response for %s: %s", endpoint_op, response)
-                except Exception as req_e:
-                    logger.error("DirectHTTPClient: _make_request raised exception: %s", req_e)
-                    import traceback
-
-                    logger.error("DirectHTTPClient: _make_request traceback: %s", traceback.format_exc())
-                    raise
-                # Performance timing: API call end
-                api_end = time.perf_counter()
-                api_elapsed = api_end - api_start
-                logger.info("DirectHTTPClient: API call elapsed for %s: %s", endpoint_op, api_elapsed)
-                # Store timing in context
-                if hasattr(context, "timing"):
-                    context.timing["api_call_time"] = api_elapsed
-                    context.timing["api_call_start"] = api_start
-                    context.timing["api_call_end"] = api_end
-                elif isinstance(context, dict):
-                    context.setdefault("timing", {})["api_call_time"] = api_elapsed
-                    context["timing"]["api_call_start"] = api_start
-                    context["timing"]["api_call_end"] = api_end
+                response = self._make_request(
+                    endpoint_op.method,
+                    url,
+                    json=request_data,
+                    operation=op_name,
+                    resource=endpoint_op.path.split("/")[-2] if "/" in endpoint_op.path else "unknown",
+                )
 
             except Exception as e:
                 logger.error("DirectHTTPClient: API call failed: %s", e)
@@ -1002,6 +944,7 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = self._detect_api_version()
             except Exception:
                 self.api_version = "1"
+            self.session.headers.update({"X-API-Version": str(self.api_version)})
 
         url = self._build_url(path)
         kwargs = {}
