@@ -49,7 +49,7 @@
     - name: Create Incomplete Authenticator Map
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-Authenticator_Maps-1"
-        authenticator: "{{ authenticator1.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         map_type: team
       register: fail
       ignore_errors: true
@@ -63,7 +63,7 @@
     - name: Create authenticator map 1 with check mode
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-AMap-1"
-        authenticator: "{{ authenticator1.name }}"
+        authenticator: "{{ authenticator1.authenticator.name }}"
         revoke: false
         map_type: organization
         role: Organization Member
@@ -78,7 +78,7 @@
     - name: Check that authenticator map 1 does not exist
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-AMap-1"
-        authenticator: "{{ authenticator1.name }}"
+        authenticator: "{{ authenticator1.authenticator.name }}"
         state: exists
       register: amap1_search
 
@@ -91,7 +91,7 @@
     - name: Create authenticator map 1
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-AMap-1"
-        authenticator: "{{ authenticator1.name }}"
+        authenticator: "{{ authenticator1.authenticator.name }}"
         revoke: false
         map_type: organization
         role: Organization Member
@@ -109,8 +109,8 @@
 
     - name: Recreate authenticator map 1
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.name }}"
-        authenticator: "{{ authenticator1.id }}"
+        name: "{{ authenticator_map_1.authenticator_map.name }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         revoke: false
         map_type: organization
         role: Organization Member
@@ -125,12 +125,12 @@
       ansible.builtin.assert:
         that:
           - recreate_authenticator_map_1 is not changed
-          - recreate_authenticator_map_1.id == authenticator_map_1.id
+          - recreate_authenticator_map_1.authenticator_map.id == authenticator_map_1.authenticator_map.id
 
     - name: Create authenticator map 2
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-AMap-2"
-        authenticator: "{{ authenticator1.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         revoke: true
         map_type: team
         role: Team Admin
@@ -155,7 +155,7 @@
     - name: Create authenticator map 3
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-AMap-3"
-        authenticator: "{{ authenticator2.name }}"
+        authenticator: "{{ authenticator2.authenticator.name }}"
         map_type: allow
         triggers:
           attributes:
@@ -179,8 +179,8 @@
 
     - name: Test exists
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.name }}"
-        authenticator: "{{ authenticator1.name }}"
+        name: "{{ authenticator_map_1.authenticator_map.name }}"
+        authenticator: "{{ authenticator1.authenticator.name }}"
         state: exists
       register: authenticator_map1_exists
 
@@ -191,8 +191,8 @@
 
     - name: Test exists by id
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.id }}"
-        authenticator: "{{ authenticator1.id }}"
+        name: "{{ authenticator_map_1.authenticator_map.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         state: exists
       register: authenticator_map1_exists
 
@@ -203,8 +203,8 @@
 
     - name: Test exists with configuration change
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.name }}"
-        authenticator: "{{ authenticator1.name }}"
+        name: "{{ authenticator_map_1.authenticator_map.name }}"
+        authenticator: "{{ authenticator1.authenticator.name }}"
         map_type: organization  # doesn't affect object when state=='exists'
         organization: "Organization X" # doesn't affect object when state=='exists'
         state: exists
@@ -217,8 +217,8 @@
 
     - name: Change an authenticator type
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_2.name }}"
-        authenticator: "{{ authenticator1.id }}"
+        name: "{{ authenticator_map_2.authenticator_map.name }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         map_type: is_superuser
         role: ""
         team: ""
@@ -229,12 +229,12 @@
       ansible.builtin.assert:
         that:
           - authenticator_map_2_change is changed
-          - authenticator_map_2_change.id == authenticator_map_2.id
+          - authenticator_map_2_change.authenticator_map.id == authenticator_map_2.authenticator_map.id
 
     - name: Test change map attributes
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_3.name }}"
-        authenticator: "{{ authenticator2.name }}"
+        name: "{{ authenticator_map_3.authenticator_map.name }}"
+        authenticator: "{{ authenticator2.authenticator.name }}"
         triggers:
           attributes:  # replace of attributes
             join_condition: "and"
@@ -247,12 +247,12 @@
       ansible.builtin.assert:
         that:
           - change_authenticator_map_3 is changed
-          - change_authenticator_map_3.id == authenticator_map_3.id
+          - change_authenticator_map_3.authenticator_map.id == authenticator_map_3.authenticator_map.id
 
     - name: Test delete by wrong name
       ansible.platform.authenticator_map:
         name: "{{ name_prefix }}-AMap-NonExisting"
-        authenticator: "{{ authenticator1.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         state: absent
       register: delete
 
@@ -263,7 +263,7 @@
 
     - name: Test delete by wrong authenticator
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.id }}"
+        name: "{{ authenticator_map_1.authenticator_map.name }}"
         authenticator: "{{ name_prefix }}-Authenticator-NonExisting"
         state: absent
       register: delete
@@ -275,34 +275,34 @@
 
     - name: Change authenticator map name
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.name }}"
+        name: "{{ authenticator_map_1.authenticator_map.name }}"
         new_name: "{{ name_prefix }}-AMap-1-New"
-        authenticator: "{{ authenticator1.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
       register: change_authenticator_map_1
 
     - name: Assert that we can rename an existing authenticator
       ansible.builtin.assert:
         that:
           - change_authenticator_map_1 is changed
-          - change_authenticator_map_1.id == authenticator_map_1.id
+          - change_authenticator_map_1.authenticator_map.id == authenticator_map_1.authenticator_map.id
 
     - name: Change an authenticator map authenticator
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_2.id }}"
-        authenticator: "{{ authenticator1.id }}"
-        new_authenticator: "{{ authenticator2.id }}"
+        name: "{{ authenticator_map_2.authenticator_map.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
+        new_authenticator: "{{ authenticator2.authenticator.id }}"
       register: change_authenticator_map_2
 
     - name: Assert that we can change an authenticator on a map
       ansible.builtin.assert:
         that:
           - change_authenticator_map_2 is changed
-          - change_authenticator_map_2.id == authenticator_map_2.id
+          - change_authenticator_map_2.authenticator_map.id == authenticator_map_2.authenticator_map.id
 
     - name: Delete an authenticator map
       ansible.platform.authenticator_map:
-        name: "{{ authenticator_map_1.id }}"
-        authenticator: "{{ authenticator1.id }}"
+        name: "{{ authenticator_map_1.authenticator_map.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         state: absent
       register: delete
 
@@ -317,10 +317,10 @@
     # <Cleanup> -----------------------------------
     - name: Delete Authenticator Maps from Authenticator 1
       ansible.platform.authenticator_map:
-        name: "{{ vars[item].id }}"
-        authenticator: "{{ authenticator1.id }}"
+        name: "{{ vars[item].authenticator_map.id }}"
+        authenticator: "{{ authenticator1.authenticator.id }}"
         state: absent
-      when: "authenticator1 is defined and item in vars and 'id' in vars[item]"
+      when: "authenticator1 is defined and item in vars and vars[item].authenticator_map is defined and 'id' in vars[item].authenticator_map"
       loop:
         - "authenticator_map_1"
         - "authenticator_map_2"
@@ -328,10 +328,10 @@
 
     - name: Delete Authenticator Maps from Authenticator 2
       ansible.platform.authenticator_map:
-        name: "{{ vars[item].id }}"
-        authenticator: "{{ authenticator2.id }}"
+        name: "{{ vars[item].authenticator_map.id }}"
+        authenticator: "{{ authenticator2.authenticator.id }}"
         state: absent
-      when: "authenticator2 is defined and item in vars and 'id' in vars[item]"
+      when: "authenticator2 is defined and item in vars and vars[item].authenticator_map is defined and 'id' in vars[item].authenticator_map"
       loop:
         - "authenticator_map_1"
         - "authenticator_map_2"
@@ -339,9 +339,9 @@
 
     - name: Delete Authenticators
       ansible.platform.authenticator:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].authenticator.id }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].authenticator is defined and 'id' in vars[item].authenticator"
       loop:
         - "authenticator1"
         - "authenticator2"

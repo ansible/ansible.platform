@@ -10,7 +10,7 @@ __metaclass__ = type
 
 class ModuleDocFragment(object):
     # Automation Platform Gateway documentation fragment
-    DOCUMENTATION = r'''
+    DOCUMENTATION = r"""
 options:
   host:
     description:
@@ -59,4 +59,4 @@ notes:
     host=hostname
     username=username
     password=password
-'''
+"""

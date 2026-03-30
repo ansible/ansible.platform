@@ -5,7 +5,7 @@ API v1 Application dataclass and transform mixin.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -15,7 +15,7 @@ from ...platform.types import EndpointOperation, TransformContext
 class APIApplication_v1(BaseTransformMixin):
     """API v1 representation of a gateway application."""
 
-    name: str
+    name: Optional[str] = None
     organization: Optional[int] = None
 
     description: Optional[str] = None
@@ -65,7 +65,10 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
         if op == "create":
             api_data["name"] = name or new_name or ""
         elif op in ("update", "enforced"):
-            api_data["name"] = new_name if new_name is not None else (name or "")
+            if new_name is not None:
+                api_data["name"] = new_name
+            elif name is not None and not str(name).strip().isdigit():
+                api_data["name"] = name
         else:
             api_data["name"] = name or new_name or ""
 

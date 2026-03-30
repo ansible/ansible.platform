@@ -3,7 +3,7 @@ Ansible Application dataclass - user-facing stable interface.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List, Union
+from typing import List, Optional, Union
 
 
 @dataclass

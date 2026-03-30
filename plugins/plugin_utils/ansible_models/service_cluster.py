@@ -28,7 +28,7 @@ class AnsibleServiceCluster:
     health_check_unhealthy_threshold: Optional[int] = None
     health_check_healthy_threshold: Optional[int] = None
     healthy_panic_threshold: Optional[int] = None
-    state: str = 'present'
+    state: str = "present"
 
     id: Optional[int] = None
     created: Optional[str] = None

@@ -25,7 +25,7 @@ class AnsibleOrganization:
     # Optional fields
     new_name: Optional[str] = None
     description: Optional[str] = None
-    state: str = 'present'
+    state: str = "present"
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None

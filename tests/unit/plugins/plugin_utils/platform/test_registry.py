@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Unit tests for APIVersionRegistry (AAP-59525 / ANSTRAT-1640)."""
 
-from pathlib import Path
 import shutil
 import tempfile
+from pathlib import Path
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import (
     APIVersionRegistry,

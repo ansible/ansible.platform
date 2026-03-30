@@ -94,7 +94,7 @@
     - name: Create Controller Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
-        service_type: "{{ controller_st.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
         health_check_interval_seconds: 1162
         dns_discovery_type: LOGICAL_DNS
         dns_lookup_family: V4_ONLY
@@ -108,7 +108,7 @@
     - name: Recreate Controller Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
-        service_type: "{{ controller_st.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
         health_check_interval_seconds: 1162
       register: recreate_controller_sc
 
@@ -129,7 +129,7 @@
     - name: Create Automation Hub Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Hub"
-        service_type: "{{ hub_st.id }}"
+        service_type: "{{ hub_st.service_type.id }}"
         health_check_interval_seconds: 1162
         upstream_hostname: hub.com
       register: hub_sc
@@ -151,7 +151,7 @@
     - name: Create EDA Service Cluster
       ansible.platform.service_cluster:
         name: "{{ test_id }}-AAP-eda"
-        service_type: "{{ eda_st.id }}"
+        service_type: "{{ eda_st.service_type.id }}"
         health_check_interval_seconds: 333
       register: eda_sc
 
@@ -162,7 +162,7 @@
 
     - name: Assert that exists works
       ansible.platform.service_cluster:
-        name: "{{  controller_sc.name }}"
+        name: "{{  controller_sc.service_cluster.name }}"
         state: exists
       register: exists_controller_sc
 
@@ -173,8 +173,8 @@
 
     - name: Assert exists works with parameters
       ansible.platform.service_cluster:
-        name: "{{ hub_sc.name }}"
-        service_type: "{{ hub_st.id }}"
+        name: "{{ hub_sc.service_cluster.name }}"
+        service_type: "{{ hub_st.service_type.id }}"
         upstream_hostname: hub.com
         state: exists
       register: exists_hub
@@ -186,7 +186,7 @@
 
     - name: Rename a service cluster
       ansible.platform.service_cluster:
-        name: "{{ eda_sc.id }}" # AAP gateway
+        name: "{{ eda_sc.service_cluster.id }}" # AAP gateway
         new_name: "Event Driven Automation"
       register: renamed_eda_sc
 
@@ -194,11 +194,11 @@
       ansible.builtin.assert:
         that:
           - renamed_eda_sc is changed
-          - renamed_eda_sc.id == eda_sc.id
+          - renamed_eda_sc.service_cluster.id == eda_sc.service_cluster.id
 
     - name: Change a health check interval
       ansible.platform.service_cluster:
-        name: "{{ eda_sc.id }}"
+        name: "{{ eda_sc.service_cluster.id }}"
         health_check_interval_seconds: 1162
       register: changed_eda_sc
 
@@ -206,7 +206,7 @@
       ansible.builtin.assert:
         that:
           - changed_eda_sc is changed
-          - changed_eda_sc.id == eda_sc.id
+          - changed_eda_sc.service_cluster.id == eda_sc.service_cluster.id
 
     - name: Query the server for service clusters with specific health check interval
       ansible.builtin.uri:
@@ -237,7 +237,7 @@
 
     - name: Delete a real service cluster
       ansible.platform.service_cluster:
-        name: "{{ controller_sc.id }}"
+        name: "{{ controller_sc.service_cluster.id }}"
         state: absent
       register: delete_controller_sc
 
@@ -248,19 +248,19 @@
 
     - name: Change a service type
       ansible.platform.service_cluster:
-        name: "{{ eda_sc.id }}"
-        service_type: "{{ controller_st.id }}"
+        name: "{{ eda_sc.service_cluster.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
       register: change_eda_sc
 
     - name: Assert that we can change a cluster type
       ansible.builtin.assert:
         that:
           - change_eda_sc is changed
-          - change_eda_sc.id == eda_sc.id
+          - change_eda_sc.service_cluster.id == eda_sc.service_cluster.id
 
     - name: Change auth_type for a service
       ansible.platform.service_cluster:
-        name: "{{ eda_sc.id }}"
+        name: "{{ eda_sc.service_cluster.id }}"
         auth_type: "TOKEN"
       register: change_eda_auth_type
 

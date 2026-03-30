@@ -12,5 +12,5 @@ class AAPRoute(AAPService):
 
     def get_gateway_path(self):
         if self.data:
-            return self.data.get('gateway_path')
-        return self.params.get('gateway_path')
+            return self.data.get("gateway_path")
+        return self.params.get("gateway_path")

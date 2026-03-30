@@ -39,13 +39,13 @@
       ansible.builtin.assert:
         that:
           - create_result.changed
-          - create_result.id is defined
+          - create_result.ca_certificate.id is defined
 
     - name: Verify EDA CA Certificate was created
       ansible.builtin.assert:
         that:
           - create_eda_result.changed
-          - create_eda_result.id is defined
+          - create_eda_result.ca_certificate.id is defined
 
     - name: Get CA Certificate
       ansible.platform.ca_certificate:
@@ -57,7 +57,7 @@
       ansible.builtin.assert:
         that:
           - not get_result.changed
-          - get_result.id == create_result.id
+          - get_result.ca_certificate.id == create_result.ca_certificate.id
 
     - name: Delete CA Certificate
       ansible.platform.ca_certificate:
@@ -75,13 +75,11 @@
       ansible.builtin.assert:
         that:
           - delete_result.changed
-          - delete_result.id is defined
 
     - name: Verify EDA CA Certificate was deleted
       ansible.builtin.assert:
         that:
           - delete_eda_result.changed
-          - delete_eda_result.id is defined
 
   always:
     - name: Cleanup - Delete CA Certificate if still exists

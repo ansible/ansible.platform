@@ -6,7 +6,7 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -31,7 +31,7 @@ class AnsibleUser:
     is_platform_auditor: Optional[bool] = None
     organizations: Optional[List[str]] = None
     associated_authenticators: Optional[Dict[str, Any]] = None
-    state: str = 'present'
+    state: str = "present"
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None

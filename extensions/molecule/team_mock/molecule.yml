@@ -22,7 +22,9 @@ provisioner:
     cleanup: cleanup.yml
   config_options:
     defaults:
-      collections_path: "${ANSIBLE_COLLECTIONS_PATH:-${MOLECULE_SCENARIO_DIRECTORY}/../../../../../../}"
+      collections_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../../../"
+      # Write verbose messages (vv/vvvv) to ANSIBLE_LOG_PATH even without -v on the terminal.
+      log_verbosity: 4
 
 scenario:
   test_sequence:

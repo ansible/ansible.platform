@@ -5,15 +5,16 @@ This module provides retry decorators and utilities for handling
 transient failures with exponential backoff.
 """
 
+import functools
 import logging
 import time
-import functools
-from typing import Callable, TypeVar, Optional
+from typing import Callable, Optional, TypeVar
+
 from .exceptions import PlatformError
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class RetryConfig:
@@ -21,14 +22,7 @@ class RetryConfig:
     Configuration for retry behavior.
     """
 
-    def __init__(
-        self,
-        max_attempts: int = 3,
-        initial_delay: float = 1.0,
-        max_delay: float = 60.0,
-        exponential_base: float = 2.0,
-        jitter: bool = True
-    ):
+    def __init__(self, max_attempts: int = 3, initial_delay: float = 1.0, max_delay: float = 60.0, exponential_base: float = 2.0, jitter: bool = True):
         """
         Initialize retry configuration.
 
@@ -56,7 +50,7 @@ class RetryConfig:
             Delay in seconds
         """
         # Exponential backoff: delay = initial_delay * (base ^ attempt)
-        delay = self.initial_delay * (self.exponential_base ** attempt)
+        delay = self.initial_delay * (self.exponential_base**attempt)
 
         # Cap at max_delay
         delay = min(delay, self.max_delay)
@@ -64,6 +58,7 @@ class RetryConfig:
         # Add jitter to prevent thundering herd
         if self.jitter:
             import random
+
             jitter_amount = delay * 0.1  # 10% jitter
             delay = delay + random.uniform(-jitter_amount, jitter_amount)
             delay = max(0, delay)  # Ensure non-negative
@@ -73,19 +68,10 @@ class RetryConfig:
 
 # Default retry configuration
 
-DEFAULT_RETRY_CONFIG = RetryConfig(
-    max_attempts=3,
-    initial_delay=1.0,
-    max_delay=60.0,
-    exponential_base=2.0,
-    jitter=True
-)
+DEFAULT_RETRY_CONFIG = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
 
 
-def retry_on_failure(
-    config: Optional[RetryConfig] = None,
-    retryable_exceptions: Optional[tuple] = None
-) -> Callable:
+def retry_on_failure(config: Optional[RetryConfig] = None, retryable_exceptions: Optional[tuple] = None) -> Callable:
     """
     Decorator for retrying operations on transient failures.
 
@@ -106,8 +92,8 @@ def retry_on_failure(
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> T:
             last_exception = None
-            operation = kwargs.get('operation') or getattr(args[0] if args else None, 'operation', 'unknown')
-            resource = kwargs.get('resource') or getattr(args[0] if args else None, 'resource', 'unknown')
+            _operation = kwargs.get("operation") or getattr(args[0] if args else None, "operation", "unknown")
+            _resource = kwargs.get("resource") or getattr(args[0] if args else None, "resource", "unknown")
 
             for attempt in range(config.max_attempts):
                 try:
@@ -119,7 +105,7 @@ def retry_on_failure(
                     # Check if exception is retryable
                     is_retryable = False
                     if isinstance(e, PlatformError):
-                        is_retryable = getattr(e, 'retryable', False)
+                        is_retryable = getattr(e, "retryable", False)
                     elif isinstance(e, retryable_exceptions):
                         is_retryable = True
 
@@ -127,7 +113,11 @@ def retry_on_failure(
                     if not is_retryable or attempt == config.max_attempts - 1:
                         logger.debug(
                             "Not retrying %s (attempt %s/%s): retryable=%s, exception=%s",
-                            func.__name__, attempt + 1, config.max_attempts, is_retryable, type(e).__name__
+                            func.__name__,
+                            attempt + 1,
+                            config.max_attempts,
+                            is_retryable,
+                            type(e).__name__,
                         )
                         raise
 
@@ -135,8 +125,7 @@ def retry_on_failure(
                     delay = config.calculate_delay(attempt)
 
                     logger.warning(
-                        "Retrying %s (attempt %s/%s) after %.2fs: %s: %s",
-                        func.__name__, attempt + 1, config.max_attempts, delay, type(e).__name__, str(e)
+                        "Retrying %s (attempt %s/%s) after %.2fs: %s: %s", func.__name__, attempt + 1, config.max_attempts, delay, type(e).__name__, str(e)
                     )
 
                     # Wait before retry
@@ -150,12 +139,11 @@ def retry_on_failure(
             raise RuntimeError(f"Retry logic failed for {func.__name__}")
 
         return wrapper
+
     return decorator
 
 
-def retry_http_request(
-    config: Optional[RetryConfig] = None
-) -> Callable:
+def retry_http_request(config: Optional[RetryConfig] = None) -> Callable:
     """
     Decorator specifically for HTTP requests with retry logic.
 
@@ -179,20 +167,19 @@ def retry_http_request(
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> T:
             import requests
-            from .exceptions import (
-                NetworkError, TimeoutError, APIError, classify_exception
-            )
+
+            from .exceptions import APIError, NetworkError, TimeoutError, classify_exception
 
             last_exception = None
-            operation = kwargs.get('operation', 'http_request')
-            resource = kwargs.get('resource', 'unknown')
+            operation = kwargs.get("operation", "http_request")
+            resource = kwargs.get("resource", "unknown")
 
             for attempt in range(config.max_attempts):
                 try:
                     response = func(*args, **kwargs)
 
                     # Check for HTTP error status codes
-                    if hasattr(response, 'status_code'):
+                    if hasattr(response, "status_code"):
                         status_code = response.status_code
 
                         # Retry on 5xx errors or specific 4xx errors
@@ -202,16 +189,15 @@ def retry_http_request(
                                 message=f"HTTP {status_code} error",
                                 operation=operation,
                                 resource=resource,
-                                details={'status_code': status_code},
-                                status_code=status_code
+                                details={"status_code": status_code},
+                                status_code=status_code,
                             )
 
                             # Check if we should retry
                             if error.retryable and attempt < config.max_attempts - 1:
                                 delay = config.calculate_delay(attempt)
                                 logger.warning(
-                                    "Retrying HTTP request (attempt %s/%s) after %.2fs: HTTP %s",
-                                    attempt + 1, config.max_attempts, delay, status_code
+                                    "Retrying HTTP request (attempt %s/%s) after %.2fs: HTTP %s", attempt + 1, config.max_attempts, delay, status_code
                                 )
                                 time.sleep(delay)
                                 continue
@@ -224,10 +210,7 @@ def retry_http_request(
                     last_exception = e
                     if attempt < config.max_attempts - 1:
                         delay = config.calculate_delay(attempt)
-                        logger.warning(
-                            "Retrying HTTP request (attempt %s/%s) after %.2fs: Timeout error",
-                            attempt + 1, config.max_attempts, delay
-                        )
+                        logger.warning("Retrying HTTP request (attempt %s/%s) after %.2fs: Timeout error", attempt + 1, config.max_attempts, delay)
                         time.sleep(delay)
                         continue
                     else:
@@ -235,18 +218,15 @@ def retry_http_request(
                             message=f"Request timed out after {config.max_attempts} attempts: {str(e)}",
                             operation=operation,
                             resource=resource,
-                            details={'original_exception': str(e)},
-                            timeout_seconds=getattr(e, 'timeout', None)
+                            details={"original_exception": str(e)},
+                            timeout_seconds=getattr(e, "timeout", None),
                         )
 
                 except (requests.exceptions.ConnectionError, requests.exceptions.SSLError, NetworkError) as e:
                     last_exception = e
                     if attempt < config.max_attempts - 1:
                         delay = config.calculate_delay(attempt)
-                        logger.warning(
-                            "Retrying HTTP request (attempt %s/%s) after %.2fs: Network error",
-                            attempt + 1, config.max_attempts, delay
-                        )
+                        logger.warning("Retrying HTTP request (attempt %s/%s) after %.2fs: Network error", attempt + 1, config.max_attempts, delay)
                         time.sleep(delay)
                         continue
                     else:
@@ -257,8 +237,8 @@ def retry_http_request(
                                 message=f"Network error after {config.max_attempts} attempts: {str(e)}",
                                 operation=operation,
                                 resource=resource,
-                                details={'original_exception': str(e)},
-                                original_exception=e
+                                details={"original_exception": str(e)},
+                                original_exception=e,
                             )
 
                 except Exception as e:
@@ -267,10 +247,7 @@ def retry_http_request(
 
                     if platform_error.retryable and attempt < config.max_attempts - 1:
                         delay = config.calculate_delay(attempt)
-                        logger.warning(
-                            "Retrying HTTP request (attempt %s/%s) after %.2fs: %s",
-                            attempt + 1, config.max_attempts, delay, type(e).__name__
-                        )
+                        logger.warning("Retrying HTTP request (attempt %s/%s) after %.2fs: %s", attempt + 1, config.max_attempts, delay, type(e).__name__)
                         time.sleep(delay)
                         continue
                     else:
@@ -283,4 +260,5 @@ def retry_http_request(
             raise RuntimeError(f"Retry logic failed for {func.__name__}")
 
         return wrapper
+
     return decorator

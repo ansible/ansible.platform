@@ -27,7 +27,7 @@ class AnsibleHttpPort:
     number: Optional[int] = None
     use_https: bool = False
     is_api_port: bool = False
-    state: str = 'present'
+    state: str = "present"
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None

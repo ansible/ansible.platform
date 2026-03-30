@@ -9,7 +9,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: application
 author: "John Westcott IV (@john-westcott-iv)"
@@ -87,9 +87,9 @@ options:
       required: False
 
 extends_documentation_fragment: ansible.platform.auth
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 - name: Add Foo application
   ansible.platform.application:
     name: "Foo"
@@ -112,6 +112,6 @@ EXAMPLES = '''
       - http://example.com/api/gateway/v1/
     app_url: http://example.com
 ...
-'''
+"""
 
 # This module is doc-only; the action plugin runs all logic via the manager.

@@ -16,126 +16,116 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import logging
-import time
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.settings import AnsibleSettings
 
-logger = logging.getLogger(__name__)
-
 
 class ActionModule(BaseResourceActionPlugin):
     """Action plugin for settings module."""
 
-    MODULE_NAME = 'settings'
+    MODULE_NAME = "settings"
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = dict()
 
         self._task_vars = task_vars
-        result = super(ActionModule, self).run(tmp, task_vars)
+        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
-
-        action_start = time.perf_counter()
-
-        auth_params = [
-            'gateway_hostname', 'gateway_username', 'gateway_password',
-            'gateway_token', 'gateway_validate_certs', 'gateway_request_timeout',
-            'aap_hostname', 'aap_username', 'aap_password', 'aap_token',
-            'aap_validate_certs', 'aap_request_timeout',
-        ]
 
         try:
             doc = self._get_documentation()
             argspec = self._build_argspec_from_docs(doc) if doc else None
             if not argspec:
                 from ansible.errors import AnsibleError
+
                 raise AnsibleError("Could not load DOCUMENTATION for settings module")
 
             module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, 'input')
+            validated_input = self._validate_data(module_args, argspec, "input")
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
             if facts_to_set:
-                result['ansible_facts'] = facts_to_set
-                result['_ansible_facts_cacheable'] = True
+                result["ansible_facts"] = facts_to_set
+                result["_ansible_facts_cacheable"] = True
 
             validated_params = validated_input.validated_parameters
-            desired_settings = validated_params.get('settings', {}) or {}
+            desired_settings = validated_params.get("settings", {}) or {}
 
             # GET current settings via manager.execute('find')
             current_result = manager.execute(
-                operation='find',
+                operation="find",
                 module_name=self.MODULE_NAME,
-                ansible_data={'settings': {}},
+                ansible_data={"settings": {}},
             )
-            current_settings = current_result.get('settings', {}) or {}
+            current_settings = current_result.get("settings", {}) or {}
 
             # Idempotency: check which desired keys differ from current
-            to_update = {
-                k: v for k, v in desired_settings.items()
-                if str(current_settings.get(k)) != str(v)
-            }
+            to_update = {k: v for k, v in desired_settings.items() if str(current_settings.get(k)) != str(v)}
 
             if not to_update:
                 # Nothing to change
-                result.update({
-                    'changed': False,
-                    'failed': False,
-                    self.MODULE_NAME: {
-                        'settings': current_settings,
-                        'old_values': {},
-                        'new_values': {},
-                        'changed': False,
-                    },
-                })
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": False,
+                        self.MODULE_NAME: {
+                            "settings": current_settings,
+                            "old_values": {},
+                            "new_values": {},
+                            "changed": False,
+                        },
+                    }
+                )
                 return result
 
             if self._task.check_mode:
-                result.update({
-                    'changed': True,
-                    'failed': False,
-                    self.MODULE_NAME: {
-                        'settings': current_settings,
-                        'old_values': {k: current_settings.get(k) for k in to_update},
-                        'new_values': to_update,
-                        'changed': True,
-                    },
-                })
+                result.update(
+                    {
+                        "changed": True,
+                        "failed": False,
+                        self.MODULE_NAME: {
+                            "settings": current_settings,
+                            "old_values": {k: current_settings.get(k) for k in to_update},
+                            "new_values": to_update,
+                            "changed": True,
+                        },
+                    }
+                )
                 return result
 
             # PATCH only the changed keys via manager.execute('update')
             update_settings = AnsibleSettings(settings=to_update)
             update_result = manager.execute(
-                operation='update',
+                operation="update",
                 module_name=self.MODULE_NAME,
                 ansible_data=asdict(update_settings),
             )
-            updated_settings = update_result.get('settings', {}) or {}
+            updated_settings = update_result.get("settings", {}) or {}
 
-            result.update({
-                'changed': True,
-                'failed': False,
-                self.MODULE_NAME: {
-                    'settings': updated_settings,
-                    'old_values': {k: current_settings.get(k) for k in to_update},
-                    'new_values': to_update,
-                    'changed': True,
-                },
-            })
-
-            result.setdefault('_timing', {})['action_plugin_time'] = time.perf_counter() - action_start
+            result.update(
+                {
+                    "changed": True,
+                    "failed": False,
+                    self.MODULE_NAME: {
+                        "settings": updated_settings,
+                        "old_values": {k: current_settings.get(k) for k in to_update},
+                        "new_values": to_update,
+                        "changed": True,
+                    },
+                }
+            )
 
         except Exception as e:
             import traceback
+
             self._display.vvv("Error in settings action plugin: %s" % e)
-            result['failed'] = True
-            result['msg'] = str(e)
+            result["failed"] = True
+            result["msg"] = str(e)
             if self._display.verbosity >= 3:
-                result['exception'] = traceback.format_exc()
+                result["exception"] = traceback.format_exc()
 
         return result

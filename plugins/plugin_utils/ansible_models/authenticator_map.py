@@ -3,7 +3,7 @@ Ansible Authenticator Map dataclass - user-facing stable interface.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -21,7 +21,7 @@ class AnsibleAuthenticatorMap:
     role: Optional[str] = None
     triggers: Optional[Dict[str, Any]] = None
     order: Optional[int] = None
-    state: str = 'present'
+    state: str = "present"
 
     # For find: resolved authenticator id (set by action plugin before find)
     authenticator_id: Optional[int] = None

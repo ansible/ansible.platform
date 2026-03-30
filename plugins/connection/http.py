@@ -50,16 +50,15 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Tuple, Optional, Dict, Any, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 from ansible.plugins.connection import ConnectionBase
-
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
 if TYPE_CHECKING:
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
+    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +74,7 @@ class Connection(ConnectionBase):
     Mode is controlled by the 'persistent' connection option.
     """
 
-    transport = 'ansible.platform.http'
+    transport = "ansible.platform.http"
     has_pipelining = False
     become_methods = []
 
@@ -96,32 +95,7 @@ class Connection(ConnectionBase):
         self._connected = True
         return self
 
-    def _benchmark_record_sessions(self, http_delta: int = 1, tls_delta: int = 1) -> None:
-        """
-        When BENCHMARK_STATS_FILE is set, increment http_sessions and tls_sessions in that JSON file.
-        Used by the benchmark script to report actual session counts (direct vs persistent).
-        """
-        stats_path = os.environ.get('BENCHMARK_STATS_FILE')
-        if not stats_path:
-            return
-        try:
-            data = {'http_sessions': 0, 'tls_sessions': 0}
-            path = Path(stats_path)
-            if path.exists():
-                with open(path, 'r') as f:
-                    data = json.load(f)
-            data['http_sessions'] = data.get('http_sessions', 0) + http_delta
-            data['tls_sessions'] = data.get('tls_sessions', 0) + tls_delta
-            with open(path, 'w') as f:
-                json.dump(data, f)
-        except Exception as e:
-            logger.warning("Benchmark stats file update failed: %s", e)
-
-    def get_client(
-        self,
-        task_vars: dict,
-        gateway_config: 'GatewayConfig'
-    ) -> Tuple[Union['DirectHTTPClient', 'ManagerRPCClient'], Optional[Dict[str, Any]]]:
+    def get_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get the appropriate client based on connection configuration.
 
@@ -134,8 +108,8 @@ class Connection(ConnectionBase):
         2. Check variable 'ansible_platform_use_persistent_connection' or 'ansible_platform_persistent' (if set)
         3. Default: False (direct mode)
         4. Route to:
-           - persistent: true → _get_persistent_client() → ManagerRPCClient
-           - persistent: false → _get_direct_client() → DirectHTTPClient
+           - persistent: true -> _get_persistent_client() -> ManagerRPCClient
+           - persistent: false -> _get_direct_client() -> DirectHTTPClient
 
         Args:
             task_vars: Task variables from Ansible
@@ -156,18 +130,20 @@ class Connection(ConnectionBase):
                 return False
             if isinstance(val, bool):
                 return val
-            return str(val).lower() in ('true', 'yes', '1')
+            return str(val).lower() in ("true", "yes", "1")
 
         try:
-            persistent = _truthy(self.get_option('persistent'))
+            persistent = _truthy(self.get_option("persistent"))
         except (AttributeError, KeyError):
             # Option not defined, check variables (P3: ansible_platform_use_persistent_connection; alias ansible_platform_persistent)
-            hostvars = task_vars.get('hostvars', {})
-            inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
+            hostvars = task_vars.get("hostvars", {})
+            inventory_hostname = task_vars.get("inventory_hostname", "localhost")
             host_vars = hostvars.get(inventory_hostname, {})
             raw = (
-                host_vars.get('ansible_platform_use_persistent_connection') or task_vars.get('ansible_platform_use_persistent_connection')
-                or host_vars.get('ansible_platform_persistent') or task_vars.get('ansible_platform_persistent')
+                host_vars.get("ansible_platform_use_persistent_connection")
+                or task_vars.get("ansible_platform_use_persistent_connection")
+                or host_vars.get("ansible_platform_persistent")
+                or task_vars.get("ansible_platform_persistent")
             )
             persistent = _truthy(raw)
 
@@ -179,11 +155,7 @@ class Connection(ConnectionBase):
             logger.debug("Connection plugin dispatcher: Routing to direct client (DirectHTTPClient)")
             return self._get_direct_client(task_vars, gateway_config)
 
-    def _get_direct_client(
-        self,
-        task_vars: dict,
-        gateway_config: 'GatewayConfig'
-    ) -> Tuple['ManagerRPCClient', Optional[Dict[str, Any]]]:
+    def _get_direct_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get ManagerRPCClient for direct mode (non-persistent).
 
@@ -199,27 +171,26 @@ class Connection(ConnectionBase):
         Returns:
             Tuple of (ManagerRPCClient, facts_dict)
         """
-        import base64
         import sys
-        import tempfile
         from pathlib import Path
 
         try:
             logger.debug("Platform connection (direct mode): Spawning ephemeral manager (will be shut down after task)")
 
             # Get inventory hostname for unique identifier
-            inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
+            inventory_hostname = task_vars.get("inventory_hostname", "localhost")
             logger.debug("Inventory hostname: %s", inventory_hostname)
 
             # Use a very short identifier to avoid "AF_UNIX path too long" error
             # Unix domain socket paths are limited to ~104 characters on macOS
             import hashlib
+
             host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
             identifier = f"e{host_hash}"  # "e" for ephemeral + 4-char hash
             logger.debug("Generated identifier: %s", identifier)
 
             # Generate connection info with shorter socket directory
-            socket_dir = Path('/tmp') / 'ap'  # Very short path to avoid AF_UNIX limit
+            socket_dir = Path("/tmp") / "ap"  # Very short path to avoid AF_UNIX limit
             logger.debug("Socket directory: %s", socket_dir)
 
             try:
@@ -230,11 +201,7 @@ class Connection(ConnectionBase):
                 raise
 
             logger.debug("Generating connection info...")
-            conn_info = ProcessManager.generate_connection_info(
-                identifier=identifier,
-                socket_dir=socket_dir,
-                gateway_config=gateway_config
-            )
+            conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config)
 
             socket_path = conn_info.socket_path
             authkey = conn_info.authkey
@@ -252,7 +219,7 @@ class Connection(ConnectionBase):
             logger.debug("Parent: %s", Path(__file__).parent)
             logger.debug("Parent.parent: %s", Path(__file__).parent.parent)
 
-            script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
+            script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
 
             logger.debug("Calculated script_path: %s", script_path)
             logger.debug("Script exists: %s", script_path.exists())
@@ -269,7 +236,8 @@ class Connection(ConnectionBase):
                 identifier=identifier,
                 gateway_config=gateway_config,
                 authkey_b64=authkey_b64,
-                sys_path=list(sys.path)
+                sys_path=list(sys.path),
+                owner_pid=os.getppid(),
             )
             logger.debug("Manager process spawned with PID: %s", process.pid)
 
@@ -280,13 +248,14 @@ class Connection(ConnectionBase):
                 socket_dir=socket_dir,
                 identifier=identifier,
                 process=process,
-                max_wait=50  # 5 seconds max
+                max_wait=50,  # 5 seconds max
             )
             logger.debug("Manager process is ready")
 
         except Exception as e:
             logger.error("Failed to spawn ephemeral manager: %s: %s", type(e).__name__, e)
             import traceback
+
             logger.error("Traceback: %s", traceback.format_exc())
             raise
 
@@ -300,17 +269,10 @@ class Connection(ConnectionBase):
 
         logger.info("Ephemeral manager spawned for %s at %s", gateway_config.base_url, socket_path)
 
-        # Benchmark: each new manager = 1 HTTP session + 1 TLS session
-        self._benchmark_record_sessions(1, 1)
-
         # Return client without facts (direct mode doesn't persist facts)
         return client, None
 
-    def _get_persistent_client(
-        self,
-        task_vars: dict,
-        gateway_config: 'GatewayConfig'
-    ) -> Tuple['ManagerRPCClient', Optional[Dict[str, Any]]]:
+    def _get_persistent_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get ManagerRPCClient with persistent manager.
 
@@ -324,98 +286,155 @@ class Connection(ConnectionBase):
         logger.debug("Platform connection (persistent mode): Getting or spawning manager")
 
         # Get inventory hostname
-        inventory_hostname = task_vars.get('inventory_hostname', 'localhost')
+        inventory_hostname = task_vars.get("inventory_hostname", "localhost")
 
-        # Check for existing manager in hostvars
-        hostvars = task_vars.get('hostvars', {})
-        host_vars = hostvars.get(inventory_hostname, {})
+        # Generate deterministic connection info based on credentials + host.
+        # If an existing manager is already running for these credentials, the
+        # socket path will match and we can reuse it.
+        socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
+        conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
 
-        # Check for manager info in facts
-        socket_path_raw = host_vars.get('platform_manager_socket') or task_vars.get('platform_manager_socket')
-        authkey_b64 = host_vars.get('platform_manager_authkey') or task_vars.get('platform_manager_authkey')
+        expected_socket_path = str(conn_info.socket_path)
+        meta_path = expected_socket_path + ".meta"
 
-        # Convert to plain string (Fedora/_AnsibleTaggedStr compatibility)
-        socket_path = None
-        if socket_path_raw:
-            socket_path = f"{socket_path_raw}"
-            if not isinstance(socket_path, str):
-                socket_path = str(socket_path)
+        # ------------------------------------------------------------------ #
+        # Fast path: try to connect without acquiring the lock.               #
+        # If a live manager is already running (socket + meta both present    #
+        # and PID alive) we can connect immediately and skip the lock         #
+        # entirely.  The lock is only needed to serialize the spawn path.     #
+        # ------------------------------------------------------------------ #
+        if Path(expected_socket_path).exists() and Path(meta_path).exists():
+            if ProcessManager.is_socket_stale(expected_socket_path):
+                logger.warning(
+                    "Stale socket detected at %s (manager process gone). Cleaning up.",
+                    expected_socket_path,
+                )
+                ProcessManager.cleanup_old_socket(expected_socket_path)
+            else:
+                try:
+                    with open(meta_path, "r") as _mf:
+                        _meta = json.load(_mf)
+                    candidate_authkey_b64 = _meta.get("authkey_b64")
+                    if candidate_authkey_b64 and Path(expected_socket_path).is_socket():
+                        authkey = base64.b64decode(candidate_authkey_b64)
+                        client = ManagerRPCClient(gateway_config.base_url, expected_socket_path, authkey)
+                        logger.info("Reusing existing persistent manager via meta file (fast path): %s", expected_socket_path)
+                        return client, None  # No ansible_facts — secrets stay on disk
+                except Exception as _e:
+                    logger.warning(
+                        "Could not connect to manager at %s: %s — will retry under lock",
+                        expected_socket_path,
+                        _e,
+                    )
+                    ProcessManager.cleanup_old_socket(expected_socket_path)
 
-        # Validate socket if found
-        if socket_path and Path(socket_path).exists() and authkey_b64:
-            # Reuse existing manager (no new HTTP/TLS session)
+        # ------------------------------------------------------------------ #
+        # Locked spawn path.                                                  #
+        # fcntl.flock serializes parallel worker processes: exactly one       #
+        # worker spawns a new manager while the others block on the lock,     #
+        # then find the running manager on the re-check and connect to it.    #
+        # ------------------------------------------------------------------ #
+        import fcntl as _fcntl
+
+        lock_path = expected_socket_path + ".lock"
+        _lockfile = open(lock_path, "w")
+        try:
+            _fcntl.flock(_lockfile, _fcntl.LOCK_EX)
+            logger.debug("Acquired spawn lock: %s", lock_path)
+
+            # Re-check inside the lock — another worker may have spawned the
+            # manager while we were waiting for the exclusive lock.
+            if Path(expected_socket_path).exists() and Path(meta_path).exists():
+                if ProcessManager.is_socket_stale(expected_socket_path):
+                    ProcessManager.cleanup_old_socket(expected_socket_path)
+                else:
+                    try:
+                        with open(meta_path, "r") as _mf:
+                            _meta = json.load(_mf)
+                        candidate_authkey_b64 = _meta.get("authkey_b64")
+                        if candidate_authkey_b64 and Path(expected_socket_path).is_socket():
+                            authkey = base64.b64decode(candidate_authkey_b64)
+                            client = ManagerRPCClient(gateway_config.base_url, expected_socket_path, authkey)
+                            logger.info("Reusing existing persistent manager via meta file (post-lock check): %s", expected_socket_path)
+                            return client, None
+                    except Exception as _e:
+                        logger.warning(
+                            "Post-lock connect to manager at %s failed: %s — spawning new",
+                            expected_socket_path,
+                            _e,
+                        )
+                        ProcessManager.cleanup_old_socket(expected_socket_path)
+
+            # ------------------------------------------------------------------ #
+            # No live manager found — spawn a new one.                            #
+            # ------------------------------------------------------------------ #
+            logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
+
+            socket_path = conn_info.socket_path
+            authkey = conn_info.authkey
+            authkey_b64 = conn_info.authkey_b64
+
+            # Clean up old socket if exists
+            ProcessManager.cleanup_old_socket(socket_path)
+
+            # Get path to manager process script
+            script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
+            logger.debug("Script path for persistent manager: %s", script_path)
+            logger.debug("Script exists: %s", script_path.exists())
+
+            if not script_path.exists():
+                raise FileNotFoundError(f"Manager script not found at: {script_path}")
+
+            # Spawn manager process
+            # Pass os.getppid() as owner_pid — in a worker fork this is the main
+            # ansible-playbook process.  The manager's watchdog thread will watch
+            # that PID and self-terminate when the playbook process exits.
+            process = ProcessManager.spawn_manager_process(
+                script_path=script_path,
+                socket_path=socket_path,
+                socket_dir=str(socket_dir),
+                identifier=inventory_hostname,
+                gateway_config=gateway_config,
+                authkey_b64=authkey_b64,
+                sys_path=list(sys.path),
+                owner_pid=os.getppid(),
+            )
+
+            # Wait for manager to start and create socket
+            logger.debug("Waiting for persistent manager process to be ready...")
+            ProcessManager.wait_for_process_startup(
+                socket_path=socket_path,
+                socket_dir=socket_dir,
+                identifier=inventory_hostname,
+                process=process,
+                max_wait=50,  # 5 seconds max
+            )
+            logger.debug("Persistent manager process is ready")
+
+            # Write companion .meta file so the cleanup callback (and any other
+            # process) can discover this manager without going through ansible_facts.
+            # Secrets stay on disk — they never appear in task output.
+            socket_path_str = str(socket_path)
+            _meta_path = socket_path_str + ".meta"
             try:
-                authkey = base64.b64decode(authkey_b64)
-                client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-                logger.info("Reusing existing persistent manager: %s", socket_path)
-                return client, None
-            except Exception as e:
-                logger.warning("Failed to connect to existing manager: %s, spawning new one", e)
+                with open(_meta_path, "w") as _mf:
+                    json.dump({"pid": process.pid, "authkey_b64": authkey_b64, "gateway_url": gateway_config.base_url}, _mf)
+                logger.debug("Wrote manager meta file: %s", _meta_path)
+            except Exception as _e:
+                logger.warning("Could not write manager meta file %s: %s", _meta_path, _e)
 
-        # Spawn new manager
-        logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
+            # Connect to manager
+            client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
 
-        # Generate connection info
-        socket_dir = Path(tempfile.gettempdir()) / 'ansible_platform'
-        conn_info = ProcessManager.generate_connection_info(
-            identifier=inventory_hostname,
-            socket_dir=socket_dir,
-            gateway_config=gateway_config
-        )
+            logger.info("Successfully spawned and connected to persistent manager: %s", socket_path_str)
 
-        socket_path = conn_info.socket_path
-        authkey = conn_info.authkey
-        authkey_b64 = conn_info.authkey_b64
+        finally:
+            _fcntl.flock(_lockfile, _fcntl.LOCK_UN)
+            _lockfile.close()
+            logger.debug("Released spawn lock: %s", lock_path)
 
-        # Clean up old socket if exists
-        ProcessManager.cleanup_old_socket(socket_path)
-
-        # Get path to manager process script
-        script_path = Path(__file__).parent.parent / 'plugin_utils' / 'manager' / 'manager_process.py'
-        logger.debug("Script path for persistent manager: %s", script_path)
-        logger.debug("Script exists: %s", script_path.exists())
-
-        if not script_path.exists():
-            raise FileNotFoundError(f"Manager script not found at: {script_path}")
-
-        # Spawn manager process
-        process = ProcessManager.spawn_manager_process(
-            script_path=script_path,
-            socket_path=socket_path,
-            socket_dir=str(socket_dir),
-            identifier=inventory_hostname,
-            gateway_config=gateway_config,
-            authkey_b64=authkey_b64,
-            sys_path=list(sys.path)
-        )
-
-        # Wait for manager to start and create socket
-        logger.debug("Waiting for persistent manager process to be ready...")
-        ProcessManager.wait_for_process_startup(
-            socket_path=socket_path,
-            socket_dir=socket_dir,
-            identifier=inventory_hostname,
-            process=process,
-            max_wait=50  # 5 seconds max
-        )
-        logger.debug("Persistent manager process is ready")
-
-        # Connect to manager
-        client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-
-        # Benchmark: one new manager = 1 HTTP session + 1 TLS session
-        self._benchmark_record_sessions(1, 1)
-
-        # Return facts to set
-        facts_dict = {
-            'platform_manager_socket': socket_path,
-            'platform_manager_authkey': authkey_b64,
-            'gateway_url': gateway_config.base_url
-        }
-
-        logger.info("Successfully spawned and connected to persistent manager: %s", socket_path)
-
-        return client, facts_dict
+        # Return None for facts — no secrets in ansible_facts output
+        return client, None
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         """Not used for platform connection - API calls go through get_client()."""

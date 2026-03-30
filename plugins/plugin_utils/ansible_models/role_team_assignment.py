@@ -3,7 +3,7 @@ Ansible RoleTeamAssignment dataclass - user-facing stable interface.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List, Optional
 
 
 @dataclass
@@ -25,7 +25,7 @@ class AnsibleRoleTeamAssignment:
 
     # Object selector (mutually exclusive groups)
     object_id: Optional[int] = None
-    object_ids: Optional[List] = None          # multi-object iteration
+    object_ids: Optional[List] = None  # multi-object iteration
     object_ansible_id: Optional[str] = None
 
     state: str = "present"
@@ -35,6 +35,9 @@ class AnsibleRoleTeamAssignment:
     url: Optional[str] = None
     created: Optional[str] = None
     modified: Optional[str] = None
+
+    # Multi-object input: list of {name, type} / {object_id} / {object_ansible_id} dicts
+    assignment_objects: Optional[List] = None
 
     # Multi-object result list (populated by action plugin)
     assignments: Optional[List[dict]] = None

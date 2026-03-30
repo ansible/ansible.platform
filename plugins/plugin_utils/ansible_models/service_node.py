@@ -15,7 +15,7 @@ class AnsibleServiceNode:
     address: Optional[str] = None
     service_cluster: Optional[str] = None
     tags: Optional[str] = None
-    state: str = 'present'
+    state: str = "present"
 
     id: Optional[int] = None
     created: Optional[str] = None

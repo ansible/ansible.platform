@@ -131,7 +131,7 @@
       ansible.builtin.assert:
         that:
           - renamed_dummy_st is changed
-          - renamed_dummy_st.id == dummy_st.id
+          - renamed_dummy_st.service_type.id == dummy_st.service_type.id
 
     - name: Assert that new name exists
       ansible.platform.service_type:
@@ -149,7 +149,7 @@
       ansible.builtin.assert:
         that:
           - changed_service_index_st is changed
-          - changed_service_index_st.id == dummy_st.id
+          - changed_service_index_st.service_type.id == dummy_st.service_type.id
 
     - name: Delete a non-existent service type
       ansible.platform.service_type:

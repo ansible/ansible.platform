@@ -3,7 +3,7 @@ Ansible Authenticator dataclass - user-facing stable interface.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -20,7 +20,7 @@ class AnsibleAuthenticator:
     configuration: Optional[Dict[str, Any]] = None
     order: Optional[int] = None
     auto_migrate_users_to: Optional[str] = None
-    state: str = 'present'
+    state: str = "present"
 
     id: Optional[int] = None
     created: Optional[str] = None

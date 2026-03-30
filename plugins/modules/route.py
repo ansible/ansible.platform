@@ -151,9 +151,7 @@ def main():
         node_tags=dict(type="str"),
         idle_timeout_seconds=dict(type="int"),
         request_timeout_seconds=dict(type="int"),
-        state=dict(
-            choices=["present", "absent", "exists", "enforced"], default="present"
-        ),
+        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
     )
 
     module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
@@ -163,9 +161,7 @@ def main():
     enable_gateway_auth = module.params["enable_gateway_auth"]
 
     if enable_mtls and enable_gateway_auth:
-        module.fail_json(
-            msg="Mutual TLS can only be enabled when gateway auth is disabled"
-        )
+        module.fail_json(msg="Mutual TLS can only be enabled when gateway auth is disabled")
 
     AAPRoute(module).manage()
 
