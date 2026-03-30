@@ -18,6 +18,14 @@
       vars:
         ansible_connection: local
 
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
 - name: Converge — authenticator_map (mock, connection local)
   hosts: localhost
   connection: local

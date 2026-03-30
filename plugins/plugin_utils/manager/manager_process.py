@@ -253,34 +253,69 @@ def main():
             except ValueError:
                 pass
 
-        if _owner_pid:
-            with open(error_log, "a") as f:
-                f.write(f"Starting owner watchdog for PID {_owner_pid}\n")
-                f.flush()
+        # ------------------------------------------------------------------ #
+        # Watchdog — decides when the manager should shut down.              #
+        #                                                                    #
+        # Two modes, selected at startup:                                    #
+        #                                                                    #
+        #  Production (no .survive flag):                                    #
+        #    Poll os.kill(owner_pid, 0) every 3 s.  Exit when the main      #
+        #    ansible-playbook process (owner_pid) is gone.                   #
+        #                                                                    #
+        #  Molecule (.survive flag present in socket_dir at startup):        #
+        #    Poll for the flag file's existence every 2 s.  Exit when        #
+        #    destroy.yml removes it.  The owner PID is not used — each       #
+        #    Molecule phase (converge / verify / cleanup) is a separate      #
+        #    ansible-playbook invocation, so the watchdog must not fire       #
+        #    between phases.                                                  #
+        # ------------------------------------------------------------------ #
+        _survive_path = Path(socket_dir) / ".survive"
+        _survive_mode = _survive_path.exists()
 
+        with open(error_log, "a") as f:
+            if _survive_mode:
+                f.write(f"Molecule .survive flag detected at {_survive_path} — using survive watchdog\n")
+            elif _owner_pid:
+                f.write(f"Starting owner watchdog for PID {_owner_pid}\n")
+            else:
+                f.write("No owner PID and no .survive flag — manager will run until killed\n")
+            f.flush()
+
+        if _survive_mode or _owner_pid:
             def _owner_watchdog():
                 import time as _time
-                while True:
-                    _time.sleep(3)
-                    try:
-                        os.kill(_owner_pid, 0)  # signal 0 = liveness check
-                    except ProcessLookupError:
-                        # Owner (ansible-playbook) has exited — clean shutdown.
-                        with open(error_log, "a") as _f:
-                            _f.write(f"Owner PID {_owner_pid} gone, shutting down manager\n")
-                            _f.flush()
+                if _survive_mode:
+                    # Molecule mode: keep running as long as the .survive file exists.
+                    while _survive_path.exists():
+                        _time.sleep(2)
+                    with open(error_log, "a") as _f:
+                        _f.write(f".survive flag removed at {_survive_path}, shutting down manager\n")
+                        _f.flush()
+                else:
+                    # Production mode: keep running as long as the owner PID is alive.
+                    while True:
+                        _time.sleep(3)
                         try:
-                            _shutdown_service()
-                        except Exception:
-                            pass
-                        os._exit(0)
-                    except PermissionError:
-                        pass  # Process exists but owned by another user — keep running
+                            os.kill(_owner_pid, 0)  # signal 0 = liveness check, no side-effects
+                        except ProcessLookupError:
+                            # Owner (ansible-playbook) has exited — clean shutdown.
+                            with open(error_log, "a") as _f:
+                                _f.write(f"Owner PID {_owner_pid} gone, shutting down manager\n")
+                                _f.flush()
+                            break
+                        except PermissionError:
+                            pass  # Process exists but owned by another user — keep running
+                try:
+                    _shutdown_service()
+                except Exception:
+                    pass
+                os._exit(0)
 
             _watchdog_thread = threading.Thread(target=_owner_watchdog, daemon=True, name="owner-watchdog")
             _watchdog_thread.start()
             with open(error_log, "a") as f:
-                f.write("Owner watchdog thread started\n")
+                mode = "survive" if _survive_mode else "owner-pid"
+                f.write(f"Watchdog thread started (mode={mode})\n")
                 f.flush()
 
         # Start manager server (creates socket file — action plugin can now connect)

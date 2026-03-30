@@ -16,3 +16,27 @@ class ActionModule(BaseResourceActionPlugin):
     # secret: write-only; API returns null/hash, not the original value.
     # Including either in _should_update() causes false positives.
     _WRITE_ONLY_FIELDS = frozenset({"mark_previous_inactive", "secret"})
+
+    def _pre_execute_hook(self, ansible_data, write_only_data, validated_params, operation):
+        """Re-inject write-only fields so they reach the API payload.
+
+        ``mark_previous_inactive`` and ``secret`` are excluded from the
+        AnsibleServiceKey dataclass (via _WRITE_ONLY_FIELDS) to prevent
+        false-positive idempotency checks — the API never echoes these
+        fields back in GET responses, so _should_update() would always
+        see None vs. a user-supplied value and report changed.
+
+        For create/update operations however, both fields must still reach
+        the transform and ultimately the API request body.  This hook puts
+        them back into ansible_data (from the write_only_data stash) so
+        the transform can include them when they are non-None.
+
+        Note: mark_previous_inactive=False is a valid explicit value and
+        must not be filtered out here — only skip genuinely absent (None)
+        values.
+        """
+        if operation in ("create", "update"):
+            for field in ("mark_previous_inactive", "secret"):
+                val = write_only_data.get(field)
+                if val is not None:
+                    ansible_data[field] = val

@@ -343,12 +343,21 @@ class PlatformService(BaseAPIClient):
 
     def _detect_api_version(self) -> str:
         """
-        Detect platform API version.
+        Detect platform API version dynamically from the live Gateway.
 
-        Pings /api/gateway/v1/ping/ and reads the X-API-Version response header
-        first; falls back to parsing the JSON body if the header is absent.
-        If the detected version is not supported by this collection, falls back
-        to the highest locally-supported version rather than hardcoding '1'.
+        Detection order:
+          1. GET /api/gateway/v1/ping/ — read X-API-Version response header.
+             If the ping returns 200 with no header, the /v1/ path is reachable
+             so v1 is confirmed.  The JSON body is NOT parsed: the "version"
+             field on this endpoint contains the *product* version (e.g. "2.6"
+             for AAP Gateway 2.6.x), not the API version.
+          2. If the ping endpoint returns non-2xx (older servers), fall back to
+             GET /api/gateway/ and parse its X-API-Version header or
+             ``current_version`` field.
+
+        If all tiers fail, default to ``'1'``.  Never fall back to
+        get_latest_version() — a collection that ships v2 must not assume
+        the server supports v2.
 
         Returns:
             Version string (e.g., '1', '2')
@@ -359,6 +368,8 @@ class PlatformService(BaseAPIClient):
         import sys
         from pathlib import Path
 
+        supported = self.registry.get_supported_versions()
+
         _error_log_path = None
         try:
             socket_dir = os.environ.get("ANSIBLE_PLATFORM_SOCKET_DIR")
@@ -368,60 +379,93 @@ class PlatformService(BaseAPIClient):
         except Exception:
             pass
 
+        def _hdr_version(resp) -> str:
+            """Extract API version from X-API-Version header; return '' if absent."""
+            raw = resp.headers.get("X-API-Version", "").lstrip("v")
+            if raw and raw in supported:
+                return raw
+            if raw:
+                major = raw.split(".")[0]
+                if major in supported:
+                    return major
+            return ""
+
+        # ── Tier 1: /api/gateway/v1/ping/ ─────────────────────────────────
         try:
             ping_url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
-            logger.debug("PlatformService: Detecting API version via %s", ping_url)
+            logger.debug("PlatformService: version detection tier-1 %s", ping_url)
 
             response = self.session.get(ping_url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
 
-            version_str = None
+            # Only trust the X-API-Version header from the ping endpoint.
+            # The JSON body "version" field is the *product* version
+            # (e.g. "2.6" for AAP Gateway 2.6.x), NOT the API version.
+            # Parsing it would map "2.6" → major "2" and select the wrong
+            # API version on a server that only serves v1 paths.
+            v = _hdr_version(response)
+            if v:
+                logger.info("PlatformService: API version locked in (tier-1 header): v%s", v)
+                return v
 
-            # 1. Prefer the X-API-Version response header (fast, no body parsing needed)
-            if "X-API-Version" in response.headers:
-                version_str = response.headers["X-API-Version"].lstrip("v")
-                logger.debug("PlatformService: Extracted version '%s' from X-API-Version header", version_str)
-
-            # 2. Fall back to JSON body
-            if not version_str and response.headers.get("Content-Type", "").startswith("application/json"):
-                try:
-                    response_data = response.json()
-                    if "version" in response_data:
-                        version_str = str(response_data["version"]).lstrip("v")
-                    elif "current_version" in response_data:
-                        version_match = re.search(r"/v(\d+(?:\.\d+)?)/?$", response_data["current_version"])
-                        if version_match:
-                            version_str = version_match.group(1)
-                except (ValueError, KeyError, AttributeError) as e:
-                    logger.debug("PlatformService: Could not parse version from response body: %s", e)
-
-            if version_str and version_str in self.registry.get_supported_versions():
-                logger.info("PlatformService: API version locked in: v%s", version_str)
-                return version_str
-            elif version_str:
-                # Gateway returned a version this collection doesn't support yet.
-                # Fall back to the highest version we do support rather than '1'.
-                logger.warning(
-                    "PlatformService: Detected version v%s is not supported by this collection. "
-                    "Falling back to highest supported version.",
-                    version_str,
-                )
+            # Ping at /api/gateway/v1/ping/ succeeded but no X-API-Version header.
+            # Successfully reaching the /v1/ path confirms API v1 is available.
+            logger.info("PlatformService: tier-1 ping succeeded, no X-API-Version header — v1 confirmed")
+            if "1" in supported:
+                return "1"
 
         except requests.RequestException as e:
-            error_msg = f"PlatformService: Version detection failed (HTTP error): {e}"
+            logger.debug("PlatformService: tier-1 ping failed (%s) — trying tier-2", e)
+        except Exception as e:
+            logger.debug("PlatformService: tier-1 unexpected error (%s) — trying tier-2", e)
+
+        # ── Tier 2: /api/gateway/ (all v1 servers expose this) ────────────
+        try:
+            root_url = f"{self.base_url.rstrip('/')}/api/gateway/"
+            logger.debug("PlatformService: version detection tier-2 %s", root_url)
+
+            response = self.session.get(root_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response.raise_for_status()
+
+            v = _hdr_version(response)
+            if v:
+                logger.info("PlatformService: API version locked in (tier-2 header): v%s", v)
+                return v
+
+            if response.headers.get("Content-Type", "").startswith("application/json"):
+                try:
+                    body = response.json()
+                    # current_version: "/api/gateway/v1/" or "1"
+                    if "current_version" in body:
+                        m = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                        raw = m.group(1) if m else str(body["current_version"]).lstrip("v")
+                        if raw in supported:
+                            logger.info("PlatformService: API version locked in (tier-2 body): v%s", raw)
+                            return raw
+                        major = raw.split(".")[0]
+                        if major in supported:
+                            logger.info("PlatformService: API version locked in (tier-2 body major): v%s", major)
+                            return major
+                    # NOTE: "version" and "available_versions" are intentionally NOT
+                    # parsed — "version" is the product version; "available_versions"
+                    # lists routing, not collection endpoint compatibility.
+                except (ValueError, KeyError, AttributeError) as e:
+                    logger.debug("PlatformService: tier-2 body parse error: %s", e)
+
+        except requests.RequestException as e:
+            error_msg = f"PlatformService: tier-2 version detection failed: {e}"
             logger.warning(error_msg)
             print(error_msg, file=sys.stderr, flush=True)
         except Exception as e:
-            error_msg = f"PlatformService: Version detection failed (unexpected error): {e}"
-            logger.warning(error_msg)
-            print(error_msg, file=sys.stderr, flush=True)
+            logger.warning("PlatformService: tier-2 unexpected error: %s", e)
 
-        latest_supported = self.registry.get_latest_version()
-        if not latest_supported:
+        # ── Tier 3: safe default ───────────────────────────────────────────
+        if not supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-
-        logger.info("PlatformService: Falling back to highest collection version: v%s", latest_supported)
-        return latest_supported
+        logger.warning("PlatformService: version detection failed — defaulting to v1")
+        if "1" in supported:
+            return "1"
+        return supported[0]
 
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
         """

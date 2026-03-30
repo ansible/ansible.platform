@@ -97,58 +97,103 @@ class DirectHTTPClient(BaseAPIClient):
 
     def _detect_api_version(self) -> str:
         """
-        Detect API version dynamically by querying the platform.
+        Detect API version dynamically by querying the live Gateway.
 
-        Pings /api/gateway/v1/ping/ and reads the X-API-Version response header
-        first; falls back to parsing the JSON body if the header is absent.
-        If the detected version is unsupported, falls back to the highest locally
-        supported version rather than hardcoding '1'.
+        Detection order:
+          1. GET /api/gateway/v1/ping/ — read X-API-Version response header.
+             If the ping returns 200 with no header, the /v1/ path is reachable
+             so v1 is confirmed.  The JSON body is NOT parsed: the "version"
+             field on this endpoint contains the *product* version (e.g. "2.6"
+             for AAP Gateway 2.6.x), not the API version.
+          2. If the ping endpoint returns non-2xx (older servers without that
+             endpoint), fall back to GET /api/gateway/ and parse its
+             X-API-Version header or ``current_version`` field.
+
+        If all tiers fail, default to ``'1'``.  Never fall back to
+        get_latest_version() — a collection that ships v2 must not assume
+        the server supports v2.
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
+
+        supported = self.registry.get_supported_versions()
+
+        def _hdr_version(resp) -> str:
+            """Extract API version from X-API-Version header; return '' if absent."""
+            headers = getattr(resp, "headers", {})
+            raw = (headers.get("X-API-Version", "") if hasattr(headers, "get") else "").lstrip("v")
+            if raw and raw in supported:
+                return raw
+            if raw:
+                major = raw.split(".")[0]
+                if major in supported:
+                    return major
+            return ""
+
+        # ── Tier 1: /api/gateway/v1/ping/ ─────────────────────────────────
         try:
-            url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
-            response = self.session.open("GET", url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
+            ping_url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
+            logger.debug("DirectHTTPClient: version detection tier-1 %s", ping_url)
+            response = self.session.open("GET", ping_url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
 
-            version_str = None
+            # Only trust the X-API-Version header from the ping endpoint.
+            # The JSON body "version" field is the *product* version
+            # (e.g. "2.6" for AAP Gateway 2.6.x), NOT the API version.
+            # Parsing it would map "2.6" → major "2" and select the wrong
+            # API version on a server that only serves v1 paths.
+            v = _hdr_version(response)
+            if v:
+                logger.info("DirectHTTPClient: API version locked in (tier-1 header): v%s", v)
+                return v
 
-            # 1. Prefer the X-API-Version response header
-            headers = getattr(response, "headers", {})
-            x_api_version = headers.get("X-API-Version") if hasattr(headers, "get") else None
-            if x_api_version:
-                version_str = x_api_version.lstrip("v")
-                logger.debug("DirectHTTPClient: Detected version '%s' from X-API-Version header", version_str)
-
-            # 2. Fall back to JSON body
-            if not version_str:
-                response_body = response.read()
-                api_data = json.loads(response_body) if response_body else {}
-
-                if "version" in api_data:
-                    version_str = str(api_data["version"]).lstrip("v")
-                elif "current_version" in api_data:
-                    match = re.search(r"/v(\d+(?:\.\d+)?)/?$", api_data["current_version"])
-                    if match:
-                        version_str = match.group(1)
-
-            if version_str and version_str in self.registry.get_supported_versions():
-                logger.info("DirectHTTPClient: Negotiated API version: v%s", version_str)
-                return version_str
-            elif version_str:
-                logger.warning(
-                    "DirectHTTPClient: Detected version v%s is not supported by this collection. "
-                    "Falling back to highest supported version.",
-                    version_str,
-                )
+            # Ping at /api/gateway/v1/ping/ succeeded but no X-API-Version header.
+            # Successfully reaching the /v1/ path confirms API v1 is available.
+            logger.info("DirectHTTPClient: tier-1 ping succeeded, no X-API-Version header — v1 confirmed")
+            if "1" in supported:
+                return "1"
 
         except Exception as e:
-            logger.warning("DirectHTTPClient: Failed to query platform for version: %s. Falling back to registry.", e)
+            logger.debug("DirectHTTPClient: tier-1 ping failed (%s) — trying tier-2", e)
 
-        latest_supported = self.registry.get_latest_version()
-        if not latest_supported:
+        # ── Tier 2: /api/gateway/ (all v1 servers expose this) ────────────
+        try:
+            root_url = f"{self.base_url.rstrip('/')}/api/gateway/"
+            logger.debug("DirectHTTPClient: version detection tier-2 %s", root_url)
+            response = self.session.open("GET", root_url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
+
+            v = _hdr_version(response)
+            if v:
+                logger.info("DirectHTTPClient: API version locked in (tier-2 header): v%s", v)
+                return v
+
+            try:
+                body_bytes = response.read()
+                body = json.loads(body_bytes) if body_bytes else {}
+                if "current_version" in body:
+                    m = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                    raw = m.group(1) if m else str(body["current_version"]).lstrip("v")
+                    if raw in supported:
+                        logger.info("DirectHTTPClient: API version locked in (tier-2 body): v%s", raw)
+                        return raw
+                    major = raw.split(".")[0]
+                    if major in supported:
+                        logger.info("DirectHTTPClient: API version locked in (tier-2 body major): v%s", major)
+                        return major
+                # NOTE: "version" and "available_versions" are intentionally NOT
+                # parsed — "version" is the product version; "available_versions"
+                # lists routing, not collection endpoint compatibility.
+            except Exception as exc:
+                logger.debug("DirectHTTPClient: tier-2 body parse error: %s", exc)
+
+        except Exception as e:
+            logger.warning("DirectHTTPClient: tier-2 detection failed (%s)", e)
+
+        # ── Tier 3: safe default ───────────────────────────────────────────
+        if not supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-
-        logger.info("DirectHTTPClient: Defaulting to highest collection version: v%s", latest_supported)
-        return latest_supported
+        logger.warning("DirectHTTPClient: version detection failed — defaulting to v1")
+        if "1" in supported:
+            return "1"
+        return supported[0]
 
     def _authenticate(self) -> None:
         """

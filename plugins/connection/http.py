@@ -298,13 +298,12 @@ class Connection(ConnectionBase):
         meta_path = expected_socket_path + ".meta"
 
         # ------------------------------------------------------------------ #
-        # Discover an existing manager via its companion .meta file.          #
-        # This replaces the old hostvars/ansible_facts approach so that       #
-        # no secrets are ever exposed in task output.                         #
+        # Fast path: try to connect without acquiring the lock.               #
+        # If a live manager is already running (socket + meta both present    #
+        # and PID alive) we can connect immediately and skip the lock         #
+        # entirely.  The lock is only needed to serialize the spawn path.     #
         # ------------------------------------------------------------------ #
         if Path(expected_socket_path).exists() and Path(meta_path).exists():
-            # Proactive stale check: if the manager process is gone, clean up
-            # before attempting a connection — avoids a slow connection timeout.
             if ProcessManager.is_socket_stale(expected_socket_path):
                 logger.warning(
                     "Stale socket detected at %s (manager process gone). Cleaning up.",
@@ -319,77 +318,118 @@ class Connection(ConnectionBase):
                     if candidate_authkey_b64 and Path(expected_socket_path).is_socket():
                         authkey = base64.b64decode(candidate_authkey_b64)
                         client = ManagerRPCClient(gateway_config.base_url, expected_socket_path, authkey)
-                        logger.info("Reusing existing persistent manager via meta file: %s", expected_socket_path)
+                        logger.info("Reusing existing persistent manager via meta file (fast path): %s", expected_socket_path)
                         return client, None  # No ansible_facts — secrets stay on disk
                 except Exception as _e:
                     logger.warning(
-                        "Could not connect to manager at %s: %s — cleaning up and spawning new",
+                        "Could not connect to manager at %s: %s — will retry under lock",
                         expected_socket_path, _e,
                     )
                     ProcessManager.cleanup_old_socket(expected_socket_path)
 
         # ------------------------------------------------------------------ #
-        # No live manager found — spawn a new one.                            #
+        # Locked spawn path.                                                  #
+        # fcntl.flock serializes parallel worker processes: exactly one       #
+        # worker spawns a new manager while the others block on the lock,     #
+        # then find the running manager on the re-check and connect to it.    #
         # ------------------------------------------------------------------ #
-        logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
+        import fcntl as _fcntl
 
-        socket_path = conn_info.socket_path
-        authkey = conn_info.authkey
-        authkey_b64 = conn_info.authkey_b64
-
-        # Clean up old socket if exists
-        ProcessManager.cleanup_old_socket(socket_path)
-
-        # Get path to manager process script
-        script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
-        logger.debug("Script path for persistent manager: %s", script_path)
-        logger.debug("Script exists: %s", script_path.exists())
-
-        if not script_path.exists():
-            raise FileNotFoundError(f"Manager script not found at: {script_path}")
-
-        # Spawn manager process
-        # Pass os.getppid() as owner_pid — in a worker fork this is the main
-        # ansible-playbook process.  The manager's watchdog thread will watch
-        # that PID and self-terminate when the playbook process exits.
-        process = ProcessManager.spawn_manager_process(
-            script_path=script_path,
-            socket_path=socket_path,
-            socket_dir=str(socket_dir),
-            identifier=inventory_hostname,
-            gateway_config=gateway_config,
-            authkey_b64=authkey_b64,
-            sys_path=list(sys.path),
-            owner_pid=os.getppid(),
-        )
-
-        # Wait for manager to start and create socket
-        logger.debug("Waiting for persistent manager process to be ready...")
-        ProcessManager.wait_for_process_startup(
-            socket_path=socket_path,
-            socket_dir=socket_dir,
-            identifier=inventory_hostname,
-            process=process,
-            max_wait=50,  # 5 seconds max
-        )
-        logger.debug("Persistent manager process is ready")
-
-        # Write companion .meta file so the cleanup callback (and any other
-        # process) can discover this manager without going through ansible_facts.
-        # Secrets stay on disk — they never appear in task output.
-        socket_path_str = str(socket_path)
-        _meta_path = socket_path_str + ".meta"
+        lock_path = expected_socket_path + ".lock"
+        _lockfile = open(lock_path, "w")
         try:
-            with open(_meta_path, "w") as _mf:
-                json.dump({"pid": process.pid, "authkey_b64": authkey_b64, "gateway_url": gateway_config.base_url}, _mf)
-            logger.debug("Wrote manager meta file: %s", _meta_path)
-        except Exception as _e:
-            logger.warning("Could not write manager meta file %s: %s", _meta_path, _e)
+            _fcntl.flock(_lockfile, _fcntl.LOCK_EX)
+            logger.debug("Acquired spawn lock: %s", lock_path)
 
-        # Connect to manager
-        client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
+            # Re-check inside the lock — another worker may have spawned the
+            # manager while we were waiting for the exclusive lock.
+            if Path(expected_socket_path).exists() and Path(meta_path).exists():
+                if ProcessManager.is_socket_stale(expected_socket_path):
+                    ProcessManager.cleanup_old_socket(expected_socket_path)
+                else:
+                    try:
+                        with open(meta_path, "r") as _mf:
+                            _meta = json.load(_mf)
+                        candidate_authkey_b64 = _meta.get("authkey_b64")
+                        if candidate_authkey_b64 and Path(expected_socket_path).is_socket():
+                            authkey = base64.b64decode(candidate_authkey_b64)
+                            client = ManagerRPCClient(gateway_config.base_url, expected_socket_path, authkey)
+                            logger.info("Reusing existing persistent manager via meta file (post-lock check): %s", expected_socket_path)
+                            return client, None
+                    except Exception as _e:
+                        logger.warning(
+                            "Post-lock connect to manager at %s failed: %s — spawning new",
+                            expected_socket_path, _e,
+                        )
+                        ProcessManager.cleanup_old_socket(expected_socket_path)
 
-        logger.info("Successfully spawned and connected to persistent manager: %s", socket_path_str)
+            # ------------------------------------------------------------------ #
+            # No live manager found — spawn a new one.                            #
+            # ------------------------------------------------------------------ #
+            logger.info("Spawning new persistent manager for host: %s", inventory_hostname)
+
+            socket_path = conn_info.socket_path
+            authkey = conn_info.authkey
+            authkey_b64 = conn_info.authkey_b64
+
+            # Clean up old socket if exists
+            ProcessManager.cleanup_old_socket(socket_path)
+
+            # Get path to manager process script
+            script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
+            logger.debug("Script path for persistent manager: %s", script_path)
+            logger.debug("Script exists: %s", script_path.exists())
+
+            if not script_path.exists():
+                raise FileNotFoundError(f"Manager script not found at: {script_path}")
+
+            # Spawn manager process
+            # Pass os.getppid() as owner_pid — in a worker fork this is the main
+            # ansible-playbook process.  The manager's watchdog thread will watch
+            # that PID and self-terminate when the playbook process exits.
+            process = ProcessManager.spawn_manager_process(
+                script_path=script_path,
+                socket_path=socket_path,
+                socket_dir=str(socket_dir),
+                identifier=inventory_hostname,
+                gateway_config=gateway_config,
+                authkey_b64=authkey_b64,
+                sys_path=list(sys.path),
+                owner_pid=os.getppid(),
+            )
+
+            # Wait for manager to start and create socket
+            logger.debug("Waiting for persistent manager process to be ready...")
+            ProcessManager.wait_for_process_startup(
+                socket_path=socket_path,
+                socket_dir=socket_dir,
+                identifier=inventory_hostname,
+                process=process,
+                max_wait=50,  # 5 seconds max
+            )
+            logger.debug("Persistent manager process is ready")
+
+            # Write companion .meta file so the cleanup callback (and any other
+            # process) can discover this manager without going through ansible_facts.
+            # Secrets stay on disk — they never appear in task output.
+            socket_path_str = str(socket_path)
+            _meta_path = socket_path_str + ".meta"
+            try:
+                with open(_meta_path, "w") as _mf:
+                    json.dump({"pid": process.pid, "authkey_b64": authkey_b64, "gateway_url": gateway_config.base_url}, _mf)
+                logger.debug("Wrote manager meta file: %s", _meta_path)
+            except Exception as _e:
+                logger.warning("Could not write manager meta file %s: %s", _meta_path, _e)
+
+            # Connect to manager
+            client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
+
+            logger.info("Successfully spawned and connected to persistent manager: %s", socket_path_str)
+
+        finally:
+            _fcntl.flock(_lockfile, _fcntl.LOCK_UN)
+            _lockfile.close()
+            logger.debug("Released spawn lock: %s", lock_path)
 
         # Return None for facts — no secrets in ansible_facts output
         return client, None
