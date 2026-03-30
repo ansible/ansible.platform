@@ -803,6 +803,7 @@ class BaseResourceActionPlugin(ActionBase):
                         """Thin proxy so process.poll/terminate/kill/wait work on a bare PID."""
                         def __init__(self, p):
                             self._pid = p
+
                         def poll(self):
                             try:
                                 _os.kill(self._pid, 0)
@@ -811,16 +812,19 @@ class BaseResourceActionPlugin(ActionBase):
                                 return 0
                             except PermissionError:
                                 return None
+
                         def terminate(self):
                             try:
                                 _os.kill(self._pid, 15)  # SIGTERM
                             except ProcessLookupError:
                                 pass
+
                         def kill(self):
                             try:
                                 _os.kill(self._pid, 9)  # SIGKILL
                             except ProcessLookupError:
                                 pass
+
                         def wait(self, timeout=None):
                             import time as _t
                             deadline = _t.monotonic() + (timeout or 30)

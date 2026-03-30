@@ -11,7 +11,6 @@ import json
 import logging
 import re
 import threading
-import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 

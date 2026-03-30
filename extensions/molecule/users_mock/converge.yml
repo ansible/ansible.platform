@@ -23,6 +23,14 @@
         ansible_connection: local
 
 # Play 2: full user lifecycle (connection local / direct mode).
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
     - name: Create manager survive flag (Molecule keeps manager alive across phases)
       ansible.builtin.file:
         path: /tmp/ap/.survive
