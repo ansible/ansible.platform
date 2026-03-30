@@ -37,4 +37,68 @@
         state: absent
       vars:
         ansible_connection: local
+
+- name: Cleanup — delete test user (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_username: "molecule-test-user-hd"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete test user (cleanup)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        state: absent
+      register: cleanup_result
+      failed_when: false
+
+    - name: Assert cleanup did not hard-fail
+      ansible.builtin.assert:
+        that: cleanup_result is not failed
+        fail_msg: "Cleanup: unexpected hard failure deleting test user. cleanup_result={{ cleanup_result }}"
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+
+- name: Cleanup — delete test user (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_username: "molecule-test-user-hp"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete test user (cleanup)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        state: absent
+      register: cleanup_result
+      failed_when: false
+
+    - name: Assert cleanup did not hard-fail
+      ansible.builtin.assert:
+        that: cleanup_result is not failed
+        fail_msg: "Cleanup: unexpected hard failure deleting test user. cleanup_result={{ cleanup_result }}"
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
 ...

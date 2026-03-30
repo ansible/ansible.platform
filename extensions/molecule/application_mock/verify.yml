@@ -37,4 +37,64 @@
         fail_msg: "Verify: application description was not updated. Got: {{ exists_result.get('application', {}).get('description') }}"
       vars:
         ansible_connection: local
+
+- name: Verify — application created and updated
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Check application exists
+      ansible.platform.application:
+        name: "molecule-mock-app-hd"
+        organization: "Default"
+        state: exists
+      register: exists_result
+
+    - name: Assert application was found
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+        fail_msg: "Verify: application molecule-mock-app not found."
+
+    - name: Assert description was updated
+      ansible.builtin.assert:
+        that: exists_result.get('application', {}).get('description') == "Updated by Molecule"
+        fail_msg: "Verify: application description was not updated. Got: {{ exists_result.get('application', {}).get('description') }}"
+
+- name: Verify — application created and updated
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Check application exists
+      ansible.platform.application:
+        name: "molecule-mock-app-hp"
+        organization: "Default"
+        state: exists
+      register: exists_result
+
+    - name: Assert application was found
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+        fail_msg: "Verify: application molecule-mock-app not found."
+
+    - name: Assert description was updated
+      ansible.builtin.assert:
+        that: exists_result.get('application', {}).get('description') == "Updated by Molecule"
+        fail_msg: "Verify: application description was not updated. Got: {{ exists_result.get('application', {}).get('description') }}"
 ...

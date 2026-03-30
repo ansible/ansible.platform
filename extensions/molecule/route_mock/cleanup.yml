@@ -75,4 +75,114 @@
         state: absent
       vars:
         ansible_connection: local
+
+- name: Cleanup — delete routes
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct-hd"
+        state: absent
+      register: delete_result
+      failed_when: false
+
+    - name: Assert route removed (direct)
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete route (direct)."
+
+    - name: Delete route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent-hd"
+        state: absent
+      register: delete_result_persistent
+      failed_when: false
+
+    - name: Assert route removed (persistent)
+      ansible.builtin.assert:
+        that: delete_result_persistent is not failed
+        fail_msg: "Cleanup: failed to delete route (persistent)."
+
+    - name: Delete route (http direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-local-hd"
+        state: absent
+      register: delete_result_http_direct
+      failed_when: false
+
+    - name: Assert route removed (http direct)
+      ansible.builtin.assert:
+        that: delete_result_http_direct is not failed
+        fail_msg: "Cleanup: failed to delete route (http direct)."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+
+- name: Cleanup — delete routes
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct-hp"
+        state: absent
+      register: delete_result
+      failed_when: false
+
+    - name: Assert route removed (direct)
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete route (direct)."
+
+    - name: Delete route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent-hp"
+        state: absent
+      register: delete_result_persistent
+      failed_when: false
+
+    - name: Assert route removed (persistent)
+      ansible.builtin.assert:
+        that: delete_result_persistent is not failed
+        fail_msg: "Cleanup: failed to delete route (persistent)."
+
+    - name: Delete route (http persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-local-hp"
+        state: absent
+      register: delete_result_http_persistent
+      failed_when: false
+
+    - name: Assert route removed (http persistent)
+      ansible.builtin.assert:
+        that: delete_result_http_persistent is not failed
+        fail_msg: "Cleanup: failed to delete route (http persistent)."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
 ...
