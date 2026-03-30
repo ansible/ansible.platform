@@ -193,6 +193,10 @@ def main():
                     }
                 },
             )
+        elif 'url' not in existing_token:
+            # When passed a registered variable instead of the aap_token fact,
+            # the token data is nested inside ansible_facts.aap_token
+            existing_token = existing_token.get('ansible_facts', {}).get('aap_token', existing_token)
 
         # If the state was absent we can let the module delete it if needed, the module will handle exiting from this
         module.delete_if_needed(existing_token)
