@@ -282,8 +282,10 @@ def main():
             f.flush()
 
         if _survive_mode or _owner_pid:
+
             def _owner_watchdog():
                 import time as _time
+
                 if _survive_mode:
                     # Molecule mode: keep running as long as the .survive file exists.
                     while _survive_path.exists():

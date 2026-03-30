@@ -442,9 +442,7 @@ class BaseResourceActionPlugin(ActionBase):
         import tempfile
 
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
-        expected_conn_info = ProcessManager.generate_connection_info(
-            identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config
-        )
+        expected_conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
         expected_socket_path = expected_conn_info.socket_path
         meta_path = expected_socket_path + ".meta"
 
@@ -472,10 +470,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         # Reuse existing manager if found.
         if manager_found and actual_authkey_b64:
-            self._display.vv(
-                f"Reusing existing persistent manager "
-                f"(host={inventory_hostname}, gateway={gateway_config.base_url})"
-            )
+            self._display.vv(f"Reusing existing persistent manager (host={inventory_hostname}, gateway={gateway_config.base_url})")
             try:
                 authkey = base64.b64decode(actual_authkey_b64)
                 client = ManagerRPCClient(gateway_config.base_url, str(expected_socket_path), authkey)
@@ -508,6 +503,7 @@ class BaseResourceActionPlugin(ActionBase):
         # so os.getppid() is the main ansible-playbook process PID.  The manager's
         # watchdog thread watches that PID and self-terminates when it exits.
         import os as _os_spawn
+
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -797,10 +793,13 @@ class BaseResourceActionPlugin(ActionBase):
                 # Build a minimal process_info so the shutdown logic below can proceed.
                 # We don't have the Popen object, so we wrap the raw PID instead.
                 import os as _os
+
                 pid = meta.get("pid")
                 if pid:
+
                     class _PidProxy:
                         """Thin proxy so process.poll/terminate/kill/wait work on a bare PID."""
+
                         def __init__(self, p):
                             self._pid = p
 
@@ -827,12 +826,14 @@ class BaseResourceActionPlugin(ActionBase):
 
                         def wait(self, timeout=None):
                             import time as _t
+
                             deadline = _t.monotonic() + (timeout or 30)
                             while _t.monotonic() < deadline:
                                 if self.poll() is not None:
                                     return 0
                                 _t.sleep(0.1)
                             raise subprocess.TimeoutExpired([], timeout)
+
                     process_info = {"process": _PidProxy(pid), "authkey_b64": meta.get("authkey_b64")}
                 else:
                     self._display.vvvv(f"Meta file {meta_path} has no pid, cannot shut down manager")
@@ -1019,9 +1020,7 @@ class BaseResourceActionPlugin(ActionBase):
             # Warn about and strip deprecated argspec fields.
             for field, (msg, version) in self._DEPRECATED_FIELDS.items():
                 if resource_data.pop(field, None) is not None:
-                    result.setdefault("deprecations", []).append(
-                        {"msg": msg, "version": version, "collection_name": "ansible.platform"}
-                    )
+                    result.setdefault("deprecations", []).append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
 
             # Pop write-only fields (not present in MODEL_CLASS) before instantiation;
             # they are passed to _pre_execute_hook for use just before manager.execute().

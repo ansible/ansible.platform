@@ -323,7 +323,8 @@ class Connection(ConnectionBase):
                 except Exception as _e:
                     logger.warning(
                         "Could not connect to manager at %s: %s — will retry under lock",
-                        expected_socket_path, _e,
+                        expected_socket_path,
+                        _e,
                     )
                     ProcessManager.cleanup_old_socket(expected_socket_path)
 
@@ -359,7 +360,8 @@ class Connection(ConnectionBase):
                     except Exception as _e:
                         logger.warning(
                             "Post-lock connect to manager at %s failed: %s — spawning new",
-                            expected_socket_path, _e,
+                            expected_socket_path,
+                            _e,
                         )
                         ProcessManager.cleanup_old_socket(expected_socket_path)
 

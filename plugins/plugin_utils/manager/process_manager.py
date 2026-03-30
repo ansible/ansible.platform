@@ -131,6 +131,7 @@ class ProcessManager:
 
         try:
             import json as _json
+
             meta = _json.loads(meta_path.read_text())
             pid = meta.get("pid")
             if not pid or not str(pid).isdigit():
@@ -139,11 +140,11 @@ class ProcessManager:
 
             pid = int(pid)
             try:
-                _os.kill(pid, 0)        # signal 0 = liveness probe, no side-effects
-                return False            # process is alive
+                _os.kill(pid, 0)  # signal 0 = liveness probe, no side-effects
+                return False  # process is alive
             except ProcessLookupError:
                 logger.warning("is_socket_stale: manager PID %s is gone — stale socket %s", pid, socket_path)
-                return True             # PID doesn't exist
+                return True  # PID doesn't exist
             except PermissionError:
                 # PID exists but we can't signal it (different owner / security policy).
                 # Treat as live — do NOT delete a socket we can't verify is dead.
