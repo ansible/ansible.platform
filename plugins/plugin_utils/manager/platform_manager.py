@@ -113,7 +113,6 @@ class PlatformService(BaseAPIClient):
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
 
-        # Idle timeout: last time the service handled user-facing work (RPC / HTTP)
         self._activity_lock = threading.Lock()
         self._last_activity_monotonic = time.monotonic()
 

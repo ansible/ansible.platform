@@ -26,8 +26,6 @@ class GatewayConfig:
     verify_ssl: bool = True
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
-    #: Seconds with no API activity before the persistent manager process exits.
-    #: Set to 0 to disable idle shutdown (not recommended for production).
     idle_timeout: float = 3600.0
 
     def __post_init__(self):
@@ -113,7 +111,6 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         gateway_token = gateway_token_raw
     gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
     gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
-    # Persistent manager idle shutdown (seconds); 0 disables idle-based exit
     gateway_idle_timeout = task_args.get("gateway_idle_timeout")
     if gateway_idle_timeout is None:
         gateway_idle_timeout = host_vars.get("gateway_idle_timeout") or host_vars.get("ansible_platform_manager_idle_timeout")

@@ -12,7 +12,6 @@ import sys
 import traceback
 from pathlib import Path
 
-# Interval between idle checks (seconds). Production default: 60.
 MANAGER_IDLE_POLL_INTERVAL = int(os.environ.get("ANSIBLE_PLATFORM_IDLE_POLL_SECONDS", "60"))
 
 
@@ -340,7 +339,6 @@ def main():
         _init_thread = threading.Thread(target=_init_service, daemon=True)
         _init_thread.start()
 
-        # Idle shutdown: after idle_timeout seconds with no RPC/API activity, exit and remove socket
         if float(config.idle_timeout) > 0:
 
             def _idle_monitor():
