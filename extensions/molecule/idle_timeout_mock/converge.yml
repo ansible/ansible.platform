@@ -37,7 +37,7 @@
     - name: Trigger manager activity (create a user)
       ansible.platform.user:
         username: "idle-timeout-molecule-user"
-        password: "TestPassword123!" 
+        password: "TestPassword123!"
         state: present
       register: user_result
 
@@ -51,6 +51,8 @@
       ansible.builtin.command: id -u
       register: uid
       changed_when: false
+      vars:
+        ansible_connection: local
 
     - name: Find manager socket for localhost + current uid
       ansible.builtin.find:
@@ -59,31 +61,43 @@
           - "manager_{{ uid.stdout }}_localhost_*.sock"
         file_type: file
       register: sock_find
+      vars:
+        ansible_connection: local
 
     - name: Assert a manager socket was created
       ansible.builtin.assert:
         that:
           - sock_find.files | length > 0
         fail_msg: "Expected a manager socket in {{ manager_socket_dir }}. found={{ sock_find }}"
+      vars:
+        ansible_connection: local
 
     - name: Record socket path
       ansible.builtin.set_fact:
         manager_socket_path: "{{ (sock_find.files | sort(attribute='mtime'))[-1].path }}"
         manager_meta_path: "{{ (sock_find.files | sort(attribute='mtime'))[-1].path }}.meta"
+      vars:
+        ansible_connection: local
 
     - name: Wait past idle_timeout (poll=2s in scenario molecule.yml)
       ansible.builtin.pause:
         seconds: 8
+      vars:
+        ansible_connection: local
 
     - name: Assert socket removed after idle shutdown
       ansible.builtin.wait_for:
         path: "{{ manager_socket_path }}"
         state: absent
         timeout: 30
+      vars:
+        ansible_connection: local
 
     - name: Assert meta removed after idle shutdown
       ansible.builtin.wait_for:
         path: "{{ manager_meta_path }}"
         state: absent
         timeout: 30
+      vars:
+        ansible_connection: local
 ...
