@@ -10,6 +10,7 @@ import base64
 import logging
 import threading
 import time
+import time
 from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
@@ -112,11 +113,34 @@ class PlatformService(BaseAPIClient):
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
 
-        # Idle-tracking state (monotonic clock — not affected by NTP slew or wall-clock changes)
+        # Idle timeout: last time the service handled user-facing work (RPC / HTTP)
+        self._activity_lock = threading.Lock()
+        self._last_activity_monotonic = time.monotonic()
+
+        # Idle timeout: last time the service handled user-facing work (RPC / HTTP)
         self._activity_lock = threading.Lock()
         self._last_activity_monotonic = time.monotonic()
 
         self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
+
+    def record_activity(self) -> None:
+        """Mark the service as recently active (RPC or HTTP traffic)."""
+        with self._activity_lock:
+            self._last_activity_monotonic = time.monotonic()
+
+    def seconds_since_last_activity(self) -> float:
+        """Wall-clock elapsed seconds since the last record_activity() call."""
+        with self._activity_lock:
+            return time.monotonic() - self._last_activity_monotonic
+
+    def should_exit_for_idle(self) -> bool:
+        """True if idle_timeout is enabled and exceeded (and not already shutting down)."""
+        if self.config.idle_timeout <= 0:
+            return False
+        with self._shutdown_lock:
+            if self._shutdown_requested:
+                return False
+        return self.seconds_since_last_activity() >= self.config.idle_timeout
 
     def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
         """
@@ -137,6 +161,7 @@ class PlatformService(BaseAPIClient):
         Raises:
             PlatformError: Classified platform error
         """
+        self.record_activity()
 
         @retry_http_request(config=self.retry_config)
         def _execute_with_retry():
@@ -492,6 +517,7 @@ class PlatformService(BaseAPIClient):
         Raises:
             ValueError: If operation is unknown or execution fails
         """
+        self.record_activity()
         logger.info("Executing %s on %s", operation, module_name)
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
@@ -1102,6 +1128,7 @@ class PlatformService(BaseAPIClient):
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
         """
+        self.record_activity()
         if not lookup_value:
             return None
         if str(lookup_value).isdigit():

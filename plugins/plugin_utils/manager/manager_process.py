@@ -12,6 +12,9 @@ import sys
 import traceback
 from pathlib import Path
 
+# Interval between idle checks (seconds). Production default: 60.
+MANAGER_IDLE_POLL_INTERVAL = int(os.environ.get("ANSIBLE_PLATFORM_IDLE_POLL_SECONDS", "60"))
+
 
 def main():
     """Main entry point for the manager process."""
@@ -34,8 +37,8 @@ def main():
         pass
 
     if len(sys.argv) < 10:
-        print(f"ERROR: Expected 9 args, got {len(sys.argv) - 1}", file=sys.stderr)
-        print(f"Args received: {_safe_argv()}", file=sys.stderr)
+        print(f"ERROR: Expected at least 9 args (optional 10th: idle_timeout), got {len(sys.argv) - 1}", file=sys.stderr)
+        print(f"Args received: {sys.argv}", file=sys.stderr)
         sys.exit(1)
 
     marker = Path("/tmp/ansible_platform_manager_started.txt")
@@ -57,6 +60,7 @@ def main():
     gateway_token = sys.argv[7] or None
     gateway_validate_certs = sys.argv[8].lower() == "true"
     gateway_request_timeout = float(sys.argv[9])
+    gateway_idle_timeout = float(sys.argv[10]) if len(sys.argv) > 10 else 3600.0
     log_marker("Arguments parsed successfully")
 
     log_marker("Reading environment variables...")
@@ -146,6 +150,7 @@ def main():
                 verify_ssl=gateway_validate_certs,
                 request_timeout=gateway_request_timeout,
                 connection_mode="experimental",  # Persistent manager is always experimental mode
+                idle_timeout=gateway_idle_timeout,
             )
             with open(error_log, "a") as f:
                 f.write("GatewayConfig created successfully\n")
@@ -334,6 +339,59 @@ def main():
         # NOW start PlatformService init in background (socket already bound)
         _init_thread = threading.Thread(target=_init_service, daemon=True)
         _init_thread.start()
+
+        # Idle shutdown: after idle_timeout seconds with no RPC/API activity, exit and remove socket
+        if float(config.idle_timeout) > 0:
+
+            def _idle_monitor():
+                import time as _time
+
+                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+
+                while True:
+                    _time.sleep(MANAGER_IDLE_POLL_INTERVAL)
+                    if not _service_ready.is_set():
+                        continue
+                    svc = _service_container.get("service")
+                    if svc is None:
+                        continue
+                    if not svc.should_exit_for_idle():
+                        continue
+                    try:
+                        with open(error_log, "a") as _f:
+                            _f.write("Idle timeout exceeded, shutting down manager\n")
+                            _f.flush()
+                    except Exception:
+                        pass
+                    try:
+                        _shutdown_service()
+                    except Exception as _e:
+                        try:
+                            with open(error_log, "a") as _f:
+                                _f.write(f"Idle shutdown (service): {_e}\n")
+                                _f.flush()
+                        except Exception:
+                            pass
+                    try:
+                        server.shutdown()
+                    except Exception as _e:
+                        try:
+                            with open(error_log, "a") as _f:
+                                _f.write(f"Idle shutdown (server): {_e}\n")
+                                _f.flush()
+                        except Exception:
+                            pass
+                    try:
+                        ProcessManager.cleanup_old_socket(socket_path)
+                    except Exception:
+                        pass
+                    os._exit(0)
+
+            _idle_thread = threading.Thread(target=_idle_monitor, daemon=True, name="idle-timeout")
+            _idle_thread.start()
+            with open(error_log, "a") as f:
+                f.write(f"Idle timeout monitor started (interval={MANAGER_IDLE_POLL_INTERVAL}s, idle_timeout={config.idle_timeout}s)\n")
+                f.flush()
 
         try:
             server.serve_forever()

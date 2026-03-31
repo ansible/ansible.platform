@@ -26,6 +26,9 @@ class GatewayConfig:
     verify_ssl: bool = True
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
+    #: Seconds with no API activity before the persistent manager process exits.
+    #: Set to 0 to disable idle shutdown (not recommended for production).
+    idle_timeout: float = 3600.0
 
     def __post_init__(self):
         """Normalize URL after initialization."""
@@ -33,7 +36,13 @@ class GatewayConfig:
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
             logger.debug("Normalized gateway URL: %s -> %s", original_url, self.base_url)
-        logger.info("GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s", self.base_url, self.verify_ssl, self.request_timeout)
+        logger.info(
+            "GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s, idle_timeout=%s",
+            self.base_url,
+            self.verify_ssl,
+            self.request_timeout,
+            self.idle_timeout,
+        )
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -104,6 +113,10 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         gateway_token = gateway_token_raw
     gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
     gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
+    # Persistent manager idle shutdown (seconds); 0 disables idle-based exit
+    gateway_idle_timeout = task_args.get("gateway_idle_timeout")
+    if gateway_idle_timeout is None:
+        gateway_idle_timeout = host_vars.get("gateway_idle_timeout") or host_vars.get("ansible_platform_manager_idle_timeout")
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
     connection_mode = task_args.get("platform_connection_mode") or host_vars.get("platform_connection_mode") or "standard"
 
@@ -117,7 +130,7 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s", gateway_url, auth_method, gateway_validate_certs, gateway_request_timeout
     )
 
-    config = GatewayConfig(
+    config_kwargs = dict(
         base_url=gateway_url or "",
         username=gateway_username,
         password=gateway_password,
@@ -126,6 +139,10 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
     )
+    if gateway_idle_timeout is not None:
+        config_kwargs["idle_timeout"] = float(gateway_idle_timeout)
+
+    config = GatewayConfig(**config_kwargs)
 
     logger.debug("GatewayConfig created successfully")
     return config
