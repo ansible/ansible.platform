@@ -69,7 +69,7 @@
           - "{{ home_dir.stdout }}/.ansible/tmp"
         patterns:
           - "manager_{{ uid.stdout }}_localhost_*.sock"
-        file_type: file
+        file_type: any
         recurse: true
       register: sock_find_persistent
       vars:
