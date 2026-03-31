@@ -59,6 +59,12 @@
       vars:
         ansible_connection: local
 
+    - name: Set ephemeral socket directory (direct/ephemeral managers)
+      ansible.builtin.set_fact:
+        ephemeral_socket_dir: "{{ tmpdir.stdout | trim }}/ap"
+      vars:
+        ansible_connection: local
+
     - name: Get uid
       ansible.builtin.command: id -u
       register: uid
@@ -66,28 +72,43 @@
       vars:
         ansible_connection: local
 
-    - name: Find manager socket for localhost + current uid
+    - name: Find persistent manager socket for localhost + current uid
       ansible.builtin.find:
         paths: "{{ manager_socket_dir }}"
         patterns:
           - "manager_{{ uid.stdout }}_localhost_*.sock"
         file_type: file
-      register: sock_find
+      register: sock_find_persistent
       vars:
         ansible_connection: local
 
-    - name: Assert a manager socket was created
+    - name: Find ephemeral manager socket for localhost + current uid
+      ansible.builtin.find:
+        paths: "{{ ephemeral_socket_dir }}"
+        patterns:
+          - "manager_{{ uid.stdout }}_e*_*.sock"
+          - "manager_{{ uid.stdout }}_e*.sock"
+        file_type: file
+      register: sock_find_ephemeral
+      vars:
+        ansible_connection: local
+
+    - name: Assert a persistent manager socket was created
       ansible.builtin.assert:
         that:
-          - sock_find.files | length > 0
-        fail_msg: "Expected a manager socket in {{ manager_socket_dir }}. found={{ sock_find }}"
+          - sock_find_persistent.files | length > 0
+        fail_msg: >-
+          Expected a *persistent* manager socket in {{ manager_socket_dir }} but found none.
+          If sockets exist under {{ ephemeral_socket_dir }}, the connection likely ran in direct mode
+          instead of persistent. persistent_found={{ sock_find_persistent }}
+          ephemeral_found={{ sock_find_ephemeral }}
       vars:
         ansible_connection: local
 
     - name: Record socket path
       ansible.builtin.set_fact:
-        manager_socket_path: "{{ (sock_find.files | sort(attribute='mtime'))[-1].path }}"
-        manager_meta_path: "{{ (sock_find.files | sort(attribute='mtime'))[-1].path }}.meta"
+        manager_socket_path: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path }}"
+        manager_meta_path: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path }}.meta"
       vars:
         ansible_connection: local
 
