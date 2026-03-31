@@ -8,10 +8,6 @@ driver:
 platforms:
   - name: localhost
 ansible:
-  executor:
-    args:
-      ansible_playbook:
-        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
   env:
     ANSIBLE_PLATFORM_IDLE_POLL_SECONDS: "2"
 
