@@ -30,7 +30,9 @@
     gateway_password: "testpass"
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
-    gateway_idle_timeout: 3
+    # Keep this long enough that local verification tasks don't race the idle monitor
+    # (poll interval is forced to 2s in molecule.yml via ANSIBLE_PLATFORM_IDLE_POLL_SECONDS).
+    gateway_idle_timeout: 15
 
   tasks:
     - name: Trigger manager activity (create a user)
@@ -114,7 +116,7 @@
 
     - name: Wait past idle_timeout (poll=2s in scenario molecule.yml)
       ansible.builtin.pause:
-        seconds: 8
+        seconds: 20
       vars:
         ansible_connection: local
 
