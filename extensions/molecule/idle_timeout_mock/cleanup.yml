@@ -3,6 +3,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars:
+    ansible_connection: local
   tasks:
     - name: Best-effort cleanup any leftover manager sockets
       ansible.builtin.shell: >-

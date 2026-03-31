@@ -3,6 +3,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars:
+    ansible_connection: local
   tasks:
     - name: No-op verify (assert true)
       ansible.builtin.assert:
