@@ -383,9 +383,10 @@ def main():
                             pass
                     try:
                         ProcessManager.cleanup_old_socket(socket_path)
-                    except Exception:
-                        pass
-                    os._exit(0)
+                    except Exception as _e:
+                        print(f"Idle shutdown (socket cleanup failed): {_e}", file=sys.stderr)
+                    finally:
+                        os._exit(0)
 
             _idle_thread = threading.Thread(target=_idle_monitor, daemon=True, name="idle-timeout")
             _idle_thread.start()
