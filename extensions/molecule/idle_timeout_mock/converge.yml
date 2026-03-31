@@ -48,25 +48,6 @@
           - user_result is not failed
         fail_msg: "Manager failed to process the request against the mock server. result={{ user_result }}"
 
-    - name: Determine controller tempdir (for manager socket dir)
-      ansible.builtin.command: python3 -c "import tempfile; print(tempfile.gettempdir())"
-      register: tmpdir
-      changed_when: false
-      vars:
-        ansible_connection: local
-
-    - name: Set manager socket directory (ProcessManager default)
-      ansible.builtin.set_fact:
-        manager_socket_dir: "{{ tmpdir.stdout | trim }}/ansible_platform"
-      vars:
-        ansible_connection: local
-
-    - name: Set ephemeral socket directory (direct/ephemeral managers)
-      ansible.builtin.set_fact:
-        ephemeral_socket_dir: "{{ tmpdir.stdout | trim }}/ap"
-      vars:
-        ansible_connection: local
-
     - name: Get uid
       ansible.builtin.command: id -u
       register: uid
@@ -74,24 +55,23 @@
       vars:
         ansible_connection: local
 
-    - name: Find persistent manager socket for localhost + current uid
-      ansible.builtin.find:
-        paths: "{{ manager_socket_dir }}"
-        patterns:
-          - "manager_{{ uid.stdout }}_localhost_*.sock"
-        file_type: file
-      register: sock_find_persistent
+    - name: Determine HOME (for Molecule tmp paths)
+      ansible.builtin.command: sh -lc 'printf "%s" "$HOME"'
+      register: home_dir
+      changed_when: false
       vars:
         ansible_connection: local
 
-    - name: Find ephemeral manager socket for localhost + current uid
+    - name: Find persistent manager socket for localhost + current uid (common locations)
       ansible.builtin.find:
-        paths: "{{ ephemeral_socket_dir }}"
+        paths:
+          - "/tmp/ansible_platform"
+          - "{{ home_dir.stdout }}/.ansible/tmp"
         patterns:
-          - "manager_{{ uid.stdout }}_e*_*.sock"
-          - "manager_{{ uid.stdout }}_e*.sock"
+          - "manager_{{ uid.stdout }}_localhost_*.sock"
         file_type: file
-      register: sock_find_ephemeral
+        recurse: true
+      register: sock_find_persistent
       vars:
         ansible_connection: local
 
@@ -100,10 +80,9 @@
         that:
           - sock_find_persistent.files | length > 0
         fail_msg: >-
-          Expected a *persistent* manager socket in {{ manager_socket_dir }} but found none.
-          If sockets exist under {{ ephemeral_socket_dir }}, the connection likely ran in direct mode
-          instead of persistent. persistent_found={{ sock_find_persistent }}
-          ephemeral_found={{ sock_find_ephemeral }}
+          Expected a *persistent* manager socket but found none.
+          searched_paths=['/tmp/ansible_platform','{{ home_dir.stdout }}/.ansible/tmp']
+          persistent_found={{ sock_find_persistent }}
       vars:
         ansible_connection: local
 
@@ -111,6 +90,7 @@
       ansible.builtin.set_fact:
         manager_socket_path: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path }}"
         manager_meta_path: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path }}.meta"
+        manager_socket_dir: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path | dirname }}"
       vars:
         ansible_connection: local
 
