@@ -76,7 +76,7 @@ jobs:
           curl -sf http://127.0.0.1:8000/health
 
       - name: Run ${{ matrix.scenario }}
-        run: molecule test -s ${{ matrix.scenario }} --all
+        run: molecule test -s ${{ matrix.scenario }}
 
       - name: Stop mock Gateway
         if: always()
