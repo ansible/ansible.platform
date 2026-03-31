@@ -1,0 +1,8 @@
+---
+prepare_configs:
+  - name: "int-snode-alpha"
+  - name: "int-snode-beta"
+  - name: "int-snode-gamma"
+
+expected_config:
+  name: "int-snode-alpha"

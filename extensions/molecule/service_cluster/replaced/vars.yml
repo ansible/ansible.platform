@@ -1,0 +1,6 @@
+---
+prepare_config:
+  name: "int-cluster-alpha"
+
+expected_config:
+  name: "int-cluster-alpha"

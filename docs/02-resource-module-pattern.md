@@ -18,85 +18,220 @@ The key properties of every `ansible.platform` resource module:
 ## States
 
 Every `ansible.platform` resource module supports a subset of the following states.
-The exact set supported by each module is declared in its `DOCUMENTATION` string.
+The exact set supported by each module is declared in its `DOCUMENTATION` string and in
+`VALID_STATES` on the Ansible model class.
 
-### `state: present`
+> **See also**: [13-user-module-worked-example.md](13-user-module-worked-example.md)
+> for detailed playbook examples and expected output for every state using the `user`
+> module as a concrete running example.
 
-Ensure the resource exists with the given properties. If the resource does not exist,
-create it. If it already exists, check whether the specified properties match the
-current state. If they match, return `changed: false`. If they differ, update only
-the provided fields and return `changed: true`.
+### `state: merged`
+
+**"Create or update — add what is missing, update what differs."**
+
+If the resource does not exist, create it. If it already exists, compare only the
+fields you specified — if they all match the current state, return `changed: false`.
+If any specified field differs, PATCH only those fields and return `changed: true`.
+Fields you do **not** specify are left exactly as they are.
 
 ```yaml
-- name: Ensure user exists
+# First run — user does not exist → POST → changed: true
+- name: Create user alice
   ansible.platform.user:
-    username: alice
-    email: alice@example.com
-    state: present
+    config:
+      - username: "alice"
+        email: "alice@example.com"
+        first_name: "Alice"
+        last_name: "Smith"
+        is_superuser: false
+    state: merged
+    gateway_hostname: "https://gateway.example.com"
+    gateway_username: "admin"
+    gateway_password: "adminpass"
+    gateway_validate_certs: true
+  register: result
+# result.changed == true
+# result.before == []
+# result.after  == [{id: 42, username: alice, email: alice@example.com, ...}]
 ```
-
-**Formal definition**: Let `D` be the desired state (fields specified in the task).
-Let `E` be the existing state. If `E` is ∅ (resource does not exist), create resource
-with fields `D`. If `E` is not ∅ and `D ⊆ E` (all specified fields match), no-op.
-If `D ⊄ E`, patch resource with fields where `D ≠ E`.
-
-### `state: absent`
-
-Ensure the resource does not exist. If it does not exist, return `changed: false`.
-If it exists, delete it and return `changed: true`.
 
 ```yaml
-- name: Remove a stale HTTP port
-  ansible.platform.http_port:
-    port: 8080
-    state: absent
+# Second run — user exists, nothing changed → changed: false
+- name: Create user alice (idempotency)
+  ansible.platform.user:
+    config:
+      - username: "alice"
+        email: "alice@example.com"
+        first_name: "Alice"
+        last_name: "Smith"
+        is_superuser: false
+    state: merged
+  register: result
+# result.changed == false
+# result.before  == result.after  (identical)
 ```
-
-**Formal definition**: If `E` is ∅, no-op. If `E` is not ∅, delete resource.
-
-### `state: exists`
-
-Check whether the resource exists. Never creates, updates, or deletes anything.
-Returns `exists: true/false` and, when `true`, populates the resource fields in the
-return value. Useful for conditional tasks and facts gathering.
 
 ```yaml
-- name: Check if organization exists
-  ansible.platform.organization:
-    name: "Red Hat"
-    state: exists
-  register: org_check
-
-- name: Print result
-  debug:
-    msg: "org exists: {{ org_check.exists }}"
+# Update one field — alice exists but email changed → PATCH → changed: true
+- name: Update alice's email
+  ansible.platform.user:
+    config:
+      - username: "alice"
+        email: "alice-new@example.com"
+    state: merged
+  register: result
+# result.changed == true
+# result.before[0].email == "alice@example.com"
+# result.after[0].email  == "alice-new@example.com"
 ```
 
-**Formal definition**: Returns `{ exists: E ≠ ∅, ...fields }`. No side effects.
+**Formal definition**: `C' = C ∪ D`
+Let `D` be the desired fields, `E` the existing record. If `E = ∅`, create with `D`.
+If `E ≠ ∅` and `D ⊆ E` (all specified fields match), no-op. If `D ⊄ E`, PATCH the
+fields in `D` that differ.
 
-### `state: enforced`
+### `state: deleted`
 
-Ensure the resource exists with **exactly** the given properties. Unlike `present`
-(which only checks specified fields), `enforced` resets omitted optional fields to
-their defaults. This is the compliance enforcement state.
+**"Remove the resource if it exists."**
+
+If the resource does not exist, return `changed: false`. If it exists, delete it and
+return `changed: true`. Running deleted twice is always idempotent.
 
 ```yaml
-- name: Lock down feature flags to only approved values
-  ansible.platform.feature_flag:
-    name: login_expiry
-    enabled: true
-    state: enforced
+# First run — alice exists → DELETE → changed: true
+- name: Remove user alice
+  ansible.platform.user:
+    config:
+      - username: "alice"
+    state: deleted
+  register: result
+# result.changed == true
+# result.before  == [{id: 42, username: alice, ...}]
+# result.after   == []
 ```
 
-**Formal definition**: Let `D` be the full desired state including defaults for all
-omitted optional fields. Ensure `E = D`. If `E` is ∅, create. If `E ≠ D`, update to
-`D`. If `E = D`, no-op.
+```yaml
+# Second run — alice is already gone → changed: false
+- name: Remove user alice again (idempotency)
+  ansible.platform.user:
+    config:
+      - username: "alice"
+    state: deleted
+  register: result
+# result.changed == false
+# result.before  == []
+# result.after   == []
+```
 
-### `state: merged` (select modules)
+**Formal definition**: `C' = C \ D`
+For each item in `D`, if a matching resource exists in `C`, delete it.
 
-Merge a partial configuration onto an existing resource. Unlike `present`, `merged`
-performs a deep merge for list and dict fields rather than a full replacement.
-Used by modules whose fields are collections (e.g. authenticator maps, role assignments).
+### `state: gathered`
+
+**"Read current state — no changes."**
+
+Fetches and returns the current state of all matching resources. Never creates,
+updates, or deletes anything. Always returns `changed: false`.
+
+```yaml
+# Gather all users
+- name: Read all users
+  ansible.platform.user:
+    state: gathered
+    gateway_hostname: "https://gateway.example.com"
+    gateway_username: "admin"
+    gateway_password: "adminpass"
+    gateway_validate_certs: true
+  register: users
+# users.changed  == false
+# users.gathered == [{id: 1, username: admin, ...}, {id: 42, username: alice, ...}]
+
+- name: Print all usernames
+  ansible.builtin.debug:
+    msg: "{{ users.gathered | map(attribute='username') | list }}"
+# Output: ["admin", "alice"]
+```
+
+```yaml
+# Gather a specific user (filter by config)
+- name: Check if alice exists
+  ansible.platform.user:
+    config:
+      - username: "alice"
+    state: gathered
+  register: result
+# result.gathered | length > 0  → alice exists
+# result.gathered | length == 0 → alice does not exist
+```
+
+**Formal definition**: Returns `{ gathered: C }` where `C` is the current state.
+No side effects.
+
+### `state: replaced`
+
+**"Replace a resource's full field set."**
+
+Like `merged`, but instead of patching only the fields you specify, `replaced` resets
+ALL writable fields — setting unspecified ones to `null`. Use this when you want the
+resource to have exactly and only the fields you declare.
+
+```yaml
+# alice currently has: first_name=Alice, last_name=Smith, is_superuser=false
+- name: Replace alice's record (unspecified fields will be nulled)
+  ansible.platform.user:
+    config:
+      - username: "alice"
+        email: "alice-replaced@example.com"
+        # first_name, last_name, is_superuser NOT specified
+    state: replaced
+  register: result
+# PATCH body: {email: alice-replaced@example.com,
+#              first_name: null, last_name: null, is_superuser: null}
+# result.after[0].first_name == null
+# result.after[0].last_name  == null
+```
+
+**Formal definition**: `C' = (C \ K(D)) ∪ D`
+For each item in `D`, find the matching item in `C` by `CANONICAL_KEY`, then replace
+it entirely with the desired item (nulling any fields not in `D`).
+
+> **Key difference from `merged`**: `merged` only touches fields you specify.
+> `replaced` nulls out everything else.
+
+### `state: overridden`
+
+**"Enforce an exact set — delete anything not in config."**
+
+After `overridden`, the platform's resource set equals exactly `config`. Resources on
+the platform that are not in `config` are deleted. Resources in `config` that don't
+exist are created. Existing resources that differ are updated.
+
+```yaml
+# Current platform state: [admin, alice, charlie]
+# After overridden, ONLY alice and bob will exist
+- name: Enforce exact user set
+  ansible.platform.user:
+    config:
+      - username: "alice"
+        email: "alice@example.com"
+      - username: "bob"
+        email: "bob@example.com"
+    state: overridden
+  register: result
+# HTTP calls:
+#   GET  /api/gateway/v1/users/          ← read current
+#   POST /api/gateway/v1/users/          ← create bob
+#   DELETE /api/gateway/v1/users/1/      ← delete admin (!)
+#   DELETE /api/gateway/v1/users/99/     ← delete charlie
+# result.changed == true
+```
+
+> **Warning**: `overridden` will delete system users such as `admin` if they are not
+> listed in `config`. For user management, prefer `merged` + `deleted`.
+
+**Formal definition**: `C' = D`
+Delete all resources in `C` that have no match in `D`. Create all resources in `D`
+that have no match in `C`. Update resources that match but differ.
 
 ## Entities vs. Endpoints
 
@@ -191,26 +326,67 @@ API calls. This is guaranteed for all 22 modules.
 
 ### Return values
 
-Every module returns a consistent structure:
+Every module returns a consistent structure for write states (`merged`, `deleted`,
+`replaced`, `overridden`):
 
 ```yaml
 changed: true/false
 failed: false
-id: <resource integer ID>
-<primary_key_field>: <value>          # e.g. username, name, port
-<all resource fields>: <values>
-_timing:
-  rpc_time: <ms>
-  manager_processing_time: <ms>
-  api_call_time: <ms>
+before:                   # list of resource dicts BEFORE this run
+  - id: 42
+    username: "alice"
+    email: "alice@example.com"
+    first_name: "Alice"
+    last_name: "Smith"
+    is_superuser: false
+    created: "2025-06-01T10:00:00Z"
+    modified: "2025-06-01T10:00:00Z"
+    # ... all API-returned fields
+after:                    # list of resource dicts AFTER this run
+  - id: 42
+    username: "alice"
+    email: "alice-new@example.com"   # ← updated field
+    first_name: "Alice"
+    last_name: "Smith"
+    is_superuser: false
+    modified: "2025-06-01T11:30:00Z"
+config:                   # alias for 'after' (or 'gathered' for gathered state)
+  - id: 42
+    username: "alice"
+    # ...
 ```
 
-When `state: exists`:
+For `state: gathered`:
 ```yaml
 changed: false
 failed: false
-exists: true/false
-<resource fields if exists>: <values>
+gathered:                 # list of resource dicts (current state)
+  - id: 1
+    username: "admin"
+    # ...
+  - id: 42
+    username: "alice"
+    # ...
+config:                   # alias for 'gathered'
+  - id: 1
+    username: "admin"
+    # ...
+```
+
+**Accessing return values in playbooks:**
+
+```yaml
+# Check if a specific user was in the 'after' list
+- debug:
+    msg: "alice id = {{ (result.after | selectattr('username', 'eq', 'alice') | first).id }}"
+
+# Count how many users exist after the run
+- debug:
+    msg: "Total users: {{ result.after | length }}"
+
+# Get all usernames from gathered state
+- debug:
+    msg: "{{ users.gathered | map(attribute='username') | list }}"
 ```
 
 ## Why This Pattern Matters for AAP

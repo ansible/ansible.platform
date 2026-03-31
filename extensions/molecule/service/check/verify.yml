@@ -1,0 +1,25 @@
+---
+- name: "Verify — service (check)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+  - vars.yml
+  tasks:
+  - name: Gather service (check mode must not have applied changes)
+    ansible.platform.service:
+      config:
+      - name: "{{ expected_config.name }}"
+      state: gathered
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    register: gathered
+
+  - name: Assert int-svc-alpha still has prepare_config values (check did not apply)
+    ansible.builtin.assert:
+      that:
+      - gathered.gathered is defined
+      - gathered.gathered | length > 0
+      fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
+

@@ -1,0 +1,6 @@
+---
+prepare_config:
+  name: "int-cert-alpha"
+
+expected_config:
+  name: "int-cert-alpha"

@@ -1,0 +1,25 @@
+---
+- name: "Verify — service_key (merged)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+  - vars.yml
+  tasks:
+  - name: Gather service_key (assert present after merged)
+    ansible.platform.service_key:
+      config:
+      - name: "{{ expected_config.name }}"
+      state: gathered
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    register: gathered
+
+  - name: Assert configuration exists after merged
+    ansible.builtin.assert:
+      that:
+      - gathered.gathered is defined
+      - gathered.gathered | length > 0
+      fail_msg: "Expected resource after merged. got: {{ gathered.gathered }}"
+

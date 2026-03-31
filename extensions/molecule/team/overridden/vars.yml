@@ -1,0 +1,14 @@
+---
+prepare_configs:
+  - name: "int-team-alpha"
+    description: "Alpha team initial"
+  - name: "int-team-beta"
+    description: "Beta team initial"
+  - name: "int-team-gamma"
+    description: "Gamma seed"
+  - name: "int-team-delta"
+    description: "Delta seed"
+
+expected_config:
+  name: "int-team-alpha"
+  description: "Alpha team initial"

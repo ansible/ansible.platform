@@ -1,5 +1,9 @@
 # Data Model Transformation
 
+> **Worked example**: [13-user-module-worked-example.md](13-user-module-worked-example.md)
+> traces a complete `state: merged` user create through every tier with real data at
+> each step. Read that first if you prefer concrete examples over abstract diagrams.
+
 ## The Three-Tier Data Flow
 
 Every resource in `ansible.platform` has three data representations. Understanding these
@@ -33,6 +37,88 @@ three tiers is essential to understanding any part of the codebase.
 
 The **Transform Mixin** is the translator between Tier 1 and Tier 2. It is the only
 place where version-specific and resource-specific logic lives.
+
+### Concrete Example: User Create (`state: merged`)
+
+The same data as it appears at each tier for `ansible.platform.user`:
+
+**Tier 1 — what the playbook author writes:**
+```yaml
+config:
+  - username: "alice"
+    email: "alice@example.com"
+    first_name: "Alice"
+    last_name: "Smith"
+    password: "SecurePass123!"
+    is_superuser: false
+```
+This becomes `AnsibleUser(username="alice", email="alice@example.com", ...)`
+
+**Tier 1 → Tier 2 — `UserTransformMixin_v1.from_ansible_data()` output:**
+```python
+APIUser_v1(
+    username="alice",
+    email="alice@example.com",
+    first_name="Alice",
+    last_name="Smith",
+    password="SecurePass123!",
+    is_superuser=False,
+    # None fields are NOT included in the HTTP body
+)
+# Serialised HTTP body:
+# {"username":"alice","email":"alice@example.com","first_name":"Alice",
+#  "last_name":"Smith","password":"SecurePass123!","is_superuser":false}
+```
+
+**Gateway API response (Tier 3 → Tier 2):**
+```json
+{
+    "id": 42,
+    "username": "alice",
+    "email": "alice@example.com",
+    "first_name": "Alice",
+    "last_name": "Smith",
+    "is_superuser": false,
+    "url": "https://gateway.example.com/api/gateway/v1/users/42/",
+    "created": "2025-06-01T10:00:00.000000Z",
+    "modified": "2025-06-01T10:00:00.000000Z",
+    "is_platform_auditor": false,
+    "managed": false
+}
+```
+
+**Tier 2 → Tier 1 — `UserTransformMixin_v1.from_api()` output:**
+```python
+AnsibleUser(
+    id=42,
+    username="alice",
+    email="alice@example.com",
+    first_name="Alice",
+    last_name="Smith",
+    password=None,         # ← API never returns passwords; field stays None
+    is_superuser=False,
+    url="https://gateway.example.com/api/gateway/v1/users/42/",
+    created="2025-06-01T10:00:00.000000Z",
+    modified="2025-06-01T10:00:00.000000Z",
+    is_platform_auditor=False,
+    managed=False,
+)
+```
+
+**Final module output (`result.after[0]`):**
+```yaml
+id: 42
+username: "alice"
+email: "alice@example.com"
+first_name: "Alice"
+last_name: "Smith"
+is_superuser: false
+url: "https://gateway.example.com/api/gateway/v1/users/42/"
+created: "2025-06-01T10:00:00.000000Z"
+modified: "2025-06-01T10:00:00.000000Z"
+is_platform_auditor: false
+managed: false
+```
 
 ## Tier 1: Ansible Model
 

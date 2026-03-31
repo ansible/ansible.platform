@@ -1,0 +1,29 @@
+---
+prepare_configs:
+  - username: "int-user-alice"
+    first_name: "Alice"
+    last_name: "Smith"
+    email: "int-alice@test.example"
+    is_superuser: false
+  - username: "int-user-bob"
+    first_name: "Bob"
+    last_name: "Jones"
+    email: "int-bob@test.example"
+    is_superuser: false
+  - username: "int-user-carol"
+    first_name: "Carol"
+    last_name: "White"
+    email: "int-carol@test.example"
+    is_superuser: false
+  - username: "int-user-dave"
+    first_name: "Dave"
+    last_name: "Brown"
+    email: "int-dave@test.example"
+    is_superuser: false
+
+expected_config:
+  username: "int-user-alice"
+  first_name: "Alice"
+  last_name: "Smith"
+  email: "int-alice@test.example"
+  is_superuser: false

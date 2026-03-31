@@ -94,10 +94,19 @@ to resolve correctly. See [conftest.py](../conftest.py).
 
 ---
 
-## Layer 2: Molecule Mock Tests
+## Layer 2: Molecule Tests
 
-**Location**: `extensions/molecule/<resource>_mock/`  
-**Runner**: `molecule converge && molecule verify`  
+Layer 2 is split into two sub-tiers that share the same mock Gateway infrastructure:
+
+| Sub-tier | Location | What it tests |
+|----------|----------|---------------|
+| **Mock smoke tests** | `extensions/molecule/<resource>_mock/` | Basic create/update/delete/gathered across all 3 connection modes |
+| **Integration scenarios** | `extensions/molecule/<resource>_integration/` | All 5 states with full `before`/`after` content assertions, multi-resource `overridden`, non-existent resource edge cases |
+
+### Layer 2a: Mock Smoke Tests
+
+**Location**: `extensions/molecule/<resource>_mock/`
+**Runner**: `molecule converge && molecule verify`
 **Requires**: Mock Gateway server, no live AAP
 
 Molecule scenarios test the full action plugin → manager → transform mixin → HTTP round
@@ -139,74 +148,188 @@ extensions/molecule/<resource>_mock/
 
 ### Standard converge.yml Pattern
 
-All mock scenarios follow this pattern:
+All mock scenarios follow the resource module pattern. Here is the **actual
+`users_mock/converge.yml`** as a reference (simplified):
 
 ```yaml
 ---
-- name: Converge
+- name: Converge — user (mock, connection local)
   hosts: localhost
+  connection: local
   gather_facts: false
+  vars:
+    molecule_username: molecule-test-user
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: testpass
+    gateway_validate_certs: false
 
   tasks:
-    - name: Run create (first time)
-      ansible.platform.<resource>:
-        <primary_key>: test-value
-        state: present
-      register: first_run
+    # ── 1. Create ───────────────────────────────────────────────────────────
+    - name: Create user (connection local)
+      ansible.platform.user:
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            password: MockPass123!
+            is_superuser: false
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result
 
-    - name: Assert first run changed
-      assert:
+    - name: Assert create changed
+      ansible.builtin.assert:
         that:
-          - first_run.changed
-          - first_run.id is defined
+          - create_result is changed
+          - create_result.after | length > 0
+          - "'molecule-test-user' in (create_result.after | map(attribute='username') | list)"
 
-    - name: Run again (idempotency check)
-      ansible.platform.<resource>:
-        <primary_key>: test-value
-        state: present
-      register: second_run
+    # ── 2. Idempotency (no change) ──────────────────────────────────────────
+    - name: Run again idempotency (connection local)
+      ansible.platform.user:
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            is_superuser: false
+        state: merged
+        # ... gateway args ...
+      register: idem_result
 
     - name: Assert idempotent run did not change
-      assert:
+      ansible.builtin.assert:
         that:
-          - not second_run.changed
+          - idem_result is not changed   # ← key: no PATCH issued
 
-    - name: Verify exists check
-      ansible.platform.<resource>:
-        <primary_key>: test-value
-        state: exists
-      register: exists_check
+    # ── 3. Update ───────────────────────────────────────────────────────────
+    - name: Update user email and last_name (connection local)
+      ansible.platform.user:
+        config:
+          - username: "{{ molecule_username }}"
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
+        # ... gateway args ...
+      register: update_result
 
-    - name: Assert exists
-      assert:
+    - name: Assert update changed
+      ansible.builtin.assert:
         that:
-          - exists_check.exists
+          - update_result is changed    # ← PATCH was issued
 
-    - name: Delete the resource
-      ansible.platform.<resource>:
-        <primary_key>: test-value
-        state: absent
-      register: delete_run
+    # ── 4. Gathered (read-only) ─────────────────────────────────────────────
+    - name: Check user exists (state gathered)
+      ansible.platform.user:
+        config:
+          - username: "{{ molecule_username }}"
+        state: gathered
+        # ... gateway args ...
+      register: exists_result
 
-    - name: Assert deletion changed
-      assert:
+    - name: Assert exists returns correct data
+      ansible.builtin.assert:
         that:
-          - delete_run.changed
+          - exists_result is not changed
+          - exists_result.gathered | length > 0
+          - exists_result.gathered[0].username == molecule_username
 
+    # ── 5. Delete ───────────────────────────────────────────────────────────
+    - name: Delete user (connection local)
+      ansible.platform.user:
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
+        # ... gateway args ...
+      register: delete_result
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # ── 6. Delete idempotency ───────────────────────────────────────────────
     - name: Delete again (idempotency)
-      ansible.platform.<resource>:
-        <primary_key>: test-value
-        state: absent
-      register: delete_again
+      ansible.platform.user:
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
+        # ... gateway args ...
+      register: delete_idem_result
 
-    - name: Assert second delete is no-op
-      assert:
+    - name: Assert second delete is a no-op
+      ansible.builtin.assert:
         that:
-          - not delete_again.changed
-...
+          - delete_idem_result is not changed
 ```
 
-### Running Mock Tests
+### Expected terminal output (passing run)
+
+```
+PLAY [Converge — user (mock, connection local)] ***********************
+
+TASK [Create user (connection local)] *********************************
+changed: [localhost]
+
+TASK [Assert create changed] ******************************************
+ok: [localhost]
+
+TASK [Run again idempotency (connection local)] ***********************
+ok: [localhost]           ← 'ok' (not 'changed') = idempotency confirmed
+
+TASK [Assert idempotent run did not change (connection local)] ********
+ok: [localhost]
+
+TASK [Update user email and last_name (connection local)] *************
+changed: [localhost]      ← 'changed' = PATCH was issued
+
+TASK [Assert update changed] ******************************************
+ok: [localhost]
+
+TASK [Run update again idempotency (connection local)] ****************
+ok: [localhost]           ← idempotency on update confirmed
+
+TASK [Check user exists (state gathered, connection local)] ***********
+ok: [localhost]
+
+TASK [Assert exists returns correct data] *****************************
+ok: [localhost]
+
+TASK [Delete user (connection local)] *********************************
+changed: [localhost]      ← 'changed' = DELETE was issued
+
+TASK [Assert delete changed] ******************************************
+ok: [localhost]
+
+TASK [Delete again (idempotency, connection local)] *******************
+ok: [localhost]           ← 'ok' = no DELETE on absent resource
+
+TASK [Assert second delete is a no-op] ********************************
+ok: [localhost]
+
+PLAY RECAP ************************************************************
+localhost : ok=13  changed=3  unreachable=0  failed=0  skipped=0
+
+                          ↑
+       Exactly 3 changed: create + update + delete — correct.
+       0 failed: all assertions passed.
+```
+
+### Common failure signatures
+
+| Symptom | Root cause | Fix |
+|---------|-----------|-----|
+| `changed=true` on 2nd merged run | `_config_matches` returns False | Check if field types differ (str vs int) |
+| `failed: [localhost]: FAILED! => assertion failed` on idempotency | Module re-creates or re-PATCHes | Add debug task to print `before`/`after` |
+| `changed=false` on create | User already exists in mock store from a failed previous run | Run `molecule cleanup` then retry |
+| `HTTPError 404` on PATCH | `SYSTEM_KEY` not being resolved to `id` | Check `CANONICAL_KEY` and `SYSTEM_KEY` on `AnsibleUser` |
+
+### Running Mock Smoke Tests
 
 ```bash
 # Run single scenario
@@ -252,6 +375,166 @@ All 22 modules have a corresponding mock scenario:
 | `token_mock` | `token` |
 | `ui_plugin_route_mock` | `ui_plugin_route` |
 | `users_mock` | `user` |
+
+---
+
+### Layer 2b: Integration Scenarios
+
+**Location**: `extensions/molecule/<resource>_integration/`
+**Runner**: `molecule test -s organization_integration`
+**Requires**: Mock Gateway server (same as mock smoke tests)
+
+Integration scenarios go further than smoke tests. Each one covers **all 5 resource-module
+states** in a single sequential `converge.yml`, and every assertion checks the **content**
+of `before` and `after`, not just whether `changed` was true or false.
+
+#### What integration scenarios add over mock smoke tests
+
+| Capability | Mock smoke test | Integration scenario |
+|-----------|----------------|---------------------|
+| `merged` (create/update) | ✅ (changed/not-changed) | ✅ + before/after content assertions |
+| `replaced` | ❌ | ✅ |
+| `overridden` | ❌ | ✅ (seeds extras that must be deleted) |
+| `gathered` (all / specific / missing) | partial | ✅ all 3 cases |
+| `deleted` (delete / idempotent / non-existent) | partial | ✅ all 3 cases |
+| before/after content verified | ❌ | ✅ |
+| Multi-resource overridden proof | ❌ | ✅ |
+
+#### Scenario structure
+
+Each scenario has the same 4-file layout as a mock scenario:
+
+```
+extensions/molecule/<resource>_integration/
+├── molecule.yml      — driver config (same as _mock)
+├── inventory.yml     — gateway vars (same as _mock)
+├── converge.yml      — 6 sequential plays (setup + merged + replaced + overridden + gathered + deleted)
+├── verify.yml        — confirm final state (only r1 remains, r0 is gone)
+└── cleanup.yml       — idempotent deletion of all test resources
+```
+
+#### converge.yml play structure
+
+```
+Play 0: Setup    — wait for mock Gateway, create survive flag
+Play 1: merged   — CREATE r0 + r1, assert before=[], after has both
+                   UPDATE r0 only, assert before.field == v1, after.field == v2
+                   Idempotent: assert not changed
+Play 2: replaced — REPLACE r0 (full object), r1 untouched
+                   Assert before vs after diff, idempotent
+Play 3: overridden — SEED r2 + r3 extras, then override to [r0, r1] only
+                    Assert before has 4, after has exactly 2, r2/r3 absent
+                    Idempotent: assert not changed
+Play 4: gathered — A) gather all → count, B) gather r0 by key → length==1
+                   C) gather non-existent → length==0, not failed
+Play 5: deleted  — A) delete r0 → before has it, after doesn't
+                   B) delete r0 again → not changed
+                   C) delete never-existed → not changed, not failed
+```
+
+#### Example: organization integration assertions
+
+The before/after assertions look like this (as opposed to mock tests that only check `is changed`):
+
+```yaml
+# merged: assert before captured OLD description
+- name: "merged | Assert before captured old description"
+  ansible.builtin.assert:
+    that:
+      - (update_result.before | selectattr('name','equalto','int-org-alpha') | first).description == 'Alpha initial'
+
+# merged: assert after shows NEW description
+- name: "merged | Assert after shows new description"
+  ansible.builtin.assert:
+    that:
+      - (update_result.after | selectattr('name','equalto','int-org-alpha') | first).description == 'Alpha updated'
+
+# overridden: the critical set-equality proof
+- name: "overridden | Assert after contains ONLY the 2 desired orgs"
+  ansible.builtin.assert:
+    that:
+      - overridden_result.after | selectattr('name','equalto','int-org-gamma') | list | length == 0
+      - overridden_result.after | selectattr('name','equalto','int-org-delta') | list | length == 0
+      - overridden_result.after | selectattr('name','search','^int-org-') | list | length == 2
+```
+
+#### Generating integration scenarios
+
+Integration scenarios are generated from `tools/generate_integration_tests.py` using
+per-module fixture data (resource names, field values, extra seeds):
+
+```bash
+# Generate for one module
+python tools/generate_integration_tests.py team
+
+# Generate for all modules (skips hand-crafted organization + user)
+python tools/generate_integration_tests.py --all
+
+# Overwrite an existing generated scenario
+python tools/generate_integration_tests.py team --force
+
+# Dry-run (print converge.yml to stdout without writing)
+python tools/generate_integration_tests.py team --dry-run
+
+# List modules that have fixture definitions
+python tools/generate_integration_tests.py --list
+```
+
+To add a new module's integration scenario, add its fixture to the `FIXTURES` dict in
+`generate_integration_tests.py`:
+
+```python
+"my_module": ModuleFixture(
+    canonical_field="name",
+    prefix="int-mym-",
+    resources=[
+        {"name": "int-mym-alpha", "description": "Alpha"},
+        {"name": "int-mym-beta",  "description": "Beta"},
+    ],
+    update_config={"name": "int-mym-alpha", "description": "Alpha updated"},
+    replaced_config={"name": "int-mym-alpha", "description": "Alpha replaced"},
+    extra_seeds=[{"name": "int-mym-gamma", "description": "Seed"}],
+),
+```
+
+Modules automatically skipped (require manual scenarios):
+- `settings` — singleton (`CANONICAL_KEY=None`), no list, uses GET+PATCH `/settings/all/`
+- `role_team_assignment`, `role_user_assignment` — category C (content-matched, no name key)
+- `feature_flag`, `authenticator_user` — `SUPPORTS_DELETE=False`, limited state set
+
+#### Coverage
+
+17 modules have generated integration scenarios (all 5 states):
+
+```
+application_integration         authenticator_integration
+authenticator_map_integration   ca_certificate_integration
+http_port_integration           organization_integration
+role_definition_integration     route_integration
+service_integration             service_cluster_integration
+service_key_integration         service_node_integration
+service_type_integration        team_integration
+token_integration               ui_plugin_route_integration
+user_integration
+```
+
+#### Running integration scenarios
+
+```bash
+# Run single integration scenario
+molecule test -s organization_integration
+
+# Run all integration scenarios
+for s in extensions/molecule/*_integration; do
+    scenario=$(basename "$s")
+    echo "=== $scenario ==="
+    molecule test -s "$scenario"
+done
+
+# Run just converge phase (skip cleanup for debugging)
+molecule converge -s organization_integration
+molecule verify  -s organization_integration
+```
 
 ---
 
@@ -381,20 +664,23 @@ Key rules enforced:
 
 ## What Each Layer Catches
 
-| Bug Category | Unit | Molecule Mock | Integration |
-|-------------|------|--------------|-------------|
-| Registry/loader logic error | ✅ | — | — |
-| Connection plugin routing bug | ✅ | — | — |
-| Transform mixin field mapping error | — | ✅ | ✅ |
-| Idempotency logic failure | — | ✅ | ✅ |
-| check_mode violation | — | ✅ | ✅ |
-| Ref field ID comparison bug | — | ✅ | ✅ |
-| API version incompatibility | — | — | ✅ |
-| Secondary endpoint ordering bug | — | ✅ | ✅ |
-| Real API schema mismatch | — | — | ✅ |
-| Name-to-ID resolution failure | — | ✅ | ✅ |
-| Manager process lifecycle bug | ✅ | — | — |
-| Write-only field leak (password) | — | ✅ | ✅ |
+| Bug Category | Unit | Mock smoke | Integration scenario | Live AAP |
+|-------------|------|-----------|---------------------|----------|
+| Registry/loader logic error | ✅ | — | — | — |
+| Connection plugin routing bug | ✅ | — | — | — |
+| Transform mixin field mapping error | — | ✅ | ✅ | ✅ |
+| Idempotency logic failure (merged) | — | ✅ | ✅ | ✅ |
+| replaced does not delete unlisted items | — | — | ✅ | ✅ |
+| overridden deletes extras correctly | — | — | ✅ | ✅ |
+| before/after content correctness | — | — | ✅ | ✅ |
+| gathered empty-list on missing resource | — | partial | ✅ | ✅ |
+| delete of non-existent is no-op | — | partial | ✅ | ✅ |
+| check_mode violation | — | ✅ | ✅ | ✅ |
+| API version incompatibility | — | — | — | ✅ |
+| Real API schema mismatch | — | — | — | ✅ |
+| Name-to-ID resolution failure | — | ✅ | ✅ | ✅ |
+| Manager process lifecycle bug | ✅ | — | — | — |
+| Write-only field leak (password) | — | — | ✅ | ✅ |
 
 ---
 
@@ -406,7 +692,12 @@ When adding a new resource module (see [07-adding-resources.md](07-adding-resour
    - Copy `extensions/molecule/users_mock/` to `extensions/molecule/<resource>_mock/`
    - Update `converge.yml` with the new module name and its parameters
 
-2. **Integration test target** (required):
+2. **Molecule integration scenario** (required, full state coverage):
+   - Add a `ModuleFixture` entry to `tools/generate_integration_tests.py`
+   - Run `python tools/generate_integration_tests.py <resource>`
+   - Review the generated `converge.yml` and customise if needed
+
+3. **Integration test target** (required):
    - Create `tests/integration/targets/<resource>s_test/tasks/main.yml`
    - Follow the seven-phase pattern above
 
@@ -423,4 +714,5 @@ When adding a new resource module (see [07-adding-resources.md](07-adding-resour
 | Unit tests | `.github/workflows/unit.yml` | `pytest tests/unit/ -v` |
 | Linting | `.github/workflows/lint.yml` | `tox -e black,flake8,isort` + `ansible-lint` |
 | Molecule mock | `.github/workflows/molecule.yml` | All `*_mock` scenarios |
-| Integration | `.github/workflows/integration.yml` | All `*_test` targets (requires AAP) |
+| Molecule integration | `.github/workflows/molecule.yml` | All `*_integration` scenarios |
+| Integration | `.github/workflows/integration.yml` | All `*_test` targets (requires live AAP) |

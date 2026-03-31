@@ -6,6 +6,17 @@ Follow these steps in order. Each step has a clear deliverable and a quality che
 **Time estimate**: 1–2 hours for a simple resource, 2–4 hours for complex (ref fields,
 secondary endpoints, version-specific quirks).
 
+> **Reference implementation**: The `user` module is the canonical example of a
+> complete, correct resource module. Its five files are:
+> - `plugins/modules/user.py`
+> - `plugins/plugin_utils/ansible_models/user.py`
+> - `plugins/plugin_utils/api/v1/user.py`
+> - `plugins/action/user.py`
+> - `extensions/molecule/users_mock/converge.yml`
+>
+> See [13-user-module-worked-example.md](13-user-module-worked-example.md) for a
+> complete walkthrough of what these files do at runtime.
+
 ---
 
 ## Overview: The Seven Files
@@ -29,98 +40,196 @@ Every resource requires these seven files:
 Start with `DOCUMENTATION`. This is the contract with playbook authors and the source
 of truth for the `AnsibleFoo` dataclass.
 
-```python
-# plugins/modules/notification_profile.py
+**Actual user module example** (`plugins/modules/user.py`):
 
-DOCUMENTATION = r"""
+```python
+DOCUMENTATION = """
 ---
-module: notification_profile
-short_description: Manage notification profiles on Ansible Automation Platform
+module: user
+short_description: Manage gateway user resources.
 description:
-  - Create, update, delete, and query notification profiles on AAP Gateway.
-version_added: "2.5.0"
-author:
-  - Your Name (@yourhandle)
+    - Create, update, delete, or gather automation platform gateway user resources.
+    - Follows the Ansible resource module pattern with before/after state tracking.
+options:
+    config:
+      description:
+        - A list of user resource configurations.
+        - Each entry represents a desired user state.
+      type: list
+      elements: dict
+      suboptions:
+        username:
+          required: true
+          type: str
+          description: >
+            Required. 150 characters or fewer.
+            Letters, digits and @/./+/-/_ only.
+        email:
+          type: str
+          description: Email address for the user.
+        first_name:
+          type: str
+          description: User's first name.
+        last_name:
+          type: str
+          description: User's last name.
+        password:
+          type: str
+          description: >
+            Password for the user. Write-only — not returned by the API.
+            Updating password is not idempotent.
+        is_superuser:
+          type: bool
+          description: >
+            Designates that this user has all permissions without
+            explicitly assigning them.
+        id:
+          type: str
+          description: >
+            The unique identifier of the resource.
+            Used for update/delete operations.
+
 extends_documentation_fragment:
   - ansible.platform.auth
   - ansible.platform.state
-options:
-  name:
-    description:
-      - Name of the notification profile.
-    type: str
-    required: true
-  notification_type:
-    description:
-      - The type of notification backend.
-    type: str
-    choices: [email, slack, webhook]
-    required: true
-  url:
-    description:
-      - Destination URL (required for slack and webhook types).
-    type: str
-  organization:
-    description:
-      - Name of the organization that owns this profile.
-    type: str
 """
 
-EXAMPLES = r"""
-- name: Create a Slack notification profile
-  ansible.platform.notification_profile:
-    name: ops-alerts
-    notification_type: slack
-    url: https://hooks.slack.com/services/T00/B00/xxx
-    organization: Red Hat
-    state: present
+EXAMPLES = """
+- name: Create user resources (merged)
+  ansible.platform.user:
+    config:
+      - username: "alice"
+        email: "alice@example.com"
+        first_name: "Alice"
+        last_name: "Smith"
+        password: "SecurePass123!"
+        is_superuser: false
+    state: merged
 
-- name: Delete a notification profile
-  ansible.platform.notification_profile:
-    name: ops-alerts
-    state: absent
-...
+- name: Gather current user state
+  ansible.platform.user:
+    state: gathered
+  register: result
+
+- name: Delete specific user resources
+  ansible.platform.user:
+    config:
+      - username: "alice"
+    state: deleted
+
+- name: Override — ensure only these user resources exist
+  ansible.platform.user:
+    config:
+      - username: "alice"
+        email: "alice@example.com"
+    state: overridden
 """
 ```
 
-**Quality check**: Run `ansible-doc -t module ansible.platform.notification_profile`
+**Quality check**: Run `ansible-doc -t module ansible.platform.user`
 and verify all options render correctly.
+
+Expected `ansible-doc` output:
+```
+> ANSIBLE.PLATFORM.USER    (plugins/modules/user.py)
+
+  Create, update, delete, or gather automation platform gateway
+  user resources. Follows the Ansible resource module pattern with
+  before/after state tracking.
+
+OPTIONS (= is mandatory):
+  config
+        A list of user resource configurations.
+        type: list / elements=dict
+        SUBOPTIONS:
+          = username
+                Required. 150 characters or fewer.
+                type: str
+          - email
+                Email address for the user.
+                type: str
+          ...
+  state
+        The desired state of the resource.
+        choices: merged, deleted, gathered, replaced, overridden
+        default: merged
+        type: str
+```
 
 ---
 
 ## Step 2: Create the Ansible Model (`plugins/plugin_utils/ansible_models/`)
 
 Translate `DOCUMENTATION.options` directly into a `@dataclass`. Rules:
-- `required: true` → positional field (no default)
-- `required: false` / not required → `Optional[T] = None`
-- `type: str` → `str` or `Optional[str]`
-- `type: bool` → `Optional[bool]`
-- `type: int` → `Optional[int]`
-- `type: list` → `Optional[List[str]]`
-- `type: dict` → `Optional[Dict[str, Any]]`
-- Reference fields (org names, cluster names) → `Optional[Union[str, int]]` to accept
-  both names and IDs
+- `required: true` → keep as `Optional[T] = None` in the dataclass (required-ness is
+  enforced by the argspec, not the dataclass)
+- All fields default to `Optional[T] = None` so the framework can construct empty instances
+- `type: str` → `Optional[str] = None`
+- `type: bool` → `Optional[bool] = None`
+- `type: int` → `Optional[int] = None`
+- `type: list` → `Optional[List[Any]] = None`
+- `type: dict` → `Optional[Dict[str, Any]] = None`
+- Reference fields (org names, cluster names) → `Optional[Any] = None` to accept both names and IDs
+
+The dataclass also carries **resource metadata constants** used by the action plugin:
+
+**Actual user module example** (`plugins/plugin_utils/ansible_models/user.py`):
 
 ```python
-# plugins/plugin_utils/ansible_models/notification_profile.py
-from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+from ..platform.base_transform import BaseTransformMixin
+
 
 @dataclass
-class AnsibleNotificationProfile:
-    name: str                              # required (no default)
-    notification_type: str                 # required
-    url: Optional[str] = None
-    organization: Optional[str] = None    # ref field — org name
-    state: str = 'present'
-    # read-only (populated from API response):
+class AnsibleUser(BaseTransformMixin):
+    """Ansible representation of a gateway user (resource module pattern)."""
+
+    # Resource metadata — read by BaseResourceActionPlugin at runtime
+    MODULE_NAME = "user"
+    CANONICAL_KEY = "username"      # field used to look up existing resources
+    SYSTEM_KEY = "id"               # API system identifier field
+    SUPPORTS_DELETE = True
+    VALID_STATES = frozenset({"merged", "replaced", "overridden", "deleted", "gathered"})
+
+    # Writable fields (sent to API on create/update)
+    username: Optional[str] = None
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    password: Optional[str] = None       # write-only; API never returns this
+    is_superuser: Optional[bool] = None
+    authenticators: Optional[List[Any]] = None
+    authenticator_uid: Optional[str] = None
+    associated_authenticators: Optional[Any] = None
+
+    # Read-only fields (populated from API response, never sent to API)
     id: Optional[int] = None
+    url: Optional[str] = None
+    related: Optional[Dict[str, Any]] = None
+    summary_fields: Optional[Dict[str, Any]] = None
     created: Optional[str] = None
+    created_by: Optional[int] = None
     modified: Optional[str] = None
+    modified_by: Optional[int] = None
+    last_login: Optional[str] = None
+    last_login_from: Optional[str] = None
+    is_platform_auditor: Optional[bool] = None
+    managed: Optional[bool] = None
 ```
 
-**Quality check**: Field names must match `DOCUMENTATION.options` keys exactly.
+**What the metadata constants do:**
+
+| Constant | Value | Effect |
+|----------|-------|--------|
+| `MODULE_NAME` | `"user"` | Loader finds `UserTransformMixin_v1` in `api/v1/user.py` |
+| `CANONICAL_KEY` | `"username"` | Framework looks up existing user by `username` field |
+| `SYSTEM_KEY` | `"id"` | Framework uses `id` for PATCH/DELETE path params |
+| `SUPPORTS_DELETE` | `True` | `state: deleted` and `state: overridden` allowed |
+| `VALID_STATES` | all 5 | All resource module states enabled |
+
+**Quality check**: Field names must match `DOCUMENTATION.options` suboption keys exactly.
 
 ---
 

@@ -1,0 +1,8 @@
+---
+prepare_configs:
+  - name: "int-port-alpha"
+  - name: "int-port-beta"
+  - name: "int-port-gamma"
+
+expected_config:
+  name: "int-port-alpha"

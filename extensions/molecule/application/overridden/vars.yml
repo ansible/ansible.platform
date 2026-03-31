@@ -1,0 +1,12 @@
+---
+prepare_configs:
+  - name: "int-app-alpha"
+    description: "Alpha application"
+  - name: "int-app-beta"
+    description: "Beta application"
+  - name: "int-app-gamma"
+    description: "Gamma seed"
+
+expected_config:
+  name: "int-app-alpha"
+  description: "Alpha application"

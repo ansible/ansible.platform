@@ -1,0 +1,8 @@
+---
+prepare_configs:
+  - name: "int-skey-alpha"
+  - name: "int-skey-beta"
+  - name: "int-skey-gamma"
+
+expected_config:
+  name: "int-skey-alpha"

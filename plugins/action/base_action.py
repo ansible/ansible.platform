@@ -424,11 +424,14 @@ class BaseResourceActionPlugin(ActionBase):
                     failed=False,
                     changed=False,
                     gathered=gathered,
-                    config=gathered,
+                    config=config,
                     facts_to_set=facts_to_set,
                 )
 
             # -- mutating states: before → apply → after --------------------
+            # before/after always capture the full platform state so the caller
+            # can see the complete picture.  config reflects only the items the
+            # user asked to manage (their input), never the full gathered set.
             before = self._do_gathered(manager, None)
             if argspec and before:
                 before = self._validate_output(before, argspec)
@@ -442,7 +445,7 @@ class BaseResourceActionPlugin(ActionBase):
                     changed=changed,
                     before=before,
                     after=after,
-                    config=after,
+                    config=config,
                     facts_to_set=facts_to_set,
                 )
 
@@ -467,7 +470,7 @@ class BaseResourceActionPlugin(ActionBase):
                 changed=changed,
                 before=before,
                 after=after,
-                config=after,
+                config=config,
                 facts_to_set=facts_to_set,
             )
         except Exception as e:
@@ -901,107 +904,6 @@ class BaseResourceActionPlugin(ActionBase):
                 pass
 
             raise
-
-    def _get_or_spawn_persistent_manager(self, task_vars: dict, gateway_config: Any) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
-        """
-        Get existing persistent manager or spawn new one (experimental mode).
-        """
-        import sys
-
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
-        self._display.vvvv("Using experimental connection mode (Persistent Manager)")
-
-        inventory_hostname = task_vars.get("inventory_hostname", "localhost")
-        self._display.vvvv(f"Checking for existing persistent manager for host: {inventory_hostname}")
-
-        import tempfile
-
-        socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
-        expected_conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
-        expected_socket_path = expected_conn_info.socket_path
-        meta_path = expected_socket_path + ".meta"
-
-        self._display.vvvv(f"Expected socket path: {expected_socket_path}")
-
-        manager_found = False
-        actual_authkey_b64 = None
-
-        if Path(expected_socket_path).exists() and Path(meta_path).exists():
-            try:
-                with open(meta_path, "r") as _mf:
-                    _meta = json.load(_mf)
-                candidate_authkey = _meta.get("authkey_b64")
-                if candidate_authkey and Path(expected_socket_path).is_socket():
-                    manager_found = True
-                    actual_authkey_b64 = candidate_authkey
-                    self._display.vvvv(f"Found existing manager via meta file: {expected_socket_path}")
-                else:
-                    self._display.vvvv("Meta file present but socket invalid — will re-spawn")
-            except Exception as _e:
-                self._display.vvvv(f"Could not read meta file {meta_path}: {_e} — will spawn new manager")
-
-        if manager_found and actual_authkey_b64:
-            self._display.vv(f"Reusing existing persistent manager (host={inventory_hostname}, gateway={gateway_config.base_url})")
-            try:
-                authkey = base64.b64decode(actual_authkey_b64)
-                client = ManagerRPCClient(gateway_config.base_url, str(expected_socket_path), authkey)
-                self._display.vvvv(f"Connected to existing persistent manager: {expected_socket_path}")
-                return client, None
-            except Exception as e:
-                self._display.warning(f"Failed to connect to existing manager: {e} — spawning new one")
-
-        self._display.vv(f"Spawning new persistent manager (host={inventory_hostname}, gateway={gateway_config.base_url})")
-
-        socket_path = expected_conn_info.socket_path
-        authkey = expected_conn_info.authkey
-        authkey_b64 = expected_conn_info.authkey_b64
-
-        self._display.vvvv(f"Generated socket path: {socket_path}")
-
-        ProcessManager.cleanup_old_socket(socket_path)
-
-        parent_sys_path = list(sys.path)
-
-        script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
-
-        import os as _os_spawn
-
-        process = ProcessManager.spawn_manager_process(
-            script_path=script_path,
-            socket_path=socket_path,
-            socket_dir=str(socket_dir),
-            identifier=inventory_hostname,
-            gateway_config=gateway_config,
-            authkey_b64=authkey_b64,
-            sys_path=parent_sys_path,
-            owner_pid=_os_spawn.getppid(),
-        )
-
-        self._display.vv(f"Manager process spawned (pid={process.pid}, socket={socket_path})")
-
-        ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=inventory_hostname, process=process)
-
-        socket_file = Path(socket_path)
-        if not socket_file.exists():
-            raise RuntimeError(f"Manager process started but socket file not found: {socket_path}")
-
-        socket_path_str = str(socket_path)
-
-        client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
-
-        self._display.vv(f"Connected to new persistent manager (socket={socket_path_str}, pid={process.pid})")
-
-        meta_path = socket_path_str + ".meta"
-        try:
-            with open(meta_path, "w") as _mf:
-                json.dump({"pid": process.pid, "authkey_b64": authkey_b64, "gateway_url": gateway_config.base_url}, _mf)
-            self._display.vvvv(f"Wrote manager meta file: {meta_path}")
-        except Exception as _e:
-            self._display.vvvv(f"Could not write manager meta file {meta_path}: {_e}")
-
-        return client, None
 
     # ------------------------------------------------------------------ #
     #  Documentation and validation helpers                                #

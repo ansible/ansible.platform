@@ -1,0 +1,6 @@
+---
+prepare_config:
+  name: "int-authmap-alpha"
+
+expected_config:
+  name: "int-authmap-alpha"

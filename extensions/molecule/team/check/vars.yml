@@ -1,0 +1,8 @@
+---
+prepare_config:
+  name: "int-team-alpha"
+  description: "Alpha team initial"
+
+expected_config:
+  name: "int-team-alpha"
+  description: "Alpha team updated"

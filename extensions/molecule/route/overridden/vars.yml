@@ -1,0 +1,8 @@
+---
+prepare_configs:
+  - name: "int-route-alpha"
+  - name: "int-route-beta"
+  - name: "int-route-gamma"
+
+expected_config:
+  name: "int-route-alpha"

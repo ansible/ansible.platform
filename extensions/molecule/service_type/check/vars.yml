@@ -1,0 +1,6 @@
+---
+prepare_config:
+  name: "int-stype-alpha"
+
+expected_config:
+  name: "int-stype-alpha"

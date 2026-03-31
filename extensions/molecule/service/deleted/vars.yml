@@ -1,0 +1,6 @@
+---
+prepare_config:
+  name: "int-svc-alpha"
+
+expected_config:
+  name: "int-svc-alpha"

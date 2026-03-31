@@ -1,0 +1,11 @@
+---
+- name: "Cleanup — service_type (deleted)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+  - vars.yml
+  tasks:
+  - name: No-op — int-stype-alpha already deleted by converge
+    ansible.builtin.debug:
+      msg: "int-stype-alpha was deleted in converge — nothing to clean up"
+

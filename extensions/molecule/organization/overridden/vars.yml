@@ -1,0 +1,14 @@
+---
+prepare_configs:
+  - name: "int-org-alpha"
+    description: "Alpha initial"
+  - name: "int-org-beta"
+    description: "Beta initial"
+  - name: "int-org-gamma"
+    description: "Gamma seed"
+  - name: "int-org-delta"
+    description: "Delta seed"
+
+expected_config:
+  name: "int-org-alpha"
+  description: "Alpha initial"

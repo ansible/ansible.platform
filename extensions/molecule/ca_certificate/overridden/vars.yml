@@ -1,0 +1,8 @@
+---
+prepare_configs:
+  - name: "int-cert-alpha"
+  - name: "int-cert-beta"
+  - name: "int-cert-gamma"
+
+expected_config:
+  name: "int-cert-alpha"

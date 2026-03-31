@@ -1,0 +1,18 @@
+---
+- name: "Cleanup — authenticator (merged)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+  - vars.yml
+  tasks:
+  - name: Remove int-auth-alpha (test teardown)
+    ansible.platform.authenticator:
+      config:
+      - name: "int-auth-alpha"
+      state: deleted
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    ignore_errors: true
+

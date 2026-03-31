@@ -15,8 +15,12 @@ options:
     state:
       description:
         - Desired state of the resource.
-        - Enforced state C(enforced) will default values of any option not provided.
-      choices: ["present", "absent", "exists", "enforced"]
-      default: "present"
+        - C(merged) creates or updates resources additively (items not in config are left untouched).
+        - C(replaced) replaces matched items entirely (unmatched items are left untouched).
+        - C(overridden) enforces exact set equality — items not in config are deleted.
+        - C(deleted) removes the specified resources.
+        - C(gathered) reads the current state without making changes.
+      choices: ["merged", "replaced", "overridden", "deleted", "gathered"]
+      default: "merged"
       type: str
 """

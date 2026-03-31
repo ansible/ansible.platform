@@ -1,0 +1,16 @@
+---
+# Inherits shared config from ../../config.yml
+
+provisioner:
+  playbooks:
+    prepare: prepare.yml
+
+scenario:
+  test_sequence:
+  - prepare
+  - converge
+  - verify
+  - idempotence
+  - verify
+  - cleanup
+...

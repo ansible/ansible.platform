@@ -1,0 +1,7 @@
+---
+prepare_config:
+  name: "int-app-alpha"
+  description: "Alpha application"
+
+expected_config:
+  name: "int-app-alpha"

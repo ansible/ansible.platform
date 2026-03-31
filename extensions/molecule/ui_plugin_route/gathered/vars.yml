@@ -1,0 +1,6 @@
+---
+prepare_config:
+  name: "int-uipr-alpha"
+
+expected_config:
+  name: "int-uipr-alpha"

@@ -1,0 +1,17 @@
+---
+- name: "Prepare — authenticator_map (check)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+  - vars.yml
+  tasks:
+  - name: Seed authenticator_map as check-mode baseline (prerequisite for check)
+    ansible.platform.authenticator_map:
+      config:
+      - "{{ prepare_config }}"
+      state: merged
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+
