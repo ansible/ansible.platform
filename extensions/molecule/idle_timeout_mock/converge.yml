@@ -31,7 +31,6 @@
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
     gateway_idle_timeout: 3
-    manager_socket_dir: "/tmp/ansible_platform"
 
   tasks:
     - name: Trigger manager activity (create a user)
@@ -46,6 +45,19 @@
         that:
           - user_result is not failed
         fail_msg: "Manager failed to process the request against the mock server. result={{ user_result }}"
+
+    - name: Determine controller tempdir (for manager socket dir)
+      ansible.builtin.command: python3 -c "import tempfile; print(tempfile.gettempdir())"
+      register: tmpdir
+      changed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Set manager socket directory (ProcessManager default)
+      ansible.builtin.set_fact:
+        manager_socket_dir: "{{ tmpdir.stdout | trim }}/ansible_platform"
+      vars:
+        ansible_connection: local
 
     - name: Get uid
       ansible.builtin.command: id -u
