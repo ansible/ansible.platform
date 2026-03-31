@@ -30,8 +30,6 @@
     gateway_password: "testpass"
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
-    # Keep this long enough that local verification tasks don't race the idle monitor
-    # (poll interval is forced to 2s in molecule.yml via ANSIBLE_PLATFORM_IDLE_POLL_SECONDS).
     gateway_idle_timeout: 15
 
   tasks:
