@@ -1,0 +1,14 @@
+---
+- name: Cleanup — idle timeout scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Best-effort cleanup any leftover manager sockets
+      ansible.builtin.shell: >-
+        rm -f /tmp/ansible_platform/manager_*_localhost_*.sock
+        /tmp/ansible_platform/manager_*_localhost_*.sock.meta
+        || true
+      changed_when: false
+      failed_when: false
+...

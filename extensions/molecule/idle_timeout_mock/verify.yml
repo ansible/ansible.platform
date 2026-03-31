@@ -1,0 +1,10 @@
+---
+- name: Verify — idle timeout scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: No-op verify (assert true)
+      ansible.builtin.assert:
+        that: true
+...
