@@ -5,14 +5,15 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
   tasks:
     - name: Get ca_certificate (state exists, connection local)
       ansible.platform.ca_certificate:
-        name: "molecule-mock-cacert-local"
-        state: exists
+        config:
+          - name: molecule-mock-cacert-local
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -25,7 +26,7 @@
       ansible.builtin.assert:
         that:
           - exists_result_local is not failed
-          - exists_result_local.get('exists') | default(false) | bool
+          - "exists_result_local.gathered | length > 0"
         fail_msg: "Verify: ca_certificate not found (connection local)."
       vars:
         ansible_connection: local
@@ -36,22 +37,23 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: false
   tasks:
     - name: Get ca_certificate (state exists, http direct)
       ansible.platform.ca_certificate:
-        name: "molecule-mock-cacert-local-hd"
-        state: exists
+        config:
+          - name: molecule-mock-cacert-local-hd
+        state: gathered
       register: exists_result_http_direct
 
     - name: Assert ca_certificate was found (http direct)
       ansible.builtin.assert:
         that:
           - exists_result_http_direct is not failed
-          - exists_result_http_direct.get('exists') | default(false) | bool
+          - "exists_result_http_direct.gathered | length > 0"
         fail_msg: "Verify: ca_certificate not found (http direct)."
 
 - name: Verify — ca_certificate created (http persistent)
@@ -60,21 +62,23 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
   tasks:
     - name: Get ca_certificate (state exists, http persistent)
       ansible.platform.ca_certificate:
-        name: "molecule-mock-cacert-local-hp"
-        state: exists
+        config:
+          - name: molecule-mock-cacert-local-hp
+        state: gathered
       register: exists_result_http_persistent
 
     - name: Assert ca_certificate was found (http persistent)
       ansible.builtin.assert:
         that:
           - exists_result_http_persistent is not failed
-          - exists_result_http_persistent.get('exists') | default(false) | bool
+          - "exists_result_http_persistent.gathered | length > 0"
         fail_msg: "Verify: ca_certificate not found (http persistent)."
+
 ...

@@ -4,9 +4,38 @@
 # (c) 2025, Ansible Platform Collection Contributors
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Base action plugin for platform resources.
+"""Base action plugin for platform resource modules.
 
-Provides common functionality inherited by all resource action plugins.
+Provides a data-driven run() that eliminates per-module boilerplate.
+Each resource action plugin declares USER_MODEL (dotted import path to
+the Ansible Model dataclass) and the base class handles the rest.
+
+All resource metadata lives on the Ansible Model class itself (via
+BaseTransformMixin): MODULE_NAME, SCOPE_PARAM, CANONICAL_KEY,
+SYSTEM_KEY, SUPPORTS_DELETE, VALID_STATES.  The base run() loads the
+model class, syncs its metadata onto ``self``, then dispatches.
+
+Follows the standard Ansible network resource module pattern:
+  1. Gather current state → ``before``
+  2. Apply desired mutations based on ``state``
+  3. Gather resulting state → ``after``
+  4. ``changed = (before != after)``
+
+Supported states (set theory):
+  gathered:    Read-only — return current config
+  merged:      C' = C ∪ D   (additive: add new, merge fields into existing)
+  replaced:    C' = (C \\ K(D)) ∪ D  (item-level: replace matching items only)
+  overridden:  C' = D  (set equality: result is exactly desired set)
+  deleted:     C' = C \\ D  (set difference: remove matching items)
+
+Subclass contract (minimal):
+    class ActionModule(BaseResourceActionPlugin):
+        USER_MODEL = 'plugins.plugin_utils.ansible_models.user.AnsibleUser'
+
+Identity categories (see docs/05-design-principles.md):
+    Category A: CANONICAL_KEY set, SYSTEM_KEY=None  — user key IS the API key
+    Category B: CANONICAL_KEY set, SYSTEM_KEY set   — match by canonical, resolve system
+    Category C: CANONICAL_KEY=None, SYSTEM_KEY set  — gather-first, match by content
 """
 
 from __future__ import absolute_import, division, print_function
@@ -36,19 +65,14 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Action plugins always use self._display (Ansible-native) instead of Python's
 # logging module.  self._display writes to BOTH the terminal (at the right
-# verbosity level) AND ANSIBLE_LOG_PATH unconditionally — so every vv/vvv/vvvv
-# call always lands in the log file regardless of how ansible-playbook was run.
+# verbosity level) AND ANSIBLE_LOG_PATH unconditionally.
 #
 # Verbosity mapping used throughout this file:
-#   self._display.vvvv(msg)    DEBUG   — visible at -vvvv, always in log file
-#   self._display.vvv(msg)     INFO    — visible at -vvv,  always in log file
-#   self._display.vv(msg)      INFO    — visible at -vv,   always in log file
-#   self._display.warning(msg) WARNING — always visible, always in log file
-#   self._display.error(msg)   ERROR   — always visible, always in log file
-#
-# plugin_utils/ modules (which have no self._display) keep using Python's
-# logging.getLogger(__name__) — those run in the connection subprocess where
-# Ansible correctly wires up the file handler.
+#   self._display.vvvv(msg)    DEBUG
+#   self._display.vvv(msg)     INFO
+#   self._display.vv(msg)      INFO
+#   self._display.warning(msg) WARNING
+#   self._display.error(msg)   ERROR
 # ---------------------------------------------------------------------------
 display = Display()
 
@@ -124,7 +148,7 @@ def _manager_process_entry(
                 oauth_token=gateway_token,
                 verify_ssl=gateway_validate_certs,
                 request_timeout=gateway_request_timeout,
-                connection_mode="experimental",  # Persistent manager is always experimental mode
+                connection_mode="experimental",
             )
             with open(error_log_path, "a") as f:
                 f.write("GatewayConfig created successfully\n")
@@ -153,8 +177,7 @@ def _manager_process_entry(
             f.write("Service created\n")
             f.flush()
 
-        # Register with manager (must happen before creating manager instance)
-        # Store service in a closure to avoid pickling issues
+        # Register with manager
         _service_ref = [service]
 
         def _get_service():
@@ -166,7 +189,7 @@ def _manager_process_entry(
             f.write("Service registered\n")
             f.flush()
 
-        # Create manager instance (like python-multiproc pattern)
+        # Create manager instance
         manager = PlatformManager(address=socket_path, authkey=authkey)
 
         with open(error_log_path, "a") as f:
@@ -174,9 +197,6 @@ def _manager_process_entry(
             f.flush()
 
         # Start manager server
-        # Note: We use get_server().serve_forever() instead of manager.start()
-        # because manager.start() internally uses multiprocessing which causes issues
-        # when we're already in a subprocess
         server = manager.get_server()
 
         with open(error_log_path, "a") as f:
@@ -186,7 +206,6 @@ def _manager_process_entry(
         server.serve_forever()
 
     except Exception as e:
-        # Log to a temp file for debugging
         with open(error_log_path, "a") as f:
             f.write(f"\n\nManager startup failed: {e}\n")
             f.write(traceback.format_exc())
@@ -194,66 +213,43 @@ def _manager_process_entry(
 
 
 class BaseResourceActionPlugin(ActionBase):
-    """
-    Base action plugin for all platform resources.
+    """Data-driven base action plugin for all platform resource modules.
 
-    Provides common functionality:
-    - Manager spawning/connection (_get_or_spawn_manager)
-    - Input/output validation (_validate_data)
-    - ArgumentSpec generation (_build_argspec_from_docs)
+    Subclasses declare the Ansible Model import path:
 
-    Subclasses must define:
-    - MODULE_NAME: Name of the resource (e.g., 'user', 'organization')
-    - DOCUMENTATION: Module documentation string
-    - ANSIBLE_DATACLASS: The Ansible dataclass type
-
-    Example subclass:
         class ActionModule(BaseResourceActionPlugin):
-            MODULE_NAME = 'user'
+            USER_MODEL = 'plugins.plugin_utils.ansible_models.user.AnsibleUser'
 
-            def run(self, tmp=None, task_vars=None):
-                # Use inherited methods
-                manager = self._get_or_spawn_manager(task_vars)
-                # ... implement resource-specific logic
+    All resource metadata (MODULE_NAME, SCOPE_PARAM, CANONICAL_KEY, etc.)
+    is read from the Ansible Model class at runtime.
     """
 
-    MODULE_NAME = None  # Subclass must override
+    # The only attribute subclasses must set
+    USER_MODEL: str = None
 
-    # -----------------------------------------------------------------
-    # Declarative class variables: set these in a subclass to get a
-    # fully-working action plugin without overriding run().
-    #
-    #   MODEL_CLASS   – the AnsibleXxx dataclass for this resource
-    #   LOOKUP_FIELD  – field used for existence checks (default 'name')
-    #
-    # Example:
-    #   class ActionModule(BaseResourceActionPlugin):
-    #       MODULE_NAME  = 'service'
-    #       MODEL_CLASS  = AnsibleService
-    #       LOOKUP_FIELD = 'name'   # optional; 'name' is the default
-    # -----------------------------------------------------------------
-    MODEL_CLASS = None  # type: Optional[type]
-    LOOKUP_FIELD = "name"
+    # Defaults — overridden by _sync_model_metadata() from Ansible Model
+    MODULE_NAME: str = None
+    SCOPE_PARAM: str = None
+    CANONICAL_KEY: str = None
+    SYSTEM_KEY: str = "id"
+    SUPPORTS_DELETE: bool = True
+    VALID_STATES: frozenset = frozenset(
+        {
+            "merged",
+            "replaced",
+            "overridden",
+            "deleted",
+            "gathered",
+        }
+    )
+    # Fields that are user-input-only (transformed to other fields before API call,
+    # never returned by the API, and must be excluded from before/after comparisons).
+    INPUT_ONLY_FIELDS: frozenset = frozenset()
 
-    # Shared constants used by the standard run() and concrete subclasses
-    # Fields that are sent TO the API as operation directives but never returned
-    # by GET/LIST responses.  Including them in idempotency comparisons always
-    # produces false positives because find_result will have None for them while
-    # the task may supply a concrete value (e.g. mark_previous_inactive=False).
-    # Subclasses should override this with module-specific write-only fields.
-    _WRITE_ONLY_FIELDS: frozenset = frozenset()
+    _user_model_cls = None
 
-    # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
-    # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
-    _DEPRECATED_FIELDS: dict = {}
-
-    # FK fields whose values CAN change via an update operation.  For these
-    # fields the case-3 skip in _should_update() (non-digit name string vs
-    # digit string from from_api()) is suppressed so that a name change like
-    # service_cluster='eda' vs current '3' actually triggers the update path.
-    # Without this, the skip would mask genuine FK changes.
-    # Subclasses override this to list mutable FK fields for their resource.
-    _MUTABLE_FK_FIELDS: frozenset = frozenset()
+    # Class-level tracking of spawned manager processes
+    _spawned_processes = {}  # type: dict
 
     _AUTH_PARAMS = frozenset(
         {
@@ -271,74 +267,591 @@ class BaseResourceActionPlugin(ActionBase):
             "aap_request_timeout",
         }
     )
-    _ANSIBLE_DIRECTIVES = frozenset({"state", "new_name"})
-    _READ_ONLY_FIELDS = frozenset({"id", "created", "modified", "url"})
 
-    # Class-level tracking of spawned manager processes
-    # Key: socket_path, Value: (process, socket_path, authkey_b64)
-    _spawned_processes = {}  # type: dict
+    @property
+    def _match_key(self) -> str:
+        """The field used to index and match resources.
 
-    # Playbook task tracking: track total tasks and completed tasks per play
-    # NOTE: Using file-based tracking for process-safety (works across forks)
-    # Class-level dict would not work with Ansible's fork/worker processes
-
-    # Track which manager each task uses
-    # Key: task_uuid, Value: socket_path
-    _task_to_manager = {}  # type: dict
-
-    # ------------------------------------------------------------------
-    # Subclass extension hooks
-    # Override these in a subclass to customise run() behaviour without
-    # duplicating the full pipeline.
-    # ------------------------------------------------------------------
-
-    def _resolve_lookup(self, resource: Any, resource_data: dict, validated_params: dict) -> None:
-        """Called after MODEL_CLASS is instantiated.
-
-        Override to mutate *resource* and *resource_data* in place —
-        for example, to treat a numeric lookup-field value as an ID.
-        Default: no-op.
-
-        Args:
-            resource: The MODEL_CLASS instance just built.
-            resource_data: The filtered dict used to build *resource*.
-            validated_params: Full validated input parameters.
+        Returns CANONICAL_KEY when set (Categories A and B), otherwise
+        falls back to SYSTEM_KEY (Category C — gather-first resources).
         """
+        return self.CANONICAL_KEY or self.SYSTEM_KEY
 
-    def _build_ansible_data(self, resource: Any, validated_params: dict, operation: str) -> dict:
-        """Build the ansible_data dict that is sent to manager.execute().
+    # ------------------------------------------------------------------ #
+    #  Model resolution and metadata sync                                  #
+    # ------------------------------------------------------------------ #
 
-        The default uses ``asdict(resource)`` which includes every dataclass
-        field.  Override when only the explicitly-provided task fields should
-        be forwarded (e.g. to avoid sending dataclass defaults that overwrite
-        server-side values).
+    @staticmethod
+    def _resolve_plugin_path(dotted_path: str) -> str:
+        """Rewrite a 'plugins.plugin_utils...' path to the real namespace.
 
-        Args:
-            resource: The MODEL_CLASS instance.
-            validated_params: Full validated input parameters.
-            operation: The resolved operation string (create/update/delete/find).
-
-        Returns:
-            dict: Data to pass as ``ansible_data`` to manager.execute().
+        When Ansible loads the collection, the package prefix is
+        'ansible_collections.ansible.platform.plugins.plugin_utils', not
+        bare 'plugins.plugin_utils'. Detect the correct prefix from
+        this module's own __name__.
         """
-        from dataclasses import asdict
+        _DEV_PREFIX = "plugins.plugin_utils"
+        if dotted_path.startswith(_DEV_PREFIX):
+            my_name = __name__
+            parts = my_name.split(".")
+            if "plugins" in parts:
+                idx = parts.index("plugins")
+                real_prefix = ".".join(parts[:idx]) + "." + _DEV_PREFIX
+                return real_prefix + dotted_path[len(_DEV_PREFIX) :]
+        return dotted_path
 
-        return asdict(resource)
+    def _get_user_model_class(self):
+        """Lazily resolve USER_MODEL dotted path to a class object.
 
-    def _pre_execute_hook(self, ansible_data: dict, write_only_data: dict, validated_params: dict, operation: str) -> None:
-        """Called immediately before the final manager.execute() call.
-
-        Override to mutate *ansible_data* in place — for example, to
-        conditionally strip write-only fields based on other parameters.
-        Default: no-op.
-
-        Args:
-            ansible_data: The dict about to be sent to manager.execute().
-            write_only_data: Fields that were popped from resource_data
-                because they are in _WRITE_ONLY_FIELDS (not part of MODEL_CLASS).
-            validated_params: Full validated input parameters.
-            operation: The resolved operation string.
+        On first load, syncs resource metadata (MODULE_NAME, SCOPE_PARAM,
+        CANONICAL_KEY, SYSTEM_KEY, SUPPORTS_DELETE, VALID_STATES) from the
+        Ansible Model class onto this action plugin instance.
         """
+        if self._user_model_cls is not None:
+            return self._user_model_cls
+
+        if not self.USER_MODEL:
+            raise AnsibleError(f"{type(self).__name__}.USER_MODEL is not set")
+
+        resolved = self._resolve_plugin_path(self.USER_MODEL)
+        module_path, class_name = resolved.rsplit(".", 1)
+        mod = importlib.import_module(module_path)
+        cls = getattr(mod, class_name)
+        type(self)._user_model_cls = cls
+
+        _UNSET = object()
+        for attr in ("MODULE_NAME", "SCOPE_PARAM", "CANONICAL_KEY", "SYSTEM_KEY", "SUPPORTS_DELETE", "VALID_STATES", "INPUT_ONLY_FIELDS"):
+            model_val = getattr(cls, attr, _UNSET)
+            if model_val is not _UNSET:
+                # Sync even when the model explicitly sets the attribute to None
+                # (e.g. SYSTEM_KEY = None for singleton resources).
+                # Set on both instance and subclass so future instances see it.
+                setattr(self, attr, model_val)
+                setattr(type(self), attr, model_val)
+
+        return cls
+
+    # ------------------------------------------------------------------ #
+    #  Index & match helpers                                               #
+    # ------------------------------------------------------------------ #
+
+    def _index_by_key(self, items: list, key: str) -> dict:
+        """Index a list of resource dicts by *key*, detecting duplicates."""
+        index = {}
+        for item in items:
+            k = str(item.get(key, ""))
+            if not k:
+                continue
+            if k in index and key == self.CANONICAL_KEY and self.SYSTEM_KEY:
+                raise AnsibleError(f"Duplicate {key}='{k}' found in existing resources. Provide '{self.SYSTEM_KEY}' in your config to disambiguate.")
+            index[k] = item
+        return index
+
+    def _match_by_content(self, item, candidates):
+        """Content-based fallback for Category C resources."""
+        comparison_item = self._strip_input_only(item)
+        for candidate in candidates:
+            if self._config_matches(comparison_item, candidate):
+                return candidate
+        return None
+
+    def _prepare_user_data(self, item, current, user_cls):
+        """Build user_data, injecting the system key from a matched resource."""
+        effective_item = dict(item)
+        if self.SYSTEM_KEY and current is not None:
+            if not effective_item.get(self.SYSTEM_KEY):
+                effective_item[self.SYSTEM_KEY] = current.get(self.SYSTEM_KEY)
+        return effective_item
+
+    # ------------------------------------------------------------------ #
+    #  Data-driven run()                                                   #
+    # ------------------------------------------------------------------ #
+
+    def run(self, tmp=None, task_vars=None):
+        """Data-driven resource module execution.
+
+        Follows the standard Ansible network resource module pattern:
+          1. Gather current state → ``before``
+          2. Apply desired mutations based on ``state``
+          3. Gather resulting state → ``after``
+          4. ``changed = (before != after)``
+
+        Supports ``--check`` (dry-run) and ``--diff`` modes.
+
+        Return structure matches cisco.ios / cisco.nxos conventions::
+
+            {
+                "before": [ ... ],   # config before this run
+                "after":  [ ... ],   # config after this run
+                "changed": bool,
+                "gathered": [ ... ], # only for state=gathered
+                "diff": { ... },     # only when --diff is active
+            }
+        """
+        super().run(tmp, task_vars)
+        if task_vars is None:
+            task_vars = {}
+
+        self._task_vars = task_vars
+        args = self._task.args.copy()
+
+        try:
+            self._get_user_model_class()
+
+            doc = self._get_documentation()
+            if doc:
+                argspec = self._build_argspec_from_docs(doc)
+                validated_args = self._validate_data(args, argspec, "input")
+            else:
+                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
+
+            state = validated_args.get("state", "merged")
+            config = validated_args.get("config", [])
+
+            if state not in self.VALID_STATES:
+                raise AnsibleError(f"Unknown state: {state}. Valid states: {sorted(self.VALID_STATES)}")
+
+            # ---- manager connection ----------------------------------------
+            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+            self._client = manager
+
+            # -- gathered: read-only, no before/after -----------------------
+            if state == "gathered":
+                gathered = self._do_gathered(manager, config)
+                if argspec and gathered:
+                    gathered = self._validate_output(gathered, argspec)
+                return self._build_result(
+                    failed=False,
+                    changed=False,
+                    gathered=gathered,
+                    config=gathered,
+                    facts_to_set=facts_to_set,
+                )
+
+            # -- mutating states: before → apply → after --------------------
+            before = self._do_gathered(manager, None)
+            if argspec and before:
+                before = self._validate_output(before, argspec)
+
+            # -- check mode: predict after without applying -----------------
+            if self._task.check_mode:
+                after = self._predict_after(state, before, config)
+                changed = self._lists_differ(before, after)
+                return self._build_result(
+                    failed=False,
+                    changed=changed,
+                    before=before,
+                    after=after,
+                    config=after,
+                    facts_to_set=facts_to_set,
+                )
+
+            if state in ("deleted", "overridden") and not self.SUPPORTS_DELETE:
+                raise AnsibleError(f"State '{state}' requires delete capability, but {self.__class__.__name__} has SUPPORTS_DELETE=False.")
+
+            if state == "deleted":
+                self._apply_deleted(manager, config, before)
+            elif state == "overridden":
+                self._apply_overridden(manager, config, before)
+            else:  # merged, replaced
+                self._apply_merged_or_replaced(manager, config, state, before)
+
+            after = self._do_gathered(manager, None)
+            if argspec and after:
+                after = self._validate_output(after, argspec)
+
+            changed = self._lists_differ(before, after)
+
+            return self._build_result(
+                failed=False,
+                changed=changed,
+                before=before,
+                after=after,
+                config=after,
+                facts_to_set=facts_to_set,
+            )
+        except Exception as e:
+            import traceback as _tb
+
+            self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
+            result = {"failed": True, "msg": str(e) or f"{type(e).__name__} (no message)"}
+            if self._display.verbosity >= 3:
+                result["exception"] = _tb.format_exc()
+            return result
+
+    def _build_result(self, facts_to_set=None, **kwargs):
+        """Build result dict, injecting ansible_facts and optional diff."""
+        result = dict(kwargs)
+        if facts_to_set:
+            result["ansible_facts"] = facts_to_set
+            result["_ansible_facts_cacheable"] = True
+        if (
+            getattr(self._task, "diff", False)
+            and "before" in result
+            and "after" in result
+            and result.get("before") is not None
+            and result.get("after") is not None
+        ):
+            result["diff"] = {
+                "before": yaml.dump(
+                    result["before"],
+                    default_flow_style=False,
+                    sort_keys=True,
+                ),
+                "after": yaml.dump(
+                    result["after"],
+                    default_flow_style=False,
+                    sort_keys=True,
+                ),
+            }
+        return result
+
+    # ------------------------------------------------------------------ #
+    #  State dispatch helpers                                              #
+    # ------------------------------------------------------------------ #
+
+    def _do_gathered(self, manager, config):
+        """Gather current resource state (read-only).
+
+        When config is None, gathers ALL resources of this type.
+        When config is a list, gathers only the specified items.
+        """
+        results = []
+        for item in config or [{}]:
+            try:
+                result = manager.execute("find", self.MODULE_NAME, item)
+                if isinstance(result, dict) and "config" in result:
+                    results.extend(result["config"])
+                elif isinstance(result, list):
+                    results.extend(result)
+                elif isinstance(result, dict):
+                    results.append(result)
+            except Exception:
+                # If a specific item isn't found, skip it
+                pass
+        return results
+
+    def _apply_deleted(self, manager, config, before):
+        """Delete specified resources.
+
+        Matches by canonical key (or system key for Category C).
+        Skips items not present in ``before`` (already absent).
+        """
+        match_key = self._match_key
+        if not match_key:
+            return
+
+        before_by_key = self._index_by_key(before, match_key)
+        before_by_sys = self._index_by_key(before, self.SYSTEM_KEY) if self.SYSTEM_KEY else {}
+
+        for item in config:
+            current = None
+            if self.SYSTEM_KEY and item.get(self.SYSTEM_KEY):
+                current = before_by_sys.get(str(item[self.SYSTEM_KEY]))
+            elif match_key and item.get(match_key):
+                current = before_by_key.get(str(item[match_key]))
+            elif not self.CANONICAL_KEY and self.SYSTEM_KEY:
+                current = self._match_by_content(item, before)
+
+            if current is None:
+                continue
+
+            user_data = self._prepare_user_data(item, current, None)
+            manager.execute("delete", self.MODULE_NAME, user_data)
+
+    def _apply_merged_or_replaced(self, manager, config, state, before):
+        """Create or update resources, skipping items already at desired state.
+
+        Uses ``before`` to decide create vs update and to skip no-ops.
+        """
+        match_key = self._match_key
+        cat_c = not self.CANONICAL_KEY and self.SYSTEM_KEY
+
+        before_by_key = self._index_by_key(before, match_key) if match_key else {}
+        before_by_sys = self._index_by_key(before, self.SYSTEM_KEY) if self.SYSTEM_KEY else {}
+
+        cat_c_used = set()
+
+        for i, item in enumerate(config):
+            current = None
+
+            if self.SYSTEM_KEY and item.get(self.SYSTEM_KEY):
+                current = before_by_sys.get(str(item[self.SYSTEM_KEY]))
+            elif match_key and item.get(match_key):
+                current = before_by_key.get(str(item[match_key]))
+            elif cat_c:
+                current = self._match_by_content(item, before)
+                if current is None and state != "merged":
+                    for b in before:
+                        b_key = str(b.get(match_key, ""))
+                        if b_key and b_key not in cat_c_used:
+                            current = b
+                            cat_c_used.add(b_key)
+                            break
+                elif current is not None and current.get(match_key):
+                    cat_c_used.add(str(current[match_key]))
+
+            comparison_item = self._strip_input_only(item)
+            if match_key:
+                if current is not None:
+                    if self._config_matches(comparison_item, current):
+                        continue
+                    op = "update" if state == "merged" else "replace"
+                elif item.get(match_key) or item.get(self.SYSTEM_KEY):
+                    op = "create"
+                else:
+                    op = "create"
+            else:
+                if before and self._config_matches(comparison_item, before[0]):
+                    continue
+                op = "update" if state == "merged" else "replace"
+
+            user_data = self._prepare_user_data(item, current, None)
+            manager.execute(op, self.MODULE_NAME, user_data)
+
+    def _apply_overridden(self, manager, config, before):
+        """Override: delete extras, then replace each desired item.
+
+        Uses ``before`` (already gathered by run()) to determine extras.
+        """
+        match_key = self._match_key
+        if not match_key:
+            return
+
+        before_by_key = self._index_by_key(before, match_key)
+        desired_keys = set()
+        use_content_match = not self.CANONICAL_KEY and self.SYSTEM_KEY
+
+        for item in config:
+            key_val = item.get(match_key)
+            if key_val is not None:
+                desired_keys.add(str(key_val))
+
+        # Delete extras (current items not in desired set)
+        matched_before = set()
+        if use_content_match:
+            for item in config:
+                m = self._match_by_content(item, before)
+                if m and m.get(match_key):
+                    matched_before.add(str(m[match_key]))
+
+        for current in before:
+            current_key = str(current.get(match_key, ""))
+            if not current_key:
+                continue
+            if current_key in desired_keys or current_key in matched_before:
+                continue
+            delete_item = {match_key: current.get(match_key)}
+            if self.SYSTEM_KEY and current.get(self.SYSTEM_KEY):
+                delete_item[self.SYSTEM_KEY] = current[self.SYSTEM_KEY]
+            delete_data = self._prepare_user_data(
+                delete_item,
+                current,
+                None,
+            )
+            manager.execute("delete", self.MODULE_NAME, delete_data)
+
+        # Replace each desired item (skip no-ops)
+        for item in config:
+            current = None
+            if match_key and item.get(match_key):
+                current = before_by_key.get(str(item[match_key]))
+            elif use_content_match:
+                current = self._match_by_content(item, before)
+
+            if current and self._config_matches(self._strip_input_only(item), current):
+                continue
+
+            user_data = self._prepare_user_data(item, current, None)
+            op = "replace" if current is not None else "create"
+            manager.execute(op, self.MODULE_NAME, user_data)
+
+    def _strip_input_only(self, item: dict) -> dict:
+        """Return a copy of *item* with INPUT_ONLY_FIELDS removed.
+
+        INPUT_ONLY_FIELDS are user-convenience fields that get transformed to
+        other API fields before the request (e.g. assignment_objects → object_id)
+        and are never returned by the API.  They must be excluded from
+        before/after comparisons so they don't cause spurious mismatches.
+        """
+        if not self.INPUT_ONLY_FIELDS:
+            return item
+        return {k: v for k, v in item.items() if k not in self.INPUT_ONLY_FIELDS}
+
+    @staticmethod
+    def _config_matches(desired: dict, current: dict) -> bool:
+        """Check if every user-supplied field in desired matches current.
+
+        Only compares fields explicitly provided by the user (non-None).
+        Extra fields in current (from API defaults) are ignored.
+        """
+        for key, desired_val in desired.items():
+            if desired_val is None:
+                continue
+            current_val = current.get(key)
+            if str(desired_val) != str(current_val):
+                return False
+        return True
+
+    @staticmethod
+    def _lists_differ(before: list, after: list) -> bool:
+        """Compare two config lists to determine if anything changed."""
+        if len(before) != len(after):
+            return True
+        for b, a in zip(
+            sorted(before, key=lambda x: str(x)),
+            sorted(after, key=lambda x: str(x)),
+        ):
+            if b != a:
+                return True
+        return False
+
+    # ------------------------------------------------------------------ #
+    #  Check mode: predict after state from set theory                     #
+    # ------------------------------------------------------------------ #
+
+    def _predict_after(self, state, before, config):
+        """Predict the resulting state without making API calls.
+
+        Implements the set-theoretic state operations:
+          merged:     C' = C ∪ D   (additive merge)
+          replaced:   C' = (C \\ K(D)) ∪ D   (item-level replacement)
+          overridden: C' = D   (set equality)
+          deleted:    C' = C \\ D   (set difference)
+        """
+        match_key = self._match_key
+        before_by_key = {}
+        if match_key:
+            for item in before:
+                k = str(item.get(match_key, ""))
+                if k:
+                    before_by_key[k] = item
+
+        if state == "deleted":
+            return self._predict_deleted(before, config, before_by_key)
+        elif state == "overridden":
+            return self._predict_overridden(before, config, before_by_key)
+        elif state == "replaced":
+            return self._predict_replaced(before, config, before_by_key)
+        else:  # merged
+            return self._predict_merged(before, config, before_by_key)
+
+    def _predict_merged(self, before, config, before_by_key):
+        """Predict merged: union — add new items, merge fields into existing."""
+        match_key = self._match_key
+        result = [dict(item) for item in before]
+        result_by_key = {}
+        if match_key:
+            for item in result:
+                k = str(item.get(match_key, ""))
+                if k:
+                    result_by_key[k] = item
+
+        for item in config:
+            if match_key and item.get(match_key):
+                key = str(item[match_key])
+                existing = result_by_key.get(key)
+                if existing is not None:
+                    for field, val in item.items():
+                        if val is not None:
+                            existing[field] = val
+                else:
+                    new_item = dict(item)
+                    result.append(new_item)
+                    result_by_key[key] = new_item
+            elif not self.CANONICAL_KEY and self.SYSTEM_KEY:
+                existing = self._match_by_content(item, result)
+                if existing is not None:
+                    for field, val in item.items():
+                        if val is not None:
+                            existing[field] = val
+                else:
+                    result.append(dict(item))
+            elif not match_key and before:
+                for field, val in item.items():
+                    if val is not None:
+                        result[0][field] = val
+            else:
+                result.append(dict(item))
+        return result
+
+    def _predict_replaced(self, before, config, before_by_key):
+        """Predict replaced: item-level replacement, untouched items preserved."""
+        match_key = self._match_key
+        result = [dict(item) for item in before]
+        result_by_key = {}
+        if match_key:
+            for i, item in enumerate(result):
+                k = str(item.get(match_key, ""))
+                if k:
+                    result_by_key[k] = i
+
+        cat_c = not self.CANONICAL_KEY and self.SYSTEM_KEY
+        cat_c_used = set()
+
+        for i, item in enumerate(config):
+            if match_key and item.get(match_key):
+                key = str(item[match_key])
+                idx = result_by_key.get(key)
+                if idx is not None:
+                    result[idx] = dict(item)
+                else:
+                    result.append(dict(item))
+                    result_by_key[key] = len(result) - 1
+            elif cat_c:
+                matched = self._match_by_content(item, result)
+                if matched is not None:
+                    idx = result.index(matched)
+                    result[idx] = dict(item)
+                    if matched.get(match_key):
+                        cat_c_used.add(str(matched[match_key]))
+                else:
+                    for j, r in enumerate(result):
+                        r_key = str(r.get(match_key, ""))
+                        if r_key and r_key not in cat_c_used:
+                            result[j] = dict(item)
+                            cat_c_used.add(r_key)
+                            break
+                    else:
+                        result.append(dict(item))
+            elif not match_key and before:
+                result[0] = dict(item)
+            else:
+                result.append(dict(item))
+        return result
+
+    @staticmethod
+    def _predict_overridden(before, config, before_by_key):
+        """Predict overridden: set equality — result is exactly the desired set."""
+        return [dict(item) for item in config]
+
+    def _predict_deleted(self, before, config, before_by_key):
+        """Predict deleted: set difference — remove items whose keys match."""
+        match_key = self._match_key
+        if not config:
+            return []
+        if not match_key:
+            return []
+
+        delete_keys = set()
+        for item in config:
+            k = item.get(match_key)
+            if k is not None:
+                delete_keys.add(str(k))
+
+        if not delete_keys and not self.CANONICAL_KEY and self.SYSTEM_KEY:
+            remaining = list(before)
+            for item in config:
+                matched = self._match_by_content(item, remaining)
+                if matched:
+                    remaining = [r for r in remaining if r is not matched]
+            return [dict(r) for r in remaining]
+
+        return [dict(item) for item in before if str(item.get(match_key, "")) not in delete_keys]
+
+    # ------------------------------------------------------------------ #
+    #  Manager lifecycle                                                   #
+    # ------------------------------------------------------------------ #
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
@@ -347,40 +860,24 @@ class BaseResourceActionPlugin(ActionBase):
         This method delegates to the connection plugin (e.g., 'ansible.platform.http')
         which handles routing between persistent and direct (ephemeral) modes.
 
-        Connection modes (determined by connection plugin):
-        - Persistent mode: Returns ManagerRPCClient (long-lived manager process)
-        - Direct mode: Returns ManagerRPCClient (ephemeral manager, shut down after task)
-
-        Args:
-            task_vars: Task variables from Ansible
-
         Returns:
             Tuple[Union[DirectHTTPClient, ManagerRPCClient], Optional[Dict[str, Any]]]:
             (client, facts_dict) where client is ManagerRPCClient (persistent or
             ephemeral) and facts_dict contains facts to set for persistent mode
             (None for direct mode).
-
-        Raises:
-            AnsibleError: If gateway URL is missing or connection plugin doesn't support get_client()
-            RuntimeError: If manager fails to start
         """
-        # Import platform SDK modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import extract_gateway_config
 
         # Extract gateway configuration
         gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, required=True)
 
-        # DISPATCHER: Delegate to connection plugin's get_client() when available;
-        # otherwise support connection: local by spawning an ephemeral manager.
         try:
             if hasattr(self._connection, "get_client"):
                 self._display.vvvv(f"Dispatching to connection plugin get_client() (type={type(self._connection).__name__})")
-
                 client, facts_to_set = self._connection.get_client(task_vars, gateway_config)
                 self._display.vvvv(f"Got client from connection plugin: {type(client).__name__}")
                 return client, facts_to_set
             else:
-                # Fallback: connection is local (or other) — spawn ephemeral manager so tasks still work
                 self._display.vv(
                     f"Connection '{self._connection.transport}' has no get_client(); using ephemeral manager. "
                     "Set 'connection: ansible.platform.http' for persistent mode."
@@ -396,7 +893,6 @@ class BaseResourceActionPlugin(ActionBase):
             self._display.error(f"Failed in _get_or_spawn_manager dispatcher: {type(e).__name__}: {e}")
             self._display.error(f"Traceback: {tb}")
 
-            # Write full traceback to file for debugging
             try:
                 with open("/tmp/ansible_platform_error.log", "w") as f:
                     f.write(f"Error: {type(e).__name__}: {e}\n\n")
@@ -406,24 +902,9 @@ class BaseResourceActionPlugin(ActionBase):
 
             raise
 
-    # NOTE: _get_direct_client() method removed - now handled by connection plugin's get_client()
-
     def _get_or_spawn_persistent_manager(self, task_vars: dict, gateway_config: Any) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get existing persistent manager or spawn new one (experimental mode).
-
-        This is the original persistent manager logic, now only used when
-        connection_mode is 'experimental'.
-
-        Args:
-            task_vars: Task variables from Ansible
-            gateway_config: Gateway configuration
-
-        Returns:
-            Tuple[ManagerRPCClient, Optional[Dict[str, Any]]]:
-            (client, facts_dict) where client is the ManagerRPCClient instance and
-            facts_dict contains socket/authkey/gateway_url facts if a new manager
-            was spawned, or None if reusing an existing manager.
         """
         import sys
 
@@ -433,12 +914,8 @@ class BaseResourceActionPlugin(ActionBase):
         self._display.vvvv("Using experimental connection mode (Persistent Manager)")
 
         inventory_hostname = task_vars.get("inventory_hostname", "localhost")
-
         self._display.vvvv(f"Checking for existing persistent manager for host: {inventory_hostname}")
 
-        # Determine the expected socket path for the current credentials.
-        # The socket filename encodes a credential hash, so a credential
-        # change automatically causes a new manager to be spawned.
         import tempfile
 
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
@@ -448,9 +925,6 @@ class BaseResourceActionPlugin(ActionBase):
 
         self._display.vvvv(f"Expected socket path: {expected_socket_path}")
 
-        # Discover an existing manager via its companion .meta file.
-        # This replaces the old hostvars/ansible_facts approach so that
-        # secrets are never surfaced in the task result.
         manager_found = False
         actual_authkey_b64 = None
 
@@ -468,19 +942,16 @@ class BaseResourceActionPlugin(ActionBase):
             except Exception as _e:
                 self._display.vvvv(f"Could not read meta file {meta_path}: {_e} — will spawn new manager")
 
-        # Reuse existing manager if found.
         if manager_found and actual_authkey_b64:
             self._display.vv(f"Reusing existing persistent manager (host={inventory_hostname}, gateway={gateway_config.base_url})")
             try:
                 authkey = base64.b64decode(actual_authkey_b64)
                 client = ManagerRPCClient(gateway_config.base_url, str(expected_socket_path), authkey)
                 self._display.vvvv(f"Connected to existing persistent manager: {expected_socket_path}")
-                # Return None for facts — nothing secret goes into the result
                 return client, None
             except Exception as e:
                 self._display.warning(f"Failed to connect to existing manager: {e} — spawning new one")
 
-        # Spawn new manager — reuse the connection info already generated above
         self._display.vv(f"Spawning new persistent manager (host={inventory_hostname}, gateway={gateway_config.base_url})")
 
         socket_path = expected_conn_info.socket_path
@@ -489,19 +960,12 @@ class BaseResourceActionPlugin(ActionBase):
 
         self._display.vvvv(f"Generated socket path: {socket_path}")
 
-        # Clean up old socket if exists
         ProcessManager.cleanup_old_socket(socket_path)
 
-        # Capture sys.path from parent to ensure child has same imports
         parent_sys_path = list(sys.path)
 
-        # Get path to manager process script
         script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
 
-        # Spawn process.
-        # Pass os.getppid() as owner_pid — action plugins run in forked workers,
-        # so os.getppid() is the main ansible-playbook process PID.  The manager's
-        # watchdog thread watches that PID and self-terminates when it exits.
         import os as _os_spawn
 
         process = ProcessManager.spawn_manager_process(
@@ -516,33 +980,19 @@ class BaseResourceActionPlugin(ActionBase):
         )
 
         self._display.vv(f"Manager process spawned (pid={process.pid}, socket={socket_path})")
-        self._display.vvvv(
-            f"Manager logs: "
-            f"error_log={socket_dir / f'manager_error_{inventory_hostname}.log'} "
-            f"stderr_log={socket_dir / f'manager_stderr_{inventory_hostname}.log'}"
-        )
 
-        # Wait for process startup
         ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=inventory_hostname, process=process)
 
-        # Verify socket file was created
         socket_file = Path(socket_path)
         if not socket_file.exists():
             raise RuntimeError(f"Manager process started but socket file not found: {socket_path}")
 
-        # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
         socket_path_str = str(socket_path)
 
-        # Connect to newly spawned manager
         client = ManagerRPCClient(gateway_config.base_url, socket_path_str, authkey)
 
-        # Track this task's manager
         self._display.vv(f"Connected to new persistent manager (socket={socket_path_str}, pid={process.pid})")
 
-        # Write a companion .meta file so the callback plugin (and any other
-        # process that didn't spawn the manager) can shut it down cleanly.
-        # Secrets never flow through ansible_facts — the meta file is the
-        # single source of truth for the authkey and PID.
         meta_path = socket_path_str + ".meta"
         try:
             with open(meta_path, "w") as _mf:
@@ -551,17 +1001,39 @@ class BaseResourceActionPlugin(ActionBase):
         except Exception as _e:
             self._display.vvvv(f"Could not write manager meta file {meta_path}: {_e}")
 
-        # Return None for facts — nothing secret goes into the task result
         return client, None
+
+    # ------------------------------------------------------------------ #
+    #  Documentation and validation helpers                                #
+    # ------------------------------------------------------------------ #
 
     def _get_documentation(self) -> str:
         """Auto-discover DOCUMENTATION from the sibling modules/ package.
 
-        Uses MODULE_NAME to import plugins.modules.<MODULE_NAME> and return
-        its DOCUMENTATION attribute. Same approach as cisco.meraki_rm.
+        Uses file-based loading relative to this action plugin's location
+        so the correct module file is always found, regardless of how
+        Python's import system resolves the collection namespace.
         """
         if not self.MODULE_NAME:
             return ""
+
+        # Primary: file-based discovery relative to this action plugin
+        module_file = Path(__file__).parent.parent / "modules" / f"{self.MODULE_NAME}.py"
+        if module_file.exists():
+            try:
+                import importlib.util
+
+                spec = importlib.util.spec_from_file_location(f"module_{self.MODULE_NAME}", module_file)
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    doc = getattr(mod, "DOCUMENTATION", None)
+                    if doc:
+                        return doc
+            except Exception:
+                pass
+
+        # Fallback: standard import
         parent_pkg = type(self).__module__.rsplit(".", 2)[0]  # ...plugins
         for candidate in (
             f"{parent_pkg}.modules.{self.MODULE_NAME}",
@@ -577,20 +1049,10 @@ class BaseResourceActionPlugin(ActionBase):
         return ""
 
     def _build_argspec_from_docs(self, documentation: str) -> dict:
-        """
-        Build argument spec from DOCUMENTATION string.
+        """Build argument spec from DOCUMENTATION string.
 
         Parses the YAML documentation and merges documentation fragments
         (e.g., ansible.platform.auth) before converting to ArgumentSpec format.
-
-        Args:
-            documentation: DOCUMENTATION string from module
-
-        Returns:
-            dict: ArgumentSpec dict suitable for ArgumentSpecValidator
-
-        Raises:
-            ValueError: If documentation cannot be parsed
         """
         try:
             doc_data = yaml.safe_load(documentation)
@@ -598,7 +1060,6 @@ class BaseResourceActionPlugin(ActionBase):
             raise ValueError(f"Failed to parse DOCUMENTATION: {e}") from e
 
         # Merge fragments first, then module options so module's own options take precedence
-        # (e.g. user module state choices merged/replaced/gathered/deleted override fragment's state)
         options = {}
         extends_fragments = doc_data.get("extends_documentation_fragment", [])
         if not isinstance(extends_fragments, list):
@@ -609,9 +1070,7 @@ class BaseResourceActionPlugin(ActionBase):
                 options.update(fragment_options)
         options.update(doc_data.get("options", {}))
 
-        # Build argspec in Ansible format
-        # ArgumentSpecValidator expects 'argument_spec' key, not 'options'
-        argspec = {
+        return {
             "argument_spec": options,
             "mutually_exclusive": doc_data.get("mutually_exclusive", []),
             "required_together": doc_data.get("required_together", []),
@@ -619,33 +1078,18 @@ class BaseResourceActionPlugin(ActionBase):
             "required_if": doc_data.get("required_if", []),
         }
 
-        return argspec
-
     def _load_documentation_fragment(self, fragment_name: str) -> dict:
-        """
-        Load documentation fragment options.
-
-        Args:
-            fragment_name: Fragment name (e.g., 'ansible.platform.auth')
-
-        Returns:
-            dict: Options from fragment, or empty dict if not found
-        """
+        """Load documentation fragment options."""
         try:
-            # Fragment name format: 'ansible.platform.auth' or 'auth'
             if "." in fragment_name:
-                # Full collection path: 'ansible.platform.auth'
                 parts = fragment_name.split(".")
                 if len(parts) >= 3:
-                    _collection = ".".join(parts[:-1])  # 'ansible.platform'
-                    fragment = parts[-1]  # 'auth'
+                    fragment = parts[-1]
                 else:
                     fragment = fragment_name
             else:
-                # Just fragment name: 'auth'
                 fragment = fragment_name
 
-            # Try to load fragment from doc_fragments
             fragment_path = Path(__file__).parent.parent / "doc_fragments" / f"{fragment}.py"
 
             if fragment_path.exists():
@@ -656,7 +1100,6 @@ class BaseResourceActionPlugin(ActionBase):
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
 
-                    # Get DOCUMENTATION from ModuleDocFragment class
                     if hasattr(module, "ModuleDocFragment"):
                         fragment_class = module.ModuleDocFragment
                         fragment_doc = getattr(fragment_class, "DOCUMENTATION", "")
@@ -672,27 +1115,8 @@ class BaseResourceActionPlugin(ActionBase):
             self._display.warning(f"Failed to load documentation fragment '{fragment_name}': {e}")
             return {}
 
-    def _validate_data(self, data: dict, argspec: dict, direction: str) -> Any:
-        """
-        Validate data against argument spec.
-
-        Uses Ansible's built-in ArgumentSpecValidator to validate
-        both input (from playbook) and output (from manager).
-
-        Args:
-            data: Data dict to validate
-            argspec: Argument specification
-            direction: 'input' or 'output' (for error messages)
-
-        Returns:
-            Any: ValidationResult with validated_parameters and error_messages
-
-        Raises:
-            AnsibleError: If validation fails
-        """
-        self._display.vvvv(f"Creating ArgumentSpecValidator with argspec keys: {list(argspec.keys())}")
-
-        # Create validator - pass all parameters as kwargs
+    def _validate_data(self, data: dict, argspec: dict, direction: str) -> dict:
+        """Validate data against argument spec."""
         validator = ArgumentSpecValidator(
             argument_spec=argspec.get("argument_spec", {}),
             mutually_exclusive=argspec.get("mutually_exclusive"),
@@ -702,65 +1126,77 @@ class BaseResourceActionPlugin(ActionBase):
             required_by=argspec.get("required_by"),
         )
 
-        self._display.vvvv(f"Validating {direction} data with keys: {list(data.keys())}")
-
-        # Validate
         result = validator.validate(data)
 
-        # Check for errors
         if result.error_messages:
             error_msg = f"{direction.title()} validation failed: " + ", ".join(result.error_messages)
             raise AnsibleError(error_msg)
 
-        self._display.vvvv(f"Validation successful for {direction}")
-        return result
+        return result.validated_parameters
 
-    def _get_play_id(self):
-        """
-        Get unique identifier for current play.
+    def _validate_output(self, results: list, argspec: dict) -> list:
+        """Validate return data against the config suboptions schema.
 
-        Uses play name and hosts to create a unique ID.
+        Ensures the contract with the user: what we return in ``config``
+        matches the documented suboptions (field names, types). Items with
+        extra keys not in the schema are filtered out.
         """
-        task = self._task
-        play = getattr(task, "_play", None)
-        if play:
-            play_name = getattr(play, "name", None) or "unknown"
-            hosts = getattr(play, "hosts", [])
-            hosts_str = ",".join(str(h) for h in hosts[:3])  # First 3 hosts for uniqueness
-            play_id = f"{play_name}::{hosts_str}"
-        else:
-            play_id = "unknown_play"
-        return play_id
+        config_spec = argspec.get("argument_spec", {}).get("config", {})
+        suboptions = config_spec.get("suboptions", {})
 
-    def _get_task_uuid(self, task_vars):
-        """
-        Get unique identifier for current task.
+        if not suboptions:
+            return results
 
-        Uses play name, task name, and hostname to create a unique ID.
-        """
-        task = self._task
-        play = getattr(task, "_play", None)
-        play_name = getattr(play, "name", None) or "unknown"
-        task_name = getattr(task, "name", None) or getattr(task, "_uuid", None) or "unnamed"
-        hostname = task_vars.get("inventory_hostname", "localhost")
-        # Use task's internal UUID if available, otherwise construct one
-        task_uuid = getattr(task, "_uuid", None) or f"{play_name}::{task_name}::{hostname}"
-        return str(task_uuid)
+        valid_keys = set(suboptions.keys())
+        validated = []
+
+        for item in results:
+            if not isinstance(item, dict):
+                validated.append(item)
+                continue
+
+            cleaned = {}
+            for key, value in item.items():
+                if key not in valid_keys:
+                    continue
+                elif value is None:
+                    continue
+                else:
+                    cleaned[key] = value
+
+            validated.append(cleaned)
+
+        return validated
+
+    def _detect_operation(self, args: dict) -> str:
+        """Map resource module state to API operation."""
+        state = args.get("state", "merged")
+
+        if state not in self.VALID_STATES:
+            raise AnsibleError(f"Unknown state: {state}. Valid states: {sorted(self.VALID_STATES)}")
+
+        state_to_operation = {
+            "merged": "update",
+            "replaced": "replace",
+            "overridden": "override",
+            "deleted": "delete",
+            "gathered": "find",
+        }
+
+        return state_to_operation[state]
+
+    # ------------------------------------------------------------------ #
+    #  Cleanup                                                             #
+    # ------------------------------------------------------------------ #
 
     def cleanup(self, force: bool = False) -> None:
-        """
-        Called by Ansible after each task completes.
+        """Called by Ansible after each task completes.
 
         Persistent managers are shut down by the platform_manager_cleanup
-        callback plugin which fires v2_playbook_on_play_end in the main
-        process — no task counting or file locking needed here.
-
-        This method only handles ephemeral managers (direct mode), which
-        must be torn down immediately after the single task that used them.
+        callback plugin. This method only handles ephemeral managers.
         """
         super().cleanup(force)
 
-        # Ephemeral managers (direct / non-persistent mode): shut down now.
         if hasattr(self, "_client") and getattr(self._client, "_ephemeral", False):
             self._display.vv("Shutting down ephemeral manager (direct mode)")
             try:
@@ -773,25 +1209,15 @@ class BaseResourceActionPlugin(ActionBase):
                 self._display.warning(f"Failed to shutdown ephemeral manager: {e}")
 
     def _shutdown_manager_process(self, socket_path: str, ProcessManager: Any) -> None:
-        """
-        Shutdown a specific manager process.
-
-        Args:
-            socket_path: Socket path of the manager to shutdown
-            ProcessManager: ProcessManager class for cleanup utilities
-        """
+        """Shutdown a specific manager process."""
         process_info = BaseResourceActionPlugin._spawned_processes.get(socket_path)
 
-        # If not found in in-memory dict (e.g. this process didn't spawn the manager),
-        # fall back to the companion .meta file written at spawn time.
         if not process_info:
             meta_path = str(socket_path) + ".meta"
             try:
                 with open(meta_path, "r") as _mf:
                     meta = json.load(_mf)
                 self._display.vvvv(f"Loaded manager meta from {meta_path}: pid={meta.get('pid')}")
-                # Build a minimal process_info so the shutdown logic below can proceed.
-                # We don't have the Popen object, so we wrap the raw PID instead.
                 import os as _os
 
                 pid = meta.get("pid")
@@ -806,7 +1232,7 @@ class BaseResourceActionPlugin(ActionBase):
                         def poll(self):
                             try:
                                 _os.kill(self._pid, 0)
-                                return None  # still running
+                                return None
                             except ProcessLookupError:
                                 return 0
                             except PermissionError:
@@ -814,13 +1240,13 @@ class BaseResourceActionPlugin(ActionBase):
 
                         def terminate(self):
                             try:
-                                _os.kill(self._pid, 15)  # SIGTERM
+                                _os.kill(self._pid, 15)
                             except ProcessLookupError:
                                 pass
 
                         def kill(self):
                             try:
-                                _os.kill(self._pid, 9)  # SIGKILL
+                                _os.kill(self._pid, 9)
                             except ProcessLookupError:
                                 pass
 
@@ -848,21 +1274,17 @@ class BaseResourceActionPlugin(ActionBase):
         process = process_info["process"]
         authkey_b64 = process_info.get("authkey_b64")
 
-        # Check if process is still running
         if process.poll() is None:
             self._display.vvvv(f"Manager process still running at {socket_path}, shutting down...")
 
             try:
-                # Try graceful shutdown via RPC
                 if authkey_b64 and Path(socket_path).exists():
                     try:
                         authkey = base64.b64decode(authkey_b64)
                         from .plugin_utils.manager.rpc_client import ManagerRPCClient
 
-                        # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
                         socket_path_str = str(socket_path)
                         client = ManagerRPCClient(process_info.get("gateway_url", ""), socket_path_str, authkey)
-                        # Call shutdown method
                         try:
                             shutdown_result = client.shutdown_manager()
                             self._display.vvvv(f"Sent shutdown signal to manager at {socket_path}: {shutdown_result}")
@@ -873,7 +1295,6 @@ class BaseResourceActionPlugin(ActionBase):
                     except Exception as e:
                         self._display.vvvv(f"Could not connect for graceful shutdown: {e}")
 
-                # Wait for graceful shutdown (max 5 seconds)
                 try:
                     process.wait(timeout=5)
                     self._display.vvvv(f"Manager process at {socket_path} shut down gracefully")
@@ -886,7 +1307,6 @@ class BaseResourceActionPlugin(ActionBase):
                         process.wait()
             except Exception as e:
                 self._display.warning(f"Error shutting down manager at {socket_path}: {e}")
-                # Force kill as fallback
                 try:
                     if process.poll() is None:
                         process.kill()
@@ -894,7 +1314,6 @@ class BaseResourceActionPlugin(ActionBase):
                 except Exception:
                     pass
 
-        # Clean up socket file and companion meta file
         try:
             ProcessManager.cleanup_old_socket(socket_path)
             self._display.vvvv(f"Cleaned up socket file: {socket_path}")
@@ -908,382 +1327,4 @@ class BaseResourceActionPlugin(ActionBase):
         except Exception as e:
             self._display.vvvv(f"Could not clean up meta file: {e}")
 
-        # Remove from tracking
         BaseResourceActionPlugin._spawned_processes.pop(socket_path, None)
-
-    def _should_update(self, desired_data, current_data):
-        """
-        Return True if any explicitly-provided writable field differs between
-        the desired task args and the current API state.
-
-        Comparison rules:
-        - Only fields that are present in BOTH desired_data and current_data
-          are compared (fields missing from the API response are ignored).
-        - Auth params, Ansible directives (state, new_name), and read-only
-          fields (id, created, …) are excluded.
-        - FK fields: when desired is a str but current is an int (i.e. the
-          task supplied a name that the API stored as a resolved integer id),
-          the comparison is skipped to avoid false positives.  The reverse
-          (int desired, str current) is also skipped.  Additionally, when
-          desired is a non-numeric str (a name) and current is a digit str
-          (an int FK that from_api converted to str), the comparison is
-          skipped — e.g. authenticator='my-auth' vs '3100'.
-        - new_name: always triggers an update (it's a rename operation).
-        - Dict/list fields are compared via equality; type mismatches skip.
-        """
-        if desired_data.get("new_name"):
-            return True
-
-        skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS | self._WRITE_ONLY_FIELDS
-
-        for key, desired_val in desired_data.items():
-            if key in skip_keys or desired_val is None:
-                continue
-            if key not in current_data:
-                # Field not returned by API — cannot compare, assume no change
-                continue
-            current_val = current_data[key]
-            # FK stored as digit string by from_api() (e.g. role_definition='3100'):
-            # when the task supplies a name like 'my-role', skip the comparison so
-            # we don't trigger a spurious update for an unchanged FK.
-            # Exception: fields in _MUTABLE_FK_FIELDS (e.g. service_cluster on
-            # service_node) CAN change to a different resource, so let those through
-            # — _update_resource() will resolve both sides to integers and decide.
-            if (
-                key not in self._MUTABLE_FK_FIELDS
-                and isinstance(desired_val, str)
-                and isinstance(current_val, str)
-                and not desired_val.isdigit()
-                and current_val.isdigit()
-            ):
-                continue
-            # Same type: direct equality
-            if type(desired_val) is type(current_val):
-                if desired_val != current_val:
-                    return True
-            else:
-                # Coerce to string for cross-type scalars (e.g. int vs float)
-                if str(desired_val) != str(current_val):
-                    return True
-
-        return False
-
-    def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
-        """
-        Standard run() for resource action plugins.
-
-        Subclasses that set MODEL_CLASS (and optionally LOOKUP_FIELD) get
-        full CRUD idempotency for free — no need to override this method.
-
-        State machine:
-          present -> find by LOOKUP_FIELD; update if found, create if not
-          absent -> find by LOOKUP_FIELD; delete if found, no-op if not
-          exists -> find; return exists=True/False without changes
-          enforced -> find; merge declared fields; update or create
-          check_mode is honoured for create / update / delete
-
-        Args:
-            tmp: Temporary directory (deprecated, unused)
-            task_vars: Task variables from Ansible
-
-        Returns:
-            dict: Ansible result dictionary
-        """
-        if task_vars is None:
-            task_vars = {}
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
-        if self.MODEL_CLASS is None:
-            raise AnsibleError("%s must set MODEL_CLASS or override run()" % type(self).__name__)
-
-        try:
-            # ---- argspec & input validation --------------------------------
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-
-            # ---- manager connection ----------------------------------------
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
-
-            # ---- build resource object -------------------------------------
-            validated_params = validated_input.validated_parameters
-            resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
-
-            # Warn about and strip deprecated argspec fields.
-            for field, (msg, version) in self._DEPRECATED_FIELDS.items():
-                if resource_data.pop(field, None) is not None:
-                    result.setdefault("deprecations", []).append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
-
-            # Pop write-only fields (not present in MODEL_CLASS) before instantiation;
-            # they are passed to _pre_execute_hook for use just before manager.execute().
-            _write_only_data = {f: resource_data.pop(f) for f in self._WRITE_ONLY_FIELDS if f in resource_data}
-
-            resource = self.MODEL_CLASS(**resource_data)
-
-            # Allow subclasses to resolve lookup-by-id or other mutations.
-            self._resolve_lookup(resource, resource_data, validated_params)
-
-            operation = self._detect_operation(validated_params)
-            state = validated_params.get("state", "present")
-            lookup_val = getattr(resource, self.LOOKUP_FIELD, None)
-
-            # ---- state: exists (read-only) ----------------------------------
-            if state == "exists":
-                try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
-                    exists = bool(find_result and find_result.get("id"))
-                except Exception:
-                    find_result, exists = {}, False
-                result.update(
-                    {
-                        "changed": False,
-                        "failed": False,
-                        "exists": exists,
-                        self.MODULE_NAME: find_result if exists else {},
-                    }
-                )
-                return result
-
-            # ---- present: idempotent create (find -> compare ->  update only if changed) -----
-            if operation == "create" and state == "present":
-                try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
-                    if find_result and find_result.get("id"):
-                        if not self._should_update(resource_data, find_result):
-                            # Nothing changed — return current state without touching API
-                            result.update(
-                                {
-                                    "changed": False,
-                                    "failed": False,
-                                    self.MODULE_NAME: find_result,
-                                }
-                            )
-                            return result
-                        operation = "update"
-                        resource.id = find_result["id"]
-                except Exception:
-                    pass
-
-            # ---- absent: find by lookup field to get id --------------------
-            if operation == "delete" and not getattr(resource, "id", None):
-                try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
-                    if find_result and find_result.get("id"):
-                        resource.id = find_result["id"]
-                    else:
-                        result.update(
-                            {
-                                "changed": False,
-                                "failed": False,
-                                self.MODULE_NAME: {"state": "absent"},
-                                "msg": "%s '%s' does not exist (already absent)" % (self.MODULE_NAME, lookup_val),
-                            }
-                        )
-                        return result
-                except Exception:
-                    result.update(
-                        {
-                            "changed": False,
-                            "failed": False,
-                            self.MODULE_NAME: {"state": "absent"},
-                            "msg": "%s '%s' does not exist (already absent)" % (self.MODULE_NAME, lookup_val),
-                        }
-                    )
-                    return result
-
-            # ---- enforced: find → merge declared fields → update/create ----
-            if operation == "enforced":
-                argspec_fields = set(argspec.get("argument_spec", {}).keys())
-                try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
-                except ValueError:
-                    find_result = None
-                if find_result and find_result.get("id"):
-                    merged = {}
-                    for k in argspec_fields:
-                        if k in self._AUTH_PARAMS:
-                            continue
-                        if k in validated_params:
-                            merged[k] = validated_params[k]
-                        elif k == self.LOOKUP_FIELD:
-                            merged[k] = find_result.get(k) or lookup_val
-                        else:
-                            merged[k] = None
-                    for ro in self._READ_ONLY_FIELDS:
-                        if ro in find_result:
-                            merged[ro] = find_result[ro]
-                    merged.setdefault(self.LOOKUP_FIELD, lookup_val)
-                    # Short-circuit if the merged desired state matches current
-                    if not self._should_update(merged, find_result):
-                        result.update(
-                            {
-                                "changed": False,
-                                "failed": False,
-                                self.MODULE_NAME: find_result,
-                            }
-                        )
-                        return result
-                    resource = self.MODEL_CLASS(**{k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
-                    operation = "update"
-                else:
-                    operation = "create"
-
-            # ---- check mode ------------------------------------------------
-            ansible_data = self._build_ansible_data(resource, validated_params, operation)
-            if operation == "update" and state == "enforced":
-                ansible_data["_platform_enforced"] = True
-
-            if self._task.check_mode and operation in ("create", "update", "delete"):
-                if operation == "delete":
-                    result.update(
-                        {
-                            "changed": bool(getattr(resource, "id", None)),
-                            "failed": False,
-                            self.MODULE_NAME: {"state": "absent"},
-                        }
-                    )
-                else:
-                    result.update(
-                        {
-                            "changed": True,
-                            "failed": False,
-                            self.MODULE_NAME: {
-                                self.LOOKUP_FIELD: lookup_val,
-                                "id": getattr(resource, "id", None),
-                            },
-                        }
-                    )
-                return result
-
-            # ---- execute ---------------------------------------------------
-            self._pre_execute_hook(ansible_data, _write_only_data, validated_params, operation)
-            try:
-                manager_result = manager.execute(
-                    operation=operation,
-                    module_name=self.MODULE_NAME,
-                    ansible_data=ansible_data,
-                )
-            except ValueError as exc:
-                if operation == "find" and ("not found" in str(exc).lower() or "resource with" in str(exc).lower()):
-                    result.update(
-                        {
-                            "changed": False,
-                            "failed": False,
-                            self.MODULE_NAME: {},
-                            "exists": False,
-                            "msg": "%s '%s' does not exist" % (self.MODULE_NAME, lookup_val),
-                        }
-                    )
-                    return result
-                raise
-
-            # ---- build clean result ----------------------------------------
-            # Keys that must NEVER appear in the nested resource dict
-            # (ANSTRAT-1640): Ansible directives, read-only API metadata, and
-            # internal debug keys.
-            _strip_from_resource = (
-                self._ANSIBLE_DIRECTIVES
-                | (self._READ_ONLY_FIELDS - {"id"})  # keep id, strip created/modified/url
-                | {"changed"}
-            )
-
-            argspec_fields = set(argspec.get("argument_spec", {}).keys())
-            argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
-            filtered = {k: v for k, v in manager_result.items() if k in argspec_resource_fields}
-            try:
-                validated_output = self._validate_data(
-                    {k: v for k, v in filtered.items() if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},
-                    argspec,
-                    "output",
-                )
-                if "id" in filtered:
-                    validated_output["id"] = filtered["id"]
-            except Exception:
-                validated_output = {k: v for k, v in manager_result.items() if k not in _strip_from_resource}
-                if "id" in manager_result:
-                    validated_output["id"] = manager_result["id"]
-
-            # Final pass: strip any banned keys that slipped through argspec
-            # validation (e.g. read-only fields declared in module DOCUMENTATION
-            # but not writable by the user).
-            # Also strip:
-            #   - 'new_*' fields (rename/move directives, e.g. new_organization)
-            #   - '*_id' fields that are internal resolved FK integers
-            #     (e.g. organization_id) — the resolved FK is not a user-visible
-            #     return value; the user sees the original name field instead.
-            validated_output = {
-                k: v
-                for k, v in validated_output.items()
-                if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
-            }
-
-            result.update(
-                {
-                    "changed": manager_result.get("changed", False),
-                    "failed": False,
-                    self.MODULE_NAME: validated_output,
-                }
-            )
-            if operation == "find":
-                result["exists"] = bool(validated_output.get("id"))
-
-        except Exception as exc:
-            import traceback as _tb
-
-            self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
-            result["failed"] = True
-            result["msg"] = str(exc)
-            if self._display.verbosity >= 3:
-                result["exception"] = _tb.format_exc()
-
-        return result
-
-    def _detect_operation(self, args: dict) -> str:
-        """
-        Detect operation type from arguments (CRUD-aligned state).
-
-        Args:
-            args: Module arguments
-
-        Returns:
-            str: Operation name ('create', 'update', 'delete', 'find', 'enforced').
-            'enforced' is handled by the action plugin (find then merge and create/update).
-        """
-        state = args.get("state", "present")
-
-        if state in ("absent", "deleted"):
-            return "delete"
-        elif state == "present":
-            if args.get("id"):
-                return "update"
-            return "create"
-        elif state in ("exists", "find", "gathered"):
-            return "find"
-        elif state in ("enforced", "merged"):
-            return "enforced"
-        else:
-            raise AnsibleError(f"Unknown state: {state}")

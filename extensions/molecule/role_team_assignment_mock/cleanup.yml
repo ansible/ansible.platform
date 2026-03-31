@@ -5,18 +5,19 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
   tasks:
     - name: Delete role_team_assignment
       ansible.platform.role_team_assignment:
-        role_definition: "Organization Admin"
-        team: "molecule-mock-team"
-        assignment_objects:
-          - name: "Default"
-            type: "organizations"
-        state: absent
+        config:
+          - role_definition: Organization Admin
+            team: molecule-mock-team
+            assignment_objects:
+              - name: Default
+                type: organizations
+        state: deleted
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -28,17 +29,18 @@
 
     - name: Assert role_team_assignment removed
       ansible.builtin.assert:
-        that: delete_result is not failed
+        that:
+          - delete_result is not failed
         fail_msg: "Cleanup: failed to delete role_team_assignment."
       vars:
         ansible_connection: local
 
     - name: Find prerequisite role_definition (Organization Admin)
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/role_definitions/?name=Organization+Admin"
+        url: '{{ gateway_hostname }}/api/gateway/v1/role_definitions/?name=Organization+Admin'
         method: GET
         headers:
-          Authorization: "Basic bW9jazptb2Nr"
+          Authorization: Basic bW9jazptb2Nr
       register: roledef_list
       failed_when: false
       vars:
@@ -46,22 +48,25 @@
 
     - name: Delete prerequisite role_definition if found
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/role_definitions/{{ item.id }}/"
+        url: '{{ gateway_hostname }}/api/gateway/v1/role_definitions/{{ item.id }}/'
         method: DELETE
         headers:
-          Authorization: "Basic bW9jazptb2Nr"
-        status_code: [200, 204, 404]
-      loop: "{{ roledef_list.json.results | default([]) }}"
+          Authorization: Basic bW9jazptb2Nr
+        status_code:
+        - 200
+        - 204
+        - 404
+      loop: '{{ roledef_list.json.results | default([]) }}'
       failed_when: false
       vars:
         ansible_connection: local
 
     - name: Find prerequisite team (molecule-mock-team)
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/teams/?name=molecule-mock-team"
+        url: '{{ gateway_hostname }}/api/gateway/v1/teams/?name=molecule-mock-team'
         method: GET
         headers:
-          Authorization: "Basic bW9jazptb2Nr"
+          Authorization: Basic bW9jazptb2Nr
       register: team_list
       failed_when: false
       vars:
@@ -69,12 +74,15 @@
 
     - name: Delete prerequisite team if found
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/teams/{{ item.id }}/"
+        url: '{{ gateway_hostname }}/api/gateway/v1/teams/{{ item.id }}/'
         method: DELETE
         headers:
-          Authorization: "Basic bW9jazptb2Nr"
-        status_code: [200, 204, 404]
-      loop: "{{ team_list.json.results | default([]) }}"
+          Authorization: Basic bW9jazptb2Nr
+        status_code:
+        - 200
+        - 204
+        - 404
+      loop: '{{ team_list.json.results | default([]) }}'
       failed_when: false
       vars:
         ansible_connection: local
@@ -85,4 +93,5 @@
         state: absent
       vars:
         ansible_connection: local
+
 ...

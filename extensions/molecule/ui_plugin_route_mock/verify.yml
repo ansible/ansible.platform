@@ -5,14 +5,15 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
   tasks:
     - name: Get ui_plugin_route (direct)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-direct"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-direct
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -25,16 +26,17 @@
       ansible.builtin.assert:
         that:
           - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (direct)"
+          - "exists_result.gathered | length > 0"
+          - "exists_result.gathered[0].description == \"Updated mock UI route (direct)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (direct)."
       vars:
         ansible_connection: local
 
     - name: Get ui_plugin_route (persistent)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-persistent"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-persistent
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -47,16 +49,17 @@
       ansible.builtin.assert:
         that:
           - exists_result_persistent is not failed
-          - exists_result_persistent.get('exists') | default(false) | bool
-          - exists_result_persistent.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (persistent)"
+          - "exists_result_persistent.gathered | length > 0"
+          - "exists_result_persistent.gathered[0].description == \"Updated mock UI route (persistent)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (persistent)."
       vars:
         ansible_connection: local
 
     - name: Get ui_plugin_route (local)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-local"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-local
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -69,8 +72,8 @@
       ansible.builtin.assert:
         that:
           - exists_result_local is not failed
-          - exists_result_local.get('exists') | default(false) | bool
-          - exists_result_local.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (local)"
+          - "exists_result_local.gathered | length > 0"
+          - "exists_result_local.gathered[0].description == \"Updated mock UI route (local)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (local)."
       vars:
         ansible_connection: local
@@ -81,51 +84,54 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: false
   tasks:
     - name: Get ui_plugin_route (direct)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-direct-hd"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-direct-hd
+        state: gathered
       register: exists_result
 
     - name: Assert ui_plugin_route was found and updated (direct)
       ansible.builtin.assert:
         that:
           - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (direct)"
+          - "exists_result.gathered | length > 0"
+          - "exists_result.gathered[0].description == \"Updated mock UI route (direct)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (direct)."
 
     - name: Get ui_plugin_route (persistent)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-persistent-hd"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-persistent-hd
+        state: gathered
       register: exists_result_persistent
 
     - name: Assert ui_plugin_route was found and updated (persistent)
       ansible.builtin.assert:
         that:
           - exists_result_persistent is not failed
-          - exists_result_persistent.get('exists') | default(false) | bool
-          - exists_result_persistent.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (persistent)"
+          - "exists_result_persistent.gathered | length > 0"
+          - "exists_result_persistent.gathered[0].description == \"Updated mock UI route (persistent)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (persistent)."
 
     - name: Get ui_plugin_route (http direct)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-local-hd"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-local-hd
+        state: gathered
       register: exists_result_http_direct
 
     - name: Assert ui_plugin_route was found and updated (http direct)
       ansible.builtin.assert:
         that:
           - exists_result_http_direct is not failed
-          - exists_result_http_direct.get('exists') | default(false) | bool
-          - exists_result_http_direct.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (http direct)"
+          - "exists_result_http_direct.gathered | length > 0"
+          - "exists_result_http_direct.gathered[0].description == \"Updated mock UI route (http direct)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (http direct)."
 
 - name: Verify — ui_plugin_routes created
@@ -134,50 +140,54 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
   tasks:
     - name: Get ui_plugin_route (direct)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-direct-hp"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-direct-hp
+        state: gathered
       register: exists_result
 
     - name: Assert ui_plugin_route was found and updated (direct)
       ansible.builtin.assert:
         that:
           - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (direct)"
+          - "exists_result.gathered | length > 0"
+          - "exists_result.gathered[0].description == \"Updated mock UI route (direct)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (direct)."
 
     - name: Get ui_plugin_route (persistent)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-persistent-hp"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-persistent-hp
+        state: gathered
       register: exists_result_persistent
 
     - name: Assert ui_plugin_route was found and updated (persistent)
       ansible.builtin.assert:
         that:
           - exists_result_persistent is not failed
-          - exists_result_persistent.get('exists') | default(false) | bool
-          - exists_result_persistent.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (persistent)"
+          - "exists_result_persistent.gathered | length > 0"
+          - "exists_result_persistent.gathered[0].description == \"Updated mock UI route (persistent)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (persistent)."
 
     - name: Get ui_plugin_route (http persistent)
       ansible.platform.ui_plugin_route:
-        name: "molecule-mock-ui-route-local-hp"
-        state: exists
+        config:
+          - name: molecule-mock-ui-route-local-hp
+        state: gathered
       register: exists_result_http_persistent
 
     - name: Assert ui_plugin_route was found and updated (http persistent)
       ansible.builtin.assert:
         that:
           - exists_result_http_persistent is not failed
-          - exists_result_http_persistent.get('exists') | default(false) | bool
-          - exists_result_http_persistent.get('ui_plugin_route', {}).get('description') == "Updated mock UI route (http persistent)"
+          - "exists_result_http_persistent.gathered | length > 0"
+          - "exists_result_http_persistent.gathered[0].description == \"Updated mock UI route (http persistent)\""
         fail_msg: "Verify: ui_plugin_route not found or description not updated (http persistent)."
+
 ...

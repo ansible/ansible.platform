@@ -23,10 +23,26 @@ class BaseTransformMixin(ABC):
     It provides generic transformation logic that works with the specific
     field mappings and transform functions defined in subclasses.
 
-    Attributes:
-        _field_mapping: Dict defining field mappings (set by subclasses)
-        _transform_registry: Dict of transformation functions (set by subclasses)
+    Resource metadata attributes (set on User Model classes):
+        MODULE_NAME: Resource name (e.g., 'user', 'team')
+        SCOPE_PARAM: Scope/parent parameter name (e.g., 'organization_id')
+        CANONICAL_KEY: User-facing identity field (e.g., 'username', 'name')
+        SYSTEM_KEY: API-generated identity field (e.g., 'id')
+        SUPPORTS_DELETE: Whether this resource supports delete operations
+        VALID_STATES: Frozenset of supported resource module states
+
+    Transformation attributes (set by subclasses):
+        _field_mapping: Dict defining field mappings
+        _transform_registry: Dict of transformation functions
     """
+
+    # Resource metadata — set on User Model classes
+    MODULE_NAME: Optional[str] = None
+    SCOPE_PARAM: Optional[str] = None
+    CANONICAL_KEY: Optional[str] = None
+    SYSTEM_KEY: Optional[str] = "id"
+    SUPPORTS_DELETE: bool = True
+    VALID_STATES: frozenset = frozenset({"merged", "replaced", "overridden", "deleted", "gathered"})
 
     # Subclasses must define these class variables
     _field_mapping: Optional[Dict] = None

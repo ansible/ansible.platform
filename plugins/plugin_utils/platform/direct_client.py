@@ -818,7 +818,30 @@ class DirectHTTPClient(BaseAPIClient):
                 raise
 
         if not lookup_value and not composite_params:
-            raise ValueError(f"Lookup field '{lookup_field}' not found in data")
+            # No filters — list ALL resources (resource module gathered / before state)
+            from dataclasses import asdict as _asdict
+
+            all_items = []
+            list_url = self._build_url(list_op.path)
+            logger.debug("DirectHTTPClient: listing all %s via GET %s", mixin_class.__name__, list_url)
+            while list_url:
+                with self._lock:
+                    self._http_request_count += 1
+                page_response = self._make_request(list_op.method, list_url, operation="find", resource=mixin_class.__name__)
+                try:
+                    page_body = page_response.read()
+                    page_data = json.loads(page_body) if page_body else {}
+                except Exception:
+                    page_data = {}
+                for api_item in page_data.get("results", []):
+                    try:
+                        ansible_instance = mixin_class.from_api(api_item, context)
+                        all_items.append(_asdict(ansible_instance))
+                    except Exception:
+                        pass
+                list_url = page_data.get("next") or None
+            return all_items
+
         query_params = {}
         if lookup_value:
             query_params[lookup_field] = lookup_value
@@ -954,16 +977,63 @@ class DirectHTTPClient(BaseAPIClient):
         return results.get("create") or results.get("update") or results.get("get") or results
 
     def lookup_organization_ids(self, names: list) -> list:
-        """Lookup organization IDs from names (shared helper)."""
-        # TODO: Implement lookup using cache
-        # This should use the cache to avoid repeated lookups
-        pass
+        """Lookup organization IDs from names via the organizations list endpoint."""
+        if not names:
+            return []
+        resolved = []
+        for name in names:
+            cache_key = f"org_name:{name}"
+            if cache_key in self.cache:
+                resolved.append(self.cache[cache_key])
+                continue
+            # Resolve via API: GET /api/gateway/v1/organizations/?name=<name>
+            try:
+                lookup_url = self._build_url(f"/api/gateway/v1/organizations/", {"name": name})
+                with self._lock:
+                    self._http_request_count += 1
+                resp = self._make_request("GET", lookup_url, operation="find", resource="organization")
+                body = resp.read()
+                data = json.loads(body) if body else {}
+                results = data.get("results", [])
+                if results:
+                    org_id = results[0].get("id")
+                    if org_id is not None:
+                        self.cache[cache_key] = org_id
+                        self.cache[f"org_id:{org_id}"] = name
+                        resolved.append(org_id)
+            except Exception:
+                pass
+        return resolved
+
+    def lookup_org_ids(self, names: list) -> list:
+        """Alias for lookup_organization_ids."""
+        return self.lookup_organization_ids(names)
 
     def lookup_organization_names(self, ids: list) -> list:
-        """Lookup organization names from IDs (shared helper)."""
-        # TODO: Implement lookup using cache
-        # This should use the cache to avoid repeated lookups
-        pass
+        """Lookup organization names from IDs via the organizations get endpoint."""
+        if not ids:
+            return []
+        resolved = []
+        for org_id in ids:
+            cache_key = f"org_id:{org_id}"
+            if cache_key in self.cache:
+                resolved.append(self.cache[cache_key])
+                continue
+            try:
+                lookup_url = self._build_url(f"/api/gateway/v1/organizations/{org_id}/")
+                with self._lock:
+                    self._http_request_count += 1
+                resp = self._make_request("GET", lookup_url, operation="find", resource="organization")
+                body = resp.read()
+                data = json.loads(body) if body else {}
+                name = data.get("name")
+                if name:
+                    self.cache[cache_key] = name
+                    self.cache[f"org_name:{name}"] = org_id
+                    resolved.append(name)
+            except Exception:
+                pass
+        return resolved
 
     def direct_request(self, method: str, path: str, data=None) -> dict:
         """

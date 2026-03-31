@@ -5,7 +5,7 @@ the framework.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, FrozenSet, List, Optional
 
 if TYPE_CHECKING:
     from requests import Session
@@ -26,39 +26,54 @@ class EndpointOperation:
         method: HTTP method ('GET', 'POST', 'PATCH', 'DELETE')
         fields: List of dataclass field names to include in request
         path_params: Optional list of path parameter names (e.g., ['id'])
+        path_param_aliases: Optional mapping of path param → list of aliases
         required_for: Optional operation type this is required for
             ('create', 'update', 'delete', or None for always)
         depends_on: Optional name of operation this depends on
         order: Execution order (lower runs first)
-
-    Examples:
-        >>> # Main create operation
-        >>> EndpointOperation(
-        ...     path='/api/gateway/v1/users/',
-        ...     method='POST',
-        ...     fields=['username', 'email'],
-        ...     order=1
-        ... )
-
-        >>> # Dependent operation (runs after create)
-        >>> EndpointOperation(
-        ...     path='/api/gateway/v1/users/{id}/organizations/',
-        ...     method='POST',
-        ...     fields=['organizations'],
-        ...     path_params=['id'],
-        ...     depends_on='create',
-        ...     order=2
-        ... )
+        flatten_body: If True, send dict field value as the body directly (for singletons)
     """
 
     path: str
     method: str
     fields: List[str]
     path_params: Optional[List[str]] = None
+    path_param_aliases: Optional[Dict[str, List[str]]] = None
     required_for: Optional[str] = None
     depends_on: Optional[str] = None
     order: int = 0
-    flatten_body: bool = False  # If True, send dict field value as the body directly (for singletons)
+    flatten_body: bool = False
+
+
+@dataclass
+class ResourceModuleStates:
+    """Declares which resource module states a resource supports.
+
+    Used by the base action plugin to validate the ``state`` parameter
+    and by DOCUMENTATION generation.
+
+    Attributes:
+        merged: Additive create/update (C' = C ∪ D)
+        replaced: Item-level replacement (C' = (C \\ K(D)) ∪ D)
+        overridden: Set equality (C' = D), deletes extras
+        deleted: Set difference (C' = C \\ D)
+        gathered: Read-only state gathering
+    """
+
+    merged: bool = True
+    replaced: bool = True
+    overridden: bool = True
+    deleted: bool = True
+    gathered: bool = True
+
+    @property
+    def as_frozenset(self) -> FrozenSet[str]:
+        """Return the enabled states as a frozenset of strings."""
+        states = set()
+        for attr in ("merged", "replaced", "overridden", "deleted", "gathered"):
+            if getattr(self, attr):
+                states.add(attr)
+        return frozenset(states)
 
 
 @dataclass
@@ -76,7 +91,7 @@ class TransformContext:
         api_version: Current API version string
         operation: Optional operation name ('create', 'update', etc.).
         include_nulls_for_update: When True and operation is 'update', transforms include null
-            for optional fields so the API can clear them (enforced state only; present must not send nulls).
+            for optional fields so the API can clear them (replaced/overridden states).
     """
 
     manager: "PlatformService"

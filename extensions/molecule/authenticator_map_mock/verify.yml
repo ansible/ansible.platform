@@ -5,15 +5,16 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
   tasks:
     - name: Get authenticator_map (state exists, connection local)
       ansible.platform.authenticator_map:
-        name: "molecule-mock-auth-map-local"
-        authenticator: "molecule-mock-auth-local"
-        state: exists
+        config:
+          - name: molecule-mock-auth-map-local
+            authenticator: molecule-mock-auth-local
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -26,7 +27,7 @@
       ansible.builtin.assert:
         that:
           - exists_result_local is not failed
-          - exists_result_local.get('exists') | default(false) | bool
+          - "exists_result_local.gathered | length > 0"
         fail_msg: "Verify: authenticator_map not found (connection local)."
       vars:
         ansible_connection: local
@@ -37,23 +38,24 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: false
   tasks:
     - name: Get authenticator_map (state exists, http direct)
       ansible.platform.authenticator_map:
-        name: "molecule-mock-auth-map-local-hd"
-        authenticator: "molecule-mock-auth-local-hd"
-        state: exists
+        config:
+          - name: molecule-mock-auth-map-local-hd
+            authenticator: molecule-mock-auth-local-hd
+        state: gathered
       register: exists_result_http_direct
 
     - name: Assert authenticator_map was found (http direct)
       ansible.builtin.assert:
         that:
           - exists_result_http_direct is not failed
-          - exists_result_http_direct.get('exists') | default(false) | bool
+          - "exists_result_http_direct.gathered | length > 0"
         fail_msg: "Verify: authenticator_map not found (http direct)."
 
 - name: Verify — authenticator_map created (http persistent)
@@ -62,22 +64,24 @@
   gather_facts: false
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
   tasks:
     - name: Get authenticator_map (state exists, http persistent)
       ansible.platform.authenticator_map:
-        name: "molecule-mock-auth-map-local-hp"
-        authenticator: "molecule-mock-auth-local-hp"
-        state: exists
+        config:
+          - name: molecule-mock-auth-map-local-hp
+            authenticator: molecule-mock-auth-local-hp
+        state: gathered
       register: exists_result_http_persistent
 
     - name: Assert authenticator_map was found (http persistent)
       ansible.builtin.assert:
         that:
           - exists_result_http_persistent is not failed
-          - exists_result_http_persistent.get('exists') | default(false) | bool
+          - "exists_result_http_persistent.gathered | length > 0"
         fail_msg: "Verify: authenticator_map not found (http persistent)."
+
 ...

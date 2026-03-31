@@ -530,7 +530,7 @@ class PlatformService(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
-            elif operation == "update":
+            elif operation in ("update", "replace"):
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
                 result = self._delete_resource(ansible_instance, MixinClass, context)
@@ -860,7 +860,33 @@ class PlatformService(BaseAPIClient):
             composite_params = mixin_class.get_find_list_query_params(api_data) or {}
 
         if not unique_value and not composite_params:
-            raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
+            # No filters — list ALL resources (used by resource module gathered state)
+            if not list_op:
+                raise ValueError("No LIST operation defined for this resource")
+
+            from dataclasses import asdict as _asdict
+
+            all_items = []
+            url = self._build_url(list_op.path)
+            logger.debug("Listing all resources via GET %s", url)
+
+            # Paginated fetch — follow 'next' links until exhausted
+            while url:
+                response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+                response.raise_for_status()
+                list_result = response.json()
+                results = list_result.get("results", [])
+                for api_item in results:
+                    try:
+                        ansible_instance = mixin_class.from_api(api_item, context)
+                        all_items.append(_asdict(ansible_instance))
+                    except Exception:
+                        pass
+                # Follow pagination
+                next_url = list_result.get("next")
+                url = next_url if next_url else None
+
+            return all_items
 
         # Resolve the resource ID to use for a direct GET lookup.
         # Priority: explicit id field → numeric name field (caller passed an int PK).

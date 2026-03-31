@@ -105,6 +105,16 @@ def main():
         else:
             log_marker("Workspace root already in sys.path")
 
+        # Also inject any paths from ANSIBLE_COLLECTIONS_PATH env var so that
+        # test environments that mount the collection outside the standard
+        # ansible_collections/ tree can still be found by the manager subprocess.
+        ansible_collections_path = os.environ.get("ANSIBLE_COLLECTIONS_PATH", "")
+        for cp in ansible_collections_path.split(os.pathsep):
+            cp = cp.strip()
+            if cp and cp not in sys.path:
+                sys.path.insert(0, cp)
+                log_marker(f"Added ANSIBLE_COLLECTIONS_PATH entry to sys.path: {cp}")
+
         # Decode authkey from base64
         log_marker("Decoding authkey...")
         authkey = base64.b64decode(authkey_b64)

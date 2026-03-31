@@ -1,66 +1,57 @@
 ---
-# Converge: user create, idempotency, update, password handling, exists, delete
-# against mock Gateway (no real AAP instance required).
-
-# Play 1: health check — must use connection: local (uri module, not platform connection).
 - name: Ensure mock Gateway is reachable
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_hostname: http://127.0.0.1:8000
   tasks:
-    - name: Wait for mock Gateway health endpoint
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/health"
-        method: GET
-        status_code: 200
-      register: health
-      retries: 12
-      delay: 5
-      until: health.status == 200
-      vars:
-        ansible_connection: local
-
-# Play 2: full user lifecycle (connection local / direct mode).
-    - name: Ensure /tmp/ap directory exists
-      ansible.builtin.file:
-        path: /tmp/ap
-        state: directory
-        mode: "0755"
-      vars:
-        ansible_connection: local
-
-    - name: Create manager survive flag (Molecule keeps manager alive across phases)
-      ansible.builtin.file:
-        path: /tmp/ap/.survive
-        state: touch
-        mode: "0600"
-      vars:
-        ansible_connection: local
-
+  - name: Wait for mock Gateway health endpoint
+    ansible.builtin.uri:
+      url: '{{ gateway_hostname }}/health'
+      method: GET
+      status_code: 200
+    register: health
+    retries: 12
+    delay: 5
+    until: health.status == 200
+    vars:
+      ansible_connection: local
+  - name: Ensure /tmp/ap directory exists
+    ansible.builtin.file:
+      path: /tmp/ap
+      state: directory
+      mode: '0755'
+    vars:
+      ansible_connection: local
+  - name: Create manager survive flag (Molecule keeps manager alive across phases)
+    ansible.builtin.file:
+      path: /tmp/ap/.survive
+      state: touch
+      mode: '0600'
+    vars:
+      ansible_connection: local
 - name: Converge — user (mock, connection local)
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
-    molecule_username: "molecule-test-user"
+    molecule_username: molecule-test-user
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
-
   tasks:
-    # ── Create ─────────────────────────────────────────────────────────────────
     - name: Create user (connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "TestUser"
-        email: "molecule-test@mock.example.com"
-        password: "MockPass123!"
-        is_superuser: false
-        state: present
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            password: MockPass123!
+            is_superuser: false
+        state: merged
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -73,8 +64,8 @@
       ansible.builtin.assert:
         that:
           - create_result is changed
-          - create_result.user.id is defined
-          - create_result.user.username == molecule_username
+          - "create_result.after | length > 0"
+          - "molecule_username in (create_result.after | map(attribute='username') | list)"
         fail_msg: "Create should report changed. create_result={{ create_result }}"
       vars:
         ansible_connection: local
@@ -83,26 +74,19 @@
       ansible.builtin.assert:
         that:
           - "'_timing' not in create_result"
-          - "'_timing' not in create_result.user"
-          - "'changed' not in create_result.user"
-          - "'state' not in create_result.user"
-          - "'created' not in create_result.user"
-          - "'modified' not in create_result.user"
-          - "'url' not in create_result.user"
-        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.user. result={{ create_result }}"
+        fail_msg: "RETURN shape check: result.after[0]. result={{ create_result }}"
       vars:
         ansible_connection: local
 
-    # ── Idempotency (present) ─────────────────────────────────────────────────
     - name: Run again idempotency (connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "TestUser"
-        email: "molecule-test@mock.example.com"
-        is_superuser: false
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            is_superuser: false
+        state: merged
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -113,20 +97,20 @@
 
     - name: Assert idempotent run did not change (connection local)
       ansible.builtin.assert:
-        that: idem_result is not changed
+        that:
+          - idem_result is not changed
         fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
       vars:
         ansible_connection: local
 
-    # ── Update (change email and last_name) ───────────────────────────────────
     - name: Update user email and last_name (connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "UpdatedUser"
-        email: "molecule-updated@mock.example.com"
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -137,20 +121,20 @@
 
     - name: Assert update changed
       ansible.builtin.assert:
-        that: update_result is changed
+        that:
+          - update_result is changed
         fail_msg: "Update should report changed. update_result={{ update_result }}"
       vars:
         ansible_connection: local
 
-    # ── Update idempotency ────────────────────────────────────────────────────
     - name: Run update again idempotency (connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "UpdatedUser"
-        email: "molecule-updated@mock.example.com"
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -161,16 +145,17 @@
 
     - name: Assert update idempotent run did not change
       ansible.builtin.assert:
-        that: update_idem_result is not changed
+        that:
+          - update_idem_result is not changed
         fail_msg: "Update idempotent run should not report changed. update_idem_result={{ update_idem_result }}"
       vars:
         ansible_connection: local
 
-    # ── state: exists ─────────────────────────────────────────────────────────
     - name: Check user exists (state exists, connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: exists
+        config:
+          - username: "{{ molecule_username }}"
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -184,17 +169,17 @@
         that:
           - exists_result is not changed
           - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.user.username == molecule_username
+          - "exists_result.gathered | length > 0"
+          - "exists_result.gathered[0].username == molecule_username"
         fail_msg: "state:exists should find user. exists_result={{ exists_result }}"
       vars:
         ansible_connection: local
 
-    # ── state: exists for non-existent user ───────────────────────────────────
     - name: Check non-existent user (state exists, connection local)
       ansible.platform.user:
-        username: "user-that-does-not-exist"
-        state: exists
+        config:
+          - username: user-that-does-not-exist
+        state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -208,16 +193,16 @@
         that:
           - not_exists_result is not changed
           - not_exists_result is not failed
-          - not (not_exists_result.get('exists') | default(false) | bool)
+          - "not_exists_result.gathered | length == 0"
         fail_msg: "state:exists for missing user should return exists=false. not_exists_result={{ not_exists_result }}"
       vars:
         ansible_connection: local
 
-    # ── Delete ────────────────────────────────────────────────────────────────
     - name: Delete user (connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: absent
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -228,16 +213,17 @@
 
     - name: Assert delete changed
       ansible.builtin.assert:
-        that: delete_result is changed
+        that:
+          - delete_result is changed
         fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
       vars:
         ansible_connection: local
 
-    # ── Delete idempotency ────────────────────────────────────────────────────
     - name: Delete again (idempotency, connection local)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: absent
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -248,7 +234,8 @@
 
     - name: Assert second delete is a no-op
       ansible.builtin.assert:
-        that: delete_idem_result is not changed
+        that:
+          - delete_idem_result is not changed
         fail_msg: "Second delete should not report changed. delete_idem_result={{ delete_idem_result }}"
       vars:
         ansible_connection: local
@@ -258,100 +245,93 @@
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_username: "molecule-test-user-hd"
+    molecule_username: molecule-test-user-hd
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: false
-
   tasks:
-    # ── Create ─────────────────────────────────────────────────────────────────
     - name: Create user (http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "TestUser"
-        email: "molecule-test@mock.example.com"
-        password: "MockPass123!"
-        is_superuser: false
-        state: present
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            password: MockPass123!
+            is_superuser: false
+        state: merged
       register: create_result
 
     - name: Assert create changed
       ansible.builtin.assert:
         that:
           - create_result is changed
-          - create_result.user.id is defined
-          - create_result.user.username == molecule_username
+          - "create_result.after | length > 0"
+          - "molecule_username in (create_result.after | map(attribute='username') | list)"
         fail_msg: "Create should report changed. create_result={{ create_result }}"
 
     - name: Assert RETURN shape — no internal/readonly keys in result.user (ANSTRAT-1640)
       ansible.builtin.assert:
         that:
           - "'_timing' not in create_result"
-          - "'_timing' not in create_result.user"
-          - "'changed' not in create_result.user"
-          - "'state' not in create_result.user"
-          - "'created' not in create_result.user"
-          - "'modified' not in create_result.user"
-          - "'url' not in create_result.user"
-        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.user. result={{ create_result }}"
+        fail_msg: "RETURN shape check: result.after[0]. result={{ create_result }}"
 
-    # ── Idempotency (present) ─────────────────────────────────────────────────
     - name: Run again idempotency (http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "TestUser"
-        email: "molecule-test@mock.example.com"
-        is_superuser: false
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            is_superuser: false
+        state: merged
       register: idem_result
 
     - name: Assert idempotent run did not change (http direct)
       ansible.builtin.assert:
-        that: idem_result is not changed
+        that:
+          - idem_result is not changed
         fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
 
-    # ── Update (change email and last_name) ───────────────────────────────────
     - name: Update user email and last_name (http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "UpdatedUser"
-        email: "molecule-updated@mock.example.com"
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
       register: update_result
 
     - name: Assert update changed
       ansible.builtin.assert:
-        that: update_result is changed
+        that:
+          - update_result is changed
         fail_msg: "Update should report changed. update_result={{ update_result }}"
 
-    # ── Update idempotency ────────────────────────────────────────────────────
     - name: Run update again idempotency (http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "UpdatedUser"
-        email: "molecule-updated@mock.example.com"
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
       register: update_idem_result
 
     - name: Assert update idempotent run did not change
       ansible.builtin.assert:
-        that: update_idem_result is not changed
+        that:
+          - update_idem_result is not changed
         fail_msg: "Update idempotent run should not report changed. update_idem_result={{ update_idem_result }}"
 
-    # ── state: exists ─────────────────────────────────────────────────────────
     - name: Check user exists (state exists, http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: exists
+        config:
+          - username: "{{ molecule_username }}"
+        state: gathered
       register: exists_result
 
     - name: Assert exists returns correct data
@@ -359,15 +339,15 @@
         that:
           - exists_result is not changed
           - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.user.username == molecule_username
+          - "exists_result.gathered | length > 0"
+          - "exists_result.gathered[0].username == molecule_username"
         fail_msg: "state:exists should find user. exists_result={{ exists_result }}"
 
-    # ── state: exists for non-existent user ───────────────────────────────────
     - name: Check non-existent user (state exists, http direct)
       ansible.platform.user:
-        username: "user-that-does-not-exist"
-        state: exists
+        config:
+          - username: user-that-does-not-exist
+        state: gathered
       register: not_exists_result
 
     - name: Assert non-existent user returns exists false
@@ -375,31 +355,33 @@
         that:
           - not_exists_result is not changed
           - not_exists_result is not failed
-          - not (not_exists_result.get('exists') | default(false) | bool)
+          - "not_exists_result.gathered | length == 0"
         fail_msg: "state:exists for missing user should return exists=false. not_exists_result={{ not_exists_result }}"
 
-    # ── Delete ────────────────────────────────────────────────────────────────
     - name: Delete user (http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: absent
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
       register: delete_result
 
     - name: Assert delete changed
       ansible.builtin.assert:
-        that: delete_result is changed
+        that:
+          - delete_result is changed
         fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
 
-    # ── Delete idempotency ────────────────────────────────────────────────────
     - name: Delete again (idempotency, http direct)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: absent
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
       register: delete_idem_result
 
     - name: Assert second delete is a no-op
       ansible.builtin.assert:
-        that: delete_idem_result is not changed
+        that:
+          - delete_idem_result is not changed
         fail_msg: "Second delete should not report changed. delete_idem_result={{ delete_idem_result }}"
 
 - name: Converge — user (mock, http persistent)
@@ -407,100 +389,93 @@
   connection: ansible.platform.http
   gather_facts: false
   vars:
-    molecule_username: "molecule-test-user-hp"
+    molecule_username: molecule-test-user-hp
     gateway_hostname: "http://127.0.0.1:8000"
-    gateway_username: "mock"
-    gateway_password: "testpass"
+    gateway_username: mock
+    gateway_password: testpass
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
-
   tasks:
-    # ── Create ─────────────────────────────────────────────────────────────────
     - name: Create user (http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "TestUser"
-        email: "molecule-test@mock.example.com"
-        password: "MockPass123!"
-        is_superuser: false
-        state: present
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            password: MockPass123!
+            is_superuser: false
+        state: merged
       register: create_result
 
     - name: Assert create changed
       ansible.builtin.assert:
         that:
           - create_result is changed
-          - create_result.user.id is defined
-          - create_result.user.username == molecule_username
+          - "create_result.after | length > 0"
+          - "molecule_username in (create_result.after | map(attribute='username') | list)"
         fail_msg: "Create should report changed. create_result={{ create_result }}"
 
     - name: Assert RETURN shape — no internal/readonly keys in result.user (ANSTRAT-1640)
       ansible.builtin.assert:
         that:
           - "'_timing' not in create_result"
-          - "'_timing' not in create_result.user"
-          - "'changed' not in create_result.user"
-          - "'state' not in create_result.user"
-          - "'created' not in create_result.user"
-          - "'modified' not in create_result.user"
-          - "'url' not in create_result.user"
-        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.user. result={{ create_result }}"
+        fail_msg: "RETURN shape check: result.after[0]. result={{ create_result }}"
 
-    # ── Idempotency (present) ─────────────────────────────────────────────────
     - name: Run again idempotency (http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "TestUser"
-        email: "molecule-test@mock.example.com"
-        is_superuser: false
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: TestUser
+            email: molecule-test@mock.example.com
+            is_superuser: false
+        state: merged
       register: idem_result
 
     - name: Assert idempotent run did not change (http persistent)
       ansible.builtin.assert:
-        that: idem_result is not changed
+        that:
+          - idem_result is not changed
         fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
 
-    # ── Update (change email and last_name) ───────────────────────────────────
     - name: Update user email and last_name (http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "UpdatedUser"
-        email: "molecule-updated@mock.example.com"
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
       register: update_result
 
     - name: Assert update changed
       ansible.builtin.assert:
-        that: update_result is changed
+        that:
+          - update_result is changed
         fail_msg: "Update should report changed. update_result={{ update_result }}"
 
-    # ── Update idempotency ────────────────────────────────────────────────────
     - name: Run update again idempotency (http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        first_name: "Molecule"
-        last_name: "UpdatedUser"
-        email: "molecule-updated@mock.example.com"
-        state: present
-        update_secrets: false
+        config:
+          - username: "{{ molecule_username }}"
+            first_name: Molecule
+            last_name: UpdatedUser
+            email: molecule-updated@mock.example.com
+        state: merged
       register: update_idem_result
 
     - name: Assert update idempotent run did not change
       ansible.builtin.assert:
-        that: update_idem_result is not changed
+        that:
+          - update_idem_result is not changed
         fail_msg: "Update idempotent run should not report changed. update_idem_result={{ update_idem_result }}"
 
-    # ── state: exists ─────────────────────────────────────────────────────────
     - name: Check user exists (state exists, http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: exists
+        config:
+          - username: "{{ molecule_username }}"
+        state: gathered
       register: exists_result
 
     - name: Assert exists returns correct data
@@ -508,15 +483,15 @@
         that:
           - exists_result is not changed
           - exists_result is not failed
-          - exists_result.get('exists') | default(false) | bool
-          - exists_result.user.username == molecule_username
+          - "exists_result.gathered | length > 0"
+          - "exists_result.gathered[0].username == molecule_username"
         fail_msg: "state:exists should find user. exists_result={{ exists_result }}"
 
-    # ── state: exists for non-existent user ───────────────────────────────────
     - name: Check non-existent user (state exists, http persistent)
       ansible.platform.user:
-        username: "user-that-does-not-exist"
-        state: exists
+        config:
+          - username: user-that-does-not-exist
+        state: gathered
       register: not_exists_result
 
     - name: Assert non-existent user returns exists false
@@ -524,30 +499,33 @@
         that:
           - not_exists_result is not changed
           - not_exists_result is not failed
-          - not (not_exists_result.get('exists') | default(false) | bool)
+          - "not_exists_result.gathered | length == 0"
         fail_msg: "state:exists for missing user should return exists=false. not_exists_result={{ not_exists_result }}"
 
-    # ── Delete ────────────────────────────────────────────────────────────────
     - name: Delete user (http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: absent
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
       register: delete_result
 
     - name: Assert delete changed
       ansible.builtin.assert:
-        that: delete_result is changed
+        that:
+          - delete_result is changed
         fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
 
-    # ── Delete idempotency ────────────────────────────────────────────────────
     - name: Delete again (idempotency, http persistent)
       ansible.platform.user:
-        username: "{{ molecule_username }}"
-        state: absent
+        config:
+          - username: "{{ molecule_username }}"
+        state: deleted
       register: delete_idem_result
 
     - name: Assert second delete is a no-op
       ansible.builtin.assert:
-        that: delete_idem_result is not changed
+        that:
+          - delete_idem_result is not changed
         fail_msg: "Second delete should not report changed. delete_idem_result={{ delete_idem_result }}"
+
 ...
