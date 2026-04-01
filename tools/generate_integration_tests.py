@@ -1487,7 +1487,7 @@ def _gen_per_state_converge_yml(module_name: str, state: str) -> str:
     if state == "check":
         lines.append("      check_mode: true")
         lines.append("      diff: true")
-    lines.append("    register: result")
+    lines.append("      register: result")
     lines.append("")
 
     if state == "check":

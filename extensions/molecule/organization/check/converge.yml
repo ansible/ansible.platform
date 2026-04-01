@@ -16,7 +16,7 @@
         gateway_validate_certs: "{{ gateway_validate_certs }}"
       check_mode: true
       diff: true
-    register: result
+      register: result
 
     - name: Assert check mode predicted a change
       ansible.builtin.assert:
