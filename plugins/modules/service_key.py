@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: service_key
 short_description: Manage gateway service_key resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway service_key resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

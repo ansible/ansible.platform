@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: token
 short_description: Manage gateway token resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway token resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

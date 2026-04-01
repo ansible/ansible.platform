@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: authenticator_user
 short_description: Manage gateway authenticator_user resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway authenticator_user resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

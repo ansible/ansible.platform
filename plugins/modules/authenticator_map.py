@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: authenticator_map
 short_description: Manage gateway authenticator_map resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway authenticator_map resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

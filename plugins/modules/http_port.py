@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: http_port
 short_description: Manage gateway http_port resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway http_port resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: feature_flag
 short_description: Manage gateway feature_flag resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway feature_flag resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

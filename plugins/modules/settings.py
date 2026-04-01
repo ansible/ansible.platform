@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: settings
 short_description: Manage gateway setting resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway setting resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

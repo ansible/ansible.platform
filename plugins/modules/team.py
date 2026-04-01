@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: team
 short_description: Manage gateway team resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway team resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

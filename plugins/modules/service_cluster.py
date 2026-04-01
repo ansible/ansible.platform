@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: service_cluster
 short_description: Manage gateway service_cluster resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway service_cluster resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

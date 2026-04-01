@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: ca_certificate
 short_description: Manage gateway ca_certificate resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway ca_certificate resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

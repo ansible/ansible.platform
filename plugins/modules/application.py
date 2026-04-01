@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: application
 short_description: Manage gateway application resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway application resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

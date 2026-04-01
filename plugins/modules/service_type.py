@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: service_type
 short_description: Manage gateway service_type resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway service_type resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

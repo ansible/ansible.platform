@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: organization
 short_description: Manage gateway organization resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway organization resources.
     - Follows the Ansible resource module pattern with before/after state tracking.

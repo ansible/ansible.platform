@@ -14,6 +14,7 @@ DOCUMENTATION = """
 ---
 module: role_team_assignment
 short_description: Manage gateway role_team_assignment resources.
+author: Red Hat (@RedHatOfficial)
 description:
     - Create, update, delete, or gather automation platform gateway role_team_assignment resources.
     - Follows the Ansible resource module pattern with before/after state tracking.
