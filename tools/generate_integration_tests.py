@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 tools/generate_integration_tests.py
 ====================================
