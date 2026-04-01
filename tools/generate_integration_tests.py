@@ -78,6 +78,11 @@ class ModuleFixture:
     extra_seeds: List[Dict]       # seeded before overridden test (must be deleted)
     supports_delete: bool = True
     supports_overridden: bool = True
+    # Prerequisite support — for modules that depend on another resource existing first
+    # (e.g. authenticator_map requires an authenticator).
+    prepare_all_states: bool = False   # generate prepare.yml for ALL states, not just the usual ones
+    prereq_yaml: str = ""              # indented YAML task(s) to prepend to prepare.yml tasks section
+    cleanup_prereq_yaml: str = ""      # indented YAML task(s) to append to cleanup.yml (remove prereq)
 
 
 FIXTURES: Dict[str, ModuleFixture] = {
@@ -210,14 +215,15 @@ FIXTURES: Dict[str, ModuleFixture] = {
     "application": ModuleFixture(
         canonical_field="name",
         prefix="int-app-",
+        # organization: 1 = "Default" org, always seeded by mock_gateway_server.seed_defaults()
         resources=[
-            {"name": "int-app-alpha", "description": "Alpha application"},
-            {"name": "int-app-beta",  "description": "Beta application"},
+            {"name": "int-app-alpha", "description": "Alpha application", "organization": 1},
+            {"name": "int-app-beta",  "description": "Beta application",  "organization": 1},
         ],
-        update_config={"name": "int-app-alpha", "description": "Alpha application updated"},
-        replaced_config={"name": "int-app-alpha", "description": "Alpha application replaced"},
+        update_config={"name": "int-app-alpha", "description": "Alpha application updated", "organization": 1},
+        replaced_config={"name": "int-app-alpha", "description": "Alpha application replaced", "organization": 1},
         extra_seeds=[
-            {"name": "int-app-gamma", "description": "Gamma seed"},
+            {"name": "int-app-gamma", "description": "Gamma seed", "organization": 1},
         ],
     ),
     "service_cluster": ModuleFixture(
@@ -302,13 +308,40 @@ FIXTURES: Dict[str, ModuleFixture] = {
     "authenticator_map": ModuleFixture(
         canonical_field="name",
         prefix="int-authmap-",
+        # authenticator: 3100 = first ID in mock server's authenticator range (start_id=3100).
+        # The prereq_yaml below creates "int-prereq-authn" which gets ID 3100 on a fresh mock server.
         resources=[
-            {"name": "int-authmap-alpha"},
-            {"name": "int-authmap-beta"},
+            {"name": "int-authmap-alpha", "authenticator": 3100},
+            {"name": "int-authmap-beta",  "authenticator": 3100},
         ],
-        update_config={"name": "int-authmap-alpha"},
-        replaced_config={"name": "int-authmap-alpha"},
-        extra_seeds=[{"name": "int-authmap-gamma"}],
+        update_config={"name": "int-authmap-alpha", "authenticator": 3100},
+        replaced_config={"name": "int-authmap-alpha", "authenticator": 3100},
+        extra_seeds=[{"name": "int-authmap-gamma", "authenticator": 3100}],
+        prepare_all_states=True,
+        prereq_yaml="""\
+  - name: Seed prerequisite authenticator (required by all authenticator_map tests)
+    ansible.platform.authenticator:
+      config:
+      - name: "int-prereq-authn"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+      state: merged
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+""",
+        cleanup_prereq_yaml="""\
+  - name: Remove prerequisite authenticator (test teardown)
+    ansible.platform.authenticator:
+      config:
+      - name: "int-prereq-authn"
+      state: deleted
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    ignore_errors: true
+""",
     ),
     "service": ModuleFixture(
         canonical_field="name",
@@ -1313,7 +1346,7 @@ def _gw_params() -> List[str]:
 
 # ── molecule.yml ────────────────────────────────────────────────────────────
 
-def _gen_per_state_molecule_yml(state: str) -> str:
+def _gen_per_state_molecule_yml(state: str, fixture: "ModuleFixture") -> str:
     """Generate a minimal molecule.yml that inherits everything from ../../config.yml.
 
     Only overrides:
@@ -1323,7 +1356,7 @@ def _gen_per_state_molecule_yml(state: str) -> str:
     All shared settings (driver, platforms, ansible env, provisioner options,
     collections_path, verifier, prerun, shared_state) live in config.yml.
     """
-    needs_prepare = state in _STATES_NEED_PREPARE
+    needs_prepare = state in _STATES_NEED_PREPARE or fixture.prepare_all_states
     # check mode: skip idempotence — check_mode tasks always predict a change
     # (nothing was actually applied so each re-run still sees a diff)
     use_idempotence = state != "check"
@@ -1667,6 +1700,12 @@ def _gen_per_state_cleanup_yml(
             "",
         ]
 
+    # Append prerequisite cleanup tasks (e.g. remove parent resource seeded in prepare)
+    if fixture.cleanup_prereq_yaml:
+        for line in fixture.cleanup_prereq_yaml.rstrip().splitlines():
+            lines.append(line)
+        lines.append("")
+
     return "\n".join(lines) + "\n"
 
 
@@ -1676,8 +1715,10 @@ def _gen_per_state_prepare_yml(
     module_name: str,
     state: str,
     cf: str,
+    fixture: "ModuleFixture",
 ) -> str:
-    if state not in _STATES_NEED_PREPARE:
+    needs_prepare = state in _STATES_NEED_PREPARE or fixture.prepare_all_states
+    if not needs_prepare:
         return ""
 
     lines = [
@@ -1690,27 +1731,35 @@ def _gen_per_state_prepare_yml(
         "  tasks:",
     ]
 
-    if state == "overridden":
-        # Seed multiple resources (r0, r1, extra seeds)
-        lines += [
-            f'  - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
-            f'    ansible.platform.{module_name}:',
-            "      config: \"{{ prepare_configs }}\"",
-            "      state: merged",
-        ]
-    else:
-        # Seed a single resource
-        verb = {"replaced": "to be replaced", "deleted": "to be deleted",
-                "gathered": "to be gathered", "check": "as check-mode baseline"}[state]
-        lines += [
-            f'  - name: Seed {module_name} {verb} (prerequisite for {state})',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            '      - "{{ prepare_config }}"',
-            "      state: merged",
-        ]
+    # Inject prerequisite tasks first (e.g. create a parent resource that must exist)
+    if fixture.prereq_yaml:
+        for line in fixture.prereq_yaml.rstrip().splitlines():
+            lines.append(line)
+        lines.append("")
 
-    lines.extend(_gw_params())
+    # Seed the module's own resources (only for states that need data pre-seeded)
+    if state in _STATES_NEED_PREPARE:
+        if state == "overridden":
+            # Seed multiple resources (r0, r1, extra seeds)
+            lines += [
+                f'  - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
+                f'    ansible.platform.{module_name}:',
+                "      config: \"{{ prepare_configs }}\"",
+                "      state: merged",
+            ]
+        else:
+            # Seed a single resource
+            verb = {"replaced": "to be replaced", "deleted": "to be deleted",
+                    "gathered": "to be gathered", "check": "as check-mode baseline"}[state]
+            lines += [
+                f'  - name: Seed {module_name} {verb} (prerequisite for {state})',
+                f'    ansible.platform.{module_name}:',
+                "      config:",
+                '      - "{{ prepare_config }}"',
+                "      state: merged",
+            ]
+        lines.extend(_gw_params())
+
     lines.append("")
     return "\n".join(lines) + "\n"
 
@@ -1758,15 +1807,16 @@ def generate_per_state_scenarios(
             continue
 
         # Build file map
+        needs_prepare = state in _STATES_NEED_PREPARE or fixture.prepare_all_states
         files: dict[str, str] = {
-            "molecule.yml": _gen_per_state_molecule_yml(state),
+            "molecule.yml": _gen_per_state_molecule_yml(state, fixture),
             "vars.yml":     _gen_per_state_vars_yml(state, fixture, cf),
             "converge.yml": _gen_per_state_converge_yml(module_name, state),
             "verify.yml":   _gen_per_state_verify_yml(module_name, state, cf, fixture),
             "cleanup.yml":  _gen_per_state_cleanup_yml(module_name, state, fixture, cf),
         }
-        if state in _STATES_NEED_PREPARE:
-            files["prepare.yml"] = _gen_per_state_prepare_yml(module_name, state, cf)
+        if needs_prepare:
+            files["prepare.yml"] = _gen_per_state_prepare_yml(module_name, state, cf, fixture)
 
         if dry_run:
             print(f"\n{'=' * 70}")

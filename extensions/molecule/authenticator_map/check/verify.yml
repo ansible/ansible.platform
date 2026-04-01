@@ -21,5 +21,6 @@
       that:
       - gathered.gathered is defined
       - gathered.gathered | length > 0
+      - (gathered.gathered | first).authenticator == prepare_config.authenticator
       fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
 

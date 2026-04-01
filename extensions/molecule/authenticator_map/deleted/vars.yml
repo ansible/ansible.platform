@@ -1,6 +1,7 @@
 ---
 prepare_config:
   name: "int-authmap-alpha"
+  authenticator: 3100
 
 expected_config:
   name: "int-authmap-alpha"

@@ -9,3 +9,14 @@
     ansible.builtin.debug:
       msg: "int-authmap-alpha was deleted in converge — nothing to clean up"
 
+  - name: Remove prerequisite authenticator (test teardown)
+    ansible.platform.authenticator:
+      config:
+      - name: "int-prereq-authn"
+      state: deleted
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    ignore_errors: true
+
