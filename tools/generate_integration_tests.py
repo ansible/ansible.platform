@@ -47,7 +47,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -1552,7 +1552,7 @@ def _gen_per_state_verify_yml(
             "      that:",
             "      - gathered.gathered is defined",
             "      - gathered.gathered | length == 0",
-            f'      fail_msg: "Expected empty after deleted, got: {{{{ gathered.gathered }}}}"',
+            '      fail_msg: "Expected empty after deleted, got: {{ gathered.gathered }}"',
             "",
         ]
 
@@ -1620,7 +1620,7 @@ def _gen_per_state_verify_yml(
                 f'      - (gathered.gathered | first).{diff_field} == prepare_config.{diff_field}'
             )
         lines += [
-            f'      fail_msg: "check mode should not alter resource. got: {{{{ gathered.gathered }}}}"',
+            '      fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"',
             "",
         ]
 
@@ -1748,7 +1748,7 @@ def _gen_per_state_prepare_yml(
         if state == "overridden":
             # Seed multiple resources (r0, r1, extra seeds)
             lines += [
-                f'  - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
+                '  - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
                 f'    ansible.platform.{module_name}:',
                 "      config: \"{{ prepare_configs }}\"",
                 "      state: merged",

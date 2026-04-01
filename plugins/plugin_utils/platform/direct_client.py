@@ -988,7 +988,7 @@ class DirectHTTPClient(BaseAPIClient):
                 continue
             # Resolve via API: GET /api/gateway/v1/organizations/?name=<name>
             try:
-                lookup_url = self._build_url(f"/api/gateway/v1/organizations/", {"name": name})
+                lookup_url = self._build_url("/api/gateway/v1/organizations/", {"name": name})
                 with self._lock:
                     self._http_request_count += 1
                 resp = self._make_request("GET", lookup_url, operation="find", resource="organization")

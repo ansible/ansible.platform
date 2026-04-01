@@ -728,8 +728,8 @@ class BaseResourceActionPlugin(ActionBase):
         if len(before) != len(after):
             return True
         for b, a in zip(
-            sorted(before, key=lambda x: str(x)),
-            sorted(after, key=lambda x: str(x)),
+            sorted(before, key=str),
+            sorted(after, key=str),
         ):
             if b != a:
                 return True
