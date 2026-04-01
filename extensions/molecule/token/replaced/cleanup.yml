@@ -5,10 +5,10 @@
   vars_files:
     - vars.yml
   tasks:
-    - name: Remove int-token-alpha (test teardown)
+    - name: Remove Alpha token (test teardown)
       ansible.platform.token:
         config:
-          - name: "int-token-alpha"
+          - description: "Alpha token"
         state: deleted
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"

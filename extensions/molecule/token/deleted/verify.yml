@@ -8,7 +8,7 @@
     - name: Gather token (should be absent after deleted)
       ansible.platform.token:
         config:
-          - name: "int-token-alpha"
+          - description: "Alpha token"
         state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -16,7 +16,7 @@
         gateway_validate_certs: "{{ gateway_validate_certs }}"
       register: gathered
 
-    - name: Assert int-token-alpha no longer exists (deleted)
+    - name: Assert Alpha token no longer exists (deleted)
       ansible.builtin.assert:
         that:
           - gathered.gathered is defined

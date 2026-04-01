@@ -1,10 +1,9 @@
 ---
 prepare_config:
-  name: "int-token-alpha"
   description: "Alpha token"
   scope: "read"
 
 expected_config:
-  name: "int-token-alpha"
-  description: "Alpha token updated"
+  description: "Alpha token"
+  scope: "write"
 ...

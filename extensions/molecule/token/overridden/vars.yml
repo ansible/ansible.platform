@@ -1,17 +1,13 @@
 ---
 prepare_configs:
-  - name: "int-token-alpha"
-    description: "Alpha token"
+  - description: "Alpha token"
     scope: "read"
-  - name: "int-token-beta"
-    description: "Beta token"
+  - description: "Beta token"
     scope: "read"
-  - name: "int-token-gamma"
-    description: "Gamma seed"
+  - description: "Gamma seed"
     scope: "read"
 
 expected_config:
-  name: "int-token-alpha"
   description: "Alpha token"
   scope: "read"
 ...

@@ -8,7 +8,7 @@
     - name: Gather token (assert present after replaced)
       ansible.platform.token:
         config:
-          - name: "{{ expected_config.name }}"
+          - description: "{{ expected_config.description }}"
         state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -23,10 +23,10 @@
           - gathered.gathered | length > 0
         fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
 
-    - name: Assert description was updated by replaced
+    - name: Assert scope was updated by replaced
       ansible.builtin.assert:
         that:
-          - (gathered.gathered | first).description == expected_config.description
-        fail_msg: "replaced should have set description='Alpha token replaced'. got: {{ (gathered.gathered | first).description }}"
+          - (gathered.gathered | first).scope == expected_config.scope
+        fail_msg: "replaced should have set scope='read'. got: {{ (gathered.gathered | first).scope }}"
 
 ...

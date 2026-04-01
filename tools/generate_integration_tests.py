@@ -201,16 +201,16 @@ FIXTURES: Dict[str, ModuleFixture] = {
         ],
     ),
     "token": ModuleFixture(
-        canonical_field="name",
+        canonical_field="description",
         prefix="int-token-",
         resources=[
-            {"name": "int-token-alpha", "description": "Alpha token", "scope": "read"},
-            {"name": "int-token-beta", "description": "Beta token", "scope": "read"},
+            {"description": "Alpha token", "scope": "read"},
+            {"description": "Beta token", "scope": "read"},
         ],
-        update_config={"name": "int-token-alpha", "description": "Alpha token updated"},
-        replaced_config={"name": "int-token-alpha", "description": "Alpha token replaced", "scope": "write"},
+        update_config={"description": "Alpha token", "scope": "write"},
+        replaced_config={"description": "Alpha token", "scope": "read"},
         extra_seeds=[
-            {"name": "int-token-gamma", "description": "Gamma seed", "scope": "read"},
+            {"description": "Gamma seed", "scope": "read"},
         ],
     ),
     "application": ModuleFixture(
@@ -1559,40 +1559,30 @@ def _gen_per_state_verify_yml(
 
     elif state == "overridden":
         # Check target still exists
+        # Gather ALL resources and use selectattr — avoids depending on server-side
+        # filtering by canonical key (some APIs don't filter by non-indexed fields).
         lines += [
-            f'    - name: Gather target resource {r0_key} (should exist after overridden)',
+            f'    - name: Gather all {module_name} resources (verify overridden final state)',
             f'      ansible.platform.{module_name}:',
-            "        config:",
-            f'          - {cf}: "{r0_key}"',
             "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
-            "      register: gathered_target",
+            "      register: gathered_all",
             "",
             f'    - name: Assert {r0_key} still exists after overridden',
             "      ansible.builtin.assert:",
             "        that:",
-            "          - gathered_target.gathered is defined",
-            "          - gathered_target.gathered | length == 1",
-            f'        fail_msg: "Expected {r0_key} to exist after overridden. got: {{{{ gathered_target.gathered }}}}"',
-            "",
-            f'    - name: Gather extra resource {r1_key} (should be deleted by overridden)',
-            f'      ansible.platform.{module_name}:',
-            "        config:",
-            f'          - {cf}: "{r1_key}"',
-            "        state: gathered",
-        ]
-        lines.extend(_gw_params())
-        lines += [
-            "      register: gathered_extra",
+            "          - gathered_all.gathered is defined",
+            f'          - gathered_all.gathered | selectattr("{cf}", "equalto", "{r0_key}") | list | length == 1',
+            f'        fail_msg: "Expected {r0_key} to exist after overridden. got: {{{{ gathered_all.gathered }}}}"',
             "",
             f'    - name: Assert {r1_key} was deleted by overridden (not in desired config)',
             "      ansible.builtin.assert:",
             "        that:",
-            "          - gathered_extra.gathered is defined",
-            "          - gathered_extra.gathered | length == 0",
-            f'        fail_msg: "overridden should have deleted {r1_key}. got: {{{{ gathered_extra.gathered }}}}"',
+            "          - gathered_all.gathered is defined",
+            f'          - gathered_all.gathered | selectattr("{cf}", "equalto", "{r1_key}") | list | length == 0',
+            f'        fail_msg: "overridden should have deleted {r1_key}. got: {{{{ gathered_all.gathered }}}}"',
             "",
         ]
 

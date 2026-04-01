@@ -16,7 +16,7 @@ class AnsibleToken(BaseTransformMixin):
 
     # Resource metadata for the base action plugin
     MODULE_NAME = "token"
-    CANONICAL_KEY = "name"
+    CANONICAL_KEY = "description"
     SYSTEM_KEY = "id"
     SUPPORTS_DELETE = True
     VALID_STATES = frozenset({"merged", "replaced", "overridden", "deleted", "gathered"})

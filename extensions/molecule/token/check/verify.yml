@@ -8,7 +8,7 @@
     - name: Gather token (check mode must not have applied changes)
       ansible.platform.token:
         config:
-          - name: "{{ expected_config.name }}"
+          - description: "{{ expected_config.description }}"
         state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -16,12 +16,12 @@
         gateway_validate_certs: "{{ gateway_validate_certs }}"
       register: gathered
 
-    - name: Assert int-token-alpha still has prepare_config values (check did not apply)
+    - name: Assert Alpha token still has prepare_config values (check did not apply)
       ansible.builtin.assert:
         that:
           - gathered.gathered is defined
           - gathered.gathered | length > 0
-          - (gathered.gathered | first).description == prepare_config.description
+          - (gathered.gathered | first).scope == prepare_config.scope
         fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
 
 ...

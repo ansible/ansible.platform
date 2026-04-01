@@ -5,40 +5,27 @@
   vars_files:
     - vars.yml
   tasks:
-    - name: Gather target resource int-skey-alpha (should exist after overridden)
+    - name: Gather all service_key resources (verify overridden final state)
       ansible.platform.service_key:
-        config:
-          - name: "int-skey-alpha"
         state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: gathered_target
+      register: gathered_all
 
     - name: Assert int-skey-alpha still exists after overridden
       ansible.builtin.assert:
         that:
-          - gathered_target.gathered is defined
-          - gathered_target.gathered | length == 1
-        fail_msg: "Expected int-skey-alpha to exist after overridden. got: {{ gathered_target.gathered }}"
-
-    - name: Gather extra resource int-skey-beta (should be deleted by overridden)
-      ansible.platform.service_key:
-        config:
-          - name: "int-skey-beta"
-        state: gathered
-        gateway_hostname: "{{ gateway_hostname }}"
-        gateway_username: "{{ gateway_username }}"
-        gateway_password: "{{ gateway_password }}"
-        gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: gathered_extra
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("name", "equalto", "int-skey-alpha") | list | length == 1
+        fail_msg: "Expected int-skey-alpha to exist after overridden. got: {{ gathered_all.gathered }}"
 
     - name: Assert int-skey-beta was deleted by overridden (not in desired config)
       ansible.builtin.assert:
         that:
-          - gathered_extra.gathered is defined
-          - gathered_extra.gathered | length == 0
-        fail_msg: "overridden should have deleted int-skey-beta. got: {{ gathered_extra.gathered }}"
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("name", "equalto", "int-skey-beta") | list | length == 0
+        fail_msg: "overridden should have deleted int-skey-beta. got: {{ gathered_all.gathered }}"
 
 ...

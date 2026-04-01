@@ -8,7 +8,7 @@
     - name: Gather token (assert present after merged)
       ansible.platform.token:
         config:
-          - name: "{{ expected_config.name }}"
+          - description: "{{ expected_config.description }}"
         state: gathered
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
