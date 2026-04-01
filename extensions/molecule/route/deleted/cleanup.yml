@@ -8,4 +8,3 @@
   - name: No-op — int-route-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-route-alpha was deleted in converge — nothing to clean up"
-

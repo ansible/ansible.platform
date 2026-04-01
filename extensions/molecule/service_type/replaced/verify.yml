@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).login_path == expected_config.login_path
       fail_msg: "replaced should have set login_path='/login'. got: {{ (gathered.gathered | first).login_path }}"
-

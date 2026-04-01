@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).outlier_detection_enabled == expected_config.outlier_detection_enabled
       fail_msg: "replaced should have set outlier_detection_enabled=False. got: {{ (gathered.gathered | first).outlier_detection_enabled }}"
-

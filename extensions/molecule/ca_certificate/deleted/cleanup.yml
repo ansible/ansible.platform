@@ -8,4 +8,3 @@
   - name: No-op — int-cert-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-cert-alpha was deleted in converge — nothing to clean up"
-

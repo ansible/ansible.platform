@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).last_name == expected_config.last_name
       fail_msg: "replaced should have set last_name='Johnson'. got: {{ (gathered.gathered | first).last_name }}"
-

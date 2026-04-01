@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).description == expected_config.description
       fail_msg: "replaced should have set description='Alpha replaced'. got: {{ (gathered.gathered | first).description }}"
-

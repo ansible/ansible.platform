@@ -8,4 +8,3 @@
   - name: No-op — int-team-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-team-alpha was deleted in converge — nothing to clean up"
-

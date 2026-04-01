@@ -8,4 +8,3 @@
   - name: No-op — int-roledef-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-roledef-alpha was deleted in converge — nothing to clean up"
-

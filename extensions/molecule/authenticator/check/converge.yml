@@ -32,4 +32,3 @@
       - result.diff is defined
       fail_msg: "diff output missing from check result"
     when: result.diff is defined
-

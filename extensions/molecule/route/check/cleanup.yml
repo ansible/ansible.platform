@@ -15,4 +15,3 @@
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs }}"
     ignore_errors: true
-

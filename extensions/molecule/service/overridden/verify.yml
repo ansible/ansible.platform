@@ -40,4 +40,3 @@
       - gathered_extra.gathered is defined
       - gathered_extra.gathered | length == 0
       fail_msg: "overridden should have deleted int-svc-beta. got: {{ gathered_extra.gathered }}"
-

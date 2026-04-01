@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).is_active == expected_config.is_active
       fail_msg: "replaced should have set is_active=True. got: {{ (gathered.gathered | first).is_active }}"
-

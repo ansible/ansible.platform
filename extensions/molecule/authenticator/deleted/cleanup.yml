@@ -8,4 +8,3 @@
   - name: No-op — int-auth-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-auth-alpha was deleted in converge — nothing to clean up"
-

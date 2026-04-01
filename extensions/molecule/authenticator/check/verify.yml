@@ -23,4 +23,3 @@
       - gathered.gathered | length > 0
       - (gathered.gathered | first).enabled == prepare_config.enabled
       fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
-

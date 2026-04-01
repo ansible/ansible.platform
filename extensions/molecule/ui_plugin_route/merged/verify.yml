@@ -22,4 +22,3 @@
       - gathered.gathered is defined
       - gathered.gathered | length > 0
       fail_msg: "Expected resource after merged. got: {{ gathered.gathered }}"
-

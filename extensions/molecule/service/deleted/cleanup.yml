@@ -8,4 +8,3 @@
   - name: No-op — int-svc-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-svc-alpha was deleted in converge — nothing to clean up"
-

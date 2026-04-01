@@ -23,4 +23,3 @@
       - gathered.gathered | length > 0
       - (gathered.gathered | first).login_path == prepare_config.login_path
       fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
-

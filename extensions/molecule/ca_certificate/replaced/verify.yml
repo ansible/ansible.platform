@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).pem_data == expected_config.pem_data
       fail_msg: "replaced should have set pem_data='LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t'. got: {{ (gathered.gathered | first).pem_data }}"
-

@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).authenticator == expected_config.authenticator
       fail_msg: "replaced should have set authenticator=3100. got: {{ (gathered.gathered | first).authenticator }}"
-

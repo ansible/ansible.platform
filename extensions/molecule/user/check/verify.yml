@@ -23,4 +23,3 @@
       - gathered.gathered | length > 0
       - (gathered.gathered | first).last_name == prepare_config.last_name
       fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
-

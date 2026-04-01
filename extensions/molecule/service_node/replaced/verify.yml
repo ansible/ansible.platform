@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).address == expected_config.address
       fail_msg: "replaced should have set address='10.0.0.1'. got: {{ (gathered.gathered | first).address }}"
-

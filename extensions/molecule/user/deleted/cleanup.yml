@@ -8,4 +8,3 @@
   - name: No-op — int-user-alice already deleted by converge
     ansible.builtin.debug:
       msg: "int-user-alice was deleted in converge — nothing to clean up"
-

@@ -1461,8 +1461,7 @@ def _gen_per_state_vars_yml(
         lines.append("")
     lines.append("expected_config:")
     lines.append(_dict_to_yaml_block(expected, indent=2))
-    lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 # ── converge.yml ─────────────────────────────────────────────────────────────
@@ -1509,7 +1508,7 @@ def _gen_per_state_converge_yml(module_name: str, state: str) -> str:
             "",
         ]
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 # ── verify.yml ────────────────────────────────────────────────────────────────
@@ -1660,7 +1659,7 @@ def _gen_per_state_verify_yml(
                     "",
                 ]
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 # ── cleanup.yml ───────────────────────────────────────────────────────────────
@@ -1712,7 +1711,7 @@ def _gen_per_state_cleanup_yml(
             lines.append(line)
         lines.append("")
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 # ── prepare.yml ───────────────────────────────────────────────────────────────
@@ -1767,7 +1766,7 @@ def _gen_per_state_prepare_yml(
         lines.extend(_gw_params())
 
     lines.append("")
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 # ── Top-level per-state generator ─────────────────────────────────────────────

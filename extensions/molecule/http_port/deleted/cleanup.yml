@@ -8,4 +8,3 @@
   - name: No-op — int-port-alpha already deleted by converge
     ansible.builtin.debug:
       msg: "int-port-alpha was deleted in converge — nothing to clean up"
-

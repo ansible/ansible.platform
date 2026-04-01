@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).use_https == expected_config.use_https
       fail_msg: "replaced should have set use_https=False. got: {{ (gathered.gathered | first).use_https }}"
-

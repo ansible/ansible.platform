@@ -28,4 +28,3 @@
       that:
       - (gathered.gathered | first).type == expected_config.type
       fail_msg: "replaced should have set type='ansible_base.authentication.authenticator_plugins.local'. got: {{ (gathered.gathered | first).type }}"
-
