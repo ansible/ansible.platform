@@ -2,3 +2,4 @@
 expected_config:
   name: "int-team-alpha"
   description: "Alpha team initial"
+  organization: 1

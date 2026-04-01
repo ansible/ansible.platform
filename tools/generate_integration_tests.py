@@ -155,15 +155,16 @@ FIXTURES: Dict[str, ModuleFixture] = {
     "team": ModuleFixture(
         canonical_field="name",
         prefix="int-team-",
+        # organization: 1 = "Default" org, always seeded by mock_gateway_server.seed_defaults()
         resources=[
-            {"name": "int-team-alpha", "description": "Alpha team initial"},
-            {"name": "int-team-beta",  "description": "Beta team initial"},
+            {"name": "int-team-alpha", "description": "Alpha team initial", "organization": 1},
+            {"name": "int-team-beta",  "description": "Beta team initial",  "organization": 1},
         ],
-        update_config={"name": "int-team-alpha", "description": "Alpha team updated"},
-        replaced_config={"name": "int-team-alpha", "description": "Alpha team replaced"},
+        update_config={"name": "int-team-alpha", "description": "Alpha team updated", "organization": 1},
+        replaced_config={"name": "int-team-alpha", "description": "Alpha team replaced", "organization": 1},
         extra_seeds=[
-            {"name": "int-team-gamma", "description": "Gamma seed"},
-            {"name": "int-team-delta", "description": "Delta seed"},
+            {"name": "int-team-gamma", "description": "Gamma seed", "organization": 1},
+            {"name": "int-team-delta", "description": "Delta seed", "organization": 1},
         ],
     ),
     "role_definition": ModuleFixture(

@@ -2,7 +2,9 @@
 prepare_config:
   name: "int-team-alpha"
   description: "Alpha team initial"
+  organization: 1
 
 expected_config:
   name: "int-team-alpha"
   description: "Alpha team updated"
+  organization: 1
