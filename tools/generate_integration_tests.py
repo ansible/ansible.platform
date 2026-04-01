@@ -70,19 +70,20 @@ HAND_CRAFTED = {"organization", "user"}
 @dataclass
 class ModuleFixture:
     """Test data for one module."""
-    canonical_field: str          # e.g. "name" or "username"
-    prefix: str                   # used in before-empty assertions, e.g. "int-team-"
-    resources: List[Dict]         # [r0, r1] — 2 primary test resources
-    update_config: Dict           # partial update applied to r0 in merged test
-    replaced_config: Dict         # full object sent for replaced test on r0
-    extra_seeds: List[Dict]       # seeded before overridden test (must be deleted)
+
+    canonical_field: str  # e.g. "name" or "username"
+    prefix: str  # used in before-empty assertions, e.g. "int-team-"
+    resources: List[Dict]  # [r0, r1] — 2 primary test resources
+    update_config: Dict  # partial update applied to r0 in merged test
+    replaced_config: Dict  # full object sent for replaced test on r0
+    extra_seeds: List[Dict]  # seeded before overridden test (must be deleted)
     supports_delete: bool = True
     supports_overridden: bool = True
     # Prerequisite support — for modules that depend on another resource existing first
     # (e.g. authenticator_map requires an authenticator).
-    prepare_all_states: bool = False   # generate prepare.yml for ALL states, not just the usual ones
-    prereq_yaml: str = ""              # indented YAML task(s) to prepend to prepare.yml tasks section
-    cleanup_prereq_yaml: str = ""      # indented YAML task(s) to append to cleanup.yml (remove prereq)
+    prepare_all_states: bool = False  # generate prepare.yml for ALL states, not just the usual ones
+    prereq_yaml: str = ""  # indented YAML task(s) to prepend to prepare.yml tasks section
+    cleanup_prereq_yaml: str = ""  # indented YAML task(s) to append to cleanup.yml (remove prereq)
 
 
 FIXTURES: Dict[str, ModuleFixture] = {
@@ -386,6 +387,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
 # Model introspection
 # ---------------------------------------------------------------------------
 
+
 def load_model_class(module_name: str):
     sys.path.insert(0, str(COLLECTION_ROOT))
     model_module = f"{MODELS_PKG}.{module_name}"
@@ -399,16 +401,13 @@ def load_model_class(module_name: str):
 
 def get_all_module_names() -> List[str]:
     models_dir = COLLECTION_ROOT / "plugins" / "plugin_utils" / "ansible_models"
-    return sorted(
-        p.stem
-        for p in models_dir.glob("*.py")
-        if not p.stem.startswith("_") and p.stem != "base_transform"
-    )
+    return sorted(p.stem for p in models_dir.glob("*.py") if not p.stem.startswith("_") and p.stem != "base_transform")
 
 
 # ---------------------------------------------------------------------------
 # Jinja2 template helpers
 # ---------------------------------------------------------------------------
+
 
 def _yaml_val(v: Any) -> str:
     """Render a Python value as inline YAML (for assert that: lines)."""
@@ -437,7 +436,7 @@ def _config_to_yaml(config: dict, base_indent: int) -> str:
             for item in v:
                 lines.append(f"{item_pad}  - {item}")
         elif isinstance(v, str):
-            lines.append(f"{prefix}{k}: \"{v}\"")
+            lines.append(f'{prefix}{k}: "{v}"')
         else:
             lines.append(f"{prefix}{k}: {v}")
     return "\n".join(lines)
@@ -1136,6 +1135,7 @@ CLEANUP_TEMPLATE = """\
 # Render
 # ---------------------------------------------------------------------------
 
+
 def _make_jinja_env() -> jinja2.Environment:
     env = jinja2.Environment(
         keep_trailing_newline=True,
@@ -1351,6 +1351,7 @@ def _gw_params() -> List[str]:
 
 # ── molecule.yml ────────────────────────────────────────────────────────────
 
+
 def _gen_per_state_molecule_yml(state: str, fixture: "ModuleFixture") -> str:
     """Generate a minimal molecule.yml that inherits everything from ../../config.yml.
 
@@ -1378,25 +1379,13 @@ def _gen_per_state_molecule_yml(state: str, fixture: "ModuleFixture") -> str:
 
     seq_block = "\n".join(f"    - {item}" for item in seq_items)
 
-    prepare_block = (
-        "\nprovisioner:\n"
-        "  playbooks:\n"
-        "    prepare: prepare.yml\n"
-    ) if needs_prepare else ""
+    prepare_block = ("\nprovisioner:\n  playbooks:\n    prepare: prepare.yml\n") if needs_prepare else ""
 
-    return (
-        "---\n"
-        "# Inherits shared config from ../../config.yml\n"
-        f"{prepare_block}"
-        "\n"
-        "scenario:\n"
-        "  test_sequence:\n"
-        f"{seq_block}\n"
-        "...\n"
-    )
+    return f"---\n# Inherits shared config from ../../config.yml\n{prepare_block}\nscenario:\n  test_sequence:\n{seq_block}\n...\n"
 
 
 # ── inventory.yml (shared per module) ───────────────────────────────────────
+
 
 def _gen_per_module_inventory_yml() -> str:
     return (
@@ -1418,6 +1407,7 @@ def _gen_per_module_inventory_yml() -> str:
 
 # ── vars.yml ─────────────────────────────────────────────────────────────────
 
+
 def _gen_per_state_vars_yml(
     state: str,
     fixture: ModuleFixture,
@@ -1434,7 +1424,7 @@ def _gen_per_state_vars_yml(
     elif state == "overridden":
         expected = r0_no_pw
     elif state in ("deleted", "gathered"):
-        expected = {cf: r0[cf]}        # key-only: minimal config for the operation
+        expected = {cf: r0[cf]}  # key-only: minimal config for the operation
     else:  # check
         expected = fixture.update_config
 
@@ -1467,6 +1457,7 @@ def _gen_per_state_vars_yml(
 
 # ── converge.yml ─────────────────────────────────────────────────────────────
 
+
 def _gen_per_state_converge_yml(module_name: str, state: str) -> str:
     op = "merged" if state == "check" else state
     lines = [
@@ -1477,11 +1468,11 @@ def _gen_per_state_converge_yml(module_name: str, state: str) -> str:
         "  vars_files:",
         "    - vars.yml",
         "  tasks:",
-        f'    - name: Run ansible.platform.{module_name} with state={op}',
-        f'      ansible.platform.{module_name}:',
+        f"    - name: Run ansible.platform.{module_name} with state={op}",
+        f"      ansible.platform.{module_name}:",
         "        config:",
         '          - "{{ expected_config }}"',
-        f'        state: {op}',
+        f"        state: {op}",
     ]
     lines.extend(_gw_params())
     if state == "check":
@@ -1515,6 +1506,7 @@ def _gen_per_state_converge_yml(module_name: str, state: str) -> str:
 
 # ── verify.yml ────────────────────────────────────────────────────────────────
 
+
 def _gen_per_state_verify_yml(
     module_name: str,
     state: str,
@@ -1538,8 +1530,8 @@ def _gen_per_state_verify_yml(
     if state == "deleted":
         # Gather by key — assert empty
         lines += [
-            f'    - name: Gather {module_name} (should be absent after deleted)',
-            f'      ansible.platform.{module_name}:',
+            f"    - name: Gather {module_name} (should be absent after deleted)",
+            f"      ansible.platform.{module_name}:",
             "        config:",
             f'          - {cf}: "{r0_key}"',
             "        state: gathered",
@@ -1548,7 +1540,7 @@ def _gen_per_state_verify_yml(
         lines += [
             "      register: gathered",
             "",
-            f'    - name: Assert {r0_key} no longer exists (deleted)',
+            f"    - name: Assert {r0_key} no longer exists (deleted)",
             "      ansible.builtin.assert:",
             "        that:",
             "          - gathered.gathered is defined",
@@ -1562,22 +1554,22 @@ def _gen_per_state_verify_yml(
         # Gather ALL resources and use selectattr — avoids depending on server-side
         # filtering by canonical key (some APIs don't filter by non-indexed fields).
         lines += [
-            f'    - name: Gather all {module_name} resources (verify overridden final state)',
-            f'      ansible.platform.{module_name}:',
+            f"    - name: Gather all {module_name} resources (verify overridden final state)",
+            f"      ansible.platform.{module_name}:",
             "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
             "      register: gathered_all",
             "",
-            f'    - name: Assert {r0_key} still exists after overridden',
+            f"    - name: Assert {r0_key} still exists after overridden",
             "      ansible.builtin.assert:",
             "        that:",
             "          - gathered_all.gathered is defined",
             f'          - gathered_all.gathered | selectattr("{cf}", "equalto", "{r0_key}") | list | length == 1',
             f'        fail_msg: "Expected {r0_key} to exist after overridden. got: {{{{ gathered_all.gathered }}}}"',
             "",
-            f'    - name: Assert {r1_key} was deleted by overridden (not in desired config)',
+            f"    - name: Assert {r1_key} was deleted by overridden (not in desired config)",
             "      ansible.builtin.assert:",
             "        that:",
             "          - gathered_all.gathered is defined",
@@ -1590,8 +1582,8 @@ def _gen_per_state_verify_yml(
         # Verify that check mode did NOT alter the resource
         diff_field = _diff_field(r0, fixture.update_config, cf)
         lines += [
-            f'    - name: Gather {module_name} (check mode must not have applied changes)',
-            f'      ansible.platform.{module_name}:',
+            f"    - name: Gather {module_name} (check mode must not have applied changes)",
+            f"      ansible.platform.{module_name}:",
             "        config:",
             f'          - {cf}: "{{{{ expected_config.{cf} }}}}"',
             "        state: gathered",
@@ -1600,16 +1592,14 @@ def _gen_per_state_verify_yml(
         lines += [
             "      register: gathered",
             "",
-            f'    - name: Assert {r0_key} still has prepare_config values (check did not apply)',
+            f"    - name: Assert {r0_key} still has prepare_config values (check did not apply)",
             "      ansible.builtin.assert:",
             "        that:",
             "          - gathered.gathered is defined",
             "          - gathered.gathered | length > 0",
         ]
         if diff_field:
-            lines.append(
-                f'          - (gathered.gathered | first).{diff_field} == prepare_config.{diff_field}'
-            )
+            lines.append(f"          - (gathered.gathered | first).{diff_field} == prepare_config.{diff_field}")
         lines += [
             '        fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"',
             "",
@@ -1618,8 +1608,8 @@ def _gen_per_state_verify_yml(
     else:
         # merged / replaced / gathered — gather by key, assert present
         lines += [
-            f'    - name: Gather {module_name} (assert present after {state})',
-            f'      ansible.platform.{module_name}:',
+            f"    - name: Gather {module_name} (assert present after {state})",
+            f"      ansible.platform.{module_name}:",
             "        config:",
             f'          - {cf}: "{{{{ expected_config.{cf} }}}}"',
             "        state: gathered",
@@ -1628,7 +1618,7 @@ def _gen_per_state_verify_yml(
         lines += [
             "      register: gathered",
             "",
-            f'    - name: Assert configuration exists after {state}',
+            f"    - name: Assert configuration exists after {state}",
             "      ansible.builtin.assert:",
             "        that:",
             "          - gathered.gathered is defined",
@@ -1643,10 +1633,10 @@ def _gen_per_state_verify_yml(
             if diff_field:
                 new_val = fixture.replaced_config.get(diff_field)
                 lines += [
-                    f'    - name: Assert {diff_field} was updated by replaced',
+                    f"    - name: Assert {diff_field} was updated by replaced",
                     "      ansible.builtin.assert:",
                     "        that:",
-                    f'          - (gathered.gathered | first).{diff_field} == expected_config.{diff_field}',
+                    f"          - (gathered.gathered | first).{diff_field} == expected_config.{diff_field}",
                     f'        fail_msg: "replaced should have set {diff_field}={new_val!r}. got: {{{{ (gathered.gathered | first).{diff_field} }}}}"',
                     "",
                 ]
@@ -1656,6 +1646,7 @@ def _gen_per_state_verify_yml(
 
 
 # ── cleanup.yml ───────────────────────────────────────────────────────────────
+
 
 def _gen_per_state_cleanup_yml(
     module_name: str,
@@ -1678,7 +1669,7 @@ def _gen_per_state_cleanup_yml(
 
     if state == "deleted":
         lines += [
-            f'    - name: No-op \u2014 {r0_key} already deleted by converge',
+            f"    - name: No-op \u2014 {r0_key} already deleted by converge",
             "      ansible.builtin.debug:",
             f'        msg: "{r0_key} was deleted in converge \u2014 nothing to clean up"',
             "",
@@ -1686,8 +1677,8 @@ def _gen_per_state_cleanup_yml(
     else:
         # overridden deletes r1/extras during converge; only r0 remains
         lines += [
-            f'    - name: Remove {r0_key} (test teardown)',
-            f'      ansible.platform.{module_name}:',
+            f"    - name: Remove {r0_key} (test teardown)",
+            f"      ansible.platform.{module_name}:",
             "        config:",
             f'          - {cf}: "{r0_key}"',
             "        state: deleted",
@@ -1709,6 +1700,7 @@ def _gen_per_state_cleanup_yml(
 
 
 # ── prepare.yml ───────────────────────────────────────────────────────────────
+
 
 def _gen_per_state_prepare_yml(
     module_name: str,
@@ -1741,18 +1733,17 @@ def _gen_per_state_prepare_yml(
         if state == "overridden":
             # Seed multiple resources (r0, r1, extra seeds)
             lines += [
-                '    - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
-                f'      ansible.platform.{module_name}:',
-                "        config: \"{{ prepare_configs }}\"",
+                "    - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)",
+                f"      ansible.platform.{module_name}:",
+                '        config: "{{ prepare_configs }}"',
                 "        state: merged",
             ]
         else:
             # Seed a single resource
-            verb = {"replaced": "to be replaced", "deleted": "to be deleted",
-                    "gathered": "to be gathered", "check": "as check-mode baseline"}[state]
+            verb = {"replaced": "to be replaced", "deleted": "to be deleted", "gathered": "to be gathered", "check": "as check-mode baseline"}[state]
             lines += [
-                f'    - name: Seed {module_name} {verb} (prerequisite for {state})',
-                f'      ansible.platform.{module_name}:',
+                f"    - name: Seed {module_name} {verb} (prerequisite for {state})",
+                f"      ansible.platform.{module_name}:",
                 "        config:",
                 '          - "{{ prepare_config }}"',
                 "        state: merged",
@@ -1765,6 +1756,7 @@ def _gen_per_state_prepare_yml(
 
 
 # ── Top-level per-state generator ─────────────────────────────────────────────
+
 
 def generate_per_state_scenarios(
     module_name: str,
@@ -1842,6 +1834,7 @@ def generate_per_state_scenarios(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def generate_scenario(module_name: str, dry_run: bool = False, force: bool = False) -> None:
     if module_name not in FIXTURES:
@@ -1928,9 +1921,7 @@ def main() -> None:
     if args.per_state:
         # Per-state mode: generate {module}/{state}/ directories
         for module_name in modules:
-            generate_per_state_scenarios(
-                module_name, dry_run=args.dry_run, force=args.force
-            )
+            generate_per_state_scenarios(module_name, dry_run=args.dry_run, force=args.force)
     else:
         # Legacy mode: generate {module}_integration/ directories
         for module_name in modules:

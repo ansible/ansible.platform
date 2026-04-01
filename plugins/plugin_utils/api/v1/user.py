@@ -68,9 +68,18 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 api_data[field] = val
 
         for ro in (
-            'id', 'url', 'related', 'summary_fields', 'created', 'created_by',
-            'modified', 'modified_by', 'last_login', 'last_login_from',
-            'is_platform_auditor', 'managed',
+            "id",
+            "url",
+            "related",
+            "summary_fields",
+            "created",
+            "created_by",
+            "modified",
+            "modified_by",
+            "last_login",
+            "last_login_from",
+            "is_platform_auditor",
+            "managed",
         ):
             val = getattr(ansible_instance, ro, None)
             if val is not None:
@@ -85,8 +94,15 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 path="/api/gateway/v1/users/",
                 method="POST",
                 fields=[
-                    "username", "email", "first_name", "last_name", "password",
-                    "is_superuser", "authenticators", "authenticator_uid", "associated_authenticators",
+                    "username",
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "password",
+                    "is_superuser",
+                    "authenticators",
+                    "authenticator_uid",
+                    "associated_authenticators",
                 ],
                 required_for="create",
                 order=1,
@@ -95,8 +111,15 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 path="/api/gateway/v1/users/{id}/",
                 method="PATCH",
                 fields=[
-                    "username", "email", "first_name", "last_name", "password",
-                    "is_superuser", "authenticators", "authenticator_uid", "associated_authenticators",
+                    "username",
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "password",
+                    "is_superuser",
+                    "authenticators",
+                    "authenticator_uid",
+                    "associated_authenticators",
                 ],
                 path_params=["id"],
                 required_for="update",

@@ -46,8 +46,7 @@ class FeatureFlagTransformMixin_v1(BaseTransformMixin):
             if val is not None:
                 api_data[field] = val
 
-        for ro in ("id", "toggle_type", "condition", "description", "required",
-                   "support_level", "visibility", "labels"):
+        for ro in ("id", "toggle_type", "condition", "description", "required", "support_level", "visibility", "labels"):
             val = getattr(ansible_instance, ro, None)
             if val is not None:
                 api_data[ro] = val

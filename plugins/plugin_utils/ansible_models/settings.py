@@ -17,7 +17,7 @@ class AnsibleSetting(BaseTransformMixin):
     # Resource metadata for the base action plugin
     MODULE_NAME = "settings"
     CANONICAL_KEY = None  # Singleton resource — no canonical key
-    SYSTEM_KEY = None     # Singleton resource — no system key
+    SYSTEM_KEY = None  # Singleton resource — no system key
     SUPPORTS_DELETE = False
     VALID_STATES = frozenset({"merged", "gathered"})
 

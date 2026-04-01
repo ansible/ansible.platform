@@ -234,7 +234,7 @@ def _to_native_types(obj):
     if isinstance(obj, float):
         return float(obj)
     if isinstance(obj, str):
-        return str(obj)   # strips _AnsibleTaggedStr wrapper → plain str
+        return str(obj)  # strips _AnsibleTaggedStr wrapper → plain str
     return obj
 
 
