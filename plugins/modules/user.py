@@ -86,6 +86,7 @@ EXAMPLES = """
     config:
       - username: "keep-this-user"
     state: overridden
+...
 """
 
 RETURN = """

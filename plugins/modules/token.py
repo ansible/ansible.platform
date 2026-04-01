@@ -67,6 +67,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-token"
     state: overridden
+...
 """
 
 RETURN = """

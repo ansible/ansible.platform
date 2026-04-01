@@ -65,6 +65,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-organization"
     state: overridden
+...
 """
 
 RETURN = """

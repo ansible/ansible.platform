@@ -64,6 +64,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-feature_flag"
     state: overridden
+...
 """
 
 RETURN = """

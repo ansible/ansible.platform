@@ -74,6 +74,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-role_team_assignment"
     state: overridden
+...
 """
 
 RETURN = """

@@ -127,6 +127,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-service_cluster"
     state: overridden
+...
 """
 
 RETURN = """

@@ -91,6 +91,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-ui_plugin_route"
     state: overridden
+...
 """
 
 RETURN = """

@@ -74,6 +74,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-role_user_assignment"
     state: overridden
+...
 """
 
 RETURN = """

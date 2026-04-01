@@ -73,6 +73,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-ca_certificate"
     state: overridden
+...
 """
 
 RETURN = """

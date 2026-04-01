@@ -81,6 +81,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-service_key"
     state: overridden
+...
 """
 
 RETURN = """

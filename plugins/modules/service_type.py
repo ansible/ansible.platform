@@ -74,6 +74,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-service_type"
     state: overridden
+...
 """
 
 RETURN = """

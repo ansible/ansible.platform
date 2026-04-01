@@ -101,6 +101,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-route"
     state: overridden
+...
 """
 
 RETURN = """

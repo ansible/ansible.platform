@@ -61,6 +61,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-setting"
     state: overridden
+...
 """
 
 RETURN = """

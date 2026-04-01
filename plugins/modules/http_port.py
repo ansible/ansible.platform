@@ -72,6 +72,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-http_port"
     state: overridden
+...
 """
 
 RETURN = """

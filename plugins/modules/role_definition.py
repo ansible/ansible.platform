@@ -72,6 +72,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-role_definition"
     state: overridden
+...
 """
 
 RETURN = """

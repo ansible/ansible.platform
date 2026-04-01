@@ -104,6 +104,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-application"
     state: overridden
+...
 """
 
 RETURN = """

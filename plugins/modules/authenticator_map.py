@@ -99,6 +99,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-authenticator_map"
     state: overridden
+...
 """
 
 RETURN = """

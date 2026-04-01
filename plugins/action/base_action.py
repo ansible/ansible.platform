@@ -889,6 +889,10 @@ class BaseResourceActionPlugin(ActionBase):
         This method delegates to the connection plugin (e.g., 'ansible.platform.http')
         which handles routing between persistent and direct (ephemeral) modes.
 
+        Args:
+            task_vars: Task variables passed from the Ansible task context,
+                used to extract gateway configuration and connection details.
+
         Returns:
             Tuple[Union[DirectHTTPClient, ManagerRPCClient], Optional[Dict[str, Any]]]:
             (client, facts_dict) where client is ManagerRPCClient (persistent or

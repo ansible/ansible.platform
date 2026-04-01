@@ -58,6 +58,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-authenticator_user"
     state: overridden
+...
 """
 
 RETURN = """

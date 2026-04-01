@@ -73,6 +73,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-service_node"
     state: overridden
+...
 """
 
 RETURN = """

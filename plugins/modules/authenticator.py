@@ -113,6 +113,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-authenticator"
     state: overridden
+...
 """
 
 RETURN = """

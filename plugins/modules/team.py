@@ -69,6 +69,7 @@ EXAMPLES = """
     config:
       - name: "keep-this-team"
     state: overridden
+...
 """
 
 RETURN = """
