@@ -68,7 +68,7 @@ whether the underlying API has changed between AAP versions.
 **Example:**
 ```yaml
 - name: Ensure engineering team exists in the platform
-  ansible.platform.team:
+  ansible.platform.teams:
     name: engineering
     organization: Red Hat
     state: present

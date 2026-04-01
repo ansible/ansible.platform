@@ -11,7 +11,7 @@ from ..platform.base_transform import BaseTransformMixin
 
 
 @dataclass
-class AnsibleSetting(BaseTransformMixin):
+class AnsibleSettings(BaseTransformMixin):
     """Ansible representation of a gateway setting (resource module pattern)."""
 
     # Resource metadata for the base action plugin

@@ -176,9 +176,9 @@ class ServiceClusterTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.service_cluster import AnsibleServiceCluster
+        from ...ansible_models.service_clusters import AnsibleServiceClusters
 
-        return AnsibleServiceCluster(
+        return AnsibleServiceClusters(
             name=api_data.get("name"),
             service_type=api_data.get("service_type"),
             auth_type=api_data.get("auth_type"),

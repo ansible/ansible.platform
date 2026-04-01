@@ -40,7 +40,7 @@ place where version-specific and resource-specific logic lives.
 
 ### Concrete Example: User Create (`state: merged`)
 
-The same data as it appears at each tier for `ansible.platform.user`:
+The same data as it appears at each tier for `ansible.platform.users`:
 
 **Tier 1 — what the playbook author writes:**
 ```yaml

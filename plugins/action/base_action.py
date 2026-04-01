@@ -30,7 +30,7 @@ Supported states (set theory):
 
 Subclass contract (minimal):
     class ActionModule(BaseResourceActionPlugin):
-        USER_MODEL = 'plugins.plugin_utils.ansible_models.user.AnsibleUser'
+        USER_MODEL = 'plugins.plugin_utils.ansible_models.users.AnsibleUsers'
 
 Identity categories (see docs/05-design-principles.md):
     Category A: CANONICAL_KEY set, SYSTEM_KEY=None  — user key IS the API key
@@ -44,6 +44,7 @@ __metaclass__ = type
 
 import base64
 import importlib
+import importlib.util
 import json
 import subprocess
 import time
@@ -244,7 +245,7 @@ class BaseResourceActionPlugin(ActionBase):
     Subclasses declare the Ansible Model import path:
 
         class ActionModule(BaseResourceActionPlugin):
-            USER_MODEL = 'plugins.plugin_utils.ansible_models.user.AnsibleUser'
+            USER_MODEL = 'plugins.plugin_utils.ansible_models.users.AnsibleUsers'
 
     All resource metadata (MODULE_NAME, SCOPE_PARAM, CANONICAL_KEY, etc.)
     is read from the Ansible Model class at runtime.
@@ -949,13 +950,19 @@ class BaseResourceActionPlugin(ActionBase):
         if not self.MODULE_NAME:
             return ""
 
+        # Module files use plural names (e.g. users.py) while MODULE_NAME is
+        # the singular API endpoint name (e.g. "user"). Derive the file name.
+        module_file_name = (
+            self.MODULE_NAME
+            if self.MODULE_NAME.endswith("s")
+            else self.MODULE_NAME + "s"
+        )
+
         # Primary: file-based discovery relative to this action plugin
-        module_file = Path(__file__).parent.parent / "modules" / f"{self.MODULE_NAME}.py"
+        module_file = Path(__file__).parent.parent / "modules" / f"{module_file_name}.py"
         if module_file.exists():
             try:
-                import importlib.util
-
-                spec = importlib.util.spec_from_file_location(f"module_{self.MODULE_NAME}", module_file)
+                spec = importlib.util.spec_from_file_location(f"module_{module_file_name}", module_file)
                 if spec and spec.loader:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
@@ -968,8 +975,8 @@ class BaseResourceActionPlugin(ActionBase):
         # Fallback: standard import
         parent_pkg = type(self).__module__.rsplit(".", 2)[0]  # ...plugins
         for candidate in (
-            f"{parent_pkg}.modules.{self.MODULE_NAME}",
-            f"ansible_collections.ansible.platform.plugins.modules.{self.MODULE_NAME}",
+            f"{parent_pkg}.modules.{module_file_name}",
+            f"ansible_collections.ansible.platform.plugins.modules.{module_file_name}",
         ):
             try:
                 mod = importlib.import_module(candidate)
@@ -1025,8 +1032,6 @@ class BaseResourceActionPlugin(ActionBase):
             fragment_path = Path(__file__).parent.parent / "doc_fragments" / f"{fragment}.py"
 
             if fragment_path.exists():
-                import importlib.util
-
                 spec = importlib.util.spec_from_file_location(f"doc_fragment_{fragment}", fragment_path)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)

@@ -1,0 +1,29 @@
+---
+- name: "Prepare — authenticator_maps (deleted)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Seed prerequisite authenticator (required by all authenticator_map tests)
+      ansible.platform.authenticators:
+        config:
+          - name: "int-prereq-authn"
+            type: "ansible_base.authentication.authenticator_plugins.local"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+
+    - name: Seed authenticator_maps to be deleted (prerequisite for deleted)
+      ansible.platform.authenticator_maps:
+        config:
+          - "{{ prepare_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+
+...

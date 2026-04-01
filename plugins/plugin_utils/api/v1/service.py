@@ -160,9 +160,9 @@ class ServiceTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.service import AnsibleService
+        from ...ansible_models.services import AnsibleServices
 
-        return AnsibleService(
+        return AnsibleServices(
             name=api_data.get("name"),
             http_port=api_data.get("http_port"),
             service_cluster=api_data.get("service_cluster"),

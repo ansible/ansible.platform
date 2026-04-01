@@ -20,4 +20,4 @@ from ansible_collections.ansible.platform.plugins.action.base_action import (
 class ActionModule(BaseResourceActionPlugin):
     """Resource module action plugin for setting."""
 
-    USER_MODEL = "plugins.plugin_utils.ansible_models.settings.AnsibleSetting"
+    USER_MODEL = "plugins.plugin_utils.ansible_models.settings.AnsibleSettings"

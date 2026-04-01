@@ -123,9 +123,9 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.authenticator_map import AnsibleAuthenticatorMap
+        from ...ansible_models.authenticator_maps import AnsibleAuthenticatorMaps
 
-        return AnsibleAuthenticatorMap(
+        return AnsibleAuthenticatorMaps(
             name=api_data.get("name"),
             authenticator=api_data.get("authenticator"),
             map_type=api_data.get("map_type"),

@@ -113,9 +113,9 @@ class ServiceNodeTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.service_node import AnsibleServiceNode
+        from ...ansible_models.service_nodes import AnsibleServiceNodes
 
-        return AnsibleServiceNode(
+        return AnsibleServiceNodes(
             name=api_data.get("name"),
             address=api_data.get("address"),
             service_cluster=api_data.get("service_cluster"),

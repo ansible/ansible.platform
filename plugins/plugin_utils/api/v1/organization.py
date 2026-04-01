@@ -110,9 +110,9 @@ class OrganizationTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.organization import AnsibleOrganization
+        from ...ansible_models.organizations import AnsibleOrganizations
 
-        return AnsibleOrganization(
+        return AnsibleOrganizations(
             name=api_data.get("name"),
             description=api_data.get("description"),
             id=api_data.get("id"),

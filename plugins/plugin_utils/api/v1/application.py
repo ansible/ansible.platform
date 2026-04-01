@@ -153,9 +153,9 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.application import AnsibleApplication
+        from ...ansible_models.applications import AnsibleApplications
 
-        return AnsibleApplication(
+        return AnsibleApplications(
             name=api_data.get("name"),
             redirect_uris=api_data.get("redirect_uris"),
             post_logout_redirect_uris=api_data.get("post_logout_redirect_uris"),

@@ -114,9 +114,9 @@ class RoleDefinitionTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.role_definition import AnsibleRoleDefinition
+        from ...ansible_models.role_definitions import AnsibleRoleDefinitions
 
-        return AnsibleRoleDefinition(
+        return AnsibleRoleDefinitions(
             permissions=api_data.get("permissions"),
             content_type=api_data.get("content_type"),
             name=api_data.get("name"),

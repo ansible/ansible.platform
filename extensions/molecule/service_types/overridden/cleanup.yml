@@ -1,0 +1,19 @@
+---
+- name: "Cleanup — service_types (overridden)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Remove int-stype-alpha (test teardown)
+      ansible.platform.service_types:
+        config:
+          - name: "int-stype-alpha"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+
+...

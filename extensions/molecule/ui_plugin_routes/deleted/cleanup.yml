@@ -1,0 +1,12 @@
+---
+- name: "Cleanup — ui_plugin_routes (deleted)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: No-op — int-uipr-alpha already deleted by converge
+      ansible.builtin.debug:
+        msg: "int-uipr-alpha was deleted in converge — nothing to clean up"
+
+...

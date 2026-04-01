@@ -1,0 +1,17 @@
+---
+- name: "Prepare — ui_plugin_routes (overridden)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)
+      ansible.platform.ui_plugin_routes:
+        config: "{{ prepare_configs }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+
+...

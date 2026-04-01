@@ -1,0 +1,19 @@
+---
+- name: "Converge — applications (deleted)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Run ansible.platform.applications with state=deleted
+      ansible.platform.applications:
+        config:
+          - "{{ expected_config }}"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: result
+
+...

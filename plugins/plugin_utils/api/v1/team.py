@@ -127,9 +127,9 @@ class TeamTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.team import AnsibleTeam
+        from ...ansible_models.teams import AnsibleTeams
 
-        return AnsibleTeam(
+        return AnsibleTeams(
             name=api_data.get("name"),
             organization=api_data.get("organization"),
             description=api_data.get("description"),

@@ -124,9 +124,9 @@ class UiPluginRouteTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.ui_plugin_route import AnsibleUiPluginRoute
+        from ...ansible_models.ui_plugin_routes import AnsibleUiPluginRoutes
 
-        return AnsibleUiPluginRoute(
+        return AnsibleUiPluginRoutes(
             name=api_data.get("name"),
             http_port=api_data.get("http_port"),
             service_cluster=api_data.get("service_cluster"),

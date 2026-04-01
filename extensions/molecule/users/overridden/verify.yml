@@ -1,0 +1,31 @@
+---
+- name: "Verify — users (overridden)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Gather all users resources (verify overridden final state)
+      ansible.platform.users:
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered_all
+
+    - name: Assert int-user-alice still exists after overridden
+      ansible.builtin.assert:
+        that:
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("username", "equalto", "int-user-alice") | list | length == 1
+        fail_msg: "Expected int-user-alice to exist after overridden. got: {{ gathered_all.gathered }}"
+
+    - name: Assert int-user-bob was deleted by overridden (not in desired config)
+      ansible.builtin.assert:
+        that:
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("username", "equalto", "int-user-bob") | list | length == 0
+        fail_msg: "overridden should have deleted int-user-bob. got: {{ gathered_all.gathered }}"
+
+...

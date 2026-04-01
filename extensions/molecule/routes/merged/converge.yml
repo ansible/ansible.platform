@@ -1,0 +1,19 @@
+---
+- name: "Converge — routes (merged)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Run ansible.platform.routes with state=merged
+      ansible.platform.routes:
+        config:
+          - "{{ expected_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: result
+
+...

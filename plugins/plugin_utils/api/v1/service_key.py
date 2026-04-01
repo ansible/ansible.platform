@@ -118,9 +118,9 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.service_key import AnsibleServiceKey
+        from ...ansible_models.service_keys import AnsibleServiceKeys
 
-        return AnsibleServiceKey(
+        return AnsibleServiceKeys(
             name=api_data.get("name"),
             service_cluster=api_data.get("service_cluster"),
             is_active=api_data.get("is_active"),

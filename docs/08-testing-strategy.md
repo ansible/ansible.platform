@@ -167,7 +167,7 @@ All mock scenarios follow the resource module pattern. Here is the **actual
   tasks:
     # ── 1. Create ───────────────────────────────────────────────────────────
     - name: Create user (connection local)
-      ansible.platform.user:
+      ansible.platform.users:
         config:
           - username: "{{ molecule_username }}"
             first_name: Molecule
@@ -191,7 +191,7 @@ All mock scenarios follow the resource module pattern. Here is the **actual
 
     # ── 2. Idempotency (no change) ──────────────────────────────────────────
     - name: Run again idempotency (connection local)
-      ansible.platform.user:
+      ansible.platform.users:
         config:
           - username: "{{ molecule_username }}"
             first_name: Molecule
@@ -209,7 +209,7 @@ All mock scenarios follow the resource module pattern. Here is the **actual
 
     # ── 3. Update ───────────────────────────────────────────────────────────
     - name: Update user email and last_name (connection local)
-      ansible.platform.user:
+      ansible.platform.users:
         config:
           - username: "{{ molecule_username }}"
             last_name: UpdatedUser
@@ -225,7 +225,7 @@ All mock scenarios follow the resource module pattern. Here is the **actual
 
     # ── 4. Gathered (read-only) ─────────────────────────────────────────────
     - name: Check user exists (state gathered)
-      ansible.platform.user:
+      ansible.platform.users:
         config:
           - username: "{{ molecule_username }}"
         state: gathered
@@ -241,7 +241,7 @@ All mock scenarios follow the resource module pattern. Here is the **actual
 
     # ── 5. Delete ───────────────────────────────────────────────────────────
     - name: Delete user (connection local)
-      ansible.platform.user:
+      ansible.platform.users:
         config:
           - username: "{{ molecule_username }}"
         state: deleted
@@ -255,7 +255,7 @@ All mock scenarios follow the resource module pattern. Here is the **actual
 
     # ── 6. Delete idempotency ───────────────────────────────────────────────
     - name: Delete again (idempotency)
-      ansible.platform.user:
+      ansible.platform.users:
         config:
           - username: "{{ molecule_username }}"
         state: deleted
@@ -593,7 +593,7 @@ Each integration test target follows this sequence:
 1. **Pre-cleanup**: Delete any resources left over from previous failed runs
    ```yaml
    - name: Delete test user if exists (pre-cleanup)
-     ansible.platform.user:
+     ansible.platform.users:
        username: "test-{{ test_id }}"
        state: absent
      failed_when: false
