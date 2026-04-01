@@ -53,21 +53,25 @@ class UserTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any] = {}
 
         for field in (
-        "username",
-        "email",
-        "first_name",
-        "last_name",
-        "password",
-        "is_superuser",
-        "authenticators",
-        "authenticator_uid",
-        "associated_authenticators",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "password",
+            "is_superuser",
+            "authenticators",
+            "authenticator_uid",
+            "associated_authenticators",
         ):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
 
-        for ro in ('id', 'url', 'related', 'summary_fields', 'created', 'created_by', 'modified', 'modified_by', 'last_login', 'last_login_from', 'is_platform_auditor', 'managed'):
+        for ro in (
+            'id', 'url', 'related', 'summary_fields', 'created', 'created_by',
+            'modified', 'modified_by', 'last_login', 'last_login_from',
+            'is_platform_auditor', 'managed',
+        ):
             val = getattr(ansible_instance, ro, None)
             if val is not None:
                 api_data[ro] = val
@@ -80,14 +84,20 @@ class UserTransformMixin_v1(BaseTransformMixin):
             "create": EndpointOperation(
                 path="/api/gateway/v1/users/",
                 method="POST",
-                fields=["username", "email", "first_name", "last_name", "password", "is_superuser", "authenticators", "authenticator_uid", "associated_authenticators"],
+                fields=[
+                    "username", "email", "first_name", "last_name", "password",
+                    "is_superuser", "authenticators", "authenticator_uid", "associated_authenticators",
+                ],
                 required_for="create",
                 order=1,
             ),
             "update": EndpointOperation(
                 path="/api/gateway/v1/users/{id}/",
                 method="PATCH",
-                fields=["username", "email", "first_name", "last_name", "password", "is_superuser", "authenticators", "authenticator_uid", "associated_authenticators"],
+                fields=[
+                    "username", "email", "first_name", "last_name", "password",
+                    "is_superuser", "authenticators", "authenticator_uid", "associated_authenticators",
+                ],
                 path_params=["id"],
                 required_for="update",
                 order=1,

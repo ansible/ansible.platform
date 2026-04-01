@@ -38,7 +38,9 @@ options:
           type: str
           description:
             - "ansible_base.authentication.authenticator_plugins.github_org"
-            - '`ansible_base.authentication.authenticator_plugins.github_enterprise_org` - ansible_base.authentication.authenticator_plugins.github_enterprise_org'
+            - >-
+              `ansible_base.authentication.authenticator_plugins.github_enterprise_org`
+              - ansible_base.authentication.authenticator_plugins.github_enterprise_org
             - '`ansible_base.authentication.authenticator_plugins.saml` - ansible_base.authentication.authenticator_plugins.saml'
             - '`ansible_base.authentication.authenticator_plugins.local` - ansible_base.authentication.authenticator_plugins.local'
             - '`ansible_base.authentication.authenticator_plugins.ldap` - ansible_base.authentication.authenticator_plugins.ldap'
@@ -46,7 +48,9 @@ options:
             - '`ansible_base.authentication.authenticator_plugins.radius` - ansible_base.authentication.authenticator_plugins.radius'
             - '`ansible_base.authentication.authenticator_plugins.github` - ansible_base.authentication.authenticator_plugins.github'
             - '`ansible_base.authentication.authenticator_plugins.oidc` - ansible_base.authentication.authenticator_plugins.oidc'
-            - '`ansible_base.authentication.authenticator_plugins.github_enterprise_team` - ansible_base.authentication.authenticator_plugins.github_enterprise_team'
+            - >-
+              `ansible_base.authentication.authenticator_plugins.github_enterprise_team`
+              - ansible_base.authentication.authenticator_plugins.github_enterprise_team
             - '`ansible_base.authentication.authenticator_plugins.github_enterprise` - ansible_base.authentication.authenticator_plugins.github_enterprise'
             - '`ansible_base.authentication.authenticator_plugins.keycloak` - ansible_base.authentication.authenticator_plugins.keycloak'
             - '`ansible_base.authentication.authenticator_plugins.azuread` - ansible_base.authentication.authenticator_plugins.azuread'
@@ -69,7 +73,13 @@ options:
           description: An immutable identifier for the authenticator; used to generate the sso uri for sso authenticator types
         auto_migrate_users_to:
           type: int
-          description: Automatically move users from this authenticator to the target authenticator when a matching user logs in via the target authenticator. For this to work, the field used for the user ID on both authenticators needs to have the same value. This should only be used when migrating users between two authentication mechanisms that share the same user database (such as when both IDPs share the same LDAP user directory).
+          description: >-
+            Automatically move users from this authenticator to the target authenticator
+            when a matching user logs in via the target authenticator. For this to work,
+            the field used for the user ID on both authenticators needs to have the same
+            value. This should only be used when migrating users between two authentication
+            mechanisms that share the same user database (such as when both IDPs share
+            the same LDAP user directory).
         id:
           type: str
           description: The unique identifier of the resource. Used for update/delete operations.

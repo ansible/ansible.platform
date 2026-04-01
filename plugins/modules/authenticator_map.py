@@ -36,7 +36,9 @@ options:
         triggers:
           required: true
           type: str
-          description: Required. Trigger conditions dictionary that determines when this map applies. See /trigger_definition/ for structure details. Only one top-level key per request.
+          description: >-
+            Required. Trigger conditions dictionary that determines when this map applies.
+            See /trigger_definition/ for structure details. Only one top-level key per request.
         map_type:
           type: str
           description:
@@ -61,7 +63,9 @@ options:
           description: Revoke the permission if a user does not meet this rule.
         order:
           type: int
-          description: The order in which this rule should be processed, smaller numbers are of higher precedence. Items with the same order will be executed in random order.
+          description: >-
+            The order in which this rule should be processed, smaller numbers are of higher precedence.
+            Items with the same order will be executed in random order.
         id:
           type: str
           description: The unique identifier of the resource. Used for update/delete operations.

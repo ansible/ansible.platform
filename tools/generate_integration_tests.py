@@ -67,6 +67,7 @@ HAND_CRAFTED = {"organization", "user"}
 # Per-module fixture data
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ModuleFixture:
     """Test data for one module."""
@@ -91,7 +92,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-org-",
         resources=[
             {"name": "int-org-alpha", "description": "Alpha initial"},
-            {"name": "int-org-beta",  "description": "Beta initial"},
+            {"name": "int-org-beta", "description": "Beta initial"},
         ],
         update_config={"name": "int-org-alpha", "description": "Alpha updated"},
         replaced_config={"name": "int-org-alpha", "description": "Alpha replaced"},
@@ -158,7 +159,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         # organization: 1 = "Default" org, always seeded by mock_gateway_server.seed_defaults()
         resources=[
             {"name": "int-team-alpha", "description": "Alpha team initial", "organization": 1},
-            {"name": "int-team-beta",  "description": "Beta team initial",  "organization": 1},
+            {"name": "int-team-beta", "description": "Beta team initial", "organization": 1},
         ],
         update_config={"name": "int-team-alpha", "description": "Alpha team updated", "organization": 1},
         replaced_config={"name": "int-team-alpha", "description": "Alpha team replaced", "organization": 1},
@@ -205,7 +206,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-token-",
         resources=[
             {"name": "int-token-alpha", "description": "Alpha token", "scope": "read"},
-            {"name": "int-token-beta",  "description": "Beta token",  "scope": "read"},
+            {"name": "int-token-beta", "description": "Beta token", "scope": "read"},
         ],
         update_config={"name": "int-token-alpha", "description": "Alpha token updated"},
         replaced_config={"name": "int-token-alpha", "description": "Alpha token replaced", "scope": "write"},
@@ -219,7 +220,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         # organization: 1 = "Default" org, always seeded by mock_gateway_server.seed_defaults()
         resources=[
             {"name": "int-app-alpha", "description": "Alpha application", "organization": 1},
-            {"name": "int-app-beta",  "description": "Beta application",  "organization": 1},
+            {"name": "int-app-beta", "description": "Beta application", "organization": 1},
         ],
         update_config={"name": "int-app-alpha", "description": "Alpha application updated", "organization": 1},
         replaced_config={"name": "int-app-alpha", "description": "Alpha application replaced", "organization": 1},
@@ -232,7 +233,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-cluster-",
         resources=[
             {"name": "int-cluster-alpha", "outlier_detection_enabled": False},
-            {"name": "int-cluster-beta",  "outlier_detection_enabled": False},
+            {"name": "int-cluster-beta", "outlier_detection_enabled": False},
         ],
         update_config={"name": "int-cluster-alpha", "outlier_detection_enabled": True},
         replaced_config={"name": "int-cluster-alpha", "outlier_detection_enabled": False},
@@ -243,7 +244,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-stype-",
         resources=[
             {"name": "int-stype-alpha", "login_path": "/login"},
-            {"name": "int-stype-beta",  "login_path": "/login"},
+            {"name": "int-stype-beta", "login_path": "/login"},
         ],
         update_config={"name": "int-stype-alpha", "login_path": "/login-updated"},
         replaced_config={"name": "int-stype-alpha", "login_path": "/login"},
@@ -254,7 +255,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-port-",
         resources=[
             {"name": "int-port-alpha", "use_https": False},
-            {"name": "int-port-beta",  "use_https": False},
+            {"name": "int-port-beta", "use_https": False},
         ],
         update_config={"name": "int-port-alpha", "use_https": True},
         replaced_config={"name": "int-port-alpha", "use_https": False},
@@ -265,7 +266,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-route-",
         resources=[
             {"name": "int-route-alpha", "description": "Alpha route"},
-            {"name": "int-route-beta",  "description": "Beta route"},
+            {"name": "int-route-beta", "description": "Beta route"},
         ],
         update_config={"name": "int-route-alpha", "description": "Alpha route updated"},
         replaced_config={"name": "int-route-alpha", "description": "Alpha route"},
@@ -276,7 +277,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-uipr-",
         resources=[
             {"name": "int-uipr-alpha", "description": "Alpha ui plugin route"},
-            {"name": "int-uipr-beta",  "description": "Beta ui plugin route"},
+            {"name": "int-uipr-beta", "description": "Beta ui plugin route"},
         ],
         update_config={"name": "int-uipr-alpha", "description": "Alpha ui plugin route updated"},
         replaced_config={"name": "int-uipr-alpha", "description": "Alpha ui plugin route"},
@@ -287,7 +288,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-cert-",
         resources=[
             {"name": "int-cert-alpha", "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"},
-            {"name": "int-cert-beta",  "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"},
+            {"name": "int-cert-beta", "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"},
         ],
         update_config={"name": "int-cert-alpha", "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS11cGQ="},
         replaced_config={"name": "int-cert-alpha", "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"},
@@ -298,7 +299,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-auth-",
         resources=[
             {"name": "int-auth-alpha", "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
-            {"name": "int-auth-beta",  "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
+            {"name": "int-auth-beta", "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
         ],
         # enabled: False differs from seeded enabled: True — triggers changed=True in merged/check tests
         update_config={"name": "int-auth-alpha", "enabled": False},
@@ -314,7 +315,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         # The prereq_yaml below creates "int-prereq-authn" which gets ID 3100 on a fresh mock server.
         resources=[
             {"name": "int-authmap-alpha", "authenticator": 3100, "revoke": False},
-            {"name": "int-authmap-beta",  "authenticator": 3100, "revoke": False},
+            {"name": "int-authmap-beta", "authenticator": 3100, "revoke": False},
         ],
         # revoke: True differs from seeded revoke: False — triggers changed=True in merged/check tests
         update_config={"name": "int-authmap-alpha", "authenticator": 3100, "revoke": True},
@@ -351,7 +352,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-svc-",
         resources=[
             {"name": "int-svc-alpha", "description": "Alpha service"},
-            {"name": "int-svc-beta",  "description": "Beta service"},
+            {"name": "int-svc-beta", "description": "Beta service"},
         ],
         update_config={"name": "int-svc-alpha", "description": "Alpha service updated"},
         replaced_config={"name": "int-svc-alpha", "description": "Alpha service"},
@@ -362,7 +363,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-skey-",
         resources=[
             {"name": "int-skey-alpha", "is_active": True},
-            {"name": "int-skey-beta",  "is_active": True},
+            {"name": "int-skey-beta", "is_active": True},
         ],
         update_config={"name": "int-skey-alpha", "is_active": False},
         replaced_config={"name": "int-skey-alpha", "is_active": True},
@@ -373,7 +374,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prefix="int-snode-",
         resources=[
             {"name": "int-snode-alpha", "address": "10.0.0.1"},
-            {"name": "int-snode-beta",  "address": "10.0.0.2"},
+            {"name": "int-snode-beta", "address": "10.0.0.2"},
         ],
         update_config={"name": "int-snode-alpha", "address": "10.0.0.10"},
         replaced_config={"name": "int-snode-alpha", "address": "10.0.0.1"},
@@ -778,7 +779,9 @@ CONVERGE_TEMPLATE = """\
           - seed_result is changed
         fail_msg: "Seed step failed. got: {{ '{{' }} seed_result {{ '}}' }}"
 
-    # State now: {{ r0_key }}, {{ r1_key }}, {% for s in extra_seeds %}{{ s[cf] }}{% if not loop.last %}, {% endif %}{% endfor %} ({{ 2 + extra_seeds | length }} total)
+    # State now: {{ r0_key }}, {{ r1_key }},
+    # {% for s in extra_seeds %}{{ s[cf] }}{% if not loop.last %}, {% endif %}{% endfor %}
+    # ({{ 2 + extra_seeds | length }} total)
 
     - name: "overridden | OVERRIDE to exactly [{{ r0_key }}, {{ r1_key }}]"
       ansible.platform.{{ module_name }}:
@@ -1813,10 +1816,10 @@ def generate_per_state_scenarios(
         needs_prepare = state in _STATES_NEED_PREPARE or fixture.prepare_all_states
         files: dict[str, str] = {
             "molecule.yml": _gen_per_state_molecule_yml(state, fixture),
-            "vars.yml":     _gen_per_state_vars_yml(state, fixture, cf),
+            "vars.yml": _gen_per_state_vars_yml(state, fixture, cf),
             "converge.yml": _gen_per_state_converge_yml(module_name, state),
-            "verify.yml":   _gen_per_state_verify_yml(module_name, state, cf, fixture),
-            "cleanup.yml":  _gen_per_state_cleanup_yml(module_name, state, fixture, cf),
+            "verify.yml": _gen_per_state_verify_yml(module_name, state, cf, fixture),
+            "cleanup.yml": _gen_per_state_cleanup_yml(module_name, state, fixture, cf),
         }
         if needs_prepare:
             files["prepare.yml"] = _gen_per_state_prepare_yml(module_name, state, cf, fixture)
@@ -1871,11 +1874,11 @@ def generate_scenario(module_name: str, dry_run: bool = False, force: bool = Fal
         return
 
     files = {
-        "molecule.yml":  gen_molecule_yml(module_name),
+        "molecule.yml": gen_molecule_yml(module_name),
         "inventory.yml": gen_inventory_yml(),
-        "converge.yml":  render_converge(module_name, cls, fixture),
-        "verify.yml":    render_verify(module_name, fixture),
-        "cleanup.yml":   render_cleanup(module_name, fixture),
+        "converge.yml": render_converge(module_name, cls, fixture),
+        "verify.yml": render_verify(module_name, fixture),
+        "cleanup.yml": render_cleanup(module_name, fixture),
     }
 
     if dry_run:
@@ -1898,10 +1901,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("modules", nargs="*", help="Module name(s) to generate")
-    parser.add_argument("--all",       action="store_true", help="Generate for all known modules")
-    parser.add_argument("--dry-run",   action="store_true", help="Print converge.yml to stdout only")
-    parser.add_argument("--force",     action="store_true", help="Overwrite existing scenarios")
-    parser.add_argument("--list",      action="store_true", help="List modules with fixtures defined")
+    parser.add_argument("--all", action="store_true", help="Generate for all known modules")
+    parser.add_argument("--dry-run", action="store_true", help="Print converge.yml to stdout only")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing scenarios")
+    parser.add_argument("--list", action="store_true", help="List modules with fixtures defined")
     parser.add_argument(
         "--per-state",
         action="store_true",
