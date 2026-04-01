@@ -482,6 +482,32 @@ class BaseResourceActionPlugin(ActionBase):
                 result["exception"] = _tb.format_exc()
             return result
 
+    @staticmethod
+    def _to_native_types(obj):
+        """Recursively convert Ansible-internal tagged types to plain Python types.
+
+        ansible-core 2.19+ wraps strings loaded from vars files in
+        ``_AnsibleTaggedStr`` (and similar wrapper classes) that carry origin /
+        trust metadata.  PyYAML does not know how to serialise these as plain
+        scalars and instead emits full ``!!python/object/new:…`` tags, making
+        diff output unreadable.  Converting every str-subclass back to ``str``
+        (and every int/bool/float subclass back to its primitive) before
+        calling ``yaml.dump`` avoids the problem entirely.
+        """
+        if isinstance(obj, dict):
+            return {k: BaseAction._to_native_types(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [BaseAction._to_native_types(i) for i in obj]
+        if isinstance(obj, bool):
+            return bool(obj)
+        if isinstance(obj, int):
+            return int(obj)
+        if isinstance(obj, float):
+            return float(obj)
+        if isinstance(obj, str):
+            return str(obj)   # strips _AnsibleTaggedStr wrapper → plain str
+        return obj
+
     def _build_result(self, facts_to_set=None, **kwargs):
         """Build result dict, injecting ansible_facts and optional diff."""
         result = dict(kwargs)
@@ -497,12 +523,12 @@ class BaseResourceActionPlugin(ActionBase):
         ):
             result["diff"] = {
                 "before": yaml.dump(
-                    result["before"],
+                    self._to_native_types(result["before"]),
                     default_flow_style=False,
                     sort_keys=True,
                 ),
                 "after": yaml.dump(
-                    result["after"],
+                    self._to_native_types(result["after"]),
                     default_flow_style=False,
                     sort_keys=True,
                 ),

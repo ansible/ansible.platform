@@ -296,13 +296,14 @@ FIXTURES: Dict[str, ModuleFixture] = {
         canonical_field="name",
         prefix="int-auth-",
         resources=[
-            {"name": "int-auth-alpha", "type": "ansible_base.authentication.authenticator_plugins.local"},
-            {"name": "int-auth-beta",  "type": "ansible_base.authentication.authenticator_plugins.local"},
+            {"name": "int-auth-alpha", "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
+            {"name": "int-auth-beta",  "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
         ],
-        update_config={"name": "int-auth-alpha"},
-        replaced_config={"name": "int-auth-alpha", "type": "ansible_base.authentication.authenticator_plugins.local"},
+        # enabled: False differs from seeded enabled: True — triggers changed=True in merged/check tests
+        update_config={"name": "int-auth-alpha", "enabled": False},
+        replaced_config={"name": "int-auth-alpha", "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
         extra_seeds=[
-            {"name": "int-auth-gamma", "type": "ansible_base.authentication.authenticator_plugins.local"},
+            {"name": "int-auth-gamma", "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
         ],
     ),
     "authenticator_map": ModuleFixture(

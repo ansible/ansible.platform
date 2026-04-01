@@ -2,11 +2,15 @@
 prepare_configs:
   - name: "int-auth-alpha"
     type: "ansible_base.authentication.authenticator_plugins.local"
+    enabled: true
   - name: "int-auth-beta"
     type: "ansible_base.authentication.authenticator_plugins.local"
+    enabled: true
   - name: "int-auth-gamma"
     type: "ansible_base.authentication.authenticator_plugins.local"
+    enabled: true
 
 expected_config:
   name: "int-auth-alpha"
   type: "ansible_base.authentication.authenticator_plugins.local"
+  enabled: true
