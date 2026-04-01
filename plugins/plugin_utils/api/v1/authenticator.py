@@ -123,9 +123,9 @@ class AuthenticatorTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.authenticator import AnsibleAuthenticator
+        from ...ansible_models.authenticators import AnsibleAuthenticators
 
-        return AnsibleAuthenticator(
+        return AnsibleAuthenticators(
             name=api_data.get("name"),
             enabled=api_data.get("enabled"),
             create_objects=api_data.get("create_objects"),

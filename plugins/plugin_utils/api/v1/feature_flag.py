@@ -91,9 +91,9 @@ class FeatureFlagTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.feature_flag import AnsibleFeatureFlag
+        from ...ansible_models.feature_flags import AnsibleFeatureFlags
 
-        return AnsibleFeatureFlag(
+        return AnsibleFeatureFlags(
             name=api_data.get("name"),
             value=api_data.get("value"),
             id=api_data.get("id"),

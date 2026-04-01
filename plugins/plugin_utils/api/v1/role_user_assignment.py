@@ -114,9 +114,9 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.role_user_assignment import AnsibleRoleUserAssignment
+        from ...ansible_models.role_user_assignments import AnsibleRoleUserAssignments
 
-        return AnsibleRoleUserAssignment(
+        return AnsibleRoleUserAssignments(
             object_id=api_data.get("object_id"),
             object_ansible_id=api_data.get("object_ansible_id"),
             role_definition=api_data.get("role_definition"),

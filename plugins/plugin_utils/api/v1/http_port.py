@@ -113,9 +113,9 @@ class HttpPortTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.http_port import AnsibleHttpPort
+        from ...ansible_models.http_ports import AnsibleHttpPorts
 
-        return AnsibleHttpPort(
+        return AnsibleHttpPorts(
             name=api_data.get("name"),
             number=api_data.get("number"),
             use_https=api_data.get("use_https"),

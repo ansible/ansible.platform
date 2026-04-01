@@ -1,0 +1,19 @@
+---
+- name: "Converge — authenticators (merged)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Run ansible.platform.authenticators with state=merged
+      ansible.platform.authenticators:
+        config:
+          - "{{ expected_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: result
+
+...

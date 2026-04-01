@@ -78,16 +78,16 @@ class SettingTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.settings import AnsibleSetting
+        from ...ansible_models.settings import AnsibleSettings
 
         # api_data may be a flat settings dict {KEY: value, ...}
         # or a list item {key: KEY, value: val} — handle both
         if isinstance(api_data, dict) and not any(k in api_data for k in ("key", "value", "id", "url")):
             # Flat dict from /settings/all/ endpoint
-            return AnsibleSetting(settings=dict(api_data))
+            return AnsibleSettings(settings=dict(api_data))
 
         # Fall back: return empty
-        return AnsibleSetting()
+        return AnsibleSettings()
 
 
 # Alias: the loader looks for SettingsTransformMixin_v1 (plural)

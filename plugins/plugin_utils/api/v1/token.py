@@ -130,9 +130,9 @@ class TokenTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.token import AnsibleToken
+        from ...ansible_models.tokens import AnsibleTokens
 
-        return AnsibleToken(
+        return AnsibleTokens(
             application=api_data.get("application"),
             description=api_data.get("description"),
             scope=api_data.get("scope"),

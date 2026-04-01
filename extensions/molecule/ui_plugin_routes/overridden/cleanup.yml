@@ -1,0 +1,19 @@
+---
+- name: "Cleanup — ui_plugin_routes (overridden)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Remove int-uipr-alpha (test teardown)
+      ansible.platform.ui_plugin_routes:
+        config:
+          - name: "int-uipr-alpha"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+
+...

@@ -96,7 +96,7 @@ extends_documentation_fragment:
 
 EXAMPLES = """
 - name: Create user resources (merged)
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice@example.com"
@@ -107,18 +107,18 @@ EXAMPLES = """
     state: merged
 
 - name: Gather current user state
-  ansible.platform.user:
+  ansible.platform.users:
     state: gathered
   register: result
 
 - name: Delete specific user resources
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
     state: deleted
 
 - name: Override — ensure only these user resources exist
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice@example.com"
@@ -126,7 +126,7 @@ EXAMPLES = """
 """
 ```
 
-**Quality check**: Run `ansible-doc -t module ansible.platform.user`
+**Quality check**: Run `ansible-doc -t module ansible.platform.users`
 and verify all options render correctly.
 
 Expected `ansible-doc` output:

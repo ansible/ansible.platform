@@ -37,7 +37,7 @@ Fields you do **not** specify are left exactly as they are.
 ```yaml
 # First run — user does not exist → POST → changed: true
 - name: Create user alice
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice@example.com"
@@ -58,7 +58,7 @@ Fields you do **not** specify are left exactly as they are.
 ```yaml
 # Second run — user exists, nothing changed → changed: false
 - name: Create user alice (idempotency)
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice@example.com"
@@ -74,7 +74,7 @@ Fields you do **not** specify are left exactly as they are.
 ```yaml
 # Update one field — alice exists but email changed → PATCH → changed: true
 - name: Update alice's email
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice-new@example.com"
@@ -100,7 +100,7 @@ return `changed: true`. Running deleted twice is always idempotent.
 ```yaml
 # First run — alice exists → DELETE → changed: true
 - name: Remove user alice
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
     state: deleted
@@ -113,7 +113,7 @@ return `changed: true`. Running deleted twice is always idempotent.
 ```yaml
 # Second run — alice is already gone → changed: false
 - name: Remove user alice again (idempotency)
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
     state: deleted
@@ -136,7 +136,7 @@ updates, or deletes anything. Always returns `changed: false`.
 ```yaml
 # Gather all users
 - name: Read all users
-  ansible.platform.user:
+  ansible.platform.users:
     state: gathered
     gateway_hostname: "https://gateway.example.com"
     gateway_username: "admin"
@@ -155,7 +155,7 @@ updates, or deletes anything. Always returns `changed: false`.
 ```yaml
 # Gather a specific user (filter by config)
 - name: Check if alice exists
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
     state: gathered
@@ -178,7 +178,7 @@ resource to have exactly and only the fields you declare.
 ```yaml
 # alice currently has: first_name=Alice, last_name=Smith, is_superuser=false
 - name: Replace alice's record (unspecified fields will be nulled)
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice-replaced@example.com"
@@ -210,7 +210,7 @@ exist are created. Existing resources that differ are updated.
 # Current platform state: [admin, alice, charlie]
 # After overridden, ONLY alice and bob will exist
 - name: Enforce exact user set
-  ansible.platform.user:
+  ansible.platform.users:
     config:
       - username: "alice"
         email: "alice@example.com"
@@ -253,11 +253,11 @@ Without the resource module pattern, a playbook author would need to:
 3. If creating, call the POST endpoint.
 4. If updating, call the PATCH endpoint with only changed fields.
 
-The `ansible.platform.user` module encapsulates all of this:
+The `ansible.platform.users` module encapsulates all of this:
 
 ```yaml
 - name: Ensure user alice exists          # one task
-  ansible.platform.user:
+  ansible.platform.users:
     username: alice
     email: alice@example.com
     organizations: [engineering, ops]
@@ -398,7 +398,7 @@ collection that works across all of them. The resource module pattern, combined 
 the versioned data model, makes this possible. The playbook author writes:
 
 ```yaml
-ansible.platform.user:
+ansible.platform.users:
   username: alice
   state: present
 ```
@@ -413,7 +413,7 @@ baseline. `state: enforced` on a resource module is their tool:
 
 ```yaml
 - name: Enforce approved HTTP ports only
-  ansible.platform.http_port:
+  ansible.platform.http_ports:
     port: 443
     state: enforced
   loop: "{{ approved_ports }}"

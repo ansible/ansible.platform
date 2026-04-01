@@ -93,8 +93,11 @@ class DynamicClassLoader:
             ImportError: If module cannot be imported
             ValueError: If class cannot be found
         """
-        # Import from ansible_models/<module_name>.py
-        module_path = f"ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_name}"
+        # Model files are plural (e.g., MODULE_NAME="application" -> "applications.py")
+        module_file_name = module_name if module_name.endswith("s") else module_name + "s"
+
+        # Import from ansible_models/<module_file_name>.py
+        module_path = f"ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_file_name}"
 
         try:
             module = importlib.import_module(module_path)
@@ -102,8 +105,8 @@ class DynamicClassLoader:
             logger.error("Failed to import Ansible module %s: %s", module_path, e)
             raise ImportError(f"Failed to import Ansible module {module_path}: {e}") from e
 
-        # Find Ansible dataclass (e.g., AnsibleUser, AnsibleCACertificate)
-        class_name = f"Ansible{_to_pascal_case(module_name)}"
+        # Find Ansible dataclass (e.g., AnsibleUsers, AnsibleApplications)
+        class_name = f"Ansible{_to_pascal_case(module_file_name)}"
         target_lower = class_name.lower()
 
         if hasattr(module, class_name):

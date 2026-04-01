@@ -1,0 +1,26 @@
+---
+- name: "Verify — users (gathered)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Gather users (assert present after gathered)
+      ansible.platform.users:
+        config:
+          - username: "{{ expected_config.username }}"
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered
+
+    - name: Assert configuration exists after gathered
+      ansible.builtin.assert:
+        that:
+          - gathered.gathered is defined
+          - gathered.gathered | length > 0
+        fail_msg: "Expected resource after gathered. got: {{ gathered.gathered }}"
+
+...

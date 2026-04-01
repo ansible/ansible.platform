@@ -160,9 +160,9 @@ class UserTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.user import AnsibleUser
+        from ...ansible_models.users import AnsibleUsers
 
-        return AnsibleUser(
+        return AnsibleUsers(
             username=api_data.get("username"),
             email=api_data.get("email"),
             first_name=api_data.get("first_name"),

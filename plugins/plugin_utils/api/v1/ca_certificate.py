@@ -113,9 +113,9 @@ class CaCertificateTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.ca_certificate import AnsibleCaCertificate
+        from ...ansible_models.ca_certificates import AnsibleCaCertificates
 
-        return AnsibleCaCertificate(
+        return AnsibleCaCertificates(
             name=api_data.get("name"),
             pem_data=api_data.get("pem_data"),
             sha256=api_data.get("sha256"),

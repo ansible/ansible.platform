@@ -155,9 +155,9 @@ class RouteTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.route import AnsibleRoute
+        from ...ansible_models.routes import AnsibleRoutes
 
-        return AnsibleRoute(
+        return AnsibleRoutes(
             name=api_data.get("name"),
             http_port=api_data.get("http_port"),
             service_cluster=api_data.get("service_cluster"),

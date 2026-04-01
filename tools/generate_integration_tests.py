@@ -87,7 +87,7 @@ class ModuleFixture:
 
 
 FIXTURES: Dict[str, ModuleFixture] = {
-    "organization": ModuleFixture(
+    "organizations": ModuleFixture(
         canonical_field="name",
         prefix="int-org-",
         resources=[
@@ -101,7 +101,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             {"name": "int-org-delta", "description": "Delta seed"},
         ],
     ),
-    "user": ModuleFixture(
+    "users": ModuleFixture(
         canonical_field="username",
         prefix="int-user-",
         resources=[
@@ -153,7 +153,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             },
         ],
     ),
-    "team": ModuleFixture(
+    "teams": ModuleFixture(
         canonical_field="name",
         prefix="int-team-",
         # organization: 1 = "Default" org, always seeded by mock_gateway_server.seed_defaults()
@@ -168,7 +168,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             {"name": "int-team-delta", "description": "Delta seed", "organization": 1},
         ],
     ),
-    "role_definition": ModuleFixture(
+    "role_definitions": ModuleFixture(
         canonical_field="name",
         prefix="int-roledef-",
         resources=[
@@ -201,7 +201,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             },
         ],
     ),
-    "token": ModuleFixture(
+    "tokens": ModuleFixture(
         canonical_field="description",
         prefix="int-token-",
         resources=[
@@ -214,7 +214,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             {"description": "Gamma seed", "scope": "read"},
         ],
     ),
-    "application": ModuleFixture(
+    "applications": ModuleFixture(
         canonical_field="name",
         prefix="int-app-",
         # organization: 1 = "Default" org, always seeded by mock_gateway_server.seed_defaults()
@@ -228,7 +228,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             {"name": "int-app-gamma", "description": "Gamma seed", "organization": 1},
         ],
     ),
-    "service_cluster": ModuleFixture(
+    "service_clusters": ModuleFixture(
         canonical_field="name",
         prefix="int-cluster-",
         resources=[
@@ -239,7 +239,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-cluster-alpha", "outlier_detection_enabled": False},
         extra_seeds=[{"name": "int-cluster-gamma", "outlier_detection_enabled": False}],
     ),
-    "service_type": ModuleFixture(
+    "service_types": ModuleFixture(
         canonical_field="name",
         prefix="int-stype-",
         resources=[
@@ -250,7 +250,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-stype-alpha", "login_path": "/login"},
         extra_seeds=[{"name": "int-stype-gamma", "login_path": "/login"}],
     ),
-    "http_port": ModuleFixture(
+    "http_ports": ModuleFixture(
         canonical_field="name",
         prefix="int-port-",
         resources=[
@@ -261,7 +261,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-port-alpha", "use_https": False},
         extra_seeds=[{"name": "int-port-gamma", "use_https": False}],
     ),
-    "route": ModuleFixture(
+    "routes": ModuleFixture(
         canonical_field="name",
         prefix="int-route-",
         resources=[
@@ -272,7 +272,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-route-alpha", "description": "Alpha route"},
         extra_seeds=[{"name": "int-route-gamma", "description": "Gamma seed"}],
     ),
-    "ui_plugin_route": ModuleFixture(
+    "ui_plugin_routes": ModuleFixture(
         canonical_field="name",
         prefix="int-uipr-",
         resources=[
@@ -283,7 +283,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-uipr-alpha", "description": "Alpha ui plugin route"},
         extra_seeds=[{"name": "int-uipr-gamma", "description": "Gamma seed"}],
     ),
-    "ca_certificate": ModuleFixture(
+    "ca_certificates": ModuleFixture(
         canonical_field="name",
         prefix="int-cert-",
         resources=[
@@ -294,7 +294,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-cert-alpha", "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"},
         extra_seeds=[{"name": "int-cert-gamma", "pem_data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"}],
     ),
-    "authenticator": ModuleFixture(
+    "authenticators": ModuleFixture(
         canonical_field="name",
         prefix="int-auth-",
         resources=[
@@ -308,7 +308,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
             {"name": "int-auth-gamma", "type": "ansible_base.authentication.authenticator_plugins.local", "enabled": True},
         ],
     ),
-    "authenticator_map": ModuleFixture(
+    "authenticator_maps": ModuleFixture(
         canonical_field="name",
         prefix="int-authmap-",
         # authenticator: 3100 = first ID in mock server's authenticator range (start_id=3100).
@@ -324,7 +324,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         prepare_all_states=True,
         prereq_yaml="""\
     - name: Seed prerequisite authenticator (required by all authenticator_map tests)
-      ansible.platform.authenticator:
+      ansible.platform.authenticators:
         config:
           - name: "int-prereq-authn"
             type: "ansible_base.authentication.authenticator_plugins.local"
@@ -336,7 +336,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
 """,
         cleanup_prereq_yaml="""\
     - name: Remove prerequisite authenticator (test teardown)
-      ansible.platform.authenticator:
+      ansible.platform.authenticators:
         config:
           - name: "int-prereq-authn"
         state: deleted
@@ -347,7 +347,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
       failed_when: false
 """,
     ),
-    "service": ModuleFixture(
+    "services": ModuleFixture(
         canonical_field="name",
         prefix="int-svc-",
         resources=[
@@ -358,7 +358,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-svc-alpha", "description": "Alpha service"},
         extra_seeds=[{"name": "int-svc-gamma", "description": "Gamma seed"}],
     ),
-    "service_key": ModuleFixture(
+    "service_keys": ModuleFixture(
         canonical_field="name",
         prefix="int-skey-",
         resources=[
@@ -369,7 +369,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         replaced_config={"name": "int-skey-alpha", "is_active": True},
         extra_seeds=[{"name": "int-skey-gamma", "is_active": True}],
     ),
-    "service_node": ModuleFixture(
+    "service_nodes": ModuleFixture(
         canonical_field="name",
         prefix="int-snode-",
         resources=[
@@ -400,8 +400,8 @@ def load_model_class(module_name: str):
 
 
 def get_all_module_names() -> List[str]:
-    models_dir = COLLECTION_ROOT / "plugins" / "plugin_utils" / "ansible_models"
-    return sorted(p.stem for p in models_dir.glob("*.py") if not p.stem.startswith("_") and p.stem != "base_transform")
+    """Return module names from the FIXTURES registry (plural, public names)."""
+    return sorted(FIXTURES.keys())
 
 
 # ---------------------------------------------------------------------------

@@ -74,6 +74,6 @@ class AuthenticatorUserTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.authenticator_user import AnsibleAuthenticatorUser
+        from ...ansible_models.authenticator_users import AnsibleAuthenticatorUsers
 
-        return AnsibleAuthenticatorUser()
+        return AnsibleAuthenticatorUsers()

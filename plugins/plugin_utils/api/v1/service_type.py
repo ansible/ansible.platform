@@ -115,9 +115,9 @@ class ServiceTypeTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.service_type import AnsibleServiceType
+        from ...ansible_models.service_types import AnsibleServiceTypes
 
-        return AnsibleServiceType(
+        return AnsibleServiceTypes(
             name=api_data.get("name"),
             login_path=api_data.get("login_path"),
             logout_path=api_data.get("logout_path"),
