@@ -13,6 +13,25 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    # Pre-cleanup: remove any leftover resources from prior failed runs
+    - name: Pre-cleanup Service Cluster
+      ansible.platform.service_cluster:
+        name: dummy
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup Service Type bigger_dummy
+      ansible.platform.service_type:
+        name: bigger_dummy
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup Service Type dummy
+      ansible.platform.service_type:
+        name: dummy
+        state: absent
+      failed_when: false
+
     - name: Create dummy Service Type with check mode
       ansible.platform.service_type:
         name: dummy
@@ -23,14 +42,20 @@
       check_mode: true
 
     - name: Search for the Service Type
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'service_types',
-          query_params={'name': 'dummy'}, **connection_info) }}"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/service_types/?name=dummy"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: service_type_search
 
     - name: Assert that Service Type does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - service_type_search.json.count == 0
         fail_msg: "Service Type 'dummy' exists in the system!"
 
     - name: Create dummy Service Type
@@ -106,7 +131,7 @@
       ansible.builtin.assert:
         that:
           - renamed_dummy_st is changed
-          - renamed_dummy_st.id == dummy_st.id
+          - renamed_dummy_st.service_type.id == dummy_st.service_type.id
 
     - name: Assert that new name exists
       ansible.platform.service_type:
@@ -124,7 +149,7 @@
       ansible.builtin.assert:
         that:
           - changed_service_index_st is changed
-          - changed_service_index_st.id == dummy_st.id
+          - changed_service_index_st.service_type.id == dummy_st.service_type.id
 
     - name: Delete a non-existent service type
       ansible.platform.service_type:

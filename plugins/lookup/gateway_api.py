@@ -132,14 +132,14 @@ class LookupModule(LookupBase):
     display = Display()
 
     def handle_error(self, **kwargs):
-        raise AnsibleError(to_native(kwargs.get('msg')))
+        raise AnsibleError(to_native(kwargs.get("msg")))
 
     def warn_callback(self, warning):
         self.display.warning(warning)
 
     def run(self, terms, variables=None, **kwargs):
         if len(terms) != 1:
-            raise AnsibleError('You must pass exactly one endpoint to query')
+            raise AnsibleError("You must pass exactly one endpoint to query")
 
         self.set_options(direct=kwargs)
 
@@ -151,47 +151,58 @@ class LookupModule(LookupBase):
                 module_params[module_param] = opt_val
 
         # Create our module
-        module = AAPModule(argument_spec={}, direct_params=module_params, error_callback=self.handle_error, warn_callback=self.warn_callback)
+        # Wrap in try/except BaseException so that any sys.exit() or other fatal
+        # BaseException raised inside AAPModule (e.g. from AnsibleModule internals)
+        # is converted to an AnsibleError instead of killing the Ansible worker process.
+        try:
+            module = AAPModule(argument_spec={}, direct_params=module_params, error_callback=self.handle_error, warn_callback=self.warn_callback)
+        except AnsibleError:
+            raise
+        except SystemExit as e:
+            raise AnsibleError("gateway_api lookup: unexpected SystemExit({0}) during module init".format(e.code))
+        except BaseException as e:
+            raise AnsibleError("gateway_api lookup: unexpected {0} during module init: {1}".format(type(e).__name__, to_native(e)))
 
-        response = module.get_endpoint(terms[0], data=self.get_option('query_params', {}))
+        response = module.get_endpoint(terms[0], data=self.get_option("query_params", {}))
 
-        if 'status_code' not in response:
+        if "status_code" not in response:
             raise AnsibleError("Unclear response from API: {0}".format(response))
 
-        if response['status_code'] != 200:
-            raise AnsibleError("Failed to query the API: {0}".format(response['json'].get('detail', response['json'])))
+        if response["status_code"] != 200:
+            raise AnsibleError("Failed to query the API: {0}".format(response["json"].get("detail", response["json"])))
 
-        return_data = response['json']
+        return_data = response["json"]
 
-        if self.get_option('expect_objects') or self.get_option('expect_one'):
-            if ('id' not in return_data) and ('results' not in return_data):
-                raise AnsibleError('Did not obtain a list or detail view at {0}, and expect_objects or expect_one is set to True'.format(terms[0]))
+        if self.get_option("expect_objects") or self.get_option("expect_one"):
+            if ("id" not in return_data) and ("results" not in return_data):
+                raise AnsibleError("Did not obtain a list or detail view at {0}, and expect_objects or expect_one is set to True".format(terms[0]))
 
-        if self.get_option('expect_one'):
-            if 'results' in return_data and len(return_data['results']) != 1:
-                raise AnsibleError('Expected one object from endpoint {0}, but obtained {1} from API'.format(terms[0], len(return_data['results'])))
+        if self.get_option("expect_one"):
+            if "results" in return_data and len(return_data["results"]) != 1:
+                raise AnsibleError("Expected one object from endpoint {0}, but obtained {1} from API".format(terms[0], len(return_data["results"])))
 
-        if self.get_option('return_all') and 'results' in return_data:
-            if return_data['count'] > self.get_option('max_objects'):
+        if self.get_option("return_all") and "results" in return_data:
+            if return_data["count"] > self.get_option("max_objects"):
                 raise AnsibleError(
-                    'List view at {0} returned {1} objects, which is more than the maximum allowed '
-                    'by max_objects, {2}'.format(terms[0], return_data['count'], self.get_option('max_objects'))
+                    "List view at {0} returned {1} objects, which is more than the maximum allowed by max_objects, {2}".format(
+                        terms[0], return_data["count"], self.get_option("max_objects")
+                    )
                 )
 
-            next_page = return_data['next']
+            next_page = return_data["next"]
             while next_page is not None:
                 next_response = module.get_endpoint(next_page)
-                return_data['results'] += next_response['json']['results']
-                next_page = next_response['json']['next']
-            return_data['next'] = None
+                return_data["results"] += next_response["json"]["results"]
+                next_page = next_response["json"]["next"]
+            return_data["next"] = None
 
-        if self.get_option('return_ids'):
-            if 'results' in return_data:
-                return_data['results'] = [str(item['id']) for item in return_data['results']]
-            elif 'id' in return_data:
-                return_data = str(return_data['id'])
+        if self.get_option("return_ids"):
+            if "results" in return_data:
+                return_data["results"] = [str(item["id"]) for item in return_data["results"]]
+            elif "id" in return_data:
+                return_data = str(return_data["id"])
 
-        if self.get_option('return_objects') and 'results' in return_data:
-            return return_data['results']
+        if self.get_option("return_objects") and "results" in return_data:
+            return return_data["results"]
         else:
             return [return_data]

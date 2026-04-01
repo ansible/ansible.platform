@@ -1,0 +1,30 @@
+---
+- name: "Cleanup — authenticator_map (replaced)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Remove int-authmap-alpha (test teardown)
+      ansible.platform.authenticator_map:
+        config:
+          - name: "int-authmap-alpha"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+
+    - name: Remove prerequisite authenticator (test teardown)
+      ansible.platform.authenticator:
+        config:
+          - name: "int-prereq-authn"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+
+...

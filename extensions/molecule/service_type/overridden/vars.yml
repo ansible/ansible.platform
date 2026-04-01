@@ -1,0 +1,13 @@
+---
+prepare_configs:
+  - name: "int-stype-alpha"
+    login_path: "/login"
+  - name: "int-stype-beta"
+    login_path: "/login"
+  - name: "int-stype-gamma"
+    login_path: "/login"
+
+expected_config:
+  name: "int-stype-alpha"
+  login_path: "/login"
+...

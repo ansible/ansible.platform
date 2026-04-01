@@ -1,0 +1,19 @@
+---
+- name: "Converge — http_port (gathered)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Run ansible.platform.http_port with state=gathered
+      ansible.platform.http_port:
+        config:
+          - "{{ expected_config }}"
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: result
+
+...

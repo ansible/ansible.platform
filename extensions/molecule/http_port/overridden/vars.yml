@@ -1,0 +1,13 @@
+---
+prepare_configs:
+  - name: "int-port-alpha"
+    use_https: false
+  - name: "int-port-beta"
+    use_https: false
+  - name: "int-port-gamma"
+    use_https: false
+
+expected_config:
+  name: "int-port-alpha"
+  use_https: false
+...

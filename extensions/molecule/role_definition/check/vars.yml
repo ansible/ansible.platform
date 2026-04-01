@@ -1,0 +1,12 @@
+---
+prepare_config:
+  name: "int-roledef-alpha"
+  description: "Alpha role definition"
+  content_type: "shared.team"
+  permissions:
+    - "view_organization"
+
+expected_config:
+  name: "int-roledef-alpha"
+  description: "Alpha role definition updated"
+...

@@ -1,0 +1,64 @@
+---
+# Base Molecule config for ansible.platform (ANSTRAT-1640; inspired by meraki_rm).
+# See: https://ansible.readthedocs.io/projects/molecule/getting-started-collections/
+#
+# With shared_state: true, the "default" scenario is the lifecycle manager for the mock server:
+# - "molecule test --all" runs default create first (start mock), then other scenarios, then default destroy.
+# - Per-state scenarios (e.g. user/merged) inherit everything here; their molecule.yml only overrides
+#   scenario.test_sequence (and provisioner.playbooks.prepare when a prepare.yml is needed).
+# - Legacy mock scenarios (e.g. users_mock) work unchanged — they have their own molecule.yml.
+# See: docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md
+#
+# Correct per-state invocations:
+#   molecule test -s user/merged
+#   molecule test -s user/replaced
+#   molecule test -s organization/overridden
+#   molecule test --all    (runs default create/destroy around all scenarios)
+
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+  env:
+    ANSIBLE_FORCE_COLOR: "true"
+    ANSIBLE_HOST_KEY_CHECKING: "false"
+    ANSIBLE_DEPRECATION_WARNINGS: "false"
+    ANSIBLE_SYSTEM_WARNINGS: "false"
+    ANSIBLE_COMMAND_WARNINGS: "false"
+
+provisioner:
+  name: ansible
+  options:
+    v: true
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      # MOLECULE_PROJECT_DIRECTORY = collection root (.../ansible_collections/ansible/platform).
+      # Go up 3 levels to reach the ansible-dev/ parent that contains ansible_collections/.
+      # This works for both flat scenarios (users_mock/) and nested scenarios (user/merged/).
+      collections_path: "${MOLECULE_PROJECT_DIRECTORY}/../../../"
+      log_verbosity: 4
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup
+
+# Share mock server across scenarios when using "molecule test --all" (default create/destroy once).
+shared_state: true
+prerun: false
+
+verifier:
+  name: ansible
+...

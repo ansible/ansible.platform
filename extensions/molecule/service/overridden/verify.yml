@@ -1,0 +1,31 @@
+---
+- name: "Verify — service (overridden)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Gather all service resources (verify overridden final state)
+      ansible.platform.service:
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered_all
+
+    - name: Assert int-svc-alpha still exists after overridden
+      ansible.builtin.assert:
+        that:
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("name", "equalto", "int-svc-alpha") | list | length == 1
+        fail_msg: "Expected int-svc-alpha to exist after overridden. got: {{ gathered_all.gathered }}"
+
+    - name: Assert int-svc-beta was deleted by overridden (not in desired config)
+      ansible.builtin.assert:
+        that:
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("name", "equalto", "int-svc-beta") | list | length == 0
+        fail_msg: "overridden should have deleted int-svc-beta. got: {{ gathered_all.gathered }}"
+
+...

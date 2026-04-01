@@ -1,0 +1,5 @@
+---
+expected_config:
+  description: "Alpha token"
+  scope: "read"
+...

@@ -1,0 +1,12 @@
+---
+- name: "Cleanup — service_key (deleted)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: No-op — int-skey-alpha already deleted by converge
+      ansible.builtin.debug:
+        msg: "int-skey-alpha was deleted in converge — nothing to clean up"
+
+...

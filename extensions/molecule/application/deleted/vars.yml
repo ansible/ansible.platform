@@ -1,0 +1,9 @@
+---
+prepare_config:
+  name: "int-app-alpha"
+  description: "Alpha application"
+  organization: 1
+
+expected_config:
+  name: "int-app-alpha"
+...

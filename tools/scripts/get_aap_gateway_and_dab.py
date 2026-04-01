@@ -1,18 +1,15 @@
 #!/usr/bin/env python
 
+import base64
 import os
 import re
-import base64
 
 import requests
 
-GH_WORKSPACE = os.environ.get('GH_WORKSPACE', '')
-TOKEN = os.environ.get('GH_TOKEN')
+GH_WORKSPACE = os.environ.get("GH_WORKSPACE", "")
+TOKEN = os.environ.get("GH_TOKEN")
 
-GH_API_HEADERS = {
-    "Authorization": f"token {TOKEN}",
-    "Accept": "application/vnd.github.v3+json"
-}
+GH_API_HEADERS = {"Authorization": f"token {TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
 
 def _git_auth_header():
@@ -34,7 +31,7 @@ def _git_clone(repo_url, branch, local_destination):
     :param branch: The branch in the repository to clone.
     :param local_destination: The local directory where the repo will be cloned.
     """
-    print(f'Checking out {branch} branch of {repo_url} into {GH_WORKSPACE}/{local_destination}')
+    print(f"Checking out {branch} branch of {repo_url} into {GH_WORKSPACE}/{local_destination}")
     os.system(f"git clone {repo_url} -b {branch} --depth=1 -c http.extraheader='AUTHORIZATION: basic {_git_auth_header()}' {GH_WORKSPACE}/{local_destination}")
 
 
@@ -44,7 +41,7 @@ def _get_requires(pr_body, target):
     :param pr_body: The Pull Request body to parse.
     :param target: The repository name containing the Pull Request.
     """
-    requires_re = re.compile(f'requires.*ansible-automation-platform/{target}(?:#|/pull/)([0-9]+)', re.IGNORECASE)
+    requires_re = re.compile(f"requires.*ansible-automation-platform/{target}(?:#|/pull/)([0-9]+)", re.IGNORECASE)
     matches = requires_re.search(pr_body)
     if matches:
         return matches.group(1)
@@ -55,31 +52,31 @@ def _checkout_aap_gateway(pr_body):
        Return the body of the specified Pull Request, if any.
     :param pr_body: The ansible.platform PR body.
     """
-    repo_url = 'https://github.com/ansible-automation-platform/aap-gateway'
-    branch = 'devel'
+    repo_url = "https://github.com/ansible-automation-platform/aap-gateway"
+    branch = "devel"
     aap_gateway_pr_body = ""
 
     required_pr = _get_requires(pr_body, target="aap-gateway")
     if required_pr:
         print(f"This ansible.platform PR requires aap-gateway PR {required_pr}")
-        url = f'https://api.github.com/repos/ansible-automation-platform/aap-gateway/pulls/{required_pr}'
+        url = f"https://api.github.com/repos/ansible-automation-platform/aap-gateway/pulls/{required_pr}"
         response = requests.get(url, headers=GH_API_HEADERS)
 
         if response.status_code != 200:
             raise RuntimeError(f"Error fetching PR data: {response.status_code} - {response.text}")
 
         pr_data = response.json()
-        merged = pr_data['merged']
+        merged = pr_data["merged"]
 
         if not merged:
             # if PR is not merged, checkout the repo and branch specified by "Requires"
-            repo_url = pr_data['head']['repo']['html_url']
-            branch = pr_data['head']['ref']
-            aap_gateway_pr_body = pr_data.get('body', '')
+            repo_url = pr_data["head"]["repo"]["html_url"]
+            branch = pr_data["head"]["ref"]
+            aap_gateway_pr_body = pr_data.get("body", "")
         else:
             print(f"The referenced PR {required_pr} of aap-gateway has been merged already, no need to check out the branch!")
 
-    _git_clone(repo_url=repo_url, branch=branch, local_destination='aap-gateway')
+    _git_clone(repo_url=repo_url, branch=branch, local_destination="aap-gateway")
 
     return aap_gateway_pr_body
 
@@ -92,20 +89,20 @@ def _checkout_django_ansible_base(pr_body):
 
     if required_pr:
         print(f"This aap-gateway PR requires django-ansible-base PR {required_pr}")
-        url = f'https://api.github.com/repos/ansible/django-ansible-base/pulls/{required_pr}'
+        url = f"https://api.github.com/repos/ansible/django-ansible-base/pulls/{required_pr}"
         response = requests.get(url)
 
         if response.status_code != 200:
             raise RuntimeError(f"Error fetching PR data: {response.status_code} - {response.text}")
 
         pr_data = response.json()
-        merged = pr_data['merged']
+        merged = pr_data["merged"]
 
         if not merged:
             # if PR is not merged, checkout the repo and branch specified by "Requires"
-            repo_url = pr_data['head']['repo']['html_url']
-            branch = pr_data['head']['ref']
-            _git_clone(repo_url=repo_url, branch=branch, local_destination='aap-gateway/django-ansible-base')
+            repo_url = pr_data["head"]["repo"]["html_url"]
+            branch = pr_data["head"]["ref"]
+            _git_clone(repo_url=repo_url, branch=branch, local_destination="aap-gateway/django-ansible-base")
         else:
             print(f"The referenced PR {required_pr} of django-ansible-base has been merged already, no need to check out the branch!")
     else:
@@ -114,7 +111,7 @@ def _checkout_django_ansible_base(pr_body):
 
 def main():
     # get ansible.platform Pull Request body
-    platform_pr_body = os.environ.get('PR_BODY', '')
+    platform_pr_body = os.environ.get("PR_BODY", "")
 
     # checkout aap-gateway
     aap_gateway_pr_body = _checkout_aap_gateway(pr_body=platform_pr_body)

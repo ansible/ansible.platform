@@ -1,0 +1,5 @@
+---
+expected_config:
+  name: "int-cluster-alpha"
+  outlier_detection_enabled: false
+...

@@ -1,0 +1,5 @@
+---
+expected_config:
+  name: "int-cert-alpha"
+  pem_data: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"
+...

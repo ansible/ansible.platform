@@ -1,0 +1,6 @@
+---
+expected_config:
+  name: "int-auth-alpha"
+  type: "ansible_base.authentication.authenticator_plugins.local"
+  enabled: true
+...

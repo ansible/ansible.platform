@@ -9,20 +9,42 @@
     name_prefix: "GW-Collection-Test-Services-{{ test_id }}"
 
 - name: Get existing service clusters
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/gateway/v1/service_clusters/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    force_basic_auth: true
+    status_code: 200
+  register: _sc_uri_result
+
+- name: Set service cluster query fact
   ansible.builtin.set_fact:
-    _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters', **connection_info) }}"
+    _sc_query: "{{ _sc_uri_result.json.results }}"
 
 - name: Fail if more than one service cluster or that cluster is not a gateway cluster
   ansible.builtin.fail:
     msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
   when:
     - _sc_query | length > 1
-    - _sc_query | length == 1 and sc_query[0].type != 'gateway'
+    - _sc_query | length == 1 and _sc_query[0].type != 'gateway'
 
 - name: See if there is an existing is_api_port
   # We need one to create an http_port and there can only be one
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/gateway/v1/http_ports/?is_api_port=true"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    force_basic_auth: true
+    status_code: 200
+  register: _http_port_uri_result
+
+- name: Set existing http_api_port fact
   ansible.builtin.set_fact:
-    existing_http_api_port: "{{ lookup('ansible.platform.gateway_api', 'http_ports', query_params={'is_api_port': true}, **connection_info) }}"
+    existing_http_api_port: "{{ _http_port_uri_result.json.results }}"
 
 - name: Run Test
   module_defaults:
@@ -45,7 +67,24 @@
 
     - name: Get the API port id (existing or just created)
       ansible.builtin.set_fact:
-        api_port_id: "{{ new_http_api_port.id if new_http_api_port is not skipped else existing_http_api_port.id }}"
+        api_port_id: "{{ new_http_api_port.http_port.id if new_http_api_port is not skipped else existing_http_api_port[0].id }}"
+
+    - name: Find any stale HTTP port with port number 9000
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/http_ports/?number=9000"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: _stale_9000_result
+
+    - name: Delete stale HTTP port 9000 if left over from a previous test run
+      ansible.platform.http_port:
+        name: "{{ _stale_9000_result.json.results[0].name }}"
+        state: absent
+      when: _stale_9000_result.json.results | length > 0
 
     - name: Create an HTTP Port
       ansible.platform.http_port:
@@ -67,7 +106,7 @@
     - name: Create Hub Service Cluster
       ansible.platform.service_cluster:
         name: "{{ name_prefix }}-Hub"
-        service_type: "{{ hub_st.id }}"
+        service_type: "{{ hub_st.service_type.id }}"
       register: hub_sc
 
     - name: Create Controller Service Type
@@ -82,7 +121,7 @@
     - name: Create Controller Service Cluster
       ansible.platform.service_cluster:
         name: "{{ name_prefix }}-Controller"
-        service_type: "{{ controller_st.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
       register: controller_sc
     # </Service Clusters> -------------------------
 
@@ -93,22 +132,40 @@
         description: "Proxy to the Automation Hub"
         http_port: "{{ api_port_id }}"
         api_slug: hub
-        service_cluster: "{{ hub_sc.id }}"
+        service_cluster: "{{ hub_sc.service_cluster.id }}"
         service_path: '/api/hub/'
         service_port: 5001
         order: 1
       check_mode: true
 
-    - name: Search for the Hub Service
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'services',
-          query_params={'name': '{{ name_prefix }}-Automation Hub API'}, **connection_info) }}"
+    - name: Search for the Hub Service (verify check_mode did not create it)
+      ansible.platform.service:
+        name: "{{ name_prefix }}-Automation Hub API"
+        state: exists
+      register: check_hub_service_exists
 
     - name: Assert that Hub Service does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - not check_hub_service_exists.exists
         fail_msg: "Service '{{ name_prefix }}-Automation Hub API' exists in the system!"
+
+    - name: Find any stale service with api_slug 'hub' left over from a previous run
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/services/?api_slug=hub"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: _stale_hub_svc_result
+
+    - name: Delete stale hub service if left over from a previous test run
+      ansible.platform.service:
+        name: "{{ _stale_hub_svc_result.json.results[0].name }}"
+        state: absent
+      when: _stale_hub_svc_result.json.results | length > 0
 
     - name: Create Hub Service
       ansible.platform.service:
@@ -116,7 +173,7 @@
         description: "Proxy to the Automation Hub"
         http_port: "{{ api_port_id }}"
         api_slug: hub
-        service_cluster: "{{ hub_sc.id }}"
+        service_cluster: "{{ hub_sc.service_cluster.id }}"
         service_path: '/api/hub/'
         service_port: 5001
         order: 1
@@ -129,11 +186,11 @@
 
     - name: Recreate Hub Service
       ansible.platform.service:
-        name: "{{ hub_service.name }}"
+        name: "{{ hub_service.service.name }}"
         description: "Proxy to the Automation Hub"
         http_port: "{{ api_port_id }}"
         api_slug: hub
-        service_cluster: "{{ hub_sc.id }}"
+        service_cluster: "{{ hub_sc.service_cluster.id }}"
         service_path: '/api/hub/'
         service_port: 5001
         order: 1
@@ -144,13 +201,30 @@
         that:
           - recreate_hub_service is not changed
 
+    - name: Find any stale service with api_slug 'controller' left over from a previous run
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/services/?api_slug=controller"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: _stale_controller_svc_result
+
+    - name: Delete stale controller service if left over from a previous test run
+      ansible.platform.service:
+        name: "{{ _stale_controller_svc_result.json.results[0].name }}"
+        state: absent
+      when: _stale_controller_svc_result.json.results | length > 0
+
     - name: Create Controller Service
       ansible.platform.service:
         name: "{{ name_prefix }}-Controller API"
         description: Proxy to the Controller
         api_slug: controller
         http_port: "{{ api_port_id }}"
-        service_cluster: "{{ controller_sc.name }}"
+        service_cluster: "{{ controller_sc.service_cluster.name }}"
         is_service_https: true
         service_path: '/api/'
         service_port: 8043
@@ -163,7 +237,7 @@
 
     - name: Check existing does not change
       ansible.platform.service:
-        name: "{{ hub_service.id }}"
+        name: "{{ hub_service.service.name }}"
         order: 99
         state: exists
       register: exists_hub_service
@@ -175,9 +249,9 @@
 
     - name: Change the API version for controller
       ansible.platform.service:
-        name: "{{ controller_service.name }}"
+        name: "{{ controller_service.service.name }}"
         http_port: "{{ api_port_id }}"
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         is_service_https: true
         service_path: '/api/v3/'
         service_port: 8043
@@ -187,7 +261,7 @@
       ansible.builtin.assert:
         that:
           - change_controller_service is changed
-          - change_controller_service.id == change_controller_service.id
+          - change_controller_service.service.id == controller_service.service.id
 
     - name: Try to delete to a non-existent service
       ansible.platform.service:
@@ -202,7 +276,7 @@
 
     - name: Delete a service
       ansible.platform.service:
-        name: "{{ hub_service.name }}"
+        name: "{{ hub_service.service.name }}"
         state: absent
       register: delete
 
@@ -213,15 +287,15 @@
 
     - name: Rename Services
       ansible.platform.service:
-        name: "{{ controller_service.id }}"
-        new_name: "{{ controller_service.name }}-New"
+        name: "{{ controller_service.service.name }}"
+        new_name: "{{ controller_service.service.name }}-New"
       register: rename_controller_service
 
     - name: Assert that we changed the existing service
       ansible.builtin.assert:
         that:
           - rename_controller_service is changed
-          - rename_controller_service.id == controller_service.id
+          - rename_controller_service.service.id == controller_service.service.id
 
     ### Test request_timeout_seconds ###
     - name: Set request_timeout_seconds on a service
@@ -260,31 +334,44 @@
   always:
     # <Cleanup> -----------------------------------
     ### Delete Services ###
-    - name: Delete Services
+    # hub_service was explicitly deleted mid-test; this handles cases where the
+    # test aborted before that deletion.
+    - name: Delete hub service
       ansible.platform.service:
         state: absent
-        name: "{{ vars[item].id }}"
-      loop:
-        - "hub_service"
-        - "controller_service"
-      when: "item in vars and 'id' in vars[item]"
+        name: "{{ hub_service.service.name }}"
+      when: "hub_service is defined and 'service' in hub_service"
+
+    # controller_service may have been renamed; delete both the original and
+    # renamed forms so nothing is left behind regardless of how far the test got.
+    - name: Delete controller service (original name)
+      ansible.platform.service:
+        state: absent
+        name: "{{ controller_service.service.name }}"
+      when: "controller_service is defined and 'service' in controller_service"
+
+    - name: Delete controller service (renamed form, if rename succeeded)
+      ansible.platform.service:
+        state: absent
+        name: "{{ rename_controller_service.service.name }}"
+      when: "rename_controller_service is defined and 'service' in rename_controller_service"
 
     ### Delete Clusters ###
     - name: Delete Service Clusters
       ansible.platform.service_cluster:
         state: absent
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].service_cluster.name }}"
       loop:
         - "hub_sc"
         - "controller_sc"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'service_cluster' in vars[item]"
 
     ### Delete Ports ###
     - name: Delete Non-API Http Ports
       ansible.platform.http_port:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].http_port.name }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and 'http_port' in vars[item]"
       loop:
         - "port1"
         - "new_http_api_port"

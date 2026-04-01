@@ -1,0 +1,27 @@
+---
+- name: "Verify — role_definition (check)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Gather role_definition (check mode must not have applied changes)
+      ansible.platform.role_definition:
+        config:
+          - name: "{{ expected_config.name }}"
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered
+
+    - name: Assert int-roledef-alpha still has prepare_config values (check did not apply)
+      ansible.builtin.assert:
+        that:
+          - gathered.gathered is defined
+          - gathered.gathered | length > 0
+          - (gathered.gathered | first).description == prepare_config.description
+        fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
+
+...

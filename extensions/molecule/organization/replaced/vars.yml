@@ -1,0 +1,9 @@
+---
+prepare_config:
+  name: "int-org-alpha"
+  description: "Alpha initial"
+
+expected_config:
+  name: "int-org-alpha"
+  description: "Alpha replaced"
+...

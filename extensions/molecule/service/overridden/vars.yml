@@ -1,0 +1,13 @@
+---
+prepare_configs:
+  - name: "int-svc-alpha"
+    description: "Alpha service"
+  - name: "int-svc-beta"
+    description: "Beta service"
+  - name: "int-svc-gamma"
+    description: "Gamma seed"
+
+expected_config:
+  name: "int-svc-alpha"
+  description: "Alpha service"
+...

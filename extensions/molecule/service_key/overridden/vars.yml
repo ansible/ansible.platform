@@ -1,0 +1,13 @@
+---
+prepare_configs:
+  - name: "int-skey-alpha"
+    is_active: true
+  - name: "int-skey-beta"
+    is_active: true
+  - name: "int-skey-gamma"
+    is_active: true
+
+expected_config:
+  name: "int-skey-alpha"
+  is_active: true
+...

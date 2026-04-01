@@ -15,6 +15,74 @@
       gateway_validate_certs: "{{ gateway_validate_certs | default(omit) }}"
 
   block:
+    # Pre-cleanup: remove leftover resources from prior failed runs.
+    # Ports have a unique number constraint; routes depend on ports,
+    # so we must delete routes → clusters → service types → ports in order.
+    - name: Pre-cleanup - find leftover ports by number
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/http_ports/?number={{ item }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      loop: [9082, 8050]
+      register: _leftover_ports
+
+    - name: Pre-cleanup - collect leftover port IDs
+      ansible.builtin.set_fact:
+        _leftover_port_ids: >-
+          {{ _leftover_ports.results
+             | map(attribute='json')
+             | map(attribute='results')
+             | flatten
+             | map(attribute='id')
+             | list }}
+
+    - name: Pre-cleanup - find routes referencing leftover ports
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/routes/?http_port={{ item }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      loop: "{{ _leftover_port_ids }}"
+      register: _leftover_routes
+      when: _leftover_port_ids | length > 0
+
+    - name: Pre-cleanup - delete leftover routes
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}{{ item.url }}"
+        method: DELETE
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [204, 404]
+      loop: >-
+        {{ (_leftover_routes.results | default([]))
+           | selectattr('json', 'defined')
+           | map(attribute='json')
+           | map(attribute='results')
+           | flatten }}
+      when: _leftover_port_ids | length > 0
+      failed_when: false
+
+    - name: Pre-cleanup - delete leftover ports
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/http_ports/{{ item }}/"
+        method: DELETE
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [204, 404]
+      loop: "{{ _leftover_port_ids }}"
+      when: _leftover_port_ids | length > 0
+
     ### Create Http Port ###
     - name: Create Http Ports
       ansible.platform.http_port:
@@ -62,11 +130,11 @@
       vars:
         gateway_service_clusters:
           - name: "{{ test_id }}gateway"
-            service_type: "{{ __service_types_create_result.results[0].id }}"
+            service_type: "{{ __service_types_create_result.results[0].service_type.id }}"
           - name: "{{ test_id }}hub"
-            service_type: "{{ __service_types_create_result.results[1].id }}"
+            service_type: "{{ __service_types_create_result.results[1].service_type.id }}"
           - name: "{{ test_id }}controller"
-            service_type: "{{ __service_types_create_result.results[2].id }}"
+            service_type: "{{ __service_types_create_result.results[2].service_type.id }}"
 
     ### Create Routes ###
     - name: Create Routes with check mode
@@ -96,15 +164,21 @@
             service_port: 1234
       check_mode: true
 
-    - name: Search for the authenticator map and assert that it does not exist
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'routes',
-          query_params={'name': '{{ test_id }}Gateway Svc Route'}, **connection_info) }}"
+    - name: Search for the route and assert that it does not exist
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/routes/?name={{ test_id | urlencode }}Gateway%20Svc%20Route"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      register: route_search
 
     - name: Assert that Route does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - route_search.json.count == 0
         fail_msg: "Route '{{ test_id }}Gateway Svc Route' exists in the system!"
 
     - name: Create Routes
@@ -134,7 +208,7 @@
             service_port: 1234
           - name: "{{ test_id }}Gateway Svc Route 2"
             gateway_path: '/gw-svc-2/v1/'
-            http_port: "{{ __http_port_create_result.results[0].id }}"  # Port 9082
+            http_port: "{{ __http_port_create_result.results[0].http_port.id }}"  # Port 9082
             service_cluster: "{{ test_id }}gateway"
             is_service_https: true
             service_path: '/bbb/v2/'

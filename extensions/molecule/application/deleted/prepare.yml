@@ -1,0 +1,18 @@
+---
+- name: "Prepare — application (deleted)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Seed application to be deleted (prerequisite for deleted)
+      ansible.platform.application:
+        config:
+          - "{{ prepare_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+
+...

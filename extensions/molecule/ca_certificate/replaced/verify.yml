@@ -1,0 +1,32 @@
+---
+- name: "Verify — ca_certificate (replaced)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Gather ca_certificate (assert present after replaced)
+      ansible.platform.ca_certificate:
+        config:
+          - name: "{{ expected_config.name }}"
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered
+
+    - name: Assert configuration exists after replaced
+      ansible.builtin.assert:
+        that:
+          - gathered.gathered is defined
+          - gathered.gathered | length > 0
+        fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
+
+    - name: Assert pem_data was updated by replaced
+      ansible.builtin.assert:
+        that:
+          - (gathered.gathered | first).pem_data == expected_config.pem_data
+        fail_msg: "replaced should have set pem_data='LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t'. got: {{ (gathered.gathered | first).pem_data }}"
+
+...

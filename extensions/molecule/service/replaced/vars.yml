@@ -1,0 +1,9 @@
+---
+prepare_config:
+  name: "int-svc-alpha"
+  description: "Alpha service"
+
+expected_config:
+  name: "int-svc-alpha"
+  description: "Alpha service"
+...

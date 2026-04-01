@@ -1,0 +1,5 @@
+---
+expected_config:
+  name: "int-skey-alpha"
+  is_active: true
+...

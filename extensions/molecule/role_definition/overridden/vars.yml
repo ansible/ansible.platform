@@ -1,0 +1,25 @@
+---
+prepare_configs:
+  - name: "int-roledef-alpha"
+    description: "Alpha role definition"
+    content_type: "shared.team"
+    permissions:
+      - "view_organization"
+  - name: "int-roledef-beta"
+    description: "Beta role definition"
+    content_type: "shared.team"
+    permissions:
+      - "view_organization"
+  - name: "int-roledef-gamma"
+    description: "Gamma seed"
+    content_type: "shared.team"
+    permissions:
+      - "view_organization"
+
+expected_config:
+  name: "int-roledef-alpha"
+  description: "Alpha role definition"
+  content_type: "shared.team"
+  permissions:
+    - "view_organization"
+...

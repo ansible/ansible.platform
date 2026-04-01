@@ -1,0 +1,11 @@
+---
+prepare_config:
+  name: "int-team-alpha"
+  description: "Alpha team initial"
+  organization: 1
+
+expected_config:
+  name: "int-team-alpha"
+  description: "Alpha team replaced"
+  organization: 1
+...

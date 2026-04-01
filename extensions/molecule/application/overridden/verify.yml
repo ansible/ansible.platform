@@ -1,0 +1,31 @@
+---
+- name: "Verify — application (overridden)"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Gather all application resources (verify overridden final state)
+      ansible.platform.application:
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered_all
+
+    - name: Assert int-app-alpha still exists after overridden
+      ansible.builtin.assert:
+        that:
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("name", "equalto", "int-app-alpha") | list | length == 1
+        fail_msg: "Expected int-app-alpha to exist after overridden. got: {{ gathered_all.gathered }}"
+
+    - name: Assert int-app-beta was deleted by overridden (not in desired config)
+      ansible.builtin.assert:
+        that:
+          - gathered_all.gathered is defined
+          - gathered_all.gathered | selectattr("name", "equalto", "int-app-beta") | list | length == 0
+        fail_msg: "overridden should have deleted int-app-beta. got: {{ gathered_all.gathered }}"
+
+...

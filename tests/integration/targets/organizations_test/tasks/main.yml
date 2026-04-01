@@ -23,16 +23,23 @@
         name: "{{ organization_name }}"
       check_mode: true
 
-    - name: Search for the organization
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'organizations',
-          query_params={'name': '{{ organization_name }}'}, **connection_info) }}"
+    # Avoid gateway_api lookup (can crash worker). Use module state: exists instead.
+    - name: Check that organization does not exist
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+        state: exists
+      register: org_search
 
     - name: Assert that organization does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - not org_search.exists | default(false)
         fail_msg: "organization '{{ organization_name }}' exists in the system!"
+
+    - name: Ensure organization is absent before create (so create actually changes the system)
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+        state: absent
 
     - name: Create Organizations
       ansible.platform.organization:
@@ -57,7 +64,7 @@
 
     - name: Alter an existing organization by ID
       ansible.platform.organization:
-        name: "{{ org.id }}"
+        name: "{{ org.organization.id }}"
         description: "Some Organization"
       register: org_change
 
@@ -76,7 +83,7 @@
       ansible.builtin.assert:
         that:
           - rename_org is changed
-          - org.id == rename_org.id
+          - org.organization.id == rename_org.organization.id
 
     - name: Delete a non-existent organization
       ansible.platform.organization:
@@ -91,7 +98,7 @@
 
     - name: Delete an org
       ansible.platform.organization:
-        name: "{{ org.id }}"
+        name: "{{ org.organization.id }}"
         state: absent
       register: org_delete
 
@@ -108,7 +115,7 @@
       ansible.platform.organization:
         name: "{{ item }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
       loop:
         - "org"
 ...

@@ -1,0 +1,91 @@
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+python_files = ["test_*.py", "*_test.py"]
+
+# ---------------------------------------------------------------------------
+# Ruff — replaces flake8 + black + isort
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+exclude = [
+    ".tox",
+    "aap-dev",
+    "services",
+    "aap_gateway_api/migrations",
+    "django-ansible-base",
+]
+
+[tool.ruff.lint]
+# E/W: pycodestyle  F: pyflakes  I: isort
+select = ["E", "W", "F", "I"]
+# E203: whitespace before ':' — black-compatible, kept to match old flake8 config
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+# E402: Ansible boilerplate requires __metaclass__ = type before imports
+"plugins/modules/*" = ["E402"]
+"plugins/connection/*" = ["E402"]
+# F821: AnsibleXxx classes are imported inside from_api() function bodies
+# (local imports) and used as string annotations — ruff can't see them at
+# module scope. Proper fix is TYPE_CHECKING guards; suppressed for now.
+"plugins/plugin_utils/api/v1/*" = ["F821"]
+"plugins/plugin_utils/api/v2/*" = ["F821"]
+
+[tool.ruff.format]
+skip-magic-trailing-comma = false
+
+# ---------------------------------------------------------------------------
+# Mypy — static type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
+warn_return_any = false
+no_implicit_optional = true
+strict_optional = false
+# File-path exclusions (regex matched against absolute paths).
+# More reliable than module-name overrides when the internal module naming
+# depends on how mypy resolves the `plugins` namespace package.
+#
+# Excluded for the following reasons:
+#   plugins/modules/, plugins/module_utils/, plugins/lookup/
+#     → Ansible boilerplate — relative imports use Ansible's own resolver,
+#       not Python's, causing "Relative import climbs too many namespaces".
+#   plugins/plugin_utils/, plugins/connection/
+#     → Two structural type issues pending dedicated refactoring:
+#       1. Model classes stored as bare `type` instead of a typed Protocol/TypeVar
+#          (~30 "type has no attribute from_ansible_data" errors).
+#       2. Forward-reference issues in api/* model files ([name-defined]).
+#     Action plugins (plugins/action/) remain fully checked.
+exclude = [
+    "plugins/modules/",
+    "plugins/module_utils/",
+    "plugins/lookup/",
+    "plugins/plugin_utils/",
+    "plugins/connection/",
+]
+
+[[tool.mypy.overrides]]
+module = "ansible.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "ansible_collections.*"
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pydoclint — docstring style enforcement (Google style)
+# ---------------------------------------------------------------------------
+[tool.pydoclint]
+style = "google"
+exclude = '\.(tox|git)|aap-dev|services|migrations'
+skip-checking-short-docstrings = true
+allow-init-docstring = true
+# Disable type-hint enforcement — the existing codebase predates this requirement.
+# DOC105/109/110: type hints in docstring args don't match / are missing
+# DOC203: return type in docstring doesn't match annotation
+arg-type-hints-in-docstring = false
+# DOC501/503: Raises section missing or mismatched — not enforced on existing code
+skip-checking-raises = true
