@@ -87,6 +87,44 @@
         that:
           - failed_token is failed
 
+    - name: Create a token with openid scope
+      ansible.platform.token:
+        description: "{{ name_prefix }}-openid-token"
+        scope: openid
+      register: openid_token
+
+    - name: Assert that the openid token was created
+      ansible.builtin.assert:
+        that:
+          - openid_token is changed
+          - "'token' in aap_token"
+
+    - name: Create a token with roles scope
+      ansible.platform.token:
+        description: "{{ name_prefix }}-roles-token"
+        scope: roles
+      register: roles_token
+
+    - name: Assert that the roles token was created
+      ansible.builtin.assert:
+        that:
+          - roles_token is changed
+          - "'token' in aap_token"
+
+    - name: Create a token with openid + roles scopes
+      ansible.platform.token:
+        description: "{{ name_prefix }}-oidc-combined-token"
+        scope:
+          - openid
+          - roles
+      register: combined_token
+
+    - name: Assert that the combined scope token was created
+      ansible.builtin.assert:
+        that:
+          - combined_token is changed
+          - "'token' in aap_token"
+
     - name: Build an application token with an org
       ansible.platform.token:
         application: "{{ name_prefix }}-app1"
@@ -107,6 +145,9 @@
       loop:
         - "user_token"
         - "user_token_two"
+        - "openid_token"
+        - "roles_token"
+        - "combined_token"
         - "app_token"
       when: >-
         item in vars
