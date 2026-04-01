@@ -343,7 +343,7 @@ FIXTURES: Dict[str, ModuleFixture] = {
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
-      ignore_errors: true
+      failed_when: false
 """,
     ),
     "service": ModuleFixture(
@@ -1376,7 +1376,7 @@ def _gen_per_state_molecule_yml(state: str, fixture: "ModuleFixture") -> str:
         seq_items.append("verify")
     seq_items.append("cleanup")
 
-    seq_block = "\n".join(f"  - {item}" for item in seq_items)
+    seq_block = "\n".join(f"    - {item}" for item in seq_items)
 
     prepare_block = (
         "\nprovisioner:\n"
@@ -1704,7 +1704,7 @@ def _gen_per_state_cleanup_yml(
         ]
         lines.extend(_gw_params())
         lines += [
-            "      ignore_errors: true",
+            "      failed_when: false",
             "",
         ]
 

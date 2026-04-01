@@ -7,10 +7,10 @@ provisioner:
 
 scenario:
   test_sequence:
-  - prepare
-  - converge
-  - verify
-  - idempotence
-  - verify
-  - cleanup
+    - prepare
+    - converge
+    - verify
+    - idempotence
+    - verify
+    - cleanup
 ...

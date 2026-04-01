@@ -7,5 +7,7 @@ exclude_paths:
   - 'extensions/molecule/inventory.yml'
   - 'extensions/molecule/organization_mock/inventory.yml'
   - 'extensions/molecule/users_mock/inventory.yml'
+  # Per-module inventory files (also dicts, not playbooks)
+  - 'extensions/molecule/*/inventory.yml'
 use_default_rules: true
 ...
