@@ -1,10 +1,11 @@
 ---
-# Run all Molecule *_mock scenarios against the mock Gateway (no real AAP).
-# Each scenario spins up its own mock server, runs converge → verify → cleanup,
-# then tears down — fully parallel and independent.
+# Run all per-state Molecule scenarios against the mock Gateway (no real AAP).
+# Scenarios live under extensions/molecule/{module}/{state}/ (e.g. user/merged).
+# Each scenario is run in parallel against a shared mock server.
 #
-# New module scenarios are picked up automatically: add an extensions/molecule/*_mock/
-# directory with converge.yml + verify.yml and this workflow runs it on the next PR.
+# New module scenarios are picked up automatically: generate them with
+#   python tools/generate_integration_tests.py --all --per-state
+# and they will run on the next PR.
 name: molecule (mock)
 
 permissions:
@@ -13,30 +14,34 @@ permissions:
 on:
   pull_request:
   push:
-    branches: [devel, ANSTRAT-1640]
+    branches: [devel, platform_resource_modules]
 
 env:
   ANSIBLE_FORCE_COLOR: "1"
   PY_COLORS: "1"
 
 jobs:
-  # ── Discover all *_mock scenarios ──────────────────────────────────────────
+  # ── Discover all {module}/{state} scenarios ────────────────────────────────
   list-scenarios:
-    name: Discover mock scenarios
+    name: Discover per-state scenarios
     runs-on: ubuntu-latest
     outputs:
       scenarios: ${{ steps.list.outputs.scenarios }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: List *_mock scenario directories
+      - name: List {module}/{state} scenario directories
         id: list
         run: |
-          scenarios=$(ls extensions/molecule/ | grep '_mock$' | jq -R . | jq -sc .)
+          scenarios=$(find extensions/molecule -mindepth 3 -maxdepth 3 -name molecule.yml \
+            | sed 's|extensions/molecule/||;s|/molecule.yml||' \
+            | grep -v '^default' \
+            | sort \
+            | jq -R . | jq -sc .)
           echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
           echo "Found scenarios: $scenarios"
 
-  # ── Run each scenario in parallel, each with its own mock server ────────────
+  # ── Run each scenario in parallel against a shared mock server ─────────────
   molecule-mock:
     name: Molecule (${{ matrix.scenario }})
     needs: list-scenarios
