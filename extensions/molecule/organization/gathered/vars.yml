@@ -5,3 +5,4 @@ prepare_config:
 
 expected_config:
   name: "int-org-alpha"
+...

@@ -14,3 +14,4 @@ expected_config:
   name: "int-token-alpha"
   description: "Alpha token"
   scope: "read"
+...

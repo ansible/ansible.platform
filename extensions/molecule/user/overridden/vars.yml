@@ -27,3 +27,4 @@ expected_config:
   last_name: "Smith"
   email: "int-alice@test.example"
   is_superuser: false
+...

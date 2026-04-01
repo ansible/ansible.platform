@@ -6,3 +6,4 @@ prepare_config:
 expected_config:
   name: "int-route-alpha"
   description: "Alpha route updated"
+...

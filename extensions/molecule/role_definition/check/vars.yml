@@ -9,3 +9,4 @@ prepare_config:
 expected_config:
   name: "int-roledef-alpha"
   description: "Alpha role definition updated"
+...

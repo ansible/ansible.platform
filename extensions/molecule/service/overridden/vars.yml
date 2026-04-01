@@ -10,3 +10,4 @@ prepare_configs:
 expected_config:
   name: "int-svc-alpha"
   description: "Alpha service"
+...

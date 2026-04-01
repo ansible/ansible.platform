@@ -322,28 +322,28 @@ FIXTURES: Dict[str, ModuleFixture] = {
         extra_seeds=[{"name": "int-authmap-gamma", "authenticator": 3100, "revoke": False}],
         prepare_all_states=True,
         prereq_yaml="""\
-  - name: Seed prerequisite authenticator (required by all authenticator_map tests)
-    ansible.platform.authenticator:
-      config:
-      - name: "int-prereq-authn"
-        type: "ansible_base.authentication.authenticator_plugins.local"
-      state: merged
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    - name: Seed prerequisite authenticator (required by all authenticator_map tests)
+      ansible.platform.authenticator:
+        config:
+          - name: "int-prereq-authn"
+            type: "ansible_base.authentication.authenticator_plugins.local"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
 """,
         cleanup_prereq_yaml="""\
-  - name: Remove prerequisite authenticator (test teardown)
-    ansible.platform.authenticator:
-      config:
-      - name: "int-prereq-authn"
-      state: deleted
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
-    ignore_errors: true
+    - name: Remove prerequisite authenticator (test teardown)
+      ansible.platform.authenticator:
+        config:
+          - name: "int-prereq-authn"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      ignore_errors: true
 """,
     ),
     "service": ModuleFixture(
@@ -1342,10 +1342,10 @@ def _list_to_yaml_block(configs: List[dict], indent: int = 2) -> str:
 def _gw_params() -> List[str]:
     """Return the 4 shared gateway parameter task lines."""
     return [
-        '      gateway_hostname: "{{ gateway_hostname }}"',
-        '      gateway_username: "{{ gateway_username }}"',
-        '      gateway_password: "{{ gateway_password }}"',
-        '      gateway_validate_certs: "{{ gateway_validate_certs }}"',
+        '        gateway_hostname: "{{ gateway_hostname }}"',
+        '        gateway_username: "{{ gateway_username }}"',
+        '        gateway_password: "{{ gateway_password }}"',
+        '        gateway_validate_certs: "{{ gateway_validate_certs }}"',
     ]
 
 
@@ -1412,6 +1412,7 @@ def _gen_per_module_inventory_yml() -> str:
         "    gateway_under_test:\n"
         "      hosts:\n"
         "        localhost: {}\n"
+        "...\n"
     )
 
 
@@ -1460,6 +1461,7 @@ def _gen_per_state_vars_yml(
         lines.append("")
     lines.append("expected_config:")
     lines.append(_dict_to_yaml_block(expected, indent=2))
+    lines.append("...")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -1473,40 +1475,41 @@ def _gen_per_state_converge_yml(module_name: str, state: str) -> str:
         "  hosts: localhost",
         "  gather_facts: false",
         "  vars_files:",
-        "  - vars.yml",
+        "    - vars.yml",
         "  tasks:",
-        f'  - name: Run ansible.platform.{module_name} with state={op}',
-        f'    ansible.platform.{module_name}:',
-        "      config:",
-        '      - "{{ expected_config }}"',
-        f'      state: {op}',
+        f'    - name: Run ansible.platform.{module_name} with state={op}',
+        f'      ansible.platform.{module_name}:',
+        "        config:",
+        '          - "{{ expected_config }}"',
+        f'        state: {op}',
     ]
     lines.extend(_gw_params())
     if state == "check":
-        lines.append("    check_mode: true")
-        lines.append("    diff: true")
+        lines.append("      check_mode: true")
+        lines.append("      diff: true")
     lines.append("    register: result")
     lines.append("")
 
     if state == "check":
         lines += [
-            "  - name: Assert check mode predicted a change",
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - result.changed == true",
-            "      - result.before is defined",
-            "      - result.after is defined",
-            '      fail_msg: "check mode should predict a change. got={{ result }}"',
+            "    - name: Assert check mode predicted a change",
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - result.changed == true",
+            "          - result.before is defined",
+            "          - result.after is defined",
+            '        fail_msg: "check mode should predict a change. got={{ result }}"',
             "",
-            "  - name: Assert diff output is present",
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - result.diff is defined",
-            '      fail_msg: "diff output missing from check result"',
-            "    when: result.diff is defined",
+            "    - name: Assert diff output is present",
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - result.diff is defined",
+            '        fail_msg: "diff output missing from check result"',
+            "      when: result.diff is defined",
             "",
         ]
 
+    lines.append("...")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -1528,68 +1531,68 @@ def _gen_per_state_verify_yml(
         "  hosts: localhost",
         "  gather_facts: false",
         "  vars_files:",
-        "  - vars.yml",
+        "    - vars.yml",
         "  tasks:",
     ]
 
     if state == "deleted":
         # Gather by key — assert empty
         lines += [
-            f'  - name: Gather {module_name} (should be absent after deleted)',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            f'      - {cf}: "{r0_key}"',
-            "      state: gathered",
+            f'    - name: Gather {module_name} (should be absent after deleted)',
+            f'      ansible.platform.{module_name}:',
+            "        config:",
+            f'          - {cf}: "{r0_key}"',
+            "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
-            "    register: gathered",
+            "      register: gathered",
             "",
-            f'  - name: Assert {r0_key} no longer exists (deleted)',
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - gathered.gathered is defined",
-            "      - gathered.gathered | length == 0",
-            '      fail_msg: "Expected empty after deleted, got: {{ gathered.gathered }}"',
+            f'    - name: Assert {r0_key} no longer exists (deleted)',
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - gathered.gathered is defined",
+            "          - gathered.gathered | length == 0",
+            '        fail_msg: "Expected empty after deleted, got: {{ gathered.gathered }}"',
             "",
         ]
 
     elif state == "overridden":
         # Check target still exists
         lines += [
-            f'  - name: Gather target resource {r0_key} (should exist after overridden)',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            f'      - {cf}: "{r0_key}"',
-            "      state: gathered",
+            f'    - name: Gather target resource {r0_key} (should exist after overridden)',
+            f'      ansible.platform.{module_name}:',
+            "        config:",
+            f'          - {cf}: "{r0_key}"',
+            "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
-            "    register: gathered_target",
+            "      register: gathered_target",
             "",
-            f'  - name: Assert {r0_key} still exists after overridden',
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - gathered_target.gathered is defined",
-            "      - gathered_target.gathered | length == 1",
-            f'      fail_msg: "Expected {r0_key} to exist after overridden. got: {{{{ gathered_target.gathered }}}}"',
+            f'    - name: Assert {r0_key} still exists after overridden',
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - gathered_target.gathered is defined",
+            "          - gathered_target.gathered | length == 1",
+            f'        fail_msg: "Expected {r0_key} to exist after overridden. got: {{{{ gathered_target.gathered }}}}"',
             "",
-            f'  - name: Gather extra resource {r1_key} (should be deleted by overridden)',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            f'      - {cf}: "{r1_key}"',
-            "      state: gathered",
+            f'    - name: Gather extra resource {r1_key} (should be deleted by overridden)',
+            f'      ansible.platform.{module_name}:',
+            "        config:",
+            f'          - {cf}: "{r1_key}"',
+            "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
-            "    register: gathered_extra",
+            "      register: gathered_extra",
             "",
-            f'  - name: Assert {r1_key} was deleted by overridden (not in desired config)',
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - gathered_extra.gathered is defined",
-            "      - gathered_extra.gathered | length == 0",
-            f'      fail_msg: "overridden should have deleted {r1_key}. got: {{{{ gathered_extra.gathered }}}}"',
+            f'    - name: Assert {r1_key} was deleted by overridden (not in desired config)',
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - gathered_extra.gathered is defined",
+            "          - gathered_extra.gathered | length == 0",
+            f'        fail_msg: "overridden should have deleted {r1_key}. got: {{{{ gathered_extra.gathered }}}}"',
             "",
         ]
 
@@ -1597,50 +1600,50 @@ def _gen_per_state_verify_yml(
         # Verify that check mode did NOT alter the resource
         diff_field = _diff_field(r0, fixture.update_config, cf)
         lines += [
-            f'  - name: Gather {module_name} (check mode must not have applied changes)',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            f'      - {cf}: "{{{{ expected_config.{cf} }}}}"',
-            "      state: gathered",
+            f'    - name: Gather {module_name} (check mode must not have applied changes)',
+            f'      ansible.platform.{module_name}:',
+            "        config:",
+            f'          - {cf}: "{{{{ expected_config.{cf} }}}}"',
+            "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
-            "    register: gathered",
+            "      register: gathered",
             "",
-            f'  - name: Assert {r0_key} still has prepare_config values (check did not apply)',
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - gathered.gathered is defined",
-            "      - gathered.gathered | length > 0",
+            f'    - name: Assert {r0_key} still has prepare_config values (check did not apply)',
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - gathered.gathered is defined",
+            "          - gathered.gathered | length > 0",
         ]
         if diff_field:
             lines.append(
-                f'      - (gathered.gathered | first).{diff_field} == prepare_config.{diff_field}'
+                f'          - (gathered.gathered | first).{diff_field} == prepare_config.{diff_field}'
             )
         lines += [
-            '      fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"',
+            '        fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"',
             "",
         ]
 
     else:
         # merged / replaced / gathered — gather by key, assert present
         lines += [
-            f'  - name: Gather {module_name} (assert present after {state})',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            f'      - {cf}: "{{{{ expected_config.{cf} }}}}"',
-            "      state: gathered",
+            f'    - name: Gather {module_name} (assert present after {state})',
+            f'      ansible.platform.{module_name}:',
+            "        config:",
+            f'          - {cf}: "{{{{ expected_config.{cf} }}}}"',
+            "        state: gathered",
         ]
         lines.extend(_gw_params())
         lines += [
-            "    register: gathered",
+            "      register: gathered",
             "",
-            f'  - name: Assert configuration exists after {state}',
-            "    ansible.builtin.assert:",
-            "      that:",
-            "      - gathered.gathered is defined",
-            "      - gathered.gathered | length > 0",
-            f'      fail_msg: "Expected resource after {state}. got: {{{{ gathered.gathered }}}}"',
+            f'    - name: Assert configuration exists after {state}',
+            "      ansible.builtin.assert:",
+            "        that:",
+            "          - gathered.gathered is defined",
+            "          - gathered.gathered | length > 0",
+            f'        fail_msg: "Expected resource after {state}. got: {{{{ gathered.gathered }}}}"',
             "",
         ]
 
@@ -1650,14 +1653,15 @@ def _gen_per_state_verify_yml(
             if diff_field:
                 new_val = fixture.replaced_config.get(diff_field)
                 lines += [
-                    f'  - name: Assert {diff_field} was updated by replaced',
-                    "    ansible.builtin.assert:",
-                    "      that:",
-                    f'      - (gathered.gathered | first).{diff_field} == expected_config.{diff_field}',
-                    f'      fail_msg: "replaced should have set {diff_field}={new_val!r}. got: {{{{ (gathered.gathered | first).{diff_field} }}}}"',
+                    f'    - name: Assert {diff_field} was updated by replaced',
+                    "      ansible.builtin.assert:",
+                    "        that:",
+                    f'          - (gathered.gathered | first).{diff_field} == expected_config.{diff_field}',
+                    f'        fail_msg: "replaced should have set {diff_field}={new_val!r}. got: {{{{ (gathered.gathered | first).{diff_field} }}}}"',
                     "",
                 ]
 
+    lines.append("...")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -1678,29 +1682,29 @@ def _gen_per_state_cleanup_yml(
         "  hosts: localhost",
         "  gather_facts: false",
         "  vars_files:",
-        "  - vars.yml",
+        "    - vars.yml",
         "  tasks:",
     ]
 
     if state == "deleted":
         lines += [
-            f'  - name: No-op \u2014 {r0_key} already deleted by converge',
-            "    ansible.builtin.debug:",
-            f'      msg: "{r0_key} was deleted in converge \u2014 nothing to clean up"',
+            f'    - name: No-op \u2014 {r0_key} already deleted by converge',
+            "      ansible.builtin.debug:",
+            f'        msg: "{r0_key} was deleted in converge \u2014 nothing to clean up"',
             "",
         ]
     else:
         # overridden deletes r1/extras during converge; only r0 remains
         lines += [
-            f'  - name: Remove {r0_key} (test teardown)',
-            f'    ansible.platform.{module_name}:',
-            "      config:",
-            f'      - {cf}: "{r0_key}"',
-            "      state: deleted",
+            f'    - name: Remove {r0_key} (test teardown)',
+            f'      ansible.platform.{module_name}:',
+            "        config:",
+            f'          - {cf}: "{r0_key}"',
+            "        state: deleted",
         ]
         lines.extend(_gw_params())
         lines += [
-            "    ignore_errors: true",
+            "      ignore_errors: true",
             "",
         ]
 
@@ -1710,6 +1714,7 @@ def _gen_per_state_cleanup_yml(
             lines.append(line)
         lines.append("")
 
+    lines.append("...")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -1731,7 +1736,7 @@ def _gen_per_state_prepare_yml(
         "  hosts: localhost",
         "  gather_facts: false",
         "  vars_files:",
-        "  - vars.yml",
+        "    - vars.yml",
         "  tasks:",
     ]
 
@@ -1746,25 +1751,26 @@ def _gen_per_state_prepare_yml(
         if state == "overridden":
             # Seed multiple resources (r0, r1, extra seeds)
             lines += [
-                '  - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
-                f'    ansible.platform.{module_name}:',
-                "      config: \"{{ prepare_configs }}\"",
-                "      state: merged",
+                '    - name: Seed prerequisite resources via merged (r0 + r1 + extras for overridden)',
+                f'      ansible.platform.{module_name}:',
+                "        config: \"{{ prepare_configs }}\"",
+                "        state: merged",
             ]
         else:
             # Seed a single resource
             verb = {"replaced": "to be replaced", "deleted": "to be deleted",
                     "gathered": "to be gathered", "check": "as check-mode baseline"}[state]
             lines += [
-                f'  - name: Seed {module_name} {verb} (prerequisite for {state})',
-                f'    ansible.platform.{module_name}:',
-                "      config:",
-                '      - "{{ prepare_config }}"',
-                "      state: merged",
+                f'    - name: Seed {module_name} {verb} (prerequisite for {state})',
+                f'      ansible.platform.{module_name}:',
+                "        config:",
+                '          - "{{ prepare_config }}"',
+                "        state: merged",
             ]
         lines.extend(_gw_params())
 
     lines.append("")
+    lines.append("...")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 

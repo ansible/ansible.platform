@@ -9,3 +9,4 @@ prepare_config:
 
 expected_config:
   username: "int-user-alice"
+...

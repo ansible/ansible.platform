@@ -11,3 +11,4 @@ expected_config:
   username: "int-user-alice"
   last_name: "Johnson"
   email: "int-alice-updated@test.example"
+...

@@ -6,3 +6,4 @@ prepare_config:
 expected_config:
   name: "int-svc-alpha"
   description: "Alpha service updated"
+...

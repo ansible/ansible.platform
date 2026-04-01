@@ -3,22 +3,24 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Gather token (should be absent after deleted)
-    ansible.platform.token:
-      config:
-      - name: "int-token-alpha"
-      state: gathered
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
-    register: gathered
+    - name: Gather token (should be absent after deleted)
+      ansible.platform.token:
+        config:
+          - name: "int-token-alpha"
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered
 
-  - name: Assert int-token-alpha no longer exists (deleted)
-    ansible.builtin.assert:
-      that:
-      - gathered.gathered is defined
-      - gathered.gathered | length == 0
-      fail_msg: "Expected empty after deleted, got: {{ gathered.gathered }}"
+    - name: Assert int-token-alpha no longer exists (deleted)
+      ansible.builtin.assert:
+        that:
+          - gathered.gathered is defined
+          - gathered.gathered | length == 0
+        fail_msg: "Expected empty after deleted, got: {{ gathered.gathered }}"
+
+...

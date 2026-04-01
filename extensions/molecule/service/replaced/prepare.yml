@@ -3,14 +3,16 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Seed service to be replaced (prerequisite for replaced)
-    ansible.platform.service:
-      config:
-      - "{{ prepare_config }}"
-      state: merged
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    - name: Seed service to be replaced (prerequisite for replaced)
+      ansible.platform.service:
+        config:
+          - "{{ prepare_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+
+...

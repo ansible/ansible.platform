@@ -3,28 +3,30 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Gather http_port (assert present after replaced)
-    ansible.platform.http_port:
-      config:
-      - name: "{{ expected_config.name }}"
-      state: gathered
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
-    register: gathered
+    - name: Gather http_port (assert present after replaced)
+      ansible.platform.http_port:
+        config:
+          - name: "{{ expected_config.name }}"
+        state: gathered
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: gathered
 
-  - name: Assert configuration exists after replaced
-    ansible.builtin.assert:
-      that:
-      - gathered.gathered is defined
-      - gathered.gathered | length > 0
-      fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
+    - name: Assert configuration exists after replaced
+      ansible.builtin.assert:
+        that:
+          - gathered.gathered is defined
+          - gathered.gathered | length > 0
+        fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
 
-  - name: Assert use_https was updated by replaced
-    ansible.builtin.assert:
-      that:
-      - (gathered.gathered | first).use_https == expected_config.use_https
-      fail_msg: "replaced should have set use_https=False. got: {{ (gathered.gathered | first).use_https }}"
+    - name: Assert use_https was updated by replaced
+      ansible.builtin.assert:
+        that:
+          - (gathered.gathered | first).use_https == expected_config.use_https
+        fail_msg: "replaced should have set use_https=False. got: {{ (gathered.gathered | first).use_https }}"
+
+...

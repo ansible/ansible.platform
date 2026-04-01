@@ -3,8 +3,10 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: No-op — int-svc-alpha already deleted by converge
-    ansible.builtin.debug:
-      msg: "int-svc-alpha was deleted in converge — nothing to clean up"
+    - name: No-op — int-svc-alpha already deleted by converge
+      ansible.builtin.debug:
+        msg: "int-svc-alpha was deleted in converge — nothing to clean up"
+
+...

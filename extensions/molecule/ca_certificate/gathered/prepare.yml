@@ -3,14 +3,16 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Seed ca_certificate to be gathered (prerequisite for gathered)
-    ansible.platform.ca_certificate:
-      config:
-      - "{{ prepare_config }}"
-      state: merged
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    - name: Seed ca_certificate to be gathered (prerequisite for gathered)
+      ansible.platform.ca_certificate:
+        config:
+          - "{{ prepare_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+
+...

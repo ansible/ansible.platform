@@ -3,15 +3,17 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Run ansible.platform.role_definition with state=deleted
-    ansible.platform.role_definition:
-      config:
-      - "{{ expected_config }}"
-      state: deleted
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
+    - name: Run ansible.platform.role_definition with state=deleted
+      ansible.platform.role_definition:
+        config:
+          - "{{ expected_config }}"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
     register: result
+
+...

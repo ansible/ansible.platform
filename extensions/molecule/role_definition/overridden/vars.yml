@@ -22,3 +22,4 @@ expected_config:
   content_type: "shared.team"
   permissions:
     - "view_organization"
+...

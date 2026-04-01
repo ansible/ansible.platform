@@ -10,3 +10,4 @@ prepare_configs:
 expected_config:
   name: "int-uipr-alpha"
   description: "Alpha ui plugin route"
+...

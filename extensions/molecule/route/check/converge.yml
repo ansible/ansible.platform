@@ -3,32 +3,34 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Run ansible.platform.route with state=merged
-    ansible.platform.route:
-      config:
-      - "{{ expected_config }}"
-      state: merged
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
-    check_mode: true
-    diff: true
+    - name: Run ansible.platform.route with state=merged
+      ansible.platform.route:
+        config:
+          - "{{ expected_config }}"
+        state: merged
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      check_mode: true
+      diff: true
     register: result
 
-  - name: Assert check mode predicted a change
-    ansible.builtin.assert:
-      that:
-      - result.changed == true
-      - result.before is defined
-      - result.after is defined
-      fail_msg: "check mode should predict a change. got={{ result }}"
+    - name: Assert check mode predicted a change
+      ansible.builtin.assert:
+        that:
+          - result.changed == true
+          - result.before is defined
+          - result.after is defined
+        fail_msg: "check mode should predict a change. got={{ result }}"
 
-  - name: Assert diff output is present
-    ansible.builtin.assert:
-      that:
-      - result.diff is defined
-      fail_msg: "diff output missing from check result"
-    when: result.diff is defined
+    - name: Assert diff output is present
+      ansible.builtin.assert:
+        that:
+          - result.diff is defined
+        fail_msg: "diff output missing from check result"
+      when: result.diff is defined
+
+...

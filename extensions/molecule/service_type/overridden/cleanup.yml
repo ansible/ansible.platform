@@ -3,15 +3,17 @@
   hosts: localhost
   gather_facts: false
   vars_files:
-  - vars.yml
+    - vars.yml
   tasks:
-  - name: Remove int-stype-alpha (test teardown)
-    ansible.platform.service_type:
-      config:
-      - name: "int-stype-alpha"
-      state: deleted
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs }}"
-    ignore_errors: true
+    - name: Remove int-stype-alpha (test teardown)
+      ansible.platform.service_type:
+        config:
+          - name: "int-stype-alpha"
+        state: deleted
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      ignore_errors: true
+
+...

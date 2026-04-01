@@ -6,3 +6,4 @@ prepare_config:
 expected_config:
   name: "int-snode-alpha"
   address: "10.0.0.10"
+...
