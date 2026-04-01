@@ -1,8 +1,12 @@
 ---
 prepare_configs:
   - name: "int-snode-alpha"
+    address: "10.0.0.1"
   - name: "int-snode-beta"
+    address: "10.0.0.2"
   - name: "int-snode-gamma"
+    address: "10.0.0.3"
 
 expected_config:
   name: "int-snode-alpha"
+  address: "10.0.0.1"

@@ -2,3 +2,4 @@
 expected_config:
   name: "int-authmap-alpha"
   authenticator: 3100
+  revoke: false

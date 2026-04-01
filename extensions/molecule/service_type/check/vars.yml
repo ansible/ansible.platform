@@ -1,6 +1,8 @@
 ---
 prepare_config:
   name: "int-stype-alpha"
+  login_path: "/login"
 
 expected_config:
   name: "int-stype-alpha"
+  login_path: "/login-updated"

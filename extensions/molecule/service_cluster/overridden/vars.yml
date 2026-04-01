@@ -1,8 +1,12 @@
 ---
 prepare_configs:
   - name: "int-cluster-alpha"
+    outlier_detection_enabled: false
   - name: "int-cluster-beta"
+    outlier_detection_enabled: false
   - name: "int-cluster-gamma"
+    outlier_detection_enabled: false
 
 expected_config:
   name: "int-cluster-alpha"
+  outlier_detection_enabled: false

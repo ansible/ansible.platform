@@ -1,6 +1,8 @@
 ---
 prepare_config:
   name: "int-cluster-alpha"
+  outlier_detection_enabled: false
 
 expected_config:
   name: "int-cluster-alpha"
+  outlier_detection_enabled: true

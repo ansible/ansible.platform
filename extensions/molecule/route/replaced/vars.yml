@@ -1,6 +1,8 @@
 ---
 prepare_config:
   name: "int-route-alpha"
+  description: "Alpha route"
 
 expected_config:
   name: "int-route-alpha"
+  description: "Alpha route"

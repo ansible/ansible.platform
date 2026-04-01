@@ -23,3 +23,9 @@
       - gathered.gathered | length > 0
       fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
 
+  - name: Assert address was updated by replaced
+    ansible.builtin.assert:
+      that:
+      - (gathered.gathered | first).address == expected_config.address
+      fail_msg: "replaced should have set address='10.0.0.1'. got: {{ (gathered.gathered | first).address }}"
+

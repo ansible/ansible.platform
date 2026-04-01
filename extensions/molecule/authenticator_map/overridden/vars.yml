@@ -2,11 +2,15 @@
 prepare_configs:
   - name: "int-authmap-alpha"
     authenticator: 3100
+    revoke: false
   - name: "int-authmap-beta"
     authenticator: 3100
+    revoke: false
   - name: "int-authmap-gamma"
     authenticator: 3100
+    revoke: false
 
 expected_config:
   name: "int-authmap-alpha"
   authenticator: 3100
+  revoke: false

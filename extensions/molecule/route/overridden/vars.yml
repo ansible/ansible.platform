@@ -1,8 +1,12 @@
 ---
 prepare_configs:
   - name: "int-route-alpha"
+    description: "Alpha route"
   - name: "int-route-beta"
+    description: "Beta route"
   - name: "int-route-gamma"
+    description: "Gamma seed"
 
 expected_config:
   name: "int-route-alpha"
+  description: "Alpha route"

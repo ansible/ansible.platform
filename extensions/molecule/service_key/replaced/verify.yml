@@ -23,3 +23,9 @@
       - gathered.gathered | length > 0
       fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
 
+  - name: Assert is_active was updated by replaced
+    ansible.builtin.assert:
+      that:
+      - (gathered.gathered | first).is_active == expected_config.is_active
+      fail_msg: "replaced should have set is_active=True. got: {{ (gathered.gathered | first).is_active }}"
+

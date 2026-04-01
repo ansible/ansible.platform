@@ -1,8 +1,12 @@
 ---
 prepare_configs:
   - name: "int-cert-alpha"
+    pem_data: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"
   - name: "int-cert-beta"
+    pem_data: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"
   - name: "int-cert-gamma"
+    pem_data: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"
 
 expected_config:
   name: "int-cert-alpha"
+  pem_data: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t"

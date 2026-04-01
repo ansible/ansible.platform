@@ -1,6 +1,8 @@
 ---
 prepare_config:
   name: "int-uipr-alpha"
+  description: "Alpha ui plugin route"
 
 expected_config:
   name: "int-uipr-alpha"
+  description: "Alpha ui plugin route"

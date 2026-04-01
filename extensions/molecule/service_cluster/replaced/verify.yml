@@ -23,3 +23,9 @@
       - gathered.gathered | length > 0
       fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
 
+  - name: Assert outlier_detection_enabled was updated by replaced
+    ansible.builtin.assert:
+      that:
+      - (gathered.gathered | first).outlier_detection_enabled == expected_config.outlier_detection_enabled
+      fail_msg: "replaced should have set outlier_detection_enabled=False. got: {{ (gathered.gathered | first).outlier_detection_enabled }}"
+

@@ -23,3 +23,9 @@
       - gathered.gathered | length > 0
       fail_msg: "Expected resource after replaced. got: {{ gathered.gathered }}"
 
+  - name: Assert login_path was updated by replaced
+    ansible.builtin.assert:
+      that:
+      - (gathered.gathered | first).login_path == expected_config.login_path
+      fail_msg: "replaced should have set login_path='/login'. got: {{ (gathered.gathered | first).login_path }}"
+

@@ -1,8 +1,12 @@
 ---
 prepare_configs:
   - name: "int-uipr-alpha"
+    description: "Alpha ui plugin route"
   - name: "int-uipr-beta"
+    description: "Beta ui plugin route"
   - name: "int-uipr-gamma"
+    description: "Gamma seed"
 
 expected_config:
   name: "int-uipr-alpha"
+  description: "Alpha ui plugin route"

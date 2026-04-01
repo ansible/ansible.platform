@@ -21,5 +21,6 @@
       that:
       - gathered.gathered is defined
       - gathered.gathered | length > 0
+      - (gathered.gathered | first).is_active == prepare_config.is_active
       fail_msg: "check mode should not alter resource. got: {{ gathered.gathered }}"
 
