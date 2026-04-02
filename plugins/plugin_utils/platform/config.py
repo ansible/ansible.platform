@@ -111,9 +111,17 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         gateway_token = gateway_token_raw
     gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
     gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
-    gateway_idle_timeout = task_args.get("gateway_idle_timeout")
-    if gateway_idle_timeout is None:
-        gateway_idle_timeout = host_vars.get("gateway_idle_timeout") or host_vars.get("ansible_platform_manager_idle_timeout")
+    # How long (seconds) the persistent manager process may sit idle — i.e. receive
+    # no RPC or API traffic — before it shuts itself down and removes its socket.
+    # This prevents orphaned manager processes from accumulating across playbook runs.
+    # Default: 3600 s (1 hour).  Set to 0 to disable idle-based shutdown entirely.
+    # Accepted variable names (task arg takes priority over host var):
+    #   gateway_idle_timeout  /  ansible_platform_manager_idle_timeout
+    gateway_idle_timeout = (
+        task_args.get("gateway_idle_timeout")
+        or host_vars.get("gateway_idle_timeout")
+        or host_vars.get("ansible_platform_manager_idle_timeout")
+    )
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
     connection_mode = task_args.get("platform_connection_mode") or host_vars.get("platform_connection_mode") or "standard"
 
@@ -127,7 +135,7 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s", gateway_url, auth_method, gateway_validate_certs, gateway_request_timeout
     )
 
-    config_kwargs = dict(
+    config = GatewayConfig(
         base_url=gateway_url or "",
         username=gateway_username,
         password=gateway_password,
@@ -135,11 +143,8 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         verify_ssl=gateway_validate_certs,
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
+        idle_timeout=float(gateway_idle_timeout) if gateway_idle_timeout is not None else 3600.0,
     )
-    if gateway_idle_timeout is not None:
-        config_kwargs["idle_timeout"] = float(gateway_idle_timeout)
-
-    config = GatewayConfig(**config_kwargs)
 
     logger.debug("GatewayConfig created successfully")
     return config

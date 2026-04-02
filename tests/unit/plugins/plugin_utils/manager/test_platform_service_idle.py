@@ -93,6 +93,153 @@ class TestPlatformServiceIdle(unittest.TestCase):
             self.assertEqual(self.platform_service.seconds_since_last_activity(), 5.0)
 
 
+class TestPlatformServiceIdleTokenExpiry(unittest.TestCase):
+    """Idle timeout behaviour when OAuth tokens expire.
+
+    Key design invariant under test:
+      - should_exit_for_idle() is PURELY time-based — token state is irrelevant.
+      - record_activity() is called at the TOP of _make_request(), BEFORE the HTTP
+        call, so even a request that returns 401 (expired token) resets the idle clock.
+      - Internal token refresh / re-authentication does NOT call record_activity(),
+        so background auth work never keeps the manager alive artificially.
+    """
+
+    def setUp(self):
+        self.svc = _make_platform_service()
+
+    # ------------------------------------------------------------------
+    # 1. Expired token alone does not suppress idle exit
+    # ------------------------------------------------------------------
+
+    def test_expired_token_alone_does_not_suppress_idle_exit(self):
+        """If the token expires passively (no incoming request), idle timeout still fires."""
+        self.svc.config.idle_timeout = 10.0
+        with patch("time.monotonic", return_value=1000.0):
+            self.svc.record_activity()
+
+        # Simulate the credential store reporting an expired token
+        with patch.object(self.svc, "_check_token_expiration", return_value=(True, -60.0)):
+            with patch("time.monotonic", return_value=1020.0):
+                self.assertTrue(self.svc.should_exit_for_idle())
+
+    def test_expired_token_does_not_prevent_idle_exit_when_no_traffic(self):
+        """No requests → no record_activity() → idle fires regardless of token state."""
+        self.svc.config.idle_timeout = 5.0
+        with patch("time.monotonic", return_value=500.0):
+            self.svc.record_activity()
+
+        # Simulate oauth_token being wiped (e.g. after expiry) but no new request
+        self.svc.oauth_token = None
+
+        with patch("time.monotonic", return_value=510.0):
+            self.assertTrue(self.svc.should_exit_for_idle())
+
+    # ------------------------------------------------------------------
+    # 2. A request that hits a 401 still resets the idle timer
+    # ------------------------------------------------------------------
+
+    def test_401_response_still_resets_idle_timer(self):
+        """record_activity() fires before the HTTP call, so 401s reset the idle clock."""
+        self.svc.config.idle_timeout = 10.0
+
+        # Anchor "last activity" far in the past
+        with patch("time.monotonic", return_value=0.0):
+            self.svc.record_activity()
+
+        # Mock a 401 followed by a successful retry after re-auth
+        mock_401 = MagicMock()
+        mock_401.status_code = 401
+        mock_401.text = "Unauthorized"
+
+        mock_200 = MagicMock()
+        mock_200.status_code = 200
+        mock_200.text = ""
+
+        self.svc.session.get = MagicMock(side_effect=[mock_401, mock_200])
+
+        with patch.object(self.svc, "_handle_auth_error", return_value=True):
+            with patch("time.monotonic", return_value=999.0):
+                try:
+                    self.svc._make_request("get", "https://gw/api/gateway/v1/users/")
+                except Exception:
+                    pass
+                # record_activity() was called at t=999 inside _make_request
+                self.assertAlmostEqual(self.svc.seconds_since_last_activity(), 0.0, delta=0.1)
+
+    def test_idle_not_exceeded_immediately_after_request_with_expired_token(self):
+        """After any request (even a 401 one), idle timeout should not fire until inactivity resumes."""
+        self.svc.config.idle_timeout = 5.0
+
+        with patch("time.monotonic", return_value=100.0):
+            # Simulate record_activity() being called (as _make_request does at its start)
+            self.svc.record_activity()
+
+        # Only 2 s have passed since the last (simulated) request
+        with patch("time.monotonic", return_value=102.0):
+            self.assertFalse(self.svc.should_exit_for_idle())
+
+    # ------------------------------------------------------------------
+    # 3. should_exit_for_idle() is purely time-based
+    # ------------------------------------------------------------------
+
+    def test_should_exit_for_idle_same_result_for_valid_and_expired_token(self):
+        """Token validity is invisible to should_exit_for_idle() — only elapsed time matters."""
+        self.svc.config.idle_timeout = 5.0
+        with patch("time.monotonic", return_value=500.0):
+            self.svc.record_activity()
+
+        with patch("time.monotonic", return_value=510.0):
+            with patch.object(self.svc, "_check_token_expiration", return_value=(False, 3600.0)):
+                result_valid_token = self.svc.should_exit_for_idle()
+            with patch.object(self.svc, "_check_token_expiration", return_value=(True, -30.0)):
+                result_expired_token = self.svc.should_exit_for_idle()
+
+        self.assertEqual(result_valid_token, result_expired_token)
+        self.assertTrue(result_valid_token, "idle timeout should have fired after 10 s > 5 s threshold")
+
+    def test_should_exit_for_idle_false_within_threshold_regardless_of_token(self):
+        """Within the idle window, should_exit_for_idle() is False even if token is expired."""
+        self.svc.config.idle_timeout = 60.0
+        with patch("time.monotonic", return_value=200.0):
+            self.svc.record_activity()
+
+        with patch("time.monotonic", return_value=210.0):  # only 10 s elapsed
+            with patch.object(self.svc, "_check_token_expiration", return_value=(True, -5.0)):
+                self.assertFalse(self.svc.should_exit_for_idle())
+
+    # ------------------------------------------------------------------
+    # 4. Internal re-auth alone does NOT reset the idle timer
+    # ------------------------------------------------------------------
+
+    def test_re_authenticate_alone_does_not_reset_idle_timer(self):
+        """_re_authenticate() handles auth internally and must not extend the idle lease."""
+        self.svc.config.idle_timeout = 5.0
+        with patch("time.monotonic", return_value=1000.0):
+            self.svc.record_activity()
+
+        # Call _re_authenticate() without going through _make_request
+        with patch.object(self.svc, "_authenticate", return_value=None):
+            self.svc._re_authenticate()
+
+        # No call to record_activity() happened, so idle should fire after threshold
+        with patch("time.monotonic", return_value=1010.0):
+            self.assertTrue(self.svc.should_exit_for_idle())
+
+    def test_refresh_token_alone_does_not_reset_idle_timer(self):
+        """_refresh_token() makes an HTTP call but must not extend the idle lease on its own."""
+        self.svc.config.idle_timeout = 5.0
+        with patch("time.monotonic", return_value=2000.0):
+            self.svc.record_activity()
+
+        # Call _refresh_token() directly (simulating an internal proactive refresh)
+        with patch.object(self.svc, "_authenticate", return_value=None):
+            with patch.object(self.svc.credential_store, "token_info", None):
+                self.svc._refresh_token()  # returns False (no token_info) without recording activity
+
+        with patch("time.monotonic", return_value=2010.0):
+            self.assertTrue(self.svc.should_exit_for_idle())
+
+
 class TestProcessManagerIdleArgv(unittest.TestCase):
     def test_spawn_manager_includes_idle_timeout_in_command(self):
         cfg = GatewayConfig(base_url="https://example.com/", username="u", password="p", idle_timeout=123.0)

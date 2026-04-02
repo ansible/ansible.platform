@@ -12,7 +12,45 @@ import sys
 import traceback
 from pathlib import Path
 
-MANAGER_IDLE_POLL_INTERVAL = int(os.environ.get("ANSIBLE_PLATFORM_IDLE_POLL_SECONDS", "60"))
+def _compute_poll_interval(idle_timeout: float) -> int:
+    """Return the idle-monitor sleep interval derived from the configured timeout.
+
+    The interval is set to 10 % of ``idle_timeout`` so the manager checks
+    roughly 10 times per timeout window, giving a worst-case overshoot of
+    one poll interval (10 % of the timeout) instead of a fixed 60 s.
+
+    Bounds:
+      - Floor: 5 s  — avoids busy-looping for very short timeouts (e.g. tests).
+      - Cap:  60 s  — avoids infrequent checks for very long timeouts.
+      - ``idle_timeout <= 0`` (disabled): returns 60 s (interval is irrelevant).
+
+    The ``ANSIBLE_PLATFORM_IDLE_POLL_SECONDS`` environment variable overrides
+    this calculation entirely and is intended only for test environments where
+    a sub-second or very short poll period is needed.
+    """
+    env_override = os.environ.get("ANSIBLE_PLATFORM_IDLE_POLL_SECONDS")
+    if env_override is not None:
+        return int(env_override)
+    if idle_timeout <= 0:
+        return 60
+    return max(5, min(60, int(idle_timeout / 10)))
+
+_SENSITIVE_ARGV_POSITIONS = {5, 6, 7}
+
+
+def _redact_argv(argv=None):
+    """Return a copy of argv with credential positions replaced by '<redacted>'.
+
+    Always safe to log — sensitive positions (username, password, token) are
+    replaced even when the value is an empty string, so length cannot be inferred.
+    """
+    if argv is None:
+        argv = sys.argv
+    redacted = list(argv)
+    for i in _SENSITIVE_ARGV_POSITIONS:
+        if i < len(redacted) and redacted[i]:
+            redacted[i] = "<redacted>"
+    return redacted
 
 
 def main():
@@ -31,13 +69,13 @@ def main():
         marker = Path("/tmp/ansible_platform_manager_started.txt")
         with open(marker, "a") as f:
             f.write(f"Script started with {len(sys.argv)} args\n")
-            f.write(f"Args: {_safe_argv()}\n")
+            f.write(f"Args: {_redact_argv()}\n")
     except Exception:
         pass
 
     if len(sys.argv) < 10:
         print(f"ERROR: Expected at least 9 args (optional 10th: idle_timeout), got {len(sys.argv) - 1}", file=sys.stderr)
-        print(f"Args received: {sys.argv}", file=sys.stderr)
+        print(f"Args received: {_redact_argv()}", file=sys.stderr)
         sys.exit(1)
 
     marker = Path("/tmp/ansible_platform_manager_started.txt")
@@ -339,6 +377,8 @@ def main():
         _init_thread = threading.Thread(target=_init_service, daemon=True)
         _init_thread.start()
 
+        idle_poll_interval = _compute_poll_interval(config.idle_timeout)
+
         if float(config.idle_timeout) > 0:
 
             def _idle_monitor():
@@ -347,7 +387,7 @@ def main():
                 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 
                 while True:
-                    _time.sleep(MANAGER_IDLE_POLL_INTERVAL)
+                    _time.sleep(idle_poll_interval)
                     if not _service_ready.is_set():
                         continue
                     svc = _service_container.get("service")
@@ -389,7 +429,7 @@ def main():
             _idle_thread = threading.Thread(target=_idle_monitor, daemon=True, name="idle-timeout")
             _idle_thread.start()
             with open(error_log, "a") as f:
-                f.write(f"Idle timeout monitor started (interval={MANAGER_IDLE_POLL_INTERVAL}s, idle_timeout={config.idle_timeout}s)\n")
+                f.write(f"Idle timeout monitor started (interval={idle_poll_interval}s, idle_timeout={config.idle_timeout}s)\n")
                 f.flush()
 
         try:
