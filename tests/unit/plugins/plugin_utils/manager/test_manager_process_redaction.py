@@ -21,7 +21,9 @@ from unittest.mock import patch
 # we need the collections parent on sys.path (conftest.py handles this when
 # running via pytest; unittest needs it done here too).
 # ---------------------------------------------------------------------------
-_COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent.parent)
+_COLLECTIONS_PARENT = str(
+    Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent.parent
+)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
 
@@ -36,16 +38,16 @@ def _make_argv(username="admin", password="s3cr3t!", token="tok123"):
     """Return a representative argv list matching manager_process argument layout."""
     return [
         "/path/to/manager_process.py",  # 0: script
-        "/tmp/ap/manager.sock",          # 1: socket_path
-        "/tmp/ap",                       # 2: socket_dir
-        "localhost",                     # 3: inventory_hostname
-        "https://gateway.example/",      # 4: gateway_url
-        username,                        # 5: gateway_username  ← sensitive
-        password,                        # 6: gateway_password  ← sensitive
-        token,                           # 7: gateway_token     ← sensitive
-        "true",                          # 8: validate_certs
-        "10.0",                          # 9: request_timeout
-        "3600.0",                        # 10: idle_timeout
+        "/tmp/ap/manager.sock",  # 1: socket_path
+        "/tmp/ap",  # 2: socket_dir
+        "localhost",  # 3: inventory_hostname
+        "https://gateway.example/",  # 4: gateway_url
+        username,  # 5: gateway_username  ← sensitive
+        password,  # 6: gateway_password  ← sensitive
+        token,  # 7: gateway_token     ← sensitive
+        "true",  # 8: validate_certs
+        "10.0",  # 9: request_timeout
+        "3600.0",  # 10: idle_timeout
     ]
 
 
@@ -114,7 +116,11 @@ class TestComputePollInterval(unittest.TestCase):
 
     def test_no_env_var_uses_formula(self):
         """Without the env var, the formula applies normally."""
-        env = {k: v for k, v in os.environ.items() if k != "ANSIBLE_PLATFORM_IDLE_POLL_SECONDS"}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k != "ANSIBLE_PLATFORM_IDLE_POLL_SECONDS"
+        }
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(_compute_poll_interval(300.0), 30)
 
@@ -210,8 +216,15 @@ class TestRedactArgvInStartupLog(unittest.TestCase):
         try:
             with patch.object(sys, "argv", fake_argv):
                 with patch(
-                    "ansible_collections.ansible.platform.plugins.plugin_utils.manager.manager_process.Path",
-                    side_effect=lambda p: fake_marker if "ansible_platform_manager_started" in str(p) else Path(p),
+                    (
+                        "ansible_collections.ansible.platform.plugins."
+                        "plugin_utils.manager.manager_process.Path"
+                    ),
+                    side_effect=lambda p: (
+                        fake_marker
+                        if "ansible_platform_manager_started" in str(p)
+                        else Path(p)
+                    ),
                 ):
                     with fake_marker.open("w") as _f:
                         _f.write(f"Script started with {len(sys.argv)} args\n")
@@ -229,7 +242,9 @@ class TestRedactArgvInStartupLog(unittest.TestCase):
 
     def test_stderr_error_path_does_not_contain_password(self):
         """The early-exit print (too few args) must use _redact_argv()."""
-        fake_argv = _make_argv(password="plaintext_password")[:5]  # too short → error path
+        fake_argv = _make_argv(password="plaintext_password")[
+            :5
+        ]  # too short → error path
         captured = io.StringIO()
 
         # Simulate the error-path print

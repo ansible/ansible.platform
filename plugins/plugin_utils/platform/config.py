@@ -33,7 +33,11 @@ class GatewayConfig:
         original_url = self.base_url
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
-            logger.debug("Normalized gateway URL: %s -> %s", original_url, self.base_url)
+            logger.debug(
+                "Normalized gateway URL: %s -> %s",
+                original_url,
+                self.base_url,
+            )
         logger.info(
             "GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s, idle_timeout=%s",
             self.base_url,
@@ -61,7 +65,11 @@ class GatewayConfig:
         return url
 
 
-def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars: Optional[Dict[str, Any]] = None, required: bool = True) -> GatewayConfig:
+def extract_gateway_config(
+    task_args: Optional[Dict[str, Any]] = None,
+    host_vars: Optional[Dict[str, Any]] = None,
+    required: bool = True,
+) -> GatewayConfig:
     """
     Extract gateway configuration from task arguments and host variables.
 
@@ -83,15 +91,32 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
     task_args = task_args or {}
     host_vars = host_vars or {}
 
-    logger.debug("Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)", list(task_args.keys()), list(host_vars.keys()))
+    logger.debug(
+        "Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)",
+        list(task_args.keys()),
+        list(host_vars.keys()),
+    )
 
     # Get gateway URL from task args first, then host_vars
-    gateway_url = task_args.get("gateway_url") or task_args.get("gateway_hostname") or host_vars.get("gateway_url") or host_vars.get("gateway_hostname")
+    gateway_url = (
+        task_args.get("gateway_url")
+        or task_args.get("gateway_hostname")
+        or host_vars.get("gateway_url")
+        or host_vars.get("gateway_hostname")
+    )
     logger.debug("Gateway URL extracted: %s", gateway_url)
 
     # Get auth parameters from task args first, then host_vars
-    gateway_username = task_args.get("gateway_username") or host_vars.get("gateway_username") or host_vars.get("aap_username")
-    gateway_password = task_args.get("gateway_password") or host_vars.get("gateway_password") or host_vars.get("aap_password")
+    gateway_username = (
+        task_args.get("gateway_username")
+        or host_vars.get("gateway_username")
+        or host_vars.get("aap_username")
+    )
+    gateway_password = (
+        task_args.get("gateway_password")
+        or host_vars.get("gateway_password")
+        or host_vars.get("aap_password")
+    )
     gateway_token_raw = (
         task_args.get("gateway_token")
         or host_vars.get("gateway_token")
@@ -101,7 +126,11 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         # in aap_token after creation; picking it up here would cause all
         # subsequent tasks in the same play to authenticate as that limited token
         # instead of the admin user, leading to 403 errors.
-        (host_vars.get("aap_token") if not gateway_username and not gateway_password else None)
+        (
+            host_vars.get("aap_token")
+            if not gateway_username and not gateway_password
+            else None
+        )
     )
     # The token module sets aap_token as a dict ({"token": "...", "id": ...}).
     # Extract the actual token string if we got a dict.
@@ -109,8 +138,16 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         gateway_token = gateway_token_raw.get("token")
     else:
         gateway_token = gateway_token_raw
-    gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
-    gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
+    gateway_validate_certs = (
+        task_args.get("gateway_validate_certs")
+        if "gateway_validate_certs" in task_args
+        else host_vars.get("gateway_validate_certs", True)
+    )
+    gateway_request_timeout = (
+        task_args.get("gateway_request_timeout")
+        or host_vars.get("gateway_request_timeout")
+        or 10.0
+    )
     # How long (seconds) the persistent manager process may sit idle — i.e. receive
     # no RPC or API traffic — before it shuts itself down and removes its socket.
     # This prevents orphaned manager processes from accumulating across playbook runs.
@@ -123,16 +160,32 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         or host_vars.get("ansible_platform_manager_idle_timeout")
     )
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
-    connection_mode = task_args.get("platform_connection_mode") or host_vars.get("platform_connection_mode") or "standard"
+    connection_mode = (
+        task_args.get("platform_connection_mode")
+        or host_vars.get("platform_connection_mode")
+        or "standard"
+    )
 
     if required and not gateway_url:
         logger.error("Gateway URL is required but not found in task_args or host_vars")
-        raise ValueError("gateway_url or gateway_hostname must be provided as task parameter or defined in inventory")
+        raise ValueError(
+            "gateway_url or gateway_hostname must be provided "
+            "as task parameter or defined in inventory"
+        )
 
     # Log auth method being used (without exposing secrets)
-    auth_method = "token" if gateway_token else ("username/password" if gateway_username else "none")
+    if gateway_token:
+        auth_method = "token"
+    elif gateway_username:
+        auth_method = "username/password"
+    else:
+        auth_method = "none"
     logger.info(
-        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s", gateway_url, auth_method, gateway_validate_certs, gateway_request_timeout
+        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s",
+        gateway_url,
+        auth_method,
+        gateway_validate_certs,
+        gateway_request_timeout,
     )
 
     config = GatewayConfig(
@@ -143,7 +196,11 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         verify_ssl=gateway_validate_certs,
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
-        idle_timeout=float(gateway_idle_timeout) if gateway_idle_timeout is not None else 3600.0,
+        idle_timeout=(
+            float(gateway_idle_timeout)
+            if gateway_idle_timeout is not None
+            else 3600.0
+        ),
     )
 
     logger.debug("GatewayConfig created successfully")
