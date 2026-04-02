@@ -8,9 +8,9 @@ This is executed as a separate process via subprocess to avoid multiprocessing i
 import base64
 import json
 import os
+from pathlib import Path
 import sys
 import traceback
-from pathlib import Path
 
 def _compute_poll_interval(idle_timeout: float) -> int:
     """Return the idle-monitor sleep interval derived from the configured timeout.
@@ -293,22 +293,6 @@ def main():
             except ValueError:
                 pass
 
-        # ------------------------------------------------------------------ #
-        # Watchdog — decides when the manager should shut down.              #
-        #                                                                    #
-        # Two modes, selected at startup:                                    #
-        #                                                                    #
-        #  Production (no .survive flag):                                    #
-        #    Poll os.kill(owner_pid, 0) every 3 s.  Exit when the main      #
-        #    ansible-playbook process (owner_pid) is gone.                   #
-        #                                                                    #
-        #  Molecule (.survive flag present in socket_dir at startup):        #
-        #    Poll for the flag file's existence every 2 s.  Exit when        #
-        #    destroy.yml removes it.  The owner PID is not used — each       #
-        #    Molecule phase (converge / verify / cleanup) is a separate      #
-        #    ansible-playbook invocation, so the watchdog must not fire       #
-        #    between phases.                                                  #
-        # ------------------------------------------------------------------ #
         _survive_path = Path(socket_dir) / ".survive"
         _survive_mode = _survive_path.exists()
 

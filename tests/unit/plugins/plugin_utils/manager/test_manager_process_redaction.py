@@ -199,9 +199,12 @@ class TestRedactArgvInStartupLog(unittest.TestCase):
 
     def test_startup_marker_does_not_contain_password(self):
         """The /tmp marker file must never contain plaintext credentials."""
+        import os
         import tempfile
 
-        fake_marker = Path(tempfile.mktemp(suffix="_test_marker.txt"))
+        fd, temp_path = tempfile.mkstemp(suffix="_test_marker.txt")
+        os.close(fd)
+        fake_marker = Path(temp_path)
         fake_argv = _make_argv(password="plaintext_password", token="plaintext_token")
 
         try:
