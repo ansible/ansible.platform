@@ -21,9 +21,7 @@ from unittest.mock import patch
 # we need the collections parent on sys.path (conftest.py handles this when
 # running via pytest; unittest needs it done here too).
 # ---------------------------------------------------------------------------
-_COLLECTIONS_PARENT = str(
-    Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent.parent
-)
+_COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
 
@@ -116,11 +114,7 @@ class TestComputePollInterval(unittest.TestCase):
 
     def test_no_env_var_uses_formula(self):
         """Without the env var, the formula applies normally."""
-        env = {
-            k: v
-            for k, v in os.environ.items()
-            if k != "ANSIBLE_PLATFORM_IDLE_POLL_SECONDS"
-        }
+        env = {k: v for k, v in os.environ.items() if k != "ANSIBLE_PLATFORM_IDLE_POLL_SECONDS"}
         with patch.dict(os.environ, env, clear=True):
             self.assertEqual(_compute_poll_interval(300.0), 30)
 
@@ -216,15 +210,8 @@ class TestRedactArgvInStartupLog(unittest.TestCase):
         try:
             with patch.object(sys, "argv", fake_argv):
                 with patch(
-                    (
-                        "ansible_collections.ansible.platform.plugins."
-                        "plugin_utils.manager.manager_process.Path"
-                    ),
-                    side_effect=lambda p: (
-                        fake_marker
-                        if "ansible_platform_manager_started" in str(p)
-                        else Path(p)
-                    ),
+                    ("ansible_collections.ansible.platform.plugins.plugin_utils.manager.manager_process.Path"),
+                    side_effect=lambda p: fake_marker if "ansible_platform_manager_started" in str(p) else Path(p),
                 ):
                     with fake_marker.open("w") as _f:
                         _f.write(f"Script started with {len(sys.argv)} args\n")
@@ -242,9 +229,7 @@ class TestRedactArgvInStartupLog(unittest.TestCase):
 
     def test_stderr_error_path_does_not_contain_password(self):
         """The early-exit print (too few args) must use _redact_argv()."""
-        fake_argv = _make_argv(password="plaintext_password")[
-            :5
-        ]  # too short → error path
+        fake_argv = _make_argv(password="plaintext_password")[:5]  # too short → error path
         captured = io.StringIO()
 
         # Simulate the error-path print
