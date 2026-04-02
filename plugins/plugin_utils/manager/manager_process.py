@@ -8,9 +8,10 @@ This is executed as a separate process via subprocess to avoid multiprocessing i
 import base64
 import json
 import os
-from pathlib import Path
 import sys
 import traceback
+from pathlib import Path
+
 
 def _compute_poll_interval(idle_timeout: float) -> int:
     """Return the idle-monitor sleep interval derived from the configured timeout.
@@ -34,6 +35,7 @@ def _compute_poll_interval(idle_timeout: float) -> int:
     if idle_timeout <= 0:
         return 60
     return max(5, min(60, int(idle_timeout / 10)))
+
 
 _SENSITIVE_ARGV_POSITIONS = {5, 6, 7}
 
