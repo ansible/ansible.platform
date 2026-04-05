@@ -184,9 +184,16 @@ class Connection(ConnectionBase):
             # Use a very short identifier to avoid "AF_UNIX path too long" error
             # Unix domain socket paths are limited to ~104 characters on macOS
             import hashlib
+            import time
 
             host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
-            identifier = f"e{host_hash}"  # "e" for ephemeral + 4-char hash
+            # Include a per-invocation suffix so loop iterations on the same host
+            # each get a unique socket path. Without this, iteration N+1 spawns a
+            # new manager at the same path as iteration N, but the action plugin
+            # still holds a proxy referencing the old (now dead) manager's object
+            # ident, causing a KeyError in multiprocessing.managers.serve_client.
+            task_suffix = format(int(time.monotonic() * 1000) % 65536, "04x")
+            identifier = f"e{host_hash}{task_suffix}"  # "e" + host + per-task suffix
             logger.debug("Generated identifier: %s", identifier)
 
             # Generate connection info with shorter socket directory
