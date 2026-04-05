@@ -9,6 +9,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     method: GET
     return_content: true
+  delegate_to: localhost
   register: settings_all_response
 
 - name: Set current_settings from API response
@@ -65,3 +66,4 @@
           password_min_upper: "{{ current_settings['password_min_upper'] }}"
           password_min_special: "{{ current_settings['password_min_special'] }}"
 ...
+

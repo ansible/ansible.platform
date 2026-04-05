@@ -17,6 +17,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     force_basic_auth: true
     status_code: 200
+  delegate_to: localhost
   register: _sc_uri_result
 
 - name: Set service cluster query fact
@@ -40,6 +41,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     force_basic_auth: true
     status_code: 200
+  delegate_to: localhost
   register: _http_port_uri_result
 
 - name: Set existing http_api_port fact
@@ -78,6 +80,7 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         force_basic_auth: true
         status_code: 200
+      delegate_to: localhost
       register: _stale_9000_result
 
     - name: Delete stale HTTP port 9000 if left over from a previous test run
@@ -159,6 +162,7 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         force_basic_auth: true
         status_code: 200
+      delegate_to: localhost
       register: _stale_hub_svc_result
 
     - name: Delete stale hub service if left over from a previous test run
@@ -210,6 +214,7 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         force_basic_auth: true
         status_code: 200
+      delegate_to: localhost
       register: _stale_controller_svc_result
 
     - name: Delete stale controller service if left over from a previous test run
@@ -352,3 +357,4 @@
           - name: "{{ test_id }}controller"
           - name: "{{ test_id }}hub"
 ...
+

@@ -74,6 +74,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       register: controller_search
 
     - name: Assert that Controller Service Cluster does not exist
@@ -217,6 +218,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       register: _sc_health_check_response
 
     - name: Ensure we have 3 service clusters with health_check_interval_seconds=1162
@@ -312,3 +314,4 @@
         state: absent
       failed_when: false
 ...
+

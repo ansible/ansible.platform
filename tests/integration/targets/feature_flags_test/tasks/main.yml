@@ -10,6 +10,7 @@
     method: GET
     return_content: true
   register: settings_response
+  delegate_to: localhost
 
 - name: Set all_settings from API response
   ansible.builtin.set_fact:
@@ -40,6 +41,7 @@
     method: GET
     return_content: true
   register: feature_flags_response
+  delegate_to: localhost
 
 - name: Set available_flags from API response
   ansible.builtin.set_fact:
@@ -238,3 +240,4 @@
         state: present
       when: test_flag_name is defined and original_flag_value is defined
 ...
+
