@@ -223,15 +223,11 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
     ):
         from ...ansible_models.application import AnsibleApplication
 
-        # The API stores redirect URIs as a space-separated string.
-        # Split back to a list so the returned value matches the argument_spec
-        # type (list) and is safe for round-trip re-submission.
-        raw_redirect = api_data.get("redirect_uris") or ""
-        redirect_uris = raw_redirect.split() if raw_redirect.strip() else None
-
-        raw_logout = api_data.get("post_logout_redirect_uris") or ""
-        post_logout_redirect_uris = raw_logout.split() if raw_logout.strip() else None
-
+        # Redirect URI fields are stored as space-separated strings by the API.
+        # We keep them as strings here so _update_resource()'s fallback merge
+        # can safely copy them back onto APIApplication_v1 without bypassing
+        # _join_uri_list().  The string→list conversion for user-facing output
+        # is done in the action plugin via _LIST_FIELDS (output layer only).
         return AnsibleApplication(
             name=api_data.get("name", ""),
             organization=api_data.get("organization"),
@@ -239,8 +235,8 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             algorithm=api_data.get("algorithm"),
             authorization_grant_type=api_data.get("authorization_grant_type"),
             client_type=api_data.get("client_type"),
-            redirect_uris=redirect_uris,
-            post_logout_redirect_uris=post_logout_redirect_uris,
+            redirect_uris=api_data.get("redirect_uris"),
+            post_logout_redirect_uris=api_data.get("post_logout_redirect_uris"),
             skip_authorization=api_data.get("skip_authorization"),
             app_url=api_data.get("app_url"),
             user=api_data.get("user"),

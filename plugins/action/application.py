@@ -19,3 +19,9 @@ class ActionModule(BaseResourceActionPlugin):
     # result.client_id after creating an OAuth application.
     # Deprecated in 2.7, scheduled for removal after 2028-04-01.
     _EXTRA_RETURN_FIELDS = frozenset({"client_id"})
+
+    # The gateway API stores redirect URI fields as space-separated strings
+    # (e.g. "https://a.com/cb https://b.com/cb") but the module argument_spec
+    # declares them as type=list.  Convert in the output layer so round-trip
+    # re-submission works without touching the internal update-path merge.
+    _SPACE_SEPARATED_LIST_FIELDS = frozenset({"redirect_uris", "post_logout_redirect_uris"})

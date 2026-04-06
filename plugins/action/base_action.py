@@ -252,6 +252,23 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this with module-specific extra return fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
 
+    # Fields whose values the API stores in a format that differs from the
+    # argument_spec type and must be converted in the OUTPUT LAYER ONLY.
+    # The internal (manager) representation keeps the API format so that
+    # _update_resource()'s current-state fallback merge stays correct.
+    #
+    # Currently used for space-separated string → list conversion:
+    # The API stores redirect URI lists as "https://a.com https://b.com"
+    # but the module argument_spec declares these as type=list.  Converting
+    # here (after validated_output is built) means round-trip re-submission
+    # works cleanly while the internal update path never sees a list where
+    # the API dataclass expects a string.
+    #
+    # Value: set of field names that hold space-separated strings in the API
+    # response and should be split into lists in the user-facing result.
+    # Subclasses override this with module-specific fields.
+    _SPACE_SEPARATED_LIST_FIELDS: frozenset = frozenset()
+
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
     _DEPRECATED_FIELDS: dict = {}
@@ -1249,6 +1266,16 @@ class BaseResourceActionPlugin(ActionBase):
                 for k, v in validated_output.items()
                 if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
             }
+
+            # Output-layer type conversion: space-separated API strings → lists.
+            # This runs AFTER validated_output is finalized so the manager's
+            # internal state (used by _update_resource fallback merge) is never
+            # affected.  Only the user-facing result dict is changed here.
+            for _field in self._SPACE_SEPARATED_LIST_FIELDS:
+                if _field in validated_output:
+                    _raw = validated_output[_field]
+                    if isinstance(_raw, str):
+                        validated_output[_field] = _raw.split() if _raw.strip() else None
 
             # Extra non-argspec fields (e.g. client_id for application).
             # These are returned flat only — never nested — because they are not
