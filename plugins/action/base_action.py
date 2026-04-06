@@ -243,6 +243,15 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses should override this with module-specific write-only fields.
     _WRITE_ONLY_FIELDS: frozenset = frozenset()
 
+    # Fields that are returned in the flat (top-level) result for backward
+    # compatibility but are NOT included in the nested MODULE_NAME dict because
+    # they are not part of the module's argument_spec (e.g. client_id for
+    # application — the API generates it, the module cannot accept it as input).
+    # These fields are emitted flat only and are subject to the same deprecation
+    # timeline as all other flat keys (scheduled for removal after 2028-04-01).
+    # Subclasses override this with module-specific extra return fields.
+    _EXTRA_RETURN_FIELDS: frozenset = frozenset()
+
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
     _DEPRECATED_FIELDS: dict = {}
@@ -1241,13 +1250,50 @@ class BaseResourceActionPlugin(ActionBase):
                 if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
             }
 
+            # Extra non-argspec fields (e.g. client_id for application).
+            # These are returned flat only — never nested — because they are not
+            # valid module inputs and would break round-trip if included in
+            # the MODULE_NAME dict.
+            extra_flat = {
+                k: manager_result[k]
+                for k in self._EXTRA_RETURN_FIELDS
+                if k in manager_result and manager_result[k] is not None
+            }
+
             result.update(
                 {
                     "changed": manager_result.get("changed", False),
                     "failed": False,
+                    # ----------------------------------------------------------------
+                    # Nested resource dict — argspec fields only, round-trip safe.
+                    # Use result.<module_name>.<field> in new playbooks.
+                    # ----------------------------------------------------------------
                     self.MODULE_NAME: validated_output,
+                    # ----------------------------------------------------------------
+                    # DEPRECATED (ansible.platform 2.7): flat top-level keys kept for
+                    # backward compatibility with playbooks written against <=2.6.
+                    # Scheduled for removal after 2028-04-01.
+                    # Migrate to result.<module_name>.<field> before that date.
+                    # ----------------------------------------------------------------
+                    **validated_output,
+                    **extra_flat,
                 }
             )
+
+            if validated_output:
+                result.setdefault("deprecations", []).append(
+                    {
+                        "msg": (
+                            "Accessing ansible.platform.{mod} result fields at the top level "
+                            "(e.g. 'result.id', 'result.name') is deprecated. "
+                            "Use 'result.{mod}.<field>' instead. "
+                            "Top-level keys will be removed after 2028-04-01."
+                        ).format(mod=self.MODULE_NAME),
+                        "date": "2028-04-01",
+                        "collection_name": "ansible.platform",
+                    }
+                )
+
             if operation == "find":
                 result["exists"] = bool(validated_output.get("id"))
 

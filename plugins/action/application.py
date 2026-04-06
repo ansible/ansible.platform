@@ -12,3 +12,10 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ap
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "application"
     MODEL_CLASS = AnsibleApplication
+
+    # client_id is API-generated (not in argument_spec) so it must not appear
+    # inside the nested 'application' round-trip dict.  It is returned flat
+    # only, for backward compatibility with <=2.6 playbooks that read
+    # result.client_id after creating an OAuth application.
+    # Deprecated in 2.7, scheduled for removal after 2028-04-01.
+    _EXTRA_RETURN_FIELDS = frozenset({"client_id"})

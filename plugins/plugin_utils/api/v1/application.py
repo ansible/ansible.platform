@@ -36,6 +36,9 @@ class APIApplication_v1(BaseTransformMixin):
     modified: Optional[str] = None
     url: Optional[str] = None
 
+    # API-generated; present in POST/PATCH responses, never sent as input.
+    client_id: Optional[str] = None
+
 
 def _join_uri_list(value: Union[str, List[str], None]) -> Optional[str]:
     if value is None:
@@ -220,6 +223,15 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
     ):
         from ...ansible_models.application import AnsibleApplication
 
+        # The API stores redirect URIs as a space-separated string.
+        # Split back to a list so the returned value matches the argument_spec
+        # type (list) and is safe for round-trip re-submission.
+        raw_redirect = api_data.get("redirect_uris") or ""
+        redirect_uris = raw_redirect.split() if raw_redirect.strip() else None
+
+        raw_logout = api_data.get("post_logout_redirect_uris") or ""
+        post_logout_redirect_uris = raw_logout.split() if raw_logout.strip() else None
+
         return AnsibleApplication(
             name=api_data.get("name", ""),
             organization=api_data.get("organization"),
@@ -227,10 +239,8 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             algorithm=api_data.get("algorithm"),
             authorization_grant_type=api_data.get("authorization_grant_type"),
             client_type=api_data.get("client_type"),
-            # Keep the API's representation (space-separated string) so the manager
-            # can safely merge current values into PATCH payloads.
-            redirect_uris=api_data.get("redirect_uris"),
-            post_logout_redirect_uris=api_data.get("post_logout_redirect_uris"),
+            redirect_uris=redirect_uris,
+            post_logout_redirect_uris=post_logout_redirect_uris,
             skip_authorization=api_data.get("skip_authorization"),
             app_url=api_data.get("app_url"),
             user=api_data.get("user"),
@@ -238,4 +248,6 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             created=api_data.get("created"),
             modified=api_data.get("modified"),
             url=api_data.get("url"),
+            # API-generated OAuth credential — surfaced flat only, not in nested dict.
+            client_id=api_data.get("client_id"),
         )
