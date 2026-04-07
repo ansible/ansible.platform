@@ -44,27 +44,7 @@ See the table below and the per-module files for the exact before/after.
 |------|--------|
 | `01_result_structure.md` | The universal change — result keys for every module |
 | `02_connection_and_credentials.md` | How to configure connection, credentials, and inventory |
-| `03_module_user.md` | `ansible.platform.user` before/after |
-| `04_module_organization.md` | `ansible.platform.organization` before/after |
-| `05_module_team.md` | `ansible.platform.team` before/after |
-| `06_module_application.md` | `ansible.platform.application` before/after |
-| `07_module_role_assignments.md` | `role_user_assignment` and `role_team_assignment` before/after |
-| `08_module_authenticator.md` | `authenticator` and `authenticator_map` before/after |
 | `09_new_features.md` | Persistent mode, idle timeout, API version detection |
-| `10_module_authenticator_user.md` | `ansible.platform.authenticator_user` — new in 2.7.x |
-| `11_module_ca_certificate.md` | `ansible.platform.ca_certificate` — new in 2.7.x |
-| `12_module_feature_flag.md` | `ansible.platform.feature_flag` — new in 2.7.x |
-| `13_module_http_port.md` | `ansible.platform.http_port` — new in 2.7.x |
-| `14_module_role_definition.md` | `ansible.platform.role_definition` — new in 2.7.x |
-| `15_module_route.md` | `ansible.platform.route` — new in 2.7.x |
-| `16_module_service.md` | `ansible.platform.service` — new in 2.7.x |
-| `17_module_service_cluster.md` | `ansible.platform.service_cluster` — new in 2.7.x |
-| `18_module_service_key.md` | `ansible.platform.service_key` — new in 2.7.x |
-| `19_module_service_node.md` | `ansible.platform.service_node` — new in 2.7.x |
-| `20_module_service_type.md` | `ansible.platform.service_type` — new in 2.7.x |
-| `21_module_settings.md` | `ansible.platform.settings` before/after |
-| `22_module_token.md` | `ansible.platform.token` before/after |
-| `23_module_ui_plugin_route.md` | `ansible.platform.ui_plugin_route` — new in 2.7.x |
 
 ---
 
