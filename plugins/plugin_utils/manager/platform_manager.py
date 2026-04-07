@@ -584,17 +584,41 @@ class PlatformService(BaseAPIClient):
         api_data = mixin_class.from_ansible_data(ansible_data, context)
         operations = mixin_class.get_endpoint_operations()
 
+        # Snapshot which fields are None after the forward transform — these are
+        # fields the user did NOT explicitly provide.  We need this before the
+        # current-data merge so we can later distinguish "restored from server"
+        # fields from "user-supplied" fields when computing fields_to_null.
+        update_op = next((op for op in operations.values() if getattr(op, "required_for", None) == "update"), None)
+        user_unset_fields = set()
+        if update_op:
+            for field in getattr(update_op, "fields", []) or []:
+                if getattr(api_data, field, None) is None:
+                    user_unset_fields.add(field)
+
         # For update, some APIs require all required fields in the PATCH body (e.g. http_port
         # requires "number"). Merge current resource values for any update-operation field
         # that is missing/None in api_data so the request body is valid.
-        update_op = next((op for op in operations.values() if getattr(op, "required_for", None) == "update"), None)
         if update_op and current_data:
             current_dict = current_data if isinstance(current_data, dict) else current_data
             for field in getattr(update_op, "fields", []) or []:
                 if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
                     setattr(api_data, field, current_dict[field])
 
-        api_result = self._execute_operations(operations, api_data, context, required_for="update")
+        # After the merge, let the mixin declare which fields must be sent as
+        # null to clear server-side values that are incompatible with the new
+        # resource state (e.g. role/team when map_type changes to is_superuser).
+        # Only fields the user did NOT explicitly provide are eligible — if the
+        # user provided an incompatible field the API will reject it with a clear
+        # validation error, which is the correct behaviour.
+        fields_to_null: set = set()
+        if hasattr(mixin_class, "get_fields_to_null_for_update"):
+            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
+            for field in candidate_fields:
+                if field in user_unset_fields:
+                    fields_to_null.add(field)
+                    setattr(api_data, field, None)  # keep api_data consistent
+
+        api_result = self._execute_operations(operations, api_data, context, required_for="update", fields_to_null=fields_to_null)
 
         # REVERSE TRANSFORM: API -> Ansible
         if api_result:
@@ -767,7 +791,7 @@ class PlatformService(BaseAPIClient):
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.verify_ssl)
         response.raise_for_status()
-        return {"changed": True}
+        return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """
@@ -878,7 +902,7 @@ class PlatformService(BaseAPIClient):
 
         return asdict(ansible_instance)
 
-    def _execute_operations(self, operations: Dict, api_data: Any, context: dict, required_for: str = None) -> dict:
+    def _execute_operations(self, operations: Dict, api_data: Any, context: dict, required_for: str = None, fields_to_null: set = None) -> dict:
         """
         Execute potentially multiple API endpoint operations.
 
@@ -887,6 +911,11 @@ class PlatformService(BaseAPIClient):
             api_data: API dataclass instance
             context: Context
             required_for: Filter operations by required_for field
+            fields_to_null: Optional set of field names that must be sent as
+                explicit null in the request body, even though their value in
+                api_data is None.  Used to clear server-side fields that are
+                incompatible with a new resource state (e.g. role/team when
+                map_type changes to is_superuser).
 
         Returns:
             Combined API response dict
@@ -896,6 +925,7 @@ class PlatformService(BaseAPIClient):
 
         results = {}
         api_data_dict = asdict(api_data)
+        _fields_to_null = fields_to_null or set()
 
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
@@ -907,6 +937,10 @@ class PlatformService(BaseAPIClient):
                     continue
                 val = api_data_dict[field]
                 if val is None:
+                    # Include as explicit null only for fields declared by the mixin
+                    # as needing to be cleared (e.g. role/team on map_type change).
+                    if field in _fields_to_null:
+                        request_data[field] = None
                     continue
                 request_data[field] = val
 
@@ -943,10 +977,21 @@ class PlatformService(BaseAPIClient):
                 if hasattr(e, "response") and e.response is not None:
                     logger.error("Response status: %s", e.response.status_code)
                     logger.error("Response body: %s", e.response.text)
-                    # Include response body in message so callers (e.g. tests) can assert on validation errors
-                    body = getattr(e.response, "text", "") or ""
-                    if body and body not in str(e):
-                        raise ValueError(f"{e}\nResponse body: {body[:1000]}") from e
+                    # Include response body in message so callers (e.g. tests) can assert on
+                    # validation errors.  Parse as JSON and use str() so the output uses
+                    # Python's single-quote repr (e.g. {'triggers': ['Triggers must be a
+                    # valid dict']}) rather than raw JSON double-quotes.  Tests written
+                    # against the old AAPModule architecture relied on this format.
+                    body_text = getattr(e.response, "text", "") or ""
+                    if body_text:
+                        import json as _json
+
+                        try:
+                            body_formatted = str(_json.loads(body_text))
+                        except (_json.JSONDecodeError, ValueError):
+                            body_formatted = body_text[:1000]
+                        if body_formatted not in str(e):
+                            raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
             result_data = response.json() if response.content else {}
@@ -1074,6 +1119,47 @@ class PlatformService(BaseAPIClient):
         if rid is not None:
             self.cache[cache_key] = rid
         return rid
+
+    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+        """
+        Perform a raw GET against any API endpoint and return the JSON response.
+
+        This is the RPC entry-point used by the gateway_api lookup plugin so that
+        all HTTP/SSL work stays in the manager subprocess (never in a forked Ansible
+        worker process), avoiding the macOS + Python 3.12 fork-safety SIGABRT.
+
+        Args:
+            endpoint: API endpoint fragment, e.g. 'applications', 'users', 'settings/ui'
+            query_params: Optional key/value filter parameters
+            return_all: When True, follow 'next' pagination links and collect all results
+            max_objects: Safety cap; raises ValueError when return_all would exceed this
+
+        Returns:
+            Raw API response dict.  List endpoints look like
+            {'count': N, 'results': [...], 'next': ..., 'previous': ...}.
+            Detail endpoints (settings/ui, etc.) are returned as-is.
+
+        Raises:
+            ValueError: When the HTTP request fails or max_objects is exceeded
+        """
+        self.record_activity()
+        url = self._build_url(endpoint)
+        response = self._make_request("get", url, operation="search_api", resource=endpoint, params=query_params or {})
+        data = response.json()
+
+        if return_all and "results" in data:
+            total = data.get("count", len(data["results"]))
+            if total > max_objects:
+                raise ValueError("Endpoint '%s' returned %d objects which exceeds max_objects=%d" % (endpoint, total, max_objects))
+            next_url = data.get("next")
+            while next_url:
+                next_resp = self._make_request("get", next_url, operation="search_api_paginate", resource=endpoint)
+                next_data = next_resp.json()
+                data["results"].extend(next_data.get("results", []))
+                next_url = next_data.get("next")
+            data["next"] = None
+
+        return data
 
     def shutdown(self) -> dict:
         """

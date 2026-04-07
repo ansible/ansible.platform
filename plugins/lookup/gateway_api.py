@@ -122,17 +122,57 @@ from ansible.module_utils._text import to_native  # noqa
 from ansible.plugins.lookup import LookupBase  # noqa
 from ansible.utils.display import Display  # noqa
 
-from ..module_utils.aap_module import AAPModule  # noqa
-
 
 class LookupModule(LookupBase):
+    """
+    Lookup plugin that queries the Automation Platform Gateway API.
+
+    All HTTP/SSL work is delegated to the manager subprocess via
+    spawn_ephemeral_client() + client.search_api(), keeping the forked Ansible
+    worker process completely free of SSL initialisation.  This avoids the
+    macOS + Python 3.12 SIGABRT ("A worker was found in a dead state") that
+    occurs when urllib or requests initialises an SSL context inside a fork.
+    """
+
     display = Display()
 
-    def handle_error(self, **kwargs):
-        raise AnsibleError(to_native(kwargs.get("msg")))
+    @staticmethod
+    def _to_plain(value):
+        """
+        Strip Ansible tagged types (e.g. _AnsibleTaggedStr, AnsibleUnsafeText)
+        and return plain Python objects.
 
-    def warn_callback(self, warning):
-        self.display.warning(warning)
+        multiprocessing.managers RPC serialises arguments with pickle. Ansible
+        forbids pickling its lazy/tagged objects, so we must convert everything
+        to plain Python types before any cross-process call.
+
+        A JSON round-trip is the simplest universal approach: it handles nested
+        dicts/lists/strings and always produces plain builtins.
+        """
+        import json
+
+        if value is None:
+            return None
+        try:
+            return json.loads(json.dumps(value))
+        except (TypeError, ValueError):
+            # Fallback for non-JSON-serialisable edge cases
+            return str(value)
+
+    def _build_gateway_config(self):
+        """Build a GatewayConfig from the lookup options (plain Python types only)."""
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
+
+        host = self._to_plain(self.get_option("host")) or "https://localhost/"
+        return GatewayConfig(
+            base_url=str(host),
+            username=str(self._to_plain(self.get_option("username")) or ""),
+            password=str(self._to_plain(self.get_option("password")) or ""),
+            oauth_token=str(self._to_plain(self.get_option("oauth_token")) or ""),
+            verify_ssl=bool(self.get_option("verify_ssl")),
+            request_timeout=float(self.get_option("request_timeout") or 60),
+            connection_mode="direct",
+        )
 
     def run(self, terms, variables=None, **kwargs):
         if len(terms) != 1:
@@ -140,59 +180,53 @@ class LookupModule(LookupBase):
 
         self.set_options(direct=kwargs)
 
-        # Defer processing of params to logic shared with the modules
-        module_params = {}
-        for plugin_param, module_param in AAPModule.short_params.items():
-            opt_val = self.get_option(plugin_param)
-            if opt_val is not None:
-                module_params[module_param] = opt_val
+        # Strip Ansible tagged types before any RPC/pickle boundary.
+        # multiprocessing.managers serialises call arguments with pickle, and
+        # Ansible explicitly forbids pickling its lazy objects.
+        endpoint = str(self._to_plain(terms[0]))
+        query_params = self._to_plain(self.get_option("query_params")) or {}
+        return_all = bool(self.get_option("return_all"))
+        max_objects = int(self.get_option("max_objects") or 1000)
 
-        # Create our module
-        # Wrap in try/except BaseException so that any sys.exit() or other fatal
-        # BaseException raised inside AAPModule (e.g. from AnsibleModule internals)
-        # is converted to an AnsibleError instead of killing the Ansible worker process.
+        # Delegate all HTTP/SSL work to a fresh manager subprocess so the
+        # forked Ansible worker never touches SSL (macOS + Python 3.12 safety).
         try:
-            module = AAPModule(argument_spec={}, direct_params=module_params, error_callback=self.handle_error, warn_callback=self.warn_callback)
-        except AnsibleError:
-            raise
-        except SystemExit as e:
-            raise AnsibleError("gateway_api lookup: unexpected SystemExit({0}) during module init".format(e.code))
-        except BaseException as e:
-            raise AnsibleError("gateway_api lookup: unexpected {0} during module init: {1}".format(type(e).__name__, to_native(e)))
+            from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import spawn_ephemeral_client
 
-        response = module.get_endpoint(terms[0], data=self.get_option("query_params", {}))
+            gateway_config = self._build_gateway_config()
+            # spawn_ephemeral_client expects task_vars for facts; pass empty dict
+            # since lookups don't set host facts.
+            client, _facts = spawn_ephemeral_client({}, gateway_config)
+        except Exception as e:
+            raise AnsibleError("gateway_api lookup: failed to connect to platform manager: {0}".format(to_native(e)))
 
-        if "status_code" not in response:
-            raise AnsibleError("Unclear response from API: {0}".format(response))
+        try:
+            return_data = client.search_api(
+                endpoint=endpoint,
+                query_params=query_params,
+                return_all=return_all,
+                max_objects=max_objects,
+            )
+        except ValueError as e:
+            raise AnsibleError("gateway_api lookup: {0}".format(to_native(e)))
+        except Exception as e:
+            raise AnsibleError("gateway_api lookup: API request failed for '{0}': {1}".format(endpoint, to_native(e)))
+        finally:
+            try:
+                client.shutdown_manager()
+            except Exception:
+                pass
 
-        if response["status_code"] != 200:
-            raise AnsibleError("Failed to query the API: {0}".format(response["json"].get("detail", response["json"])))
-
-        return_data = response["json"]
-
+        # --- response validation ---
         if self.get_option("expect_objects") or self.get_option("expect_one"):
             if ("id" not in return_data) and ("results" not in return_data):
-                raise AnsibleError("Did not obtain a list or detail view at {0}, and expect_objects or expect_one is set to True".format(terms[0]))
+                raise AnsibleError("Did not obtain a list or detail view at '{0}', and expect_objects or expect_one is set to True".format(endpoint))
 
         if self.get_option("expect_one"):
             if "results" in return_data and len(return_data["results"]) != 1:
-                raise AnsibleError("Expected one object from endpoint {0}, but obtained {1} from API".format(terms[0], len(return_data["results"])))
+                raise AnsibleError("Expected one object from endpoint {0}, but obtained {1} from API".format(endpoint, len(return_data["results"])))
 
-        if self.get_option("return_all") and "results" in return_data:
-            if return_data["count"] > self.get_option("max_objects"):
-                raise AnsibleError(
-                    "List view at {0} returned {1} objects, which is more than the maximum allowed by max_objects, {2}".format(
-                        terms[0], return_data["count"], self.get_option("max_objects")
-                    )
-                )
-
-            next_page = return_data["next"]
-            while next_page is not None:
-                next_response = module.get_endpoint(next_page)
-                return_data["results"] += next_response["json"]["results"]
-                next_page = next_response["json"]["next"]
-            return_data["next"] = None
-
+        # --- result shaping ---
         if self.get_option("return_ids"):
             if "results" in return_data:
                 return_data["results"] = [str(item["id"]) for item in return_data["results"]]
@@ -201,5 +235,4 @@ class LookupModule(LookupBase):
 
         if self.get_option("return_objects") and "results" in return_data:
             return return_data["results"]
-        else:
-            return [return_data]
+        return [return_data]

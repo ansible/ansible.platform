@@ -1061,6 +1061,7 @@ class BaseResourceActionPlugin(ActionBase):
                         "failed": False,
                         "exists": exists,
                         self.MODULE_NAME: find_result if exists else {},
+                        "id": find_result.get("id") if exists else None,
                     }
                 )
                 return result
