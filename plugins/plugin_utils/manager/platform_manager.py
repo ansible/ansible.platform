@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import logging
 import threading
+import time
 from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
@@ -127,6 +128,10 @@ class PlatformService(BaseAPIClient):
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
 
+        # Idle-tracking state (monotonic clock — not affected by NTP slew or wall-clock changes)
+        self._activity_lock = threading.Lock()
+        self._last_activity_monotonic = time.monotonic()
+
         # Retry configuration
         self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
 
@@ -244,6 +249,9 @@ class PlatformService(BaseAPIClient):
                 self._last_auth_error = ValueError(error_msg)
                 raise ValueError(error_msg)
 
+        # Record activity so the idle monitor does not count auth work as idle time
+        self.record_activity()
+
     def _check_token_expiration(self) -> Tuple[bool, Optional[float]]:
         """
         Check if current token is expired.
@@ -290,6 +298,8 @@ class PlatformService(BaseAPIClient):
                         # Update session header
                         self.session.headers.update({"Authorization": f"Bearer {new_token}"})
                         logger.info("Token refreshed successfully")
+                        # Record activity so the idle monitor does not treat a token refresh as idle time
+                        self.record_activity()
                         return True
             except Exception as e:
                 logger.warning("Token refresh failed: %s", e)
@@ -309,6 +319,20 @@ class PlatformService(BaseAPIClient):
         except Exception as e:
             logger.error("Re-authentication failed: %s", e)
             return False
+
+    # ------------------------------------------------------------------
+    # Idle-timeout helpers
+    # ------------------------------------------------------------------
+
+    def record_activity(self) -> None:
+        """Reset the idle clock.  Call whenever a real API call completes."""
+        with self._activity_lock:
+            self._last_activity_monotonic = time.monotonic()
+
+    def seconds_since_last_activity(self) -> float:
+        """Return seconds elapsed since the last recorded activity."""
+        with self._activity_lock:
+            return time.monotonic() - self._last_activity_monotonic
 
     def _handle_auth_error(self, response: "requests.Response") -> bool:
         """

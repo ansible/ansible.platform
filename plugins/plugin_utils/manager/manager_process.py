@@ -15,19 +15,28 @@ from pathlib import Path
 
 def main():
     """Main entry point for the manager process."""
-    # Write startup marker immediately
+
+    # Write startup marker immediately — credentials at argv[6] and argv[7] are masked
+    def _safe_argv():
+        """Return sys.argv with credential positions (password, token) replaced by '***'."""
+        safe = list(sys.argv)
+        for i in (6, 7):
+            if i < len(safe) and safe[i]:
+                safe[i] = "***"
+        return safe
+
     try:
         marker = Path("/tmp/ansible_platform_manager_started.txt")
         with open(marker, "a") as f:
             f.write(f"Script started with {len(sys.argv)} args\n")
-            f.write(f"Args: {sys.argv}\n")
+            f.write(f"Args: {_safe_argv()}\n")
     except Exception:
         pass
 
     # Read configuration from command line args
     if len(sys.argv) < 10:
         print(f"ERROR: Expected 9 args, got {len(sys.argv) - 1}", file=sys.stderr)
-        print(f"Args received: {sys.argv}", file=sys.stderr)
+        print(f"Args received: {_safe_argv()}", file=sys.stderr)
         sys.exit(1)
 
     # Log progress
