@@ -101,33 +101,3 @@ EXAMPLES = """
     state: exists
 ...
 """
-
-from ..module_utils.aap_authenticator_users import AAPAuthenticatorUserMove  # noqa
-from ..module_utils.aap_module import AAPModule  # noqa
-
-
-def main():
-    # Any additional arguments that are not fields of the item can be added here
-    argument_spec = dict(
-        authenticator_user_id=dict(required=True),
-        authenticator=dict(required=True),
-        new_uid=dict(),
-        keep_memberships=dict(type="bool", default=False),
-        merge_with_user=dict(),
-        merge_accounts_with_same_uid=dict(type="bool", default=False),
-        remove_other_authenticators=dict(type="bool", default=False),
-        state=dict(default="present", choices=["present", "exists"]),
-    )
-
-    # Create a module for ourselves
-    module = AAPModule(
-        argument_spec=argument_spec,
-        mutually_exclusive=[
-            ("merge_with_user", "merge_accounts_with_same_uid"),
-        ],
-    )
-    AAPAuthenticatorUserMove(module).manage()
-
-
-if __name__ == "__main__":
-    main()

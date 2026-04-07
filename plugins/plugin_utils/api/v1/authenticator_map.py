@@ -110,6 +110,36 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
     def get_lookup_field(cls) -> str:
         return "name"
 
+    # Fields that are INCOMPATIBLE with each map_type and must be sent as null
+    # when the map_type changes to a restrictive type.  Used by _update_resource
+    # in platform_manager.py via the get_fields_to_null_for_update hook.
+    _MAP_TYPE_EXCLUDED_FIELDS: Dict[str, tuple] = {
+        "allow": ("role", "team", "organization"),
+        "is_superuser": ("role", "team", "organization"),
+        "organization": ("team",),
+        "role": ("team", "organization"),
+        # "team" supports all fields — nothing to clear
+    }
+
+    @classmethod
+    def get_fields_to_null_for_update(cls, api_data) -> frozenset:
+        """
+        Return the set of field names that must be sent as null in the PATCH.
+
+        Called by _update_resource after the current-data merge so it can
+        send explicit null values to clear server-side fields that are
+        incompatible with the new map_type.
+
+        Example: changing map_type from 'team' (which had role='Team Admin')
+        to 'is_superuser' must PATCH role=null and team=null, otherwise the
+        API rejects the request with 'You cannot specify role with the
+        selected map type'.
+        """
+        map_type = getattr(api_data, "map_type", None)
+        if not map_type:
+            return frozenset()
+        return frozenset(cls._MAP_TYPE_EXCLUDED_FIELDS.get(map_type, ()))
+
     @classmethod
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
         """Include authenticator id for composite find (name + authenticator)."""

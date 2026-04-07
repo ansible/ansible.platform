@@ -5,7 +5,7 @@ with the persistent Platform Manager service.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,25 @@ class ManagerRPCClient:
             ValueError: If the resource is not found
         """
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value)
+
+    def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+        """
+        Execute a raw GET via the manager subprocess and return the JSON response.
+
+        Delegates to PlatformService.search_api() so all HTTP/SSL work happens in
+        the manager subprocess rather than in a forked Ansible worker process,
+        avoiding the macOS + Python 3.12 fork-safety SIGABRT.
+
+        Args:
+            endpoint: API endpoint fragment (e.g. 'applications', 'settings/ui')
+            query_params: Optional filter parameters
+            return_all: Follow pagination links and collect all results
+            max_objects: Safety cap on total returned objects (when return_all=True)
+
+        Returns:
+            Raw API response dict from the platform.
+        """
+        return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects)
 
     def shutdown_manager(self) -> dict:
         """

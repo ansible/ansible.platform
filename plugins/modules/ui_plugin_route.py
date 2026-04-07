@@ -120,34 +120,3 @@ EXAMPLES = """
     state: absent
 ...
 """
-
-from ..module_utils.aap_module import AAPModule
-from ..module_utils.aap_ui_plugin_route import AAPUIPluginRoute
-
-
-def main():
-    argument_spec = dict(
-        name=dict(type="str", required=True),
-        new_name=dict(type="str"),
-        description=dict(type="str"),
-        ui_plugin_path=dict(type="str"),
-        http_port=dict(type="str"),
-        service_cluster=dict(type="str"),
-        is_service_https=dict(type="bool", default=False),
-        service_port=dict(type="int"),
-        node_tags=dict(type="str"),
-        order=dict(type="int"),
-        idle_timeout_seconds=dict(type="int"),
-        request_timeout_seconds=dict(type="int"),
-        # NOTE: gateway_path, service_path, enable_gateway_auth, is_internal_route are read-only
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    # Create a module with spec
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    AAPUIPluginRoute(module).manage()
-
-
-if __name__ == "__main__":
-    main()
