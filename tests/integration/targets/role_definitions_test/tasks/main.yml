@@ -172,4 +172,3 @@
         state: absent
       failed_when: false
 ...
-

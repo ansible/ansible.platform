@@ -109,6 +109,7 @@ def _read_marker_via_subprocess(argv):
             text=True,
             env=env,
             timeout=10,
+            check=False,
         )
         return result.stderr, result.stdout
     finally:
@@ -152,12 +153,12 @@ class TestManagerProcessNoCredentialLeak(unittest.TestCase):
 
     def test_subprocess_stderr_does_not_contain_password(self):
         """Real subprocess run: stderr captured by the caller must not contain password."""
-        stderr, _ = _read_marker_via_subprocess(_SHORT_ARGV)
+        stderr, _stdout = _read_marker_via_subprocess(_SHORT_ARGV)
         self._assert_no_credentials(stderr, "subprocess stderr")
 
     def test_subprocess_stderr_does_not_contain_token(self):
         """Real subprocess run: stderr must not contain the OAuth token."""
-        stderr, _ = _read_marker_via_subprocess(_SHORT_ARGV)
+        stderr, _stdout = _read_marker_via_subprocess(_SHORT_ARGV)
         self._assert_no_credentials(stderr, "subprocess stderr")
 
 
@@ -192,6 +193,7 @@ class TestManagerProcessStartupMarkerNoCredentials(unittest.TestCase):
                 text=True,
                 env=env,
                 timeout=10,
+                check=False,
             )
 
             marker_contents = real_marker.read_text() if real_marker.exists() else ""

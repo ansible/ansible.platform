@@ -20,4 +20,3 @@
       {{ connection_mode | default('local') == 'http-persistent' }}
   when: connection_mode is defined
 ...
-

@@ -444,4 +444,3 @@
           - name: "{{ secondary_http_port_name }}"
       register: __http_port_create_result
 ...
-

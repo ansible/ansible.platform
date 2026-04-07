@@ -66,4 +66,3 @@
           password_min_upper: "{{ current_settings['password_min_upper'] }}"
           password_min_special: "{{ current_settings['password_min_special'] }}"
 ...
-

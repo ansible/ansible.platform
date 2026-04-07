@@ -14,7 +14,7 @@ from __future__ import absolute_import, division, print_function
 import threading
 import time
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
