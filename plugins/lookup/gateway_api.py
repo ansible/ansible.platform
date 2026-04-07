@@ -220,18 +220,11 @@ class LookupModule(LookupBase):
         # --- response validation ---
         if self.get_option("expect_objects") or self.get_option("expect_one"):
             if ("id" not in return_data) and ("results" not in return_data):
-                raise AnsibleError(
-                    "Did not obtain a list or detail view at '{0}', "
-                    "and expect_objects or expect_one is set to True".format(endpoint)
-                )
+                raise AnsibleError("Did not obtain a list or detail view at '{0}', and expect_objects or expect_one is set to True".format(endpoint))
 
         if self.get_option("expect_one"):
             if "results" in return_data and len(return_data["results"]) != 1:
-                raise AnsibleError(
-                    "Expected one object from endpoint '{0}', but obtained {1}".format(
-                        endpoint, len(return_data["results"])
-                    )
-                )
+                raise AnsibleError("Expected one object from endpoint {0}, but obtained {1} from API".format(endpoint, len(return_data["results"])))
 
         # --- result shaping ---
         if self.get_option("return_ids"):

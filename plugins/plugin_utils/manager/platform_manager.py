@@ -985,6 +985,7 @@ class PlatformService(BaseAPIClient):
                     body_text = getattr(e.response, "text", "") or ""
                     if body_text:
                         import json as _json
+
                         try:
                             body_formatted = str(_json.loads(body_text))
                         except (_json.JSONDecodeError, ValueError):
@@ -1149,9 +1150,7 @@ class PlatformService(BaseAPIClient):
         if return_all and "results" in data:
             total = data.get("count", len(data["results"]))
             if total > max_objects:
-                raise ValueError(
-                    "Endpoint '%s' returned %d objects which exceeds max_objects=%d" % (endpoint, total, max_objects)
-                )
+                raise ValueError("Endpoint '%s' returned %d objects which exceeds max_objects=%d" % (endpoint, total, max_objects))
             next_url = data.get("next")
             while next_url:
                 next_resp = self._make_request("get", next_url, operation="search_api_paginate", resource=endpoint)
