@@ -149,8 +149,14 @@ class TestAPIVersioning(unittest.TestCase):
     @patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager._get_requests")
     def test_platform_service_version_fallback(self, mock_get_requests, mock_cred_manager):
         """
-        Validates that if the Gateway API reports an unsupported future version,
-        the PlatformService gracefully falls back to the highest locally supported version.
+        Validates that when /v1/ping/ succeeds with no X-API-Version header,
+        PlatformService conservatively returns '1' regardless of what the JSON
+        body reports.
+
+        Design intent (see _detect_api_version docstring): successfully reaching
+        /api/gateway/v1/ping/ confirms that API v1 is available.  The
+        implementation intentionally never falls back to get_latest_version() —
+        a collection that ships v2 must not assume the server supports v2.
         """
         mock_response = MagicMock()
         mock_response.headers = {"Content-Type": "application/json"}
@@ -165,9 +171,9 @@ class TestAPIVersioning(unittest.TestCase):
         mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
         config = GatewayConfig(base_url="https://127.0.0.1", username="admin", password="admin")
         service = PlatformService(config)
-        registry = APIVersionRegistry()
-        expected_fallback = registry.get_latest_version()
-        self.assertEqual(service.api_version, expected_fallback)
+        # /v1/ping/ returned 200 with no X-API-Version header → v1 confirmed.
+        # The implementation does NOT fall back to get_latest_version().
+        self.assertEqual(service.api_version, "1")
 
     @patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry.logger")
     def test_loader_closest_higher_with_warning(self, mock_logger):
