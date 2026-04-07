@@ -23,6 +23,7 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         method: GET
         return_content: true
+      delegate_to: localhost
       register: _http_ports_list
 
     - name: Ensure test port numbers are absent (cleanup from previous runs)

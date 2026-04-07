@@ -9,6 +9,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     method: GET
     return_content: true
+  delegate_to: localhost
   register: settings_all_response
 
 - name: Set current_settings from API response

@@ -49,6 +49,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       loop: ["{{ primary_http_port_number }}", "{{ secondary_http_port_number }}"]
       register: _leftover_ports
 
@@ -71,6 +72,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       loop: "{{ _leftover_port_ids }}"
       register: _leftover_routes
       when: _leftover_port_ids | length > 0
@@ -84,6 +86,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       loop: "{{ _leftover_port_ids }}"
       register: _leftover_ui_routes
       when: _leftover_port_ids | length > 0
@@ -97,6 +100,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [204, 404]
+      delegate_to: localhost
       loop: >-
         {{ ((_leftover_routes.results | default([]))
             + (_leftover_ui_routes.results | default([])))
@@ -116,6 +120,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [204, 404]
+      delegate_to: localhost
       loop: "{{ _leftover_port_ids }}"
       when: _leftover_port_ids | length > 0
 
@@ -206,6 +211,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       register: ui_plugin_route_search
 
     - name: Assert that UI Plugin Route does not exist
@@ -267,6 +273,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       register: hub_plugin_route_response
 
     - name: Debug UI Plugin Route lookup result

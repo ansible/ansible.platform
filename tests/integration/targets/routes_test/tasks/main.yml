@@ -27,6 +27,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       loop: [9082, 8050]
       register: _leftover_ports
 
@@ -49,6 +50,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       loop: "{{ _leftover_port_ids }}"
       register: _leftover_routes
       when: _leftover_port_ids | length > 0
@@ -62,6 +64,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [204, 404]
+      delegate_to: localhost
       loop: >-
         {{ (_leftover_routes.results | default([]))
            | selectattr('json', 'defined')
@@ -80,6 +83,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [204, 404]
+      delegate_to: localhost
       loop: "{{ _leftover_port_ids }}"
       when: _leftover_port_ids | length > 0
 
@@ -173,6 +177,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       register: route_search
 
     - name: Assert that Route does not exist

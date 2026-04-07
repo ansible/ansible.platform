@@ -36,6 +36,9 @@ class APIApplication_v1(BaseTransformMixin):
     modified: Optional[str] = None
     url: Optional[str] = None
 
+    # API-generated; present in POST/PATCH responses, never sent as input.
+    client_id: Optional[str] = None
+
 
 def _join_uri_list(value: Union[str, List[str], None]) -> Optional[str]:
     if value is None:
@@ -220,6 +223,11 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
     ):
         from ...ansible_models.application import AnsibleApplication
 
+        # Redirect URI fields are stored as space-separated strings by the API.
+        # We keep them as strings here so _update_resource()'s fallback merge
+        # can safely copy them back onto APIApplication_v1 without bypassing
+        # _join_uri_list().  The string->list conversion for user-facing output
+        # is done in the action plugin via _LIST_FIELDS (output layer only).
         return AnsibleApplication(
             name=api_data.get("name", ""),
             organization=api_data.get("organization"),
@@ -227,8 +235,6 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             algorithm=api_data.get("algorithm"),
             authorization_grant_type=api_data.get("authorization_grant_type"),
             client_type=api_data.get("client_type"),
-            # Keep the API's representation (space-separated string) so the manager
-            # can safely merge current values into PATCH payloads.
             redirect_uris=api_data.get("redirect_uris"),
             post_logout_redirect_uris=api_data.get("post_logout_redirect_uris"),
             skip_authorization=api_data.get("skip_authorization"),
@@ -238,4 +244,6 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             created=api_data.get("created"),
             modified=api_data.get("modified"),
             url=api_data.get("url"),
+            # API-generated OAuth credential — surfaced flat only, not in nested dict.
+            client_id=api_data.get("client_id"),
         )

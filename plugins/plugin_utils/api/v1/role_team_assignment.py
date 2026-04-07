@@ -55,7 +55,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
 
-        # Resolve role_definition name → id
+        # Resolve role_definition name -> id
         role_definition = getattr(ansible_instance, "role_definition", None)
         if role_definition is not None and manager:
             resolved = _resolve_fk(manager, "role_definitions", "name", role_definition)
@@ -64,7 +64,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
         elif role_definition is not None and str(role_definition).isdigit():
             api_data["role_definition"] = int(role_definition)
 
-        # Resolve team name → id
+        # Resolve team name -> id
         team = getattr(ansible_instance, "team", None)
         if team is not None and manager:
             resolved = _resolve_fk(manager, "teams", "name", team)

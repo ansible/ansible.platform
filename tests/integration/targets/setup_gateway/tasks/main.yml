@@ -6,6 +6,7 @@
     url_username: "{{ gateway_username }}"
     url_password: "{{ gateway_password }}"
     validate_certs: "{{ gateway_validate_certs }}"
+  delegate_to: localhost
   register: server_ping
   until: server_ping is not failed
   retries: 30

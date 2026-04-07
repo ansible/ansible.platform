@@ -137,7 +137,7 @@ class DirectHTTPClient(BaseAPIClient):
             # Only trust the X-API-Version header from the ping endpoint.
             # The JSON body "version" field is the *product* version
             # (e.g. "2.6" for AAP Gateway 2.6.x), NOT the API version.
-            # Parsing it would map "2.6" → major "2" and select the wrong
+            # Parsing it would map "2.6" -> major "2" and select the wrong
             # API version on a server that only serves v1 paths.
             v = _hdr_version(response)
             if v:
@@ -611,7 +611,7 @@ class DirectHTTPClient(BaseAPIClient):
 
     def _create_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Create resource with transformation."""
-        # FORWARD TRANSFORM: Ansible → API
+        # FORWARD TRANSFORM: Ansible -> API
         logger.info("DirectHTTPClient: Forward transform for %s: %s", mixin_class.__name__, ansible_data)
         api_data = mixin_class.from_ansible_data(ansible_data, context)
         logger.info("DirectHTTPClient: API data for %s: %s", mixin_class.__name__, api_data)
@@ -622,7 +622,7 @@ class DirectHTTPClient(BaseAPIClient):
         api_result = self._execute_operations(operations, api_data, context, required_for="create")
         logger.info("DirectHTTPClient: API result for %s: %s", mixin_class.__name__, api_result)
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         if api_result:
             # from_api returns AnsibleUser dataclass
             ansible_instance = mixin_class.from_api(api_result, context)
@@ -649,7 +649,7 @@ class DirectHTTPClient(BaseAPIClient):
         except Exception:
             current_data = {}
 
-        # FORWARD TRANSFORM: Ansible → API
+        # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
 
         # Get endpoint operations from mixin
@@ -686,7 +686,7 @@ class DirectHTTPClient(BaseAPIClient):
         # Execute update operation
         api_result = self._execute_operations(operations, api_data, context, required_for="update")
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         if api_result:
             # from_api returns AnsibleUser dataclass
             ansible_instance = mixin_class.from_api(api_result, context)

@@ -25,7 +25,7 @@ class ActionModule(BaseResourceActionPlugin):
           standard BaseResourceActionPlugin.run() after stripping
           assignment_objects from task args.
         - Multi-object (assignment_objects list): iterates over each entry,
-          resolves name+type → object_id, and creates/deletes individual
+          resolves name+type -> object_id, and creates/deletes individual
           assignments with idempotency.
         """
         if task_vars is None:

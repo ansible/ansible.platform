@@ -133,6 +133,7 @@
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | default(false) }}"
         status_code: [200]
+      delegate_to: localhost
       register: service_key_search
 
     - name: Assert that Service Key 1 does not exist

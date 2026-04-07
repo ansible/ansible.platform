@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import logging
 import threading
+import time
 from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
@@ -71,10 +72,8 @@ class PlatformService(BaseAPIClient):
         Args:
             config: Gateway configuration
         """
-        # Initialize base class (sets up registry, loader, cache, api_version)
         super().__init__(config)
 
-        # Initialize credential manager and store credentials securely
         self.credential_manager = get_credential_manager()
         self.credential_store = self.credential_manager.get_or_create_store(
             gateway_url=self.base_url,
@@ -84,22 +83,16 @@ class PlatformService(BaseAPIClient):
             process_id=str(id(self)),  # Use object ID as process identifier
         )
 
-        # Store namespace ID for credential operations
         self.namespace_id = self.credential_store.namespace.namespace_id
-
-        # Get credentials from store (they're stored securely there)
         self.username, self.password, self.oauth_token = self.credential_store.get_auth_credentials()
 
-        # Initialize persistent session (thread-safe)
         requests = _get_requests()
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Ansible Platform Collection", "Accept": "application/json", "Content-Type": "application/json"})
 
-        # Track authentication state
         self._auth_lock = threading.Lock()
         self._last_auth_error = None
 
-        # Authenticate (with error handling)
         try:
             self._authenticate()
             logger.info("PlatformService: Authentication successful")
@@ -108,26 +101,21 @@ class PlatformService(BaseAPIClient):
             self._last_auth_error = e
             # Continue anyway - some operations might work without auth
 
-        # Detect API version (cached for lifetime)
-        # IMPORTANT: Always default to '1' if detection fails
-        # Do NOT use registry-discovered versions - we detect from the actual API
-        # Detect API version dynamically
         self.api_version = self._detect_api_version()
-        logger.info("PlatformService: API version locked in for execution: v%s", self.api_version)
         self.session.headers.update({"X-API-Version": str(self.api_version)})
-
         logger.info("PlatformService initialized with API v%s", self.api_version)
 
-        # Performance counters (thread-safe)
         self._http_request_count = 0
-        self._tls_handshake_count = 1  # 1 handshake when session is created (HTTPS)
+        self._tls_handshake_count = 1  # 1 handshake when session is created
         self._lock = threading.Lock()
 
-        # Shutdown flag
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
 
-        # Retry configuration
+        # Idle-tracking state (monotonic clock — not affected by NTP slew or wall-clock changes)
+        self._activity_lock = threading.Lock()
+        self._last_activity_monotonic = time.monotonic()
+
         self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
 
     def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
@@ -150,36 +138,27 @@ class PlatformService(BaseAPIClient):
             PlatformError: Classified platform error
         """
 
-        # Create a retried version of the request function
         @retry_http_request(config=self.retry_config)
         def _execute_with_retry():
-            # Set default timeout and verify_ssl if not provided
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
                 request_kwargs["timeout"] = self.request_timeout
             if "verify" not in request_kwargs:
                 request_kwargs["verify"] = self.verify_ssl
 
-            # Get the appropriate session method
             session_method = getattr(self.session, method.lower())
 
             # Track request count
             with self._lock:
                 self._http_request_count += 1
 
-            # Make the actual HTTP request
             response = session_method(url, **request_kwargs)
 
-            # Check for HTTP error status codes
             if response.status_code >= 400:
-                # Handle 401 separately (authentication recovery)
                 if response.status_code == 401:
-                    # Try to recover authentication
                     if self._handle_auth_error(response):
-                        # Retry the request after re-authentication
                         response = session_method(url, **request_kwargs)
                         if response.status_code == 401:
-                            # Still 401 after recovery attempt
                             raise AuthenticationError(
                                 message=f"Authentication failed: HTTP {response.status_code}",
                                 operation=operation,
@@ -188,7 +167,6 @@ class PlatformService(BaseAPIClient):
                                 status_code=response.status_code,
                             )
                     else:
-                        # Authentication recovery failed
                         raise AuthenticationError(
                             message=f"Authentication failed: HTTP {response.status_code}",
                             operation=operation,
@@ -197,27 +175,22 @@ class PlatformService(BaseAPIClient):
                             status_code=response.status_code,
                         )
 
-                # For other HTTP errors, raise APIError
-                # The decorator will determine if it's retryable
-                response.raise_for_status()  # Will raise requests.HTTPError
+                response.raise_for_status()
 
             return response
 
-        # Execute with retry logic
         return _execute_with_retry()
 
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
         requests = _get_requests()
         with self._auth_lock:
-            # Get fresh credentials from store
             username, password, oauth_token = self.credential_store.get_auth_credentials()
 
-            # Use simple URL for auth - we don't know the API version yet
+            # Use base URL — API version not known yet
             url = self.base_url
 
             if oauth_token:
-                # OAuth token authentication
                 header = {"Authorization": f"Bearer {oauth_token}"}
                 self.session.headers.update(header)
                 try:
@@ -228,7 +201,6 @@ class PlatformService(BaseAPIClient):
                     self._last_auth_error = e
                     raise ValueError(f"Authentication error with token: {e}") from e
             elif username and password:
-                # Basic authentication
                 basic_str = base64.b64encode(f"{username}:{password}".encode("ascii"))
                 header = {"Authorization": f"Basic {basic_str.decode('ascii')}"}
                 self.session.headers.update(header)
@@ -243,6 +215,9 @@ class PlatformService(BaseAPIClient):
                 error_msg = "Either oauth_token or username/password must be provided"
                 self._last_auth_error = ValueError(error_msg)
                 raise ValueError(error_msg)
+
+        # Record activity so the idle monitor does not count auth work as idle time
+        self.record_activity()
 
     def _check_token_expiration(self) -> Tuple[bool, Optional[float]]:
         """
@@ -270,10 +245,8 @@ class PlatformService(BaseAPIClient):
                 logger.debug("No refresh token available")
                 return False
 
-            # Attempt to refresh token
-            # Note: This is a placeholder - actual refresh endpoint depends on Gateway API
+            # Note: actual refresh endpoint depends on Gateway API
             try:
-                # Gateway token refresh endpoint (if available)
                 refresh_url = f"{self.base_url}/api/gateway/v1/auth/token/refresh/"
                 response = self.session.post(
                     refresh_url, json={"refresh_token": token_info.refresh_token}, timeout=self.request_timeout, verify=self.verify_ssl
@@ -287,9 +260,10 @@ class PlatformService(BaseAPIClient):
 
                     if new_token:
                         self.credential_store.update_token(token=new_token, refresh_token=new_refresh_token, expires_in=expires_in)
-                        # Update session header
                         self.session.headers.update({"Authorization": f"Bearer {new_token}"})
                         logger.info("Token refreshed successfully")
+                        # Record activity so the idle monitor does not treat a token refresh as idle time
+                        self.record_activity()
                         return True
             except Exception as e:
                 logger.warning("Token refresh failed: %s", e)
@@ -310,6 +284,18 @@ class PlatformService(BaseAPIClient):
             logger.error("Re-authentication failed: %s", e)
             return False
 
+    # --- Idle-timeout helpers ---
+
+    def record_activity(self) -> None:
+        """Reset the idle clock.  Call whenever a real API call completes."""
+        with self._activity_lock:
+            self._last_activity_monotonic = time.monotonic()
+
+    def seconds_since_last_activity(self) -> float:
+        """Return seconds elapsed since the last recorded activity."""
+        with self._activity_lock:
+            return time.monotonic() - self._last_activity_monotonic
+
     def _handle_auth_error(self, response: "requests.Response") -> bool:
         """
         Handle authentication error (401) and attempt recovery.
@@ -325,15 +311,12 @@ class PlatformService(BaseAPIClient):
 
         logger.warning("Received 401 Unauthorized, attempting to recover authentication")
 
-        # Try token refresh first (if using OAuth)
         creds = self.credential_store.get_auth_credentials()
         oauth_token = creds[2] if len(creds) > 2 else None
-        if oauth_token:
-            if self._refresh_token():
-                logger.info("Authentication recovered via token refresh")
-                return True
+        if oauth_token and self._refresh_token():
+            logger.info("Authentication recovered via token refresh")
+            return True
 
-        # Fall back to re-authentication
         if self._re_authenticate():
             logger.info("Authentication recovered via re-authentication")
             return True
@@ -401,7 +384,7 @@ class PlatformService(BaseAPIClient):
             # Only trust the X-API-Version header from the ping endpoint.
             # The JSON body "version" field is the *product* version
             # (e.g. "2.6" for AAP Gateway 2.6.x), NOT the API version.
-            # Parsing it would map "2.6" → major "2" and select the wrong
+            # Parsing it would map "2.6" -> major "2" and select the wrong
             # API version on a server that only serves v1 paths.
             v = _hdr_version(response)
             if v:
@@ -478,7 +461,6 @@ class PlatformService(BaseAPIClient):
         Returns:
             Full URL string
         """
-        # Ensure endpoint starts with /api/gateway/v1
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
         if not endpoint.startswith("/api/"):
@@ -515,18 +497,12 @@ class PlatformService(BaseAPIClient):
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
-        # Load version-appropriate classes
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
-
-        # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
-
-        # Build transformation context (using dataclass for type safety)
         context = TransformContext(
             manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
         )
 
-        # Execute operation
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
@@ -564,20 +540,15 @@ class PlatformService(BaseAPIClient):
         Returns:
             Created resource as dict (Ansible format) with 'changed': True
         """
-        # FORWARD TRANSFORM: Ansible → API
+        # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
 
-        # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
-
-        # Execute operations (potentially multi-endpoint)
         api_result = self._execute_operations(operations, api_data, context, required_for="create")
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         if api_result:
-            # Use mixin's from_api method which returns AnsibleUser dataclass
             ansible_instance = mixin_class.from_api(api_result, context)
-            # Convert to dict and add 'changed' field for Ansible return
             from dataclasses import asdict
 
             ansible_result = asdict(ansible_instance)
@@ -598,23 +569,19 @@ class PlatformService(BaseAPIClient):
         Returns:
             Updated resource as dict (Ansible format) with 'changed': True/False
         """
-        # Get the resource ID (not required for singleton resources)
         resource_id = getattr(ansible_data, "id", None)
         is_singleton = getattr(mixin_class, "is_singleton", False)
         if not resource_id and not is_singleton:
             raise ValueError("Resource ID required for update operation")
 
-        # Fetch current state for comparison
         try:
             current_data = self._find_resource(ansible_data, mixin_class, context)
         except Exception:
             # If we can't fetch current state, assume change
             current_data = {}
 
-        # FORWARD TRANSFORM: Ansible → API
+        # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
-
-        # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
         # For update, some APIs require all required fields in the PATCH body (e.g. http_port
@@ -627,22 +594,19 @@ class PlatformService(BaseAPIClient):
                 if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
                     setattr(api_data, field, current_dict[field])
 
-        # Execute update operation
         api_result = self._execute_operations(operations, api_data, context, required_for="update")
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         if api_result:
-            # Use mixin's from_api method which returns AnsibleUser dataclass
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
 
-            # Convert to dict for comparison and return
             new_dict = asdict(ansible_instance)
             current_dict = current_data if isinstance(current_data, dict) else {}
             read_only_fields = {"id", "created", "modified", "url", "changed"}
 
             # Merge current + PATCH response; don't let None from sparse response
-            # overwrite existing values (e.g. associated_authenticators: {} → None).
+            # overwrite existing values (e.g. associated_authenticators: {} -> None).
             merged = dict(current_dict)
             for k, v in new_dict.items():
                 if v is not None or k not in merged:
@@ -778,10 +742,8 @@ class PlatformService(BaseAPIClient):
         Returns:
             Empty dict (resource deleted)
         """
-        # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
-        # Find delete operation
         delete_op = None
         for op_name, op in operations.items():
             if op_name == "delete" or (op.required_for == "delete"):
@@ -791,12 +753,10 @@ class PlatformService(BaseAPIClient):
         if not delete_op:
             raise ValueError("No delete operation defined for this resource")
 
-        # Need ID for delete
         resource_id = ansible_data.id
         if not resource_id:
             raise ValueError("Resource ID required for delete operation")
 
-        # Build URL with path parameters
         path = delete_op.path
         if delete_op.path_params:
             for param in delete_op.path_params:
@@ -804,13 +764,9 @@ class PlatformService(BaseAPIClient):
                     path = path.replace(f"{{{param}}}", str(resource_id))
 
         url = self._build_url(path)
-
-        # Make DELETE request
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.verify_ssl)
         response.raise_for_status()
-
-        # Deleting a resource always results in a change
         return {"changed": True}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
@@ -830,7 +786,6 @@ class PlatformService(BaseAPIClient):
         Returns:
             Found resource as dict (Ansible format)
         """
-        # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
@@ -848,7 +803,6 @@ class PlatformService(BaseAPIClient):
 
             return asdict(ansible_instance)
 
-        # --- Standard CRUD resources ---
         lookup_field = mixin_class.get_lookup_field()
         unique_value = getattr(ansible_data, lookup_field, None) or getattr(ansible_data, "id", None)
 
@@ -863,7 +817,7 @@ class PlatformService(BaseAPIClient):
             raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
 
         # Resolve the resource ID to use for a direct GET lookup.
-        # Priority: explicit id field → numeric name field (caller passed an int PK).
+        # Priority: explicit id field -> numeric name field (caller passed an int PK).
         resolved_id = None
         if hasattr(ansible_data, "id") and ansible_data.id:
             resolved_id = ansible_data.id
@@ -872,7 +826,6 @@ class PlatformService(BaseAPIClient):
             # meaning "look up by primary key".  Use GET /resource/{id}/ directly.
             resolved_id = int(str(unique_value).strip())
 
-        # If we have an ID, use get endpoint
         if resolved_id:
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
@@ -901,7 +854,6 @@ class PlatformService(BaseAPIClient):
                     if result_val_cmp != param_val_cmp:
                         raise ValueError(f"Resource {resolved_id} found but composite key {param_key}={param_val} does not match actual value {result_val}")
         else:
-            # Use list endpoint and filter by lookup field or composite params
             if not list_op:
                 raise ValueError("No LIST operation defined for this resource")
             query_params = {}
@@ -915,15 +867,12 @@ class PlatformService(BaseAPIClient):
             response.raise_for_status()
             list_result = response.json()
 
-            # Find matching item in results
             results = list_result.get("results", [])
             if not results:
                 raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
-
-            # Return first match
             api_result = results[0]
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         ansible_instance = mixin_class.from_api(api_result, context)
         from dataclasses import asdict
 
@@ -942,21 +891,16 @@ class PlatformService(BaseAPIClient):
         Returns:
             Combined API response dict
         """
-        # Filter operations
         relevant_ops = {name: op for name, op in operations.items() if op.required_for is None or op.required_for == required_for}
-
-        # Sort by dependencies and order
         sorted_ops = self._sort_operations(relevant_ops)
 
-        # Execute in order
         results = {}
         api_data_dict = asdict(api_data)
 
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            # Extract fields for this endpoint
-            # For update: send non-None values including "" (empty string) so enforced can clear e.g. email
+            # For update: include "" (empty string) so enforced can clear fields like email
             request_data = {}
             for field in endpoint_op.fields:
                 if field not in api_data_dict:
@@ -974,7 +918,6 @@ class PlatformService(BaseAPIClient):
                 logger.debug("Skipping %s - no data", op_name)
                 continue
 
-            # Build URL with path parameters
             path = endpoint_op.path
             if endpoint_op.path_params:
                 for param in endpoint_op.path_params:
@@ -985,7 +928,6 @@ class PlatformService(BaseAPIClient):
 
             url = self._build_url(path)
 
-            # Make API call
             logger.debug("Calling %s %s", endpoint_op.method, url)
 
             try:
@@ -1007,15 +949,12 @@ class PlatformService(BaseAPIClient):
                         raise ValueError(f"{e}\nResponse body: {body[:1000]}") from e
                 raise
 
-            # Store result
             result_data = response.json() if response.content else {}
             results[op_name] = result_data
 
-            # Store ID for dependent operations
             if "id" in result_data and "id" not in results:
                 results["id"] = result_data["id"]
 
-        # Return main result
         return results.get("create") or results.get("update") or results.get("main") or {}
 
     def _sort_operations(self, operations: Dict) -> list:
@@ -1033,22 +972,16 @@ class PlatformService(BaseAPIClient):
 
         # Topological sort based on depends_on
         while remaining:
-            # Find operations with no unmet dependencies
             ready = [name for name, op in remaining.items() if op.depends_on is None or op.depends_on in sorted_ops]
 
             if not ready:
                 raise ValueError(f"Circular dependency in operations: {list(remaining.keys())}")
 
-            # Sort ready operations by order field
             ready.sort(key=lambda name: remaining[name].order)
-
-            # Add first ready operation
             sorted_ops.append(ready[0])
             remaining.pop(ready[0])
 
         return sorted_ops
-
-    # Helper methods for transformations (called via context)
 
     def lookup_org_ids(self, org_names: list) -> list:
         """
@@ -1062,13 +995,11 @@ class PlatformService(BaseAPIClient):
         """
         ids = []
         for name in org_names:
-            # Check cache
             cache_key = f"org_name:{name}"
             if cache_key in self.cache:
                 ids.append(self.cache[cache_key])
                 continue
 
-            # API lookup
             url = self._build_url("organizations", query_params={"name": name})
             response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
@@ -1095,13 +1026,11 @@ class PlatformService(BaseAPIClient):
         """
         names = []
         for org_id in org_ids:
-            # Check reverse cache
             cache_key = f"org_id:{org_id}"
             if cache_key in self.cache:
                 names.append(self.cache[cache_key])
                 continue
 
-            # API lookup
             url = self._build_url(f"organizations/{org_id}/")
             response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
             response.raise_for_status()
@@ -1109,7 +1038,7 @@ class PlatformService(BaseAPIClient):
 
             name = org["name"]
             self.cache[cache_key] = name
-            self.cache[f"org_name:{name}"] = org_id  # Store both directions
+            self.cache[f"org_name:{name}"] = org_id
             names.append(name)
 
         return names
@@ -1166,18 +1095,14 @@ class PlatformService(BaseAPIClient):
             self._shutdown_requested = True
             logger.info("Shutdown requested for PlatformService")
 
-        # Close HTTP session
         try:
             if hasattr(self, "session") and self.session:
                 self.session.close()
-                logger.debug("HTTP session closed")
         except Exception as e:
             logger.warning("Error closing HTTP session: %s", e)
 
-        # Clear cache
         try:
             self.cache.clear()
-            logger.debug("Cache cleared")
         except Exception as e:
             logger.warning("Error clearing cache: %s", e)
 

@@ -243,6 +243,15 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses should override this with module-specific write-only fields.
     _WRITE_ONLY_FIELDS: frozenset = frozenset()
 
+    # API-generated fields returned flat only (not in nested dict, not round-trip safe as input).
+    # Subclasses override with module-specific fields.
+    _EXTRA_RETURN_FIELDS: frozenset = frozenset()
+
+    # Fields the API stores as space-separated strings but argument_spec declares as list.
+    # Conversion is applied in the output layer only so the internal update path is unaffected.
+    # Subclasses override with module-specific fields.
+    _SPACE_SEPARATED_LIST_FIELDS: frozenset = frozenset()
+
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
     _DEPRECATED_FIELDS: dict = {}
@@ -1111,7 +1120,7 @@ class BaseResourceActionPlugin(ActionBase):
                     )
                     return result
 
-            # ---- enforced: find → merge declared fields → update/create ----
+            # ---- enforced: find -> merge declared fields -> update/create ----
             if operation == "enforced":
                 argspec_fields = set(argspec.get("argument_spec", {}).keys())
                 try:
@@ -1241,13 +1250,39 @@ class BaseResourceActionPlugin(ActionBase):
                 if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
             }
 
+            # Output-layer type conversion: space-separated API strings - lists.
+            for _field in self._SPACE_SEPARATED_LIST_FIELDS:
+                if _field in validated_output:
+                    _raw = validated_output[_field]
+                    if isinstance(_raw, str):
+                        validated_output[_field] = _raw.split() if _raw.strip() else None
+
+            # Extra non-argspec fields (e.g. client_id for application).
+            # These are returned flat only — never nested — because they are not
+            # valid module inputs and would break round-trip if included in
+            # the MODULE_NAME dict.
+            extra_flat = {k: manager_result[k] for k in self._EXTRA_RETURN_FIELDS if k in manager_result and manager_result[k] is not None}
+
             result.update(
                 {
                     "changed": manager_result.get("changed", False),
                     "failed": False,
+                    # ----------------------------------------------------------------
+                    # Nested resource dict — argspec fields only, round-trip safe.
+                    # Use result.<module_name>.<field> in new playbooks.
+                    # ----------------------------------------------------------------
                     self.MODULE_NAME: validated_output,
+                    # ----------------------------------------------------------------
+                    # DEPRECATED (ansible.platform 2.7): flat top-level keys kept for
+                    # backward compatibility with playbooks written against <=2.6.
+                    # Scheduled for removal after 2028-04-01.
+                    # Migrate to result.<module_name>.<field> before that date.
+                    # ----------------------------------------------------------------
+                    **validated_output,
+                    **extra_flat,
                 }
             )
+
             if operation == "find":
                 result["exists"] = bool(validated_output.get("id"))
 

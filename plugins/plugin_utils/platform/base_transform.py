@@ -79,7 +79,7 @@ class BaseTransformMixin(ABC):
 
         Args:
             target_class: Target dataclass type to instantiate
-            direction: 'forward' (Ansible→API) or 'reverse' (API→Ansible)
+            direction: 'forward' (Ansible->API) or 'reverse' (API->Ansible)
             context: Context dict for transformation functions
 
         Returns:
@@ -117,7 +117,7 @@ class BaseTransformMixin(ABC):
 
     def _apply_forward_mapping(self, source_data: dict, mapping: dict, context: TransformContext) -> dict:
         """
-        Apply forward mapping (Ansible → API).
+        Apply forward mapping (Ansible -> API).
 
         Args:
             source_data: Source data as dict
@@ -156,7 +156,7 @@ class BaseTransformMixin(ABC):
 
     def _apply_reverse_mapping(self, source_data: dict, mapping: dict, context: TransformContext) -> dict:
         """
-        Apply reverse mapping (API → Ansible).
+        Apply reverse mapping (API -> Ansible).
 
         Args:
             source_data: Source data as dict
