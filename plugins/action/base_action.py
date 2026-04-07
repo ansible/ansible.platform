@@ -1281,11 +1281,7 @@ class BaseResourceActionPlugin(ActionBase):
             # These are returned flat only — never nested — because they are not
             # valid module inputs and would break round-trip if included in
             # the MODULE_NAME dict.
-            extra_flat = {
-                k: manager_result[k]
-                for k in self._EXTRA_RETURN_FIELDS
-                if k in manager_result and manager_result[k] is not None
-            }
+            extra_flat = {k: manager_result[k] for k in self._EXTRA_RETURN_FIELDS if k in manager_result and manager_result[k] is not None}
 
             result.update(
                 {

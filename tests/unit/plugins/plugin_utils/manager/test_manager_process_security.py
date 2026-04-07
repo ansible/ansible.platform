@@ -34,16 +34,16 @@ _SCRIPT = "manager_process.py"
 
 _FULL_ARGV = [
     _SCRIPT,
-    FAKE_SOCKET_PATH,   # 1
-    FAKE_SOCKET_DIR,    # 2
-    FAKE_HOSTNAME,      # 3
-    FAKE_URL,           # 4
-    FAKE_USERNAME,      # 5
-    FAKE_PASSWORD,      # 6  ← sensitive
-    FAKE_TOKEN,         # 7  ← sensitive
-    "true",             # 8  verify_ssl
-    "10.0",             # 9  request_timeout
-    "3600.0",           # 10 idle_timeout (optional)
+    FAKE_SOCKET_PATH,  # 1
+    FAKE_SOCKET_DIR,  # 2
+    FAKE_HOSTNAME,  # 3
+    FAKE_URL,  # 4
+    FAKE_USERNAME,  # 5
+    FAKE_PASSWORD,  # 6  ← sensitive
+    FAKE_TOKEN,  # 7  ← sensitive
+    "true",  # 8  verify_ssl
+    "10.0",  # 9  request_timeout
+    "3600.0",  # 10 idle_timeout (optional)
 ]
 
 # Too-short argv — has URL + credentials but is missing required tail args

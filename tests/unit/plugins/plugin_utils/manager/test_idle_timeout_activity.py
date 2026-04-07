@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 # starting a real HTTP session or connecting to a gateway.
 # ---------------------------------------------------------------------------
 
+
 def _make_service_stub():
     """Return a PlatformService instance with all heavy __init__ work bypassed.
 
@@ -122,8 +123,7 @@ class TestAuthenticateDoesNotRecordActivity(unittest.TestCase):
         self.assertLess(
             after,
             5.0,
-            f"_authenticate() did not reset the idle clock. "
-            f"seconds_since_last_activity={after:.1f}s — record_activity() was never called.",
+            f"_authenticate() did not reset the idle clock. seconds_since_last_activity={after:.1f}s — record_activity() was never called.",
         )
 
     def test_authenticate_calls_record_activity(self):
@@ -167,8 +167,7 @@ class TestReAuthenticateDoesNotRecordActivity(unittest.TestCase):
         self.assertLess(
             after,
             5.0,
-            f"_re_authenticate() did not reset the idle clock. "
-            f"seconds_since_last_activity={after:.1f}s",
+            f"_re_authenticate() did not reset the idle clock. seconds_since_last_activity={after:.1f}s",
         )
 
 
@@ -206,8 +205,7 @@ class TestRefreshTokenDoesNotRecordActivity(unittest.TestCase):
         self.assertLess(
             after,
             5.0,
-            f"_refresh_token() did not reset the idle clock. "
-            f"seconds_since_last_activity={after:.1f}s — record_activity() was never called.",
+            f"_refresh_token() did not reset the idle clock. seconds_since_last_activity={after:.1f}s — record_activity() was never called.",
         )
 
 
@@ -245,8 +243,7 @@ class TestIdleTimeoutNotFiredDuringAuthWork(unittest.TestCase):
         # The idle monitor should NOT fire — manager just did real work
         self.assertFalse(
             svc.should_exit_for_idle(),
-            "should_exit_for_idle() returned True even though _authenticate() just ran. "
-            "This means _authenticate() does not call record_activity().",
+            "should_exit_for_idle() returned True even though _authenticate() just ran. This means _authenticate() does not call record_activity().",
         )
 
 
