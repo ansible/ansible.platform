@@ -1307,20 +1307,6 @@ class BaseResourceActionPlugin(ActionBase):
                 }
             )
 
-            if validated_output:
-                result.setdefault("deprecations", []).append(
-                    {
-                        "msg": (
-                            "Accessing ansible.platform.{mod} result fields at the top level "
-                            "(e.g. 'result.id', 'result.name') is deprecated. "
-                            "Use 'result.{mod}.<field>' instead. "
-                            "Top-level keys will be removed after 2028-04-01."
-                        ).format(mod=self.MODULE_NAME),
-                        "date": "2028-04-01",
-                        "collection_name": "ansible.platform",
-                    }
-                )
-
             if operation == "find":
                 result["exists"] = bool(validated_output.get("id"))
 
