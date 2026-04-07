@@ -16,7 +16,6 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Minimal stub that replicates only the idle-relevant state of PlatformService
 # so we can test _authenticate(), _re_authenticate(), _refresh_token() without

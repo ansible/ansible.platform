@@ -167,9 +167,9 @@ class TestManagerProcessStartupMarkerNoCredentials(unittest.TestCase):
 
     def test_marker_file_does_not_contain_password(self):
         """Startup marker written to disk must not contain the plaintext password."""
-        import subprocess
         import base64
         import json
+        import subprocess
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp:
             marker_path = tmp.name
