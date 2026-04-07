@@ -37,8 +37,6 @@ This module provides a new interface for managing gateway settings with detailed
             "gateway_access_token_expiration": 6000
         }
     },
-    "elapsed_ms": 234,
-    "api_version": "1"
 }
 ```
 

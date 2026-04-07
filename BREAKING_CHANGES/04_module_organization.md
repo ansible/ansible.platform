@@ -83,8 +83,6 @@
         "description": "Engineering team",
         "max_hosts": 0
     },
-    "elapsed_ms": 134,
-    "api_version": "1"
 }
 ```
 

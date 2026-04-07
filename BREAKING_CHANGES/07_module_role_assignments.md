@@ -72,8 +72,6 @@
         "object_id": null,
         "content_type": null
     },
-    "elapsed_ms": 95,
-    "api_version": "1"
 }
 ```
 
@@ -123,8 +121,6 @@
             { "id": 303, "role_definition": "Organization Member", "user": "jdoe", "object_id": 9 }
         ]
     },
-    "elapsed_ms": 287,
-    "api_version": "1"
 }
 ```
 
@@ -173,8 +169,6 @@
         "object_id": 7,
         "content_type": "organization"
     },
-    "elapsed_ms": 88,
-    "api_version": "1"
 }
 ```
 

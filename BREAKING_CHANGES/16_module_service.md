@@ -55,8 +55,6 @@ This module did not exist in 2.5.x. No migration needed — use directly in new 
         "created_at": "2025-01-15T10:30:00Z",
         "modified_at": "2025-01-15T10:30:00Z"
     },
-    "elapsed_ms": 234,
-    "api_version": "1"
 }
 ```
 

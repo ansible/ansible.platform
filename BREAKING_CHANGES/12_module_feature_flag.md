@@ -36,8 +36,6 @@ This module did not exist in 2.5.x. No migration needed — use directly in new 
         "labels": ["experimental", "ui"],
         "state": true
     },
-    "elapsed_ms": 134,
-    "api_version": "1"
 }
 ```
 

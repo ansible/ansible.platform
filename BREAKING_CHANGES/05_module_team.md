@@ -61,8 +61,6 @@
         "description": "",
         "organization": 7
     },
-    "elapsed_ms": 118,
-    "api_version": "1"
 }
 ```
 

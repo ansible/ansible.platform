@@ -142,24 +142,6 @@ and optional metadata fields.
 
 ---
 
-## New fields in the result (2.7.x only)
-
-Every result in 2.7.x also includes:
-
-```json
-{
-    "changed": true,
-    "user": { ... },
-    "elapsed_ms": 143,
-    "api_version": "1"
-}
-```
-
-- `elapsed_ms` — total time taken for the API operation in milliseconds
-- `api_version` — the API version used for the request (`"1"` or `"2"`)
-
-These are purely additive and will not break existing playbooks.
-
 ---
 
 ## How to find affected tasks in your playbooks

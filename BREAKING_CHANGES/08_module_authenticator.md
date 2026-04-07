@@ -100,8 +100,6 @@
         "slug": "corporate-ldap",
         "order": 1
     },
-    "elapsed_ms": 312,
-    "api_version": "1"
 }
 ```
 
@@ -185,8 +183,6 @@
         "team": null,
         "order": 1
     },
-    "elapsed_ms": 156,
-    "api_version": "1"
 }
 ```
 

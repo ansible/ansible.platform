@@ -99,6 +99,7 @@ Or per-task (overrides inventory):
 
 The idle clock resets on every API call the manager makes, including:
 - Resource operations (create, update, delete, find)
+- Authentication and re-authentication
 - Token refresh operations
 
 The idle clock does **not** reset during Ansible play pauses
@@ -113,14 +114,10 @@ to cover the longest expected gap.
 The collection now detects whether your gateway supports API v1 or v2
 and selects the correct endpoints automatically. No configuration required.
 
-The detected version is included in every task result:
-```json
-{
-    "changed": false,
-    "user": { ... },
-    "api_version": "1"
-}
-```
+When `/api/gateway/v1/ping/` is reachable the collection uses API v1.
+If the server responds with an `X-API-Version` header the collection
+uses that version, provided it is supported locally.  No configuration
+required — the detected version is selected transparently.
 
 ---
 
@@ -155,25 +152,6 @@ Useful for ensuring specific attributes without risk of overwriting unrelated se
 ```
 
 ---
-
-## 5. Performance timing in results
-
-Every task result now includes:
-- `elapsed_ms` — total API operation time in milliseconds
-- `api_version` — API version used
-
-Useful for benchmarking and performance regression detection.
-
-```yaml
-- name: Create organisation
-  ansible.platform.organization:
-    name: Engineering
-    state: present
-  register: result
-
-- debug:
-    msg: "Operation took {{ result.elapsed_ms }}ms using API v{{ result.api_version }}"
-```
 
 ---
 

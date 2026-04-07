@@ -100,8 +100,6 @@
         "organizations": [],
         "associated_authenticators": {}
     },
-    "elapsed_ms": 187,
-    "api_version": "1"
 }
 ```
 
@@ -183,8 +181,6 @@ attributes without overwriting unrelated settings.
         "organizations": [],
         "associated_authenticators": {}
     },
-    "elapsed_ms": 201,
-    "api_version": "1"
 }
 ```
 

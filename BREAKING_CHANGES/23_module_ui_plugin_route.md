@@ -59,8 +59,6 @@ These fields are computed and cannot be set:
         "created_at": "2025-01-15T10:30:00Z",
         "modified_at": "2025-01-15T10:30:00Z"
     },
-    "elapsed_ms": 201,
-    "api_version": "1"
 }
 ```
 

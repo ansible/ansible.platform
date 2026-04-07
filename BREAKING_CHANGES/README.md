@@ -33,7 +33,6 @@ See the table below and the per-module files for the exact before/after.
 | **Result keys** | `changed`, `id` at top level | `changed` at top level, resource data nested under a module-named key (e.g. `result.user`, `result.organization`) |
 | **State: exists** | Returned `id` at top level | Returns full resource dict under module-named key, no change recorded |
 | **State: enforced** | Not supported | Supported — omitted fields are reset to API defaults |
-| **Timing info** | Not present | `elapsed_ms` and `api_version` included in result |
 | **New option: idle_timeout** | Not present | `aap_manager_idle_timeout` controls manager process lifetime |
 | **New option: persistent mode** | Not present | `ansible_platform_use_persistent_connection: true` in inventory |
 

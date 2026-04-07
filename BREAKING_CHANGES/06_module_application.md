@@ -60,15 +60,16 @@
         "organization": 7,
         "authorization_grant_type": "authorization-code",
         "client_type": "confidential",
-        "redirect_uris": "https://myapp.example.com/callback",
-        "skip_authorization": false,
-        "client_id": "abc123clientid",
-        "client_secret": "supersecretvalue"
+        "redirect_uris": ["https://myapp.example.com/callback"],
+        "skip_authorization": false
     },
-    "elapsed_ms": 203,
-    "api_version": "1"
+    "client_id": "abc123clientid"
 }
 ```
+
+> **Note:** `client_id` is returned **flat** at the top level (not inside `application`).
+> It is API-generated and is never a round-trip input field.
+> `client_secret` is **not** returned by the collection.
 
 ```yaml
 - name: Create application
@@ -85,20 +86,16 @@
   register: app_result
 
 - debug:
-    msg: "Application ID: {{ app_result.application.id }}"    # changed
-    # Also now have access to client_id and client_secret directly:
-    # app_result.application.client_id
-    # app_result.application.client_secret
+    msg: "Application ID: {{ app_result.application.id }}, client_id: {{ app_result.client_id }}"
 ```
 
 ---
 
-## Notable improvement: client credentials now in result
+## Notable improvement: client_id now in result
 
-In 2.5.x you had to make a separate API call to retrieve `client_id` and
-`client_secret` after creating an application. In 2.7.x they are included
-directly in the result under `result.application.client_id` and
-`result.application.client_secret`.
+In 2.5.x you had to make a separate API call to retrieve `client_id` after
+creating an application. In 2.7.x it is included directly in the result at
+`result.client_id` (flat — **not** nested inside `result.application`).
 
 ---
 
@@ -157,5 +154,5 @@ directly in the result under `result.application.client_id` and
     - name: Store application details for token creation
       set_fact:
         app_id: "{{ app.application.id }}"              # changed
-        app_client_id: "{{ app.application.client_id }}"  # new — available directly
+        app_client_id: "{{ app.client_id }}"              # new — flat at top level (NOT nested)
 ```

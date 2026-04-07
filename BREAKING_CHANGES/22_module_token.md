@@ -47,8 +47,6 @@ Old playbooks had to use the result ID with a subsequent lookup call to get full
             "modified_at": "2025-01-15T10:30:00Z"
         }
     },
-    "elapsed_ms": 189,
-    "api_version": "1"
 }
 ```
 
