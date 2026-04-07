@@ -243,30 +243,13 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses should override this with module-specific write-only fields.
     _WRITE_ONLY_FIELDS: frozenset = frozenset()
 
-    # Fields that are returned in the flat (top-level) result for backward
-    # compatibility but are NOT included in the nested MODULE_NAME dict because
-    # they are not part of the module's argument_spec (e.g. client_id for
-    # application — the API generates it, the module cannot accept it as input).
-    # These fields are emitted flat only and are subject to the same deprecation
-    # timeline as all other flat keys (scheduled for removal after 2028-04-01).
-    # Subclasses override this with module-specific extra return fields.
+    # API-generated fields returned flat only (not in nested dict, not round-trip safe as input).
+    # Subclasses override with module-specific fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
 
-    # Fields whose values the API stores in a format that differs from the
-    # argument_spec type and must be converted in the OUTPUT LAYER ONLY.
-    # The internal (manager) representation keeps the API format so that
-    # _update_resource()'s current-state fallback merge stays correct.
-    #
-    # Currently used for space-separated string → list conversion:
-    # The API stores redirect URI lists as "https://a.com https://b.com"
-    # but the module argument_spec declares these as type=list.  Converting
-    # here (after validated_output is built) means round-trip re-submission
-    # works cleanly while the internal update path never sees a list where
-    # the API dataclass expects a string.
-    #
-    # Value: set of field names that hold space-separated strings in the API
-    # response and should be split into lists in the user-facing result.
-    # Subclasses override this with module-specific fields.
+    # Fields the API stores as space-separated strings but argument_spec declares as list.
+    # Conversion is applied in the output layer only so the internal update path is unaffected.
+    # Subclasses override with module-specific fields.
     _SPACE_SEPARATED_LIST_FIELDS: frozenset = frozenset()
 
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
@@ -1137,7 +1120,7 @@ class BaseResourceActionPlugin(ActionBase):
                     )
                     return result
 
-            # ---- enforced: find → merge declared fields → update/create ----
+            # ---- enforced: find -> merge declared fields -> update/create ----
             if operation == "enforced":
                 argspec_fields = set(argspec.get("argument_spec", {}).keys())
                 try:
@@ -1267,10 +1250,7 @@ class BaseResourceActionPlugin(ActionBase):
                 if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
             }
 
-            # Output-layer type conversion: space-separated API strings → lists.
-            # This runs AFTER validated_output is finalized so the manager's
-            # internal state (used by _update_resource fallback merge) is never
-            # affected.  Only the user-facing result dict is changed here.
+            # Output-layer type conversion: space-separated API strings - lists.
             for _field in self._SPACE_SEPARATED_LIST_FIELDS:
                 if _field in validated_output:
                     _raw = validated_output[_field]

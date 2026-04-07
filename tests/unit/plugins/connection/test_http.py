@@ -266,7 +266,7 @@ def test_persistent_reuse_fails_connection_raises_spawns_new():
     conn_info.authkey_b64 = authkey_b64
     conn_info.authkey = b"secret"
 
-    # Fast path: socket + meta both "exist"; lock re-check: socket gone → falls through to spawn.
+    # Fast path: socket + meta both "exist"; lock re-check: socket gone -> falls through to spawn.
     # Script path existence check uses the __truediv__ chain mock (set to True below).
     exists_side_effect = [True, True, False]
 
@@ -325,7 +325,7 @@ def test_persistent_socket_file_missing_spawns_new():
     conn_info.authkey = b"secret"
 
     with patch("ansible_collections.ansible.platform.plugins.connection.http.Path") as mock_path_cls:
-        # Socket does not exist → skip fast path and lock re-check; go straight to spawn.
+        # Socket does not exist -> skip fast path and lock re-check; go straight to spawn.
         mock_path_cls.return_value.exists.return_value = False
         # script_path.exists() in spawn path (built via __truediv__ chain)
         mock_path_cls.return_value.parent.parent.__truediv__.return_value.exists.return_value = True

@@ -129,7 +129,7 @@ class TestManagerProcessNoCredentialLeak(unittest.TestCase):
             )
 
     # ------------------------------------------------------------------
-    # Test 1: too-short argv → error path must not dump credentials
+    # Test 1: too-short argv -> error path must not dump credentials
     # ------------------------------------------------------------------
 
     def test_stderr_does_not_contain_password_on_short_argv(self):

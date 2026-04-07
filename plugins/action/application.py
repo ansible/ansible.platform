@@ -13,15 +13,8 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "application"
     MODEL_CLASS = AnsibleApplication
 
-    # client_id is API-generated (not in argument_spec) so it must not appear
-    # inside the nested 'application' round-trip dict.  It is returned flat
-    # only, for backward compatibility with <=2.6 playbooks that read
-    # result.client_id after creating an OAuth application.
-    # Deprecated in 2.7, scheduled for removal after 2028-04-01.
+    # API-generated; returned flat only, not in the nested dict (not round-trip safe as input).
     _EXTRA_RETURN_FIELDS = frozenset({"client_id"})
 
-    # The gateway API stores redirect URI fields as space-separated strings
-    # (e.g. "https://a.com/cb https://b.com/cb") but the module argument_spec
-    # declares them as type=list.  Convert in the output layer so round-trip
-    # re-submission works without touching the internal update-path merge.
+    # redirect_uris fields are stored as space-separated strings by the API; split to list on output.
     _SPACE_SEPARATED_LIST_FIELDS = frozenset({"redirect_uris", "post_logout_redirect_uris"})

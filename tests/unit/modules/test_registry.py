@@ -171,7 +171,7 @@ class TestAPIVersioning(unittest.TestCase):
         mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
         config = GatewayConfig(base_url="https://127.0.0.1", username="admin", password="admin")
         service = PlatformService(config)
-        # /v1/ping/ returned 200 with no X-API-Version header → v1 confirmed.
+        # /v1/ping/ returned 200 with no X-API-Version header -> v1 confirmed.
         # The implementation does NOT fall back to get_latest_version().
         self.assertEqual(service.api_version, "1")
 

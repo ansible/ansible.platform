@@ -384,7 +384,7 @@ class PlatformService(BaseAPIClient):
             # Only trust the X-API-Version header from the ping endpoint.
             # The JSON body "version" field is the *product* version
             # (e.g. "2.6" for AAP Gateway 2.6.x), NOT the API version.
-            # Parsing it would map "2.6" → major "2" and select the wrong
+            # Parsing it would map "2.6" -> major "2" and select the wrong
             # API version on a server that only serves v1 paths.
             v = _hdr_version(response)
             if v:
@@ -540,13 +540,13 @@ class PlatformService(BaseAPIClient):
         Returns:
             Created resource as dict (Ansible format) with 'changed': True
         """
-        # FORWARD TRANSFORM: Ansible → API
+        # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
 
         operations = mixin_class.get_endpoint_operations()
         api_result = self._execute_operations(operations, api_data, context, required_for="create")
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         if api_result:
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
@@ -580,7 +580,7 @@ class PlatformService(BaseAPIClient):
             # If we can't fetch current state, assume change
             current_data = {}
 
-        # FORWARD TRANSFORM: Ansible → API
+        # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
         operations = mixin_class.get_endpoint_operations()
 
@@ -596,7 +596,7 @@ class PlatformService(BaseAPIClient):
 
         api_result = self._execute_operations(operations, api_data, context, required_for="update")
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         if api_result:
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
@@ -606,7 +606,7 @@ class PlatformService(BaseAPIClient):
             read_only_fields = {"id", "created", "modified", "url", "changed"}
 
             # Merge current + PATCH response; don't let None from sparse response
-            # overwrite existing values (e.g. associated_authenticators: {} → None).
+            # overwrite existing values (e.g. associated_authenticators: {} -> None).
             merged = dict(current_dict)
             for k, v in new_dict.items():
                 if v is not None or k not in merged:
@@ -817,7 +817,7 @@ class PlatformService(BaseAPIClient):
             raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
 
         # Resolve the resource ID to use for a direct GET lookup.
-        # Priority: explicit id field → numeric name field (caller passed an int PK).
+        # Priority: explicit id field -> numeric name field (caller passed an int PK).
         resolved_id = None
         if hasattr(ansible_data, "id") and ansible_data.id:
             resolved_id = ansible_data.id
@@ -872,7 +872,7 @@ class PlatformService(BaseAPIClient):
                 raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
             api_result = results[0]
 
-        # REVERSE TRANSFORM: API → Ansible
+        # REVERSE TRANSFORM: API -> Ansible
         ansible_instance = mixin_class.from_api(api_result, context)
         from dataclasses import asdict
 

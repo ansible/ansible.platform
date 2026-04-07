@@ -22,7 +22,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         Supports three object-selection modes:
         - object_id (scalar): standard single-object path via _run_standard().
-        - object_ids (list): iterate, resolving each entry → object_id, then
+        - object_ids (list): iterate, resolving each entry -> object_id, then
           idempotent create/delete per object.
         - Neither: system-wide assignment, single-object path.
         """
@@ -64,7 +64,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             for raw_oid in object_ids_raw:
                 # Build per-object data: set object_id to each list entry.
-                # from_ansible_data's existing FK resolver handles str→int
+                # from_ansible_data's existing FK resolver handles str->int
                 # resolution (via role_definition-type-aware endpoint probing).
                 per_obj = dict(base_data)
                 per_obj["object_id"] = raw_oid

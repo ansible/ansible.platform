@@ -226,7 +226,7 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
         # Redirect URI fields are stored as space-separated strings by the API.
         # We keep them as strings here so _update_resource()'s fallback merge
         # can safely copy them back onto APIApplication_v1 without bypassing
-        # _join_uri_list().  The string→list conversion for user-facing output
+        # _join_uri_list().  The string->list conversion for user-facing output
         # is done in the action plugin via _LIST_FIELDS (output layer only).
         return AnsibleApplication(
             name=api_data.get("name", ""),
