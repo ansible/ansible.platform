@@ -20,14 +20,14 @@ Confirm the `ansible.platform` collection version and Red Hat release notes for 
 Typical pattern: run against `localhost` with **`ansible_connection: local`** (or implicit local) and pass hostname and auth on each task using `aap_*` names (or equivalent module parameters).
 
 ```yaml
-# inventory.yml — before
+# inventory.yml - before
 all:
   hosts:
     localhost:
       ansible_connection: local
 
 ---
-# playbook.yml — before
+# playbook.yml - before
 - name: Manage AAP resources
   hosts: localhost
   gather_facts: false
@@ -46,7 +46,7 @@ all:
 Recommended pattern: define an inventory host (or group) for the Gateway, set **`ansible_connection: ansible.platform.http`**, put **stable** settings in **inventory or group_vars** (`gateway_*` / `aap_*` as supported by the modules), and keep task bodies focused on resource arguments.
 
 ```yaml
-# inventory.yml — after
+# inventory.yml - after
 all:
   children:
     gateway:
@@ -58,14 +58,14 @@ all:
           ansible_platform_use_persistent_connection: true
 
 ---
-# group_vars/gateway.yml — after (example)
+# group_vars/gateway.yml - after (example)
 gateway_url: https://gateway.example.com
 gateway_username: admin
 gateway_password: "{{ vault_gateway_password }}"
 gateway_validate_certs: true
 
 ---
-# playbook.yml — after
+# playbook.yml - after
 - name: Manage AAP resources
   hosts: aap_gateway
   gather_facts: false
@@ -104,7 +104,7 @@ Supply Gateway **base URL** and **authentication** using variables that your mod
 
 You can enable persistent mode in several equivalent ways (use whichever fits your Ansible config):
 
-1. Connection option **`persistent: true`** for the `ansible.platform.http` plugin (see the plugin’s documentation under `ansible-doc -t connection ansible.platform.http`).
+1. Connection option **`persistent: true`** for the `ansible.platform.http` plugin (see the plugin's documentation under `ansible-doc -t connection ansible.platform.http`).
 2. Host or task variable **`ansible_platform_use_persistent_connection: true`**.
 3. Host or task variable **`ansible_platform_persistent: true`**.
 4. Environment variable **`ANSIBLE_PLATFORM_PERSISTENT`**.
@@ -129,7 +129,7 @@ Truthy values are accepted as boolean `true` or common string forms such as `yes
 **Playbook / role variables**
 
 - Prefer **group_vars**, **host_vars**, or **vars_files** for URL, credentials, TLS, and timeouts so job templates and vault stay consistent.
-- Task parameters can still override or supplement variables when the module allows it—follow each module’s documentation.
+- Task parameters can still override or supplement variables when the module allows it - follow each module's documentation.
 
 **Backward compatibility**
 
@@ -153,5 +153,5 @@ Truthy values are accepted as boolean `true` or common string forms such as `yes
 
 ## Further reading
 
-- [03-sdk-architecture.md](03-sdk-architecture.md) — architecture overview (persistent connection and manager lifecycle).
-- [06-foundation-components.md](06-foundation-components.md) — framework components (for contributors and advanced troubleshooting).
+- [03-sdk-architecture.md](03-sdk-architecture.md) - architecture overview (persistent connection and manager lifecycle).
+- [06-foundation-components.md](06-foundation-components.md) - framework components (for contributors and advanced troubleshooting).
