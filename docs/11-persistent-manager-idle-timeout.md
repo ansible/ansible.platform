@@ -37,7 +37,7 @@ The following problems are explicitly covered by code and tests.
 
 ### 1. Single, unambiguous variable name
 
-**Issue:** Multiple overlapping names suggested different semantics (“gateway” vs “platform manager”) and made docs and inventory hard to reason about.
+**Issue:** Multiple overlapping names suggested different semantics ("gateway" vs "platform manager") and made docs and inventory hard to reason about.
 
 **Behavior:** Only `persistent_manager_idle_timeout` is documented and parsed. Misnamed keys do not configure idle timeout.
 
@@ -47,7 +47,7 @@ The following problems are explicitly covered by code and tests.
 
 ### 2. Preserving `0` (no accidental fallback)
 
-**Issue:** Patterns such as `task.get("x") or host.get("x")` treat `**0`** as falsy and incorrectly fall back to a default or host value, so “disable idle shutdown” could not be expressed reliably.
+**Issue:** Patterns such as `task.get("x") or host.get("x")` treat `**0`** as falsy and incorrectly fall back to a default or host value, so "disable idle shutdown" could not be expressed reliably.
 
 **Behavior:** Extraction checks membership (`"persistent_manager_idle_timeout" in task_args`) before reading the value, so `**0`** is preserved.
 
@@ -89,7 +89,7 @@ The following problems are explicitly covered by code and tests.
 
 ---
 
-### 6. Expired token does not “freeze” idle exit
+### 6. Expired token does not "freeze" idle exit
 
 **Issue:** If the token expires while there is no traffic, the manager should still exit after the idle interval.
 
@@ -101,7 +101,7 @@ The following problems are explicitly covered by code and tests.
 
 ### 7. User-facing requests reset the idle clock (including failures)
 
-**Issue:** Activity should reflect “something tried to use the gateway,” including failed HTTP calls where the client still did work.
+**Issue:** Activity should reflect "something tried to use the gateway," including failed HTTP calls where the client still did work.
 
 **Behavior:** `record_activity()` runs at the start of the request path (before the HTTP call), so a **401** still resets the idle timer for that attempt.
 
