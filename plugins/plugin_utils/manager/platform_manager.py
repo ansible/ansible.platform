@@ -10,7 +10,6 @@ import base64
 import logging
 import threading
 import time
-import time
 from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
@@ -112,9 +111,6 @@ class PlatformService(BaseAPIClient):
 
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
-
-        self._activity_lock = threading.Lock()
-        self._last_activity_monotonic = time.monotonic()
 
         # Idle timeout: last time the service handled user-facing work (RPC / HTTP)
         self._activity_lock = threading.Lock()
@@ -307,18 +303,6 @@ class PlatformService(BaseAPIClient):
         except Exception as e:
             logger.error("Re-authentication failed: %s", e)
             return False
-
-    # --- Idle-timeout helpers ---
-
-    def record_activity(self) -> None:
-        """Reset the idle clock.  Call whenever a real API call completes."""
-        with self._activity_lock:
-            self._last_activity_monotonic = time.monotonic()
-
-    def seconds_since_last_activity(self) -> float:
-        """Return seconds elapsed since the last recorded activity."""
-        with self._activity_lock:
-            return time.monotonic() - self._last_activity_monotonic
 
     def _handle_auth_error(self, response: "requests.Response") -> bool:
         """
