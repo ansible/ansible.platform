@@ -21,6 +21,7 @@ so developers familiar with that collection find the same patterns and numbering
 | 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas, phase-by-phase guidance, coding standards, human-in-the-loop triggers, troubleshooting |
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map, identity categories, known API quirks, implementation roadmap |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
+| 12 | [12-migration-gateway-connection.md](12-migration-gateway-connection.md) | Operators / playbook authors | Migrate to `ansible.platform.http`: before/after, credentials, connection and inventory settings |
 
 ---
 
@@ -49,6 +50,9 @@ so developers familiar with that collection find the same patterns and numbering
 ### "I need to understand persistent manager idle timeout behavior"
 → [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md)
 
+### "I'm migrating to the Gateway HTTP connection plugin (AAP 2.7)"
+→ [12-migration-gateway-connection.md](12-migration-gateway-connection.md)
+
 ---
 
 ## Document Dependency Map
@@ -74,7 +78,9 @@ so developers familiar with that collection find the same patterns and numbering
   │
   ├── 09-agent-collaboration (AI agent guidance)
   │
-  └── 10-case-study-aap-platform (module map, API quirks)
+  ├── 10-case-study-aap-platform (module map, API quirks)
+  │
+  └── 12-migration-gateway-connection (HTTP connection migration for operators)
 ```
 
 ---
