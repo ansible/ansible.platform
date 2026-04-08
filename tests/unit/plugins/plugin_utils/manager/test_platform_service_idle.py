@@ -40,7 +40,12 @@ class TestGatewayConfigIdle(unittest.TestCase):
 
     def test_extract_gateway_config_idle_timeout_from_task_args(self):
         c = extract_gateway_config(
-            task_args={"gateway_url": "https://gw.example", "gateway_username": "a", "gateway_password": "b", "gateway_idle_timeout": 7200},
+            task_args={
+                "gateway_url": "https://gw.example",
+                "gateway_username": "a",
+                "gateway_password": "b",
+                "persistent_manager_idle_timeout": 7200,
+            },
             host_vars={},
             required=True,
         )
@@ -49,7 +54,7 @@ class TestGatewayConfigIdle(unittest.TestCase):
     def test_extract_gateway_config_idle_timeout_from_host_vars(self):
         c = extract_gateway_config(
             task_args={"gateway_url": "https://gw.example", "gateway_username": "a", "gateway_password": "b"},
-            host_vars={"ansible_platform_manager_idle_timeout": 1800},
+            host_vars={"persistent_manager_idle_timeout": 1800},
             required=True,
         )
         self.assertEqual(c.idle_timeout, 1800.0)

@@ -30,7 +30,7 @@
     gateway_password: "testpass"
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
-    gateway_idle_timeout: 15
+    persistent_manager_idle_timeout: 15
 
   tasks:
     - name: Trigger manager activity (create a user)

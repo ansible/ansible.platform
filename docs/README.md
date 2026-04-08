@@ -20,6 +20,7 @@ so developers familiar with that collection find the same patterns and numbering
 | 08 | [08-testing-strategy.md](08-testing-strategy.md) | All devs / QE | Three-layer strategy: unit (pytest), Molecule mock, integration; CI workflows; linting |
 | 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas, phase-by-phase guidance, coding standards, human-in-the-loop triggers, troubleshooting |
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map, identity categories, known API quirks, implementation roadmap |
+| 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
 
 ---
 
@@ -45,6 +46,9 @@ so developers familiar with that collection find the same patterns and numbering
 ### "I need to write or fix tests"
 → [08-testing-strategy.md](08-testing-strategy.md)
 
+### "I need to understand persistent manager idle timeout behavior"
+→ [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md)
+
 ---
 
 ## Document Dependency Map
@@ -58,7 +62,9 @@ so developers familiar with that collection find the same patterns and numbering
   │           │
   │           ├── 04-data-model-transformation (three-tier pattern)
   │           │
-  │           └── 05-design-principles (the rules)
+  │           ├── 05-design-principles (the rules)
+  │           │
+  │           └── 11-persistent-manager-idle-timeout (local manager idle shutdown)
   │
   ├── 06-foundation-components (build the framework)
   │     │

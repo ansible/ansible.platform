@@ -11,8 +11,6 @@ ansible:
   executor:
     args:
       ansible_playbook: []
-  env:
-    ANSIBLE_PLATFORM_IDLE_POLL_SECONDS: "2"
 
 provisioner:
   name: ansible

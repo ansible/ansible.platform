@@ -21,17 +21,10 @@ def _compute_poll_interval(idle_timeout: float) -> int:
     one poll interval (10 % of the timeout) instead of a fixed 60 s.
 
     Bounds:
-      - Floor: 5 s  — avoids busy-looping for very short timeouts (e.g. tests).
+      - Floor: 5 s  — avoids busy-looping for very short timeouts.
       - Cap:  60 s  — avoids infrequent checks for very long timeouts.
       - ``idle_timeout <= 0`` (disabled): returns 60 s (interval is irrelevant).
-
-    The ``ANSIBLE_PLATFORM_IDLE_POLL_SECONDS`` environment variable overrides
-    this calculation entirely and is intended only for test environments where
-    a sub-second or very short poll period is needed.
     """
-    env_override = os.environ.get("ANSIBLE_PLATFORM_IDLE_POLL_SECONDS")
-    if env_override is not None:
-        return int(env_override)
     if idle_timeout <= 0:
         return 60
     return max(5, min(60, int(idle_timeout / 10)))
@@ -99,7 +92,7 @@ def main():
     gateway_token = sys.argv[7] or None
     gateway_validate_certs = sys.argv[8].lower() == "true"
     gateway_request_timeout = float(sys.argv[9])
-    gateway_idle_timeout = float(sys.argv[10]) if len(sys.argv) > 10 else 3600.0
+    pm_idle_timeout_arg = float(sys.argv[10]) if len(sys.argv) > 10 else 3600.0
     log_marker("Arguments parsed successfully")
 
     log_marker("Reading environment variables...")
@@ -189,7 +182,7 @@ def main():
                 verify_ssl=gateway_validate_certs,
                 request_timeout=gateway_request_timeout,
                 connection_mode="experimental",  # Persistent manager is always experimental mode
-                idle_timeout=gateway_idle_timeout,
+                idle_timeout=pm_idle_timeout_arg,
             )
             with open(error_log, "a") as f:
                 f.write("GatewayConfig created successfully\n")

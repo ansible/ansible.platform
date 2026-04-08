@@ -65,6 +65,25 @@ class GatewayConfig:
         return url
 
 
+def _extract_persistent_manager_idle_timeout(
+    task_args: Dict[str, Any],
+    host_vars: Dict[str, Any],
+) -> Optional[Any]:
+    """Return ``persistent_manager_idle_timeout`` if set in task or host scope (including ``0``).
+
+    Controls how long the *local* manager process on the control node may stay
+    idle before exiting; it is not a gateway server-side timeout.
+
+    Uses ``key in dict`` so ``0`` is not dropped (unlike ``a or b`` chains).
+    Task arguments override host/inventory variables.
+    """
+    if "persistent_manager_idle_timeout" in task_args:
+        return task_args["persistent_manager_idle_timeout"]
+    if "persistent_manager_idle_timeout" in host_vars:
+        return host_vars["persistent_manager_idle_timeout"]
+    return None
+
+
 def extract_gateway_config(
     task_args: Optional[Dict[str, Any]] = None,
     host_vars: Optional[Dict[str, Any]] = None,
@@ -123,15 +142,9 @@ def extract_gateway_config(
         gateway_token = gateway_token_raw
     gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
     gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
-    # How long (seconds) the persistent manager process may sit idle — i.e. receive
-    # no RPC or API traffic — before it shuts itself down and removes its socket.
-    # This prevents orphaned manager processes from accumulating across playbook runs.
-    # Default: 3600 s (1 hour).  Set to 0 to disable idle-based shutdown entirely.
-    # Accepted variable names (task arg takes priority over host var):
-    #   gateway_idle_timeout  /  ansible_platform_manager_idle_timeout
-    gateway_idle_timeout = (
-        task_args.get("gateway_idle_timeout") or host_vars.get("gateway_idle_timeout") or host_vars.get("ansible_platform_manager_idle_timeout")
-    )
+    # Local persistent manager idle shutdown (not a gateway session timeout).
+    # Default: 3600 s. Set to 0 to disable. See _extract_persistent_manager_idle_timeout.
+    pm_idle_timeout = _extract_persistent_manager_idle_timeout(task_args, host_vars)
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
     connection_mode = task_args.get("platform_connection_mode") or host_vars.get("platform_connection_mode") or "standard"
 
@@ -162,7 +175,7 @@ def extract_gateway_config(
         verify_ssl=gateway_validate_certs,
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
-        idle_timeout=(float(gateway_idle_timeout) if gateway_idle_timeout is not None else 3600.0),
+        idle_timeout=(float(pm_idle_timeout) if pm_idle_timeout is not None else 3600.0),
     )
 
     logger.debug("GatewayConfig created successfully")

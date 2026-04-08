@@ -10,7 +10,6 @@ in any log file regardless of which manager invocation code path is triggered.
 from __future__ import absolute_import, division, print_function
 
 import io
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -53,10 +52,7 @@ class TestComputePollInterval(unittest.TestCase):
     """_compute_poll_interval derives the idle-monitor sleep from idle_timeout."""
 
     def _call(self, idle_timeout):
-        """Call without the env-var override in effect."""
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("ANSIBLE_PLATFORM_IDLE_POLL_SECONDS", None)
-            return _compute_poll_interval(idle_timeout)
+        return _compute_poll_interval(idle_timeout)
 
     # ------------------------------------------------------------------
     # Core formula: 10 % of idle_timeout, clamped to [5, 60]
@@ -97,26 +93,6 @@ class TestComputePollInterval(unittest.TestCase):
     def test_negative_idle_timeout_returns_60(self):
         """Negative idle_timeout (also treated as disabled) → 60 s."""
         self.assertEqual(self._call(-1.0), 60)
-
-    # ------------------------------------------------------------------
-    # Env-var override (test harness)
-    # ------------------------------------------------------------------
-
-    def test_env_var_override_takes_precedence(self):
-        """ANSIBLE_PLATFORM_IDLE_POLL_SECONDS bypasses the formula entirely."""
-        with patch.dict(os.environ, {"ANSIBLE_PLATFORM_IDLE_POLL_SECONDS": "2"}):
-            self.assertEqual(_compute_poll_interval(3600.0), 2)
-
-    def test_env_var_override_works_for_short_timeout_too(self):
-        """Env-var overrides even when timeout is small (test speed-up)."""
-        with patch.dict(os.environ, {"ANSIBLE_PLATFORM_IDLE_POLL_SECONDS": "1"}):
-            self.assertEqual(_compute_poll_interval(5.0), 1)
-
-    def test_no_env_var_uses_formula(self):
-        """Without the env var, the formula applies normally."""
-        env = {k: v for k, v in os.environ.items() if k != "ANSIBLE_PLATFORM_IDLE_POLL_SECONDS"}
-        with patch.dict(os.environ, env, clear=True):
-            self.assertEqual(_compute_poll_interval(300.0), 30)
 
 
 class TestSensitiveArgvPositions(unittest.TestCase):
