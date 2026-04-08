@@ -186,6 +186,7 @@ in normal operation.
 - **`AnsibleModel` dataclasses** — stable user-facing interface, never changes
 - **`APIModel` dataclasses** — version-specific API wire format
 - **`TransformMixin`** — field mapping + business logic between the two tiers
+- **`PlatformManager.idle_timeout`** — auto-terminates manager after N seconds of inactivity (default 3600s, set to 0 to disable)
 - **`PlatformService`** — the HTTP client + transform engine running in the manager process
 - **`BaseResourceActionPlugin`** — base class wiring all 22 action plugins to the framework
 - **`APIVersionRegistry`** — auto-discovers api/v*/ directories at startup

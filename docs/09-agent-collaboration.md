@@ -1,81 +1,253 @@
-# Agent Collaboration Guide
+# Agent Collaboration Guide — AI Agents Working with Developers on `ansible.platform`
 
-This document defines how AI agents (Cursor, Copilot, Claude, or any code-generation
-assistant) should work within the `ansible.platform` codebase. It covers role
-identification, development phases, coding standards, quality gates, and
-human-in-the-loop boundaries.
+This document guides AI agents working with developers on the **`ansible.platform` collection** for Ansible Automation Platform (AAP) Gateway. It defines personas, workflows, quality gates, and coding standards so agents can collaborate effectively without reinventing patterns or skipping critical steps.
 
-**Read this document before using an AI agent to add a resource, fix a bug, or
-modify the framework.**
+**Audience**: AI agents (LLMs, coding assistants) assisting developers
 
----
-
-## Quick Start
-
-1. Load **this document** to understand the rules.
-2. Load [06-foundation-components.md](06-foundation-components.md) to understand the framework.
-3. Load [07-adding-resources.md](07-adding-resources.md) for the step-by-step workflow.
-4. Work one step at a time. Confirm each deliverable before proceeding.
+**Related Documents**:
+- [01-overview.md](01-overview.md) — Architecture context
+- [06-foundation-components.md](06-foundation-components.md) — Foundation implementation spec
+- [07-adding-resources.md](07-adding-resources.md) — Adding resource modules
+- [05-design-principles.md](05-design-principles.md) — Design rules and quality gates
+- [10-case-study-aap-platform.md](10-case-study-aap-platform.md) — Platform module map and examples
 
 ---
 
-## Role Identification
+## SECTION 1: Purpose and Quick Start
 
-Before starting any task, identify which role applies:
+### Purpose
 
-### Persona A: Framework Developer
+When a developer starts working with an AI agent on the `ansible.platform` collection, the agent must:
 
-**Scope**: Changes to `plugins/plugin_utils/platform/`, `plugins/plugin_utils/manager/`,
-`plugins/action/base_action.py`, `plugins/connection/http.py`.
+1. **Determine their role** using Role Identification (Section 2)
+2. **Load appropriate implementation guide(s)** based on that role
+3. **Follow the persona-specific walkthrough** (Foundation Builder or Feature Developer)
+4. **Apply coding standards consistently** (Section 8)
 
-**Characteristics**:
-- Touches components shared by all 22 modules
-- Changes here affect every resource module
-- Requires deep understanding of `multiprocessing.managers` and Ansible's fork model
-- Higher risk — a bug here breaks the entire collection
+### Quick Start Flow
 
-**When to invoke**: New base class capability, manager lifecycle change, connection
-plugin improvement, registry/loader enhancement.
+```
+Developer engages agent
+        │
+        ▼
+Agent asks: "What are you working on?" (Role Identification)
+        │
+        ├── A) Building core framework → Foundation Builder persona
+        ├── B) Adding a new resource module → Feature Developer persona
+        └── C) Something else → Clarifying questions
+        │
+        ▼
+Agent checks: Does the foundation exist?
+        │
+        ├── NO → Foundation Builder needed first
+        └── YES → Feature Developer can proceed
+        │
+        ▼
+Agent loads required docs (Section 10)
+        │
+        ▼
+Agent follows persona walkthrough (Section 3 or 4)
+        │
+        ▼
+Agent applies coding standards (Section 8) and quality checklist (Section 9)
+```
 
-**Human review required**: Always. Framework changes must be reviewed by a human
-before merging, regardless of test results.
+### Key Principle
 
-### Persona B: Feature Developer
-
-**Scope**: Adding a new resource module (7 files as described in
-[07-adding-resources.md](07-adding-resources.md)).
-
-**Characteristics**:
-- Self-contained: changes are isolated to the new resource's files
-- Low risk to existing modules
-- Highly mechanical: follows a defined pattern
-- Well-suited for AI-assisted generation from `DOCUMENTATION` strings
-
-**When to invoke**: New module, new API version for existing module, mock scenario,
-integration test.
-
-**Human review required**: Transform mixin business logic, reference field handling,
-write-only field treatment.
+**Do not assume.** Always verify the developer's role and foundation state before proceeding. A Feature Developer cannot add resources without the foundation; a Foundation Builder should not be guided through resource-specific steps.
 
 ---
 
-## Phase-by-Phase Guidance
+## SECTION 2: Role Identification
 
-### Feature Developer Workflow
+### Question 1: What Are You Working On?
 
-The 7-step workflow from [07-adding-resources.md](07-adding-resources.md) maps to agent
-phases:
+Ask the developer:
 
-**Phase 1 — Write DOCUMENTATION** *(human-led)*
+> **What are you working on?**
 
-The human writes the `DOCUMENTATION` string. This is the contract. Do not generate it —
-the module interface is a product decision, not a mechanical output.
+| Answer | Persona | Next Step |
+|-------|----------|-----------|
+| **A)** Building the core framework (types.py, base_transform.py, registry.py, loader.py, platform_manager.py, rpc_client.py, base_action.py) | **Foundation Builder** | Proceed to Section 3 |
+| **B)** Adding a new resource module (user, service_cluster, route, application, etc.) | **Feature Developer** | Proceed to Section 4 |
+| **C)** Something else | — | Ask clarifying questions |
 
-Agent role: Validate the YAML structure, check required keys, verify `extends_documentation_fragment` values.
+### Clarifying Questions for "Something Else"
 
-**Phase 2 — Generate Ansible Model** *(agent-safe)*
+- "Are you debugging an existing module?"
+- "Are you updating the OpenAPI spec or regenerating models?"
+- "Are you writing tests for an existing resource?"
+- "Are you working on documentation or CI/CD?"
 
-Mechanically translate `DOCUMENTATION.options` to `@dataclass` fields. The mapping is:
+Tailor guidance based on the answer.
+
+### Question 2: Does the Foundation Exist Yet?
+
+Before proceeding as a Feature Developer, the agent **MUST** check for foundation files. Use the filesystem to verify.
+
+**Check for these files:**
+
+| File | Purpose |
+|------|---------|
+| `plugins/plugin_utils/platform/types.py` | Shared types (EndpointOperation) |
+| `plugins/plugin_utils/platform/base_transform.py` | BaseTransformMixin — universal transformation logic |
+| `plugins/plugin_utils/manager/platform_manager.py` | PlatformManager and PlatformService |
+
+**Decision logic:**
+
+- **If NO** (any of these missing): Redirect to **Foundation Builder** persona. The developer must build the foundation first.
+- **If YES** (all present): **Feature Developer** can proceed.
+
+### Path Conventions
+
+- Collection root: `ansible_collections/ansible/platform/` or project-equivalent
+- Ansible models: `plugins/plugin_utils/ansible_models/`
+- API models: `plugins/plugin_utils/api/v1/`, `api/v2/`, etc.
+- Docs: `docs/`
+
+---
+
+## SECTION 3: Persona 1 — Foundation Builder
+
+### When to Use
+
+- Building the framework from scratch
+- Core components (BaseTransformMixin, Manager, Registry, Loader) do not exist yet
+- Setting up code generation tools
+
+### Required Context
+
+**Load these documents:**
+
+1. [01-overview.md](01-overview.md) — Architecture context, vision, component overview
+2. [06-foundation-components.md](06-foundation-components.md) — Full implementation specification
+
+### Q&A Walkthrough: Phases 1–4
+
+---
+
+#### Phase 1: Verify Architecture Understanding
+
+**Agent asks:** "Have you reviewed the architecture? Let me summarize the core components and build order..."
+
+**Agent shows:** The 7 main components and recommended build order:
+
+| Order | Component | Purpose |
+|-------|-----------|---------|
+| 1 | Shared types (`EndpointOperation`) | `plugins/plugin_utils/platform/types.py` — API endpoint configuration |
+| 2 | BaseTransformMixin | `plugins/plugin_utils/platform/base_transform.py` — Bidirectional Ansible ↔ API transformation |
+| 3 | APIVersionRegistry | `plugins/plugin_utils/platform/registry.py` — Dynamic version/module discovery |
+| 4 | DynamicClassLoader | `plugins/plugin_utils/platform/loader.py` — Load version-specific classes at runtime |
+| 5 | PlatformManager | `plugins/plugin_utils/manager/platform_manager.py` — PlatformService + multiprocess manager |
+| 6 | ManagerRPCClient | `plugins/plugin_utils/manager/rpc_client.py` — Client-side manager communication |
+| 7 | Base Action Plugin pattern | `plugins/action/base_action.py` — Manager spawning, validation, common logic |
+
+**Agent explains:** The flow: Playbook task → Action plugin → Manager (or spawn) → Transform (Ansible→API) → HTTP call → Transform (API→Ansible) → Return.
+
+**Agent asks:** "Does this order make sense? Ready to start with shared types?"
+
+---
+
+#### Phase 2: Build Components in Order
+
+For **each** component:
+
+1. **Agent describes** purpose, features, and file location
+2. **Agent asks** for confirmation before implementing
+3. **Agent implements** from 06-foundation-components.md spec
+4. **Agent shows** key parts (signatures, critical logic)
+5. **Agent asks:** "Proceed to next component? Add tests? Refine?"
+
+**Example for BaseTransformMixin:**
+
+> "BaseTransformMixin lives in `plugins/plugin_utils/platform/base_transform.py`. It provides:
+> - `from_ansible_data(ansible_instance)` — Ansible Model → API Model
+> - `from_api(api_response)` — API Model → Ansible Model
+> - Field mapping configuration
+> - Endpoint operation declarations
+> - Reference field (name↔ID) resolution hooks
+>
+> Subclasses define field mappings and custom transforms. Shall I implement it from the spec?"
+
+**Build order: types.py → base_transform.py → registry.py → loader.py → platform_manager.py → rpc_client.py → base_action.py**
+
+---
+
+#### Phase 3: Set Up Code Generators
+
+**Agent asks:** "Do you want code generators? These are optional but strongly recommended for scaling to all 22 modules."
+
+**Agent can implement:**
+
+1. **Python dataclass generator** — Parses DOCUMENTATION YAML, generates `AnsibleFoo` dataclasses
+2. **OpenAPI-to-dataclass tool** — Wraps `datamodel-code-generator` for API models
+
+---
+
+#### Phase 4: Foundation Testing
+
+**Agent creates** a test script that:
+
+1. Instantiates PlatformService
+2. Registers with PlatformManager
+3. Starts manager
+4. Verifies API version detection and registry discovery
+
+**Agent runs** and verifies output shows manager started, API version detected, supported versions listed.
+
+**Agent asks:** "Test passes? Foundation complete? Ready to move to Feature Developer phase?"
+
+---
+
+## SECTION 4: Persona 2 — Feature Developer
+
+### Prerequisites Check
+
+**Before proceeding**, the agent MUST verify foundation files exist (Section 2). If any are missing, redirect to Foundation Builder.
+
+### Required Context
+
+**Load these documents:**
+
+1. [07-adding-resources.md](07-adding-resources.md) — Main step-by-step guide
+2. [05-design-principles.md](05-design-principles.md) — Rules, guardrails, quality gates
+3. [10-case-study-aap-platform.md](10-case-study-aap-platform.md) — Platform module map, examples, complexity analysis
+
+### Q&A Walkthrough: Phases 1–7
+
+---
+
+#### Phase 1: Check Foundation Exists
+
+**Agent verifies:** Foundation files present, manager running, registry initialized.
+
+**Agent asks:** "Foundation present and working? Ready to add a new resource module?"
+
+If NO, redirect to Foundation Builder.
+
+---
+
+#### Phase 2: Write DOCUMENTATION Stub
+
+**Agent works with developer** to write the DOCUMENTATION string for the new module.
+
+**Key principles (from 05-design-principles.md):**
+
+- **User-friendly names** — snake_case, no vendor camelCase
+- **Read-only markers** — `id`, `created`, `modified` returned from API, not accepted on create
+- **Write-only markers** — `password`, `client_secret` accepted on create/update, never returned
+- **Clear descriptions** — Every option has a description
+- **Names over IDs** — `organization: 'Red Hat'` not `organization_id: 1`
+
+**Agent iterates** on fields with the developer: "Should `organization` be required? Is `service_cluster` a reference field? Are there write-only fields?"
+
+**Agent confirms** YAML structure valid, required keys present, `extends_documentation_fragment` values correct.
+
+---
+
+#### Phase 3: Generate/Write AnsibleFoo Dataclass
+
+**Agent generates** (or writes manually) the Ansible-facing dataclass from DOCUMENTATION:
 
 ```
 type: str, required: true   →   field_name: str
@@ -87,44 +259,141 @@ type: dict                  →   field_name: Optional[Dict[str, Any]] = None
 reference to another resource  →  field_name: Optional[Union[str, int]] = None
 ```
 
-Always add `state: str = 'present'` and the read-only fields:
-`id: Optional[int] = None`, `created: Optional[str] = None`,
-`modified: Optional[str] = None`.
+Always add: `state: str = 'present'` and read-only fields: `id: Optional[int] = None`, `created: Optional[str] = None`, `modified: Optional[str] = None`.
 
-**Phase 3 — Generate API Model skeleton** *(agent-safe)*
-
-Copy the Ansible model fields, rename reference fields to use integer IDs:
-- `organization: Optional[str]` → `organization: Optional[int]`
-- `service_cluster: Optional[str]` → `service_cluster: Optional[int]`
-
-Class name convention: `API<PascalCase>_v1`.
-
-**Phase 4 — Implement Transform Mixin** *(human review required)*
-
-The agent can generate the skeleton and handle simple 1:1 fields. The human must review:
-- Reference field name-to-ID resolution calls
-- Conditional field logic (write-only fields, enforced state nulls)
-- Secondary endpoint declarations
-- Lookup field and query params
-
-**Phase 5 — Create Action Plugin** *(agent-safe for standard resources)*
-
-Copy the standard `ActionModule` template from [07-adding-resources.md](07-adding-resources.md).
-Replace `MODULE_NAME`. The `_is_idempotent` method may need customisation for resources
-with reference fields (see Design Principle 7).
-
-**Phase 6 — Write Integration Test** *(agent-safe)*
-
-Copy the standard integration test template. Replace resource name and primary key.
-Follow the seven-phase pattern exactly.
-
-**Phase 7 — Write Mock Scenario** *(agent-safe)*
-
-Copy the standard `converge.yml` template. Replace module name and primary key.
+Class name convention: `Ansible<PascalCase>`. Location: `plugins/plugin_utils/ansible_models/`.
 
 ---
 
-## Coding Standards
+#### Phase 4: Write APIFoo_v1 + TransformMixin
+
+**Agent creates** two files:
+
+1. **API Model** (`plugins/plugin_utils/api/v1/{resource}.py`) — API-facing dataclass with integer IDs for reference fields
+   ```python
+   @dataclass
+   class APIUser_v1:
+       id: Optional[int] = None
+       username: str
+       organizations: Optional[List[int]] = None  # Reference fields as IDs, not names
+   ```
+
+2. **Transform Mixin** (`plugins/plugin_utils/api/v1/{resource}.py` same file or separate) — Field mapping + business logic
+   ```python
+   class UserTransformMixin_v1(BaseTransformMixin):
+       _field_mapping = {
+           'username': 'username',
+           'organizations': {  # Name→ID conversion
+               'api_field': 'organizations',
+               'forward_transform': 'lookup_organization_ids',
+               'reverse_transform': 'lookup_organization_names'
+           }
+       }
+       
+       def get_endpoint_operations(self):
+           return {
+               'create': EndpointOperation(method='POST', path='/api/gateway/v1/users/'),
+               'update': EndpointOperation(method='PATCH', path='/api/gateway/v1/users/{id}/'),
+               'delete': EndpointOperation(method='DELETE', path='/api/gateway/v1/users/{id}/'),
+               'get': EndpointOperation(method='GET', path='/api/gateway/v1/users/{id}/'),
+               'list': EndpointOperation(method='GET', path='/api/gateway/v1/users/')
+           }
+       
+       def get_lookup_field(self) -> str:
+           return 'username'
+   ```
+
+**Agent adds:** Complex transformations for name↔ID lookups, conditional field logic, secondary endpoint declarations.
+
+**Agent validates assumptions:** "I see the API uses `organizations` list but returns org IDs. I'll add name→ID resolution. Correct?"
+
+---
+
+#### Phase 5: Write ActionModule
+
+**Agent creates** thin wrapper in `plugins/action/user.py`:
+
+```python
+class ActionModule(BaseResourceActionPlugin):
+    MODULE_NAME = 'user'
+```
+
+Mostly boilerplate; pattern from 07-adding-resources.md.
+
+---
+
+#### Phase 6: Write Integration Test
+
+**Agent creates** test playbook in `tests/integration/test_user.yml` following seven phases:
+1. Verify setup (connection works)
+2. Create resource (`state: present`)
+3. Verify creation
+4. Update resource
+5. Verify update
+6. Delete resource (`state: absent`)
+7. Verify deletion
+
+**Agent runs** and verifies idempotency: second `state: present` returns `changed: false`.
+
+---
+
+#### Phase 7: Write Molecule Scenario
+
+**Agent creates** mock scenario in `extensions/molecule/{resource}_mock/converge.yml` with the same seven phases.
+
+**Agent runs** `molecule converge` and verifies idempotency against mock server.
+
+---
+
+## SECTION 5: Code Generator Persona
+
+*Optional: If implementing code generation tools.*
+
+**When to use:** Auto-generating boilerplate from DOCUMENTATION and OpenAPI specs.
+
+**Agent responsibilities:**
+- Parse DOCUMENTATION YAML → Dataclass
+- Parse OpenAPI → API Model dataclass
+- Generate argspec from DOCUMENTATION
+- Generate action plugin stubs
+
+**Human review required:** Naming choices (Principle 4 from 05-design-principles.md), reference field identification.
+
+---
+
+## SECTION 6: Testing Persona
+
+*Optional: If implementing test infrastructure.*
+
+**When to use:** Writing unit tests, integration tests, Molecule scenarios, mock server responses.
+
+**Agent responsibilities:**
+- Generate test playbooks from module spec
+- Generate mock server response fixtures
+- Write unit test for transform mixin
+- Generate coverage reports
+
+**Human review required:** Test assertions, edge cases, idempotency expectations.
+
+---
+
+## SECTION 7: Doc Writer Persona
+
+*Optional: If implementing documentation generation.*
+
+**When to use:** Auto-generating docs from DOCUMENTATION strings, code comments, OpenAPI specs.
+
+**Agent responsibilities:**
+- Generate module reference docs
+- Generate architecture diagrams
+- Generate complexity analysis tables
+- Generate coverage matrix
+
+**Human review required:** Content accuracy, completeness, clarity.
+
+---
+
+## SECTION 8: Coding Standards
 
 These standards apply to all agent-generated code. Violations will fail CI.
 
@@ -136,17 +405,21 @@ These standards apply to all agent-generated code. Violations will fail CI.
 
 **Style**: `flake8` with `max-line-length = 160`. No `E402` in module stubs.
 
-**Docstrings**: Modules must have `DOCUMENTATION` and `EXAMPLES`. Classes and non-trivial
-methods should have docstrings. Obvious one-liners do not need comments.
+**Docstrings**: Modules must have `DOCUMENTATION` and `EXAMPLES`. Classes and non-trivial methods should have docstrings. Obvious one-liners do not need comments.
 
-**No magic strings**: Version numbers, operation names, and state values must match
-the exact strings used by the framework:
+**No magic strings**: Version numbers, operation names, and state values must match the exact strings used by the framework:
 - Operations: `'create'`, `'update'`, `'delete'`, `'find'`, `'enforced'`
 - States: `'present'`, `'absent'`, `'exists'`, `'enforced'`, `'merged'`
 
 **Type hints**: All method signatures must have type hints. Return types required.
 
-**No `ignore_errors: true`**: Use `failed_when: false` in YAML files.
+**Namespace**: Everything in `ansible.platform` namespace. No top-level imports from `requests` in action plugins.
+
+**HTTP in manager**: All HTTP code lives in PlatformService running inside the manager process, NOT in action plugins.
+
+**Snake_case everywhere**: Variable names, function names, field names all snake_case. No camelCase except in API-specific model field names that mirror the Gateway API.
+
+**New module options**: All new options must be registered in `doc_fragments/auth.py` or other appropriate fragment file. Do not hardcode auth/connection options in individual modules.
 
 ### YAML Standards
 
@@ -179,58 +452,189 @@ before the closing `"""`.
 
 ---
 
-## Human-in-the-Loop Triggers
+## SECTION 9: Quality Checklist for Agent-Generated Code
 
-Stop and ask a human when you encounter any of these situations:
+Before presenting code for human review, verify every item:
 
-### 1. No clear unique lookup field
+### Python files
+- [ ] `black --check --line-length 160` passes
+- [ ] `flake8` passes (no unused imports, no undefined names)
+- [ ] `isort --check-only --profile black` passes
+- [ ] All class names match the naming convention table
+- [ ] All method signatures have type hints
+- [ ] `from __future__ import annotations` at top of every file
+- [ ] `__metaclass__ = type` in action plugins
+- [ ] No `import requests` in action plugins
+- [ ] All HTTP code in PlatformService (manager process), not action plugins
 
-The resource has no single field that uniquely identifies it. Examples:
-- `role_user_assignment` — identified by composite `(role_definition, user)`
-- `authenticator_map` — no stable unique name field
+### Transform mixin
+- [ ] `from_ansible_data` handles all optional fields with `if val is not None`
+- [ ] `from_api` populates all readable fields from the API response
+- [ ] `get_endpoint_operations` returns entries for `create`, `update`, `delete`, `get`, `list`
+- [ ] `get_lookup_field` returns the correct unique identifier field
+- [ ] Reference fields use `context.manager.lookup_resource_id()` or lookup methods
+- [ ] Write-only fields absent from `from_api`
+- [ ] API version correctly specified in mixin class name (_v1, _v2, etc.)
 
-**Action**: Do not guess. Ask the human: "What field (or combination of fields) uniquely
-identifies this resource for idempotency purposes?"
+### Action plugin
+- [ ] `MODULE_NAME` matches the module file name exactly
+- [ ] All states handled: `present`, `absent`, `exists`
+- [ ] `check_mode` respected for all mutating operations
+- [ ] `cleanup()` called in `finally` block
+- [ ] No HTTP code, no `import requests`
+- [ ] Proper error handling and validation
 
-### 2. Write-only or sensitive fields
+### YAML files
+- [ ] Ends with `...`
+- [ ] Task `name:` is always first key
+- [ ] `failed_when: false` used (not `ignore_errors: true`) for cleanup tasks
+- [ ] Cleanup block uses `always:` tag
 
-Fields that the API accepts on write but never returns on read (e.g., `password`,
-`client_secret`, API tokens).
+---
 
-**Action**: Mark in the mixin that these are write-only. Never include them in `from_api`.
-For idempotency: never compare them (always treat as "no change" unless explicitly provided).
+## SECTION 10: Context Loading Map
 
-### 3. Nested structures requiring deep comparison
+Which documents to read for which task:
 
-Fields that are dicts or lists where partial updates behave differently from full
-replacements.
+| Task | Primary doc | Secondary doc |
+|------|------------|--------------|
+| Adding a new resource module | [07-adding-resources.md](07-adding-resources.md) | [04-data-model-transformation.md](04-data-model-transformation.md) |
+| Understanding the framework | [06-foundation-components.md](06-foundation-components.md) | [03-sdk-architecture.md](03-sdk-architecture.md) |
+| Understanding the data flow | [04-data-model-transformation.md](04-data-model-transformation.md) | [06-foundation-components.md](06-foundation-components.md) |
+| Adding tests | [08-testing-strategy.md](08-testing-strategy.md) | [07-adding-resources.md](07-adding-resources.md) |
+| Fixing an idempotency bug | [05-design-principles.md](05-design-principles.md) | [04-data-model-transformation.md](04-data-model-transformation.md) |
+| Modifying connection/manager | [03-sdk-architecture.md](03-sdk-architecture.md) | [06-foundation-components.md](06-foundation-components.md) |
+| Debugging CI failures | [08-testing-strategy.md](08-testing-strategy.md) | this document |
 
-**Action**: Ask the human: "Does updating this field replace it entirely (PUT semantics)
-or merge into it (PATCH semantics)? Are there nested fields the API manages automatically?"
+---
 
-### 4. Multi-step create with ordering constraints
+## SECTION 11: Do Not — Anti-Patterns to Avoid
 
-The resource requires calls to multiple endpoints in a specific order, with data from
-earlier calls feeding into later ones.
+Stop the agent immediately if it attempts any of these:
 
-**Action**: Document the dependency graph. Ask the human to verify endpoint paths and
-field substitutions before implementing `EndpointOperation` declarations.
+### 1. Do not add HTTP code to action plugins
 
-### 5. API version ambiguity
+**Wrong:**
+```python
+# plugins/action/user.py
+import requests
 
-The documentation or OpenAPI spec shows different behavior for the same endpoint
-depending on subtle version differences.
+def run(self):
+    response = requests.post('http://...')  # NO!
+```
 
-**Action**: Do not guess about API behavior. Ask the human to provide the authoritative
-API documentation or test the behavior against a real instance.
+**Right:** All HTTP lives in PlatformService inside the manager process. Action plugins call `manager.execute()` only.
 
-### 6. Existing tests break
+---
 
-If implementing a change causes any existing unit tests, mock scenarios, or integration
-tests to fail.
+### 2. Do not hardcode version lists
 
-**Action**: Report the failures before attempting any fix. Do not silently change
-test assertions to make failing tests pass.
+**Wrong:**
+```python
+SUPPORTED_VERSIONS = ['1', '2']
+```
+
+**Right:** Use the APIVersionRegistry to auto-discover versions from api/v*/ directories.
+
+---
+
+### 3. Do not skip doc_fragments for new options
+
+**Wrong:**
+```python
+# plugins/action/user.py adds a new 'connection' option
+# ... but doesn't register it in doc_fragments/
+```
+
+**Right:** All new module options that are shared (auth, connection, validation) go in `doc_fragments/auth.py` or similar, and `extends_documentation_fragment: ['ansible.platform.auth']` in module DOCUMENTATION.
+
+---
+
+### 4. Do not use `int()` directly on environment variables
+
+**Wrong:**
+```python
+timeout = int(os.environ.get('IDLE_TIMEOUT'))  # Crashes if unset
+```
+
+**Right:**
+```python
+timeout = int(float(os.environ.get('IDLE_TIMEOUT', '3600')))
+```
+
+The float intermediary prevents `int()` from choking on scientific notation or edge cases.
+
+---
+
+### 5. Do not compare names to IDs for reference fields
+
+**Wrong:**
+```python
+# In transform mixin
+if ansible_instance.organization == api_response['organizationId']:  # Name vs ID!
+    changed = False
+```
+
+**Right:**
+```python
+# Resolve name to ID first, then compare IDs
+org_id = context.manager.lookup_resource_id('organization', ansible_instance.organization)
+if org_id == api_response['organizationId']:
+    changed = False
+```
+
+See Design Principle 7.
+
+---
+
+### 6. Do not forget write-only fields in idempotency
+
+**Wrong:**
+```python
+# password is compare in _is_idempotent
+if ansible_instance.password != api_response.get('password'):
+    changed = True
+```
+
+**Right:**
+```python
+# password is write-only — never compare it
+# If the user provides a password, always treat as needing update
+if ansible_instance.password is not None:
+    changed = True
+```
+
+---
+
+### 7. Do not use `fields_to_null` without understanding AAP semantics
+
+**Wrong:**
+```python
+# Setting fields_to_null: ['password'] unconditionally
+context.manager.update(..., fields_to_null=['password'])
+```
+
+**Right:**
+```python
+# Only null fields during specific transitions (e.g., map_type change for authenticator_map)
+if api_instance.map_type != ansible_instance.map_type:
+    context.manager.update(..., fields_to_null=['password'])
+```
+
+See case study for `authenticator_map` example.
+
+---
+
+## Troubleshooting Common Agent Mistakes
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| `ModuleNotFoundError: No module named 'ansible_collections'` | Running pytest without proper path setup | Run from collection root with root `conftest.py` active |
+| `changed: true` on second run of `state: present` | Idempotency logic compares name vs ID for a ref field | Apply Section 11 Anti-Pattern #5: resolve name to ID before comparing |
+| `AttributeError: 'ManagerRPCClient' has no attribute 'api_version'` | Action plugin directly accessing manager internals | Use `manager.execute()` and `manager.lookup_resource_id()` only |
+| `PackageDiscoveryError: Multiple top-level packages` | `pyproject.toml` triggers setuptools in tox linting envs | `tox.ini` has `[testenv] skip_install = true` — do not remove this |
+| Molecule `Assert idempotent run did not change` fails | Mock server returns slightly different data on second GET | Check if `from_api` transform returns all fields consistently |
+| `validate-modules` errors in DOCUMENTATION | Missing required keys or invalid YAML | Run `ansible-doc -t module ansible.platform.<name>` to validate |
 
 ---
 
@@ -239,13 +643,13 @@ test assertions to make failing tests pass.
 ### Good: Asking before implementing
 
 ```
-Agent: I'm about to implement the transform mixin for `notification_profile`.
-       The module has an `organization` field that accepts a name. I plan to resolve
-       this to an integer ID using:
-         context.manager.lookup_resource_id('organization', ansible_instance.organization)
-
-       Is this the correct resource type name to pass to lookup_resource_id?
+Agent: I'm about to implement the transform mixin for `role_user_assignment`.
+       The module assigns a role to a user. I see the API uses a composite key:
+       (role_definition_id, user_id, object_id).
+       I plan to implement get_lookup_field() to return this tuple.
+       Is this the correct approach for composite keys?
 ```
+
 ### Good: Confirming before mutating tests
 
 ```
@@ -265,73 +669,9 @@ Agent: [silently changes assertion from `not result.changed` to `result.changed`
         to make a failing test pass]
 ```
 
-### Bad: Inventing API behavior
+### Bad: Adding HTTP to action plugin
 
 ```
-# Wrong — do not guess
-Agent: [implements a secondary endpoint with a path /api/gateway/v1/users/{id}/orgs/
-        without verifying this endpoint exists in the actual Gateway API]
+# Wrong — do not do this
+Agent: [adds `import requests` to action plugin and makes direct HTTP call]
 ```
-
----
-
-## Quality Checklist for Agent-Generated Code
-
-Before presenting code for human review, verify every item:
-
-### Python files
-- [ ] `black --check --line-length 160` passes
-- [ ] `flake8` passes (no unused imports, no undefined names)
-- [ ] `isort --check-only --profile black` passes
-- [ ] All class names match the naming convention table
-- [ ] All method signatures have type hints
-- [ ] `from __future__ import annotations` at top of every file
-- [ ] `__metaclass__ = type` in action plugins
-
-### Transform mixin
-- [ ] `from_ansible_data` handles all optional fields with `if val is not None`
-- [ ] `from_api` populates all readable fields from the API response
-- [ ] `get_endpoint_operations` returns entries for `create`, `update`, `delete`, `get`, `list`
-- [ ] `get_lookup_field` returns the correct unique identifier field
-- [ ] Reference fields use `context.manager.lookup_resource_id()`
-- [ ] Write-only fields absent from `from_api`
-
-### Action plugin
-- [ ] `MODULE_NAME` matches the module file name exactly
-- [ ] All states handled: `present`, `absent`, `exists`
-- [ ] `check_mode` respected for all mutating operations
-- [ ] `cleanup()` called in `finally` block
-- [ ] No HTTP code, no `import requests`
-
-### YAML files
-- [ ] Ends with `...`
-- [ ] Task `name:` is always first key
-- [ ] `failed_when: false` used (not `ignore_errors: true`) for cleanup tasks
-- [ ] Cleanup block uses `always:` tag
-
----
-
-## Which Document to Load for Each Task
-
-| Task | Primary doc | Secondary doc |
-|------|------------|--------------|
-| Adding a new resource module | [07-adding-resources.md](07-adding-resources.md) | [04-data-model-transformation.md](04-data-model-transformation.md) |
-| Understanding the framework | [06-foundation-components.md](06-foundation-components.md) | [03-sdk-architecture.md](03-sdk-architecture.md) |
-| Understanding the data flow | [04-data-model-transformation.md](04-data-model-transformation.md) | [06-foundation-components.md](06-foundation-components.md) |
-| Adding tests | [08-testing-strategy.md](08-testing-strategy.md) | [07-adding-resources.md](07-adding-resources.md) |
-| Fixing an idempotency bug | [05-design-principles.md](05-design-principles.md) | [04-data-model-transformation.md](04-data-model-transformation.md) |
-| Modifying connection/manager | [03-sdk-architecture.md](03-sdk-architecture.md) | [06-foundation-components.md](06-foundation-components.md) |
-| Debugging CI failures | [08-testing-strategy.md](08-testing-strategy.md) | this document |
-
----
-
-## Troubleshooting Common Agent Mistakes
-
-| Symptom | Likely Cause | Fix |
-|---------|-------------|-----|
-| `ModuleNotFoundError: No module named 'ansible_collections'` | Running pytest without proper path setup | Run from collection root with root `conftest.py` active |
-| `changed: true` on second run of `state: present` | Idempotency logic compares name vs ID for a ref field | Apply Design Principle 7: resolve name to ID before comparing |
-| `AttributeError: 'ManagerRPCClient' has no attribute 'api_version'` | Action plugin directly accessing manager internals | Use `manager.execute()` and `manager.lookup_resource_id()` only |
-| `PackageDiscoveryError: Multiple top-level packages` | `pyproject.toml` triggers setuptools in tox linting envs | `tox.ini` has `[testenv] skip_install = true` — do not remove this |
-| Molecule `Assert idempotent run did not change` fails | Mock server returns slightly different data on second GET | Check if `from_api` transform returns all fields consistently |
-| `validate-modules` errors in DOCUMENTATION | Missing required keys or invalid YAML | Run `ansible-doc -t module ansible.platform.<name>` to validate |
