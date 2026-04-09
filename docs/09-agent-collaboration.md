@@ -7,7 +7,7 @@ This document guides AI agents working with developers on the **`ansible.platfor
 **Related Documents**:
 - [01-overview.md](01-overview.md) — Architecture context
 - [06-foundation-components.md](06-foundation-components.md) — Foundation implementation spec
-- [07-adding-resources.md](07-adding-resources.md) — Adding resource modules
+- [07-adding-resources.md](07-adding-resources.md) — Adding platform resources
 - [05-design-principles.md](05-design-principles.md) — Design rules and quality gates
 - [10-case-study-aap-platform.md](10-case-study-aap-platform.md) — Platform module map and examples
 
@@ -33,7 +33,7 @@ Developer engages agent
 Agent asks: "What are you working on?" (Role Identification)
         │
         ├── A) Building core framework → Foundation Builder persona
-        ├── B) Adding a new resource module → Feature Developer persona
+        ├── B) Adding a new platform action plugin → Feature Developer persona
         └── C) Something else → Clarifying questions
         │
         ▼
@@ -69,7 +69,7 @@ Ask the developer:
 | Answer | Persona | Next Step |
 |-------|----------|-----------|
 | **A)** Building the core framework (types.py, base_transform.py, registry.py, loader.py, platform_manager.py, rpc_client.py, base_action.py) | **Foundation Builder** | Proceed to Section 3 |
-| **B)** Adding a new resource module (user, service_cluster, route, application, etc.) | **Feature Developer** | Proceed to Section 4 |
+| **B)** Adding a new platform action plugin (user, service_cluster, route, application, etc.) | **Feature Developer** | Proceed to Section 4 |
 | **C)** Something else | — | Ask clarifying questions |
 
 ### Clarifying Questions for "Something Else"
@@ -221,104 +221,101 @@ For **each** component:
 
 **Agent verifies:** Foundation files present, manager running, registry initialized.
 
-**Agent asks:** "Foundation present and working? Ready to add a new resource module?"
+**Agent asks:** "Foundation present and working? Ready to add a new platform action plugin?"
 
 If NO, redirect to Foundation Builder.
 
 ---
 
-#### Phase 2: Write DOCUMENTATION Stub
+#### Phase 2: Run the Generator
 
-**Agent works with developer** to write the DOCUMENTATION string for the new module.
+**Agent runs** `generate_resource.py` against the OpenAPI spec to produce all boilerplate in one pass:
 
-**Key principles (from 05-design-principles.md):**
+```bash
+python tools/generate_resource.py \
+  --tag users \
+  --spec aap-openapi-specs/2.6/gateway.json \
+  --dry-run   # preview output without writing files
 
-- **User-friendly names** — snake_case, no vendor camelCase
-- **Read-only markers** — `id`, `created`, `modified` returned from API, not accepted on create
-- **Write-only markers** — `password`, `client_secret` accepted on create/update, never returned
-- **Clear descriptions** — Every option has a description
-- **Names over IDs** — `organization: 'Red Hat'` not `organization_id: 1`
+# When ready:
+python tools/generate_resource.py \
+  --tag users \
+  --spec aap-openapi-specs/2.6/gateway.json
+```
 
-**Agent iterates** on fields with the developer: "Should `organization` be required? Is `service_cluster` a reference field? Are there write-only fields?"
+**Five files produced:**
+1. `plugins/modules/user.py` — DOCUMENTATION stub (module stub, no logic)
+2. `plugins/plugin_utils/ansible_models/user.py` — `AnsibleUser` dataclass
+3. `plugins/plugin_utils/api/v1/user.py` — `APIUser_v1` dataclass + `UserTransformMixin_v1` skeleton
+4. `plugins/action/user.py` — `ActionModule(BaseResourceActionPlugin)` skeleton
+5. `tests/integration/test_user.yml` — integration test scaffold
 
-**Agent confirms** YAML structure valid, required keys present, `extends_documentation_fragment` values correct.
+**Agent confirms** the correct `--tag` value from the OpenAPI spec and that the spec path points to the right version.
 
 ---
 
-#### Phase 3: Generate/Write AnsibleFoo Dataclass
+#### Phase 3: Review Generated DOCUMENTATION and AnsibleFoo Dataclass
 
-**Agent generates** (or writes manually) the Ansible-facing dataclass from DOCUMENTATION:
+**Agent reviews** generated output with the developer and verifies:
 
-```
-type: str, required: true   →   field_name: str
-type: str, required: false  →   field_name: Optional[str] = None
-type: bool                  →   field_name: Optional[bool] = None
-type: int                   →   field_name: Optional[int] = None
-type: list                  →   field_name: Optional[List[str]] = None
-type: dict                  →   field_name: Optional[Dict[str, Any]] = None
-reference to another resource  →  field_name: Optional[Union[str, int]] = None
-```
+- **User-friendly names** — snake_case, no vendor camelCase; rename any generated camelCase fields
+- **Read-only markers** — `id`, `created`, `modified` present as return-only fields (not in module parameters)
+- **Write-only markers** — `password`, `client_secret` marked `no_log: true`, never returned
+- **Names over IDs** — `organization: 'Red Hat'` not `organization_id: 1`; reference fields should accept names
+- **Required fields** — required vs optional classification matches API semantics
+- **`extends_documentation_fragment`** values correct
 
-Always add: `state: str = 'present'` and read-only fields: `id: Optional[int] = None`, `created: Optional[str] = None`, `modified: Optional[str] = None`.
+**Agent iterates** on any fields that need adjustment: "The generator named this `org_id` — should it be `organization` (name-based)? Is `service_cluster` a reference field?"
 
-Class name convention: `Ansible<PascalCase>`. Location: `plugins/plugin_utils/ansible_models/`.
+**Agent does NOT rewrite from scratch** — only corrects what the generator got wrong.
 
 ---
 
-#### Phase 4: Write APIFoo_v1 + TransformMixin
+#### Phase 4: Complete the Transform Mixin
 
-**Agent creates** two files:
+**Agent opens** the generated `plugins/plugin_utils/api/v1/{resource}.py` and fills in the skeleton.
 
-1. **API Model** (`plugins/plugin_utils/api/v1/{resource}.py`) — API-facing dataclass with integer IDs for reference fields
-   ```python
-   @dataclass
-   class APIUser_v1:
-       id: Optional[int] = None
-       username: str
-       organizations: Optional[List[int]] = None  # Reference fields as IDs, not names
-   ```
+**What the generator produces (skeleton):**
+```python
+class UserTransformMixin_v1(BaseTransformMixin):
+    _field_mapping = {
+        'username': 'username',
+        # TODO: review reference fields, rename mappings
+    }
+    
+    def get_endpoint_operations(self):
+        return {
+            'create': EndpointOperation(method='POST', path='/api/gateway/v1/users/'),
+            'update': EndpointOperation(method='PATCH', path='/api/gateway/v1/users/{id}/'),
+            'delete': EndpointOperation(method='DELETE', path='/api/gateway/v1/users/{id}/'),
+            'get': EndpointOperation(method='GET', path='/api/gateway/v1/users/{id}/'),
+            'list': EndpointOperation(method='GET', path='/api/gateway/v1/users/')
+        }
+    
+    def get_lookup_field(self) -> str:
+        return 'username'  # TODO: verify correct lookup field
+```
 
-2. **Transform Mixin** (`plugins/plugin_utils/api/v1/{resource}.py` same file or separate) — Field mapping + business logic
-   ```python
-   class UserTransformMixin_v1(BaseTransformMixin):
-       _field_mapping = {
-           'username': 'username',
-           'organizations': {  # Name→ID conversion
-               'api_field': 'organizations',
-               'forward_transform': 'lookup_organization_ids',
-               'reverse_transform': 'lookup_organization_names'
-           }
-       }
-       
-       def get_endpoint_operations(self):
-           return {
-               'create': EndpointOperation(method='POST', path='/api/gateway/v1/users/'),
-               'update': EndpointOperation(method='PATCH', path='/api/gateway/v1/users/{id}/'),
-               'delete': EndpointOperation(method='DELETE', path='/api/gateway/v1/users/{id}/'),
-               'get': EndpointOperation(method='GET', path='/api/gateway/v1/users/{id}/'),
-               'list': EndpointOperation(method='GET', path='/api/gateway/v1/users/')
-           }
-       
-       def get_lookup_field(self) -> str:
-           return 'username'
-   ```
-
-**Agent adds:** Complex transformations for name↔ID lookups, conditional field logic, secondary endpoint declarations.
+**What the developer (or agent) adds:**
+- Name→ID resolution for reference fields (`organizations`, `service_cluster`, etc.)
+- Field renames where Ansible name differs from API name
+- Conditional field logic (e.g., field only sent on create)
+- Secondary endpoint declarations (e.g., assign role after create)
 
 **Agent validates assumptions:** "I see the API uses `organizations` list but returns org IDs. I'll add name→ID resolution. Correct?"
 
 ---
 
-#### Phase 5: Write ActionModule
+#### Phase 5: Review Generated ActionModule
 
-**Agent creates** thin wrapper in `plugins/action/user.py`:
+**Agent opens** `plugins/action/user.py` and confirms the generated skeleton is correct:
 
 ```python
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = 'user'
 ```
 
-Mostly boilerplate; pattern from 07-adding-resources.md.
+This is intentionally minimal — `BaseResourceActionPlugin` handles everything else. The agent verifies `MODULE_NAME` matches the module file name and that no extra logic has been added that belongs in the transform mixin instead.
 
 ---
 
@@ -347,17 +344,17 @@ Mostly boilerplate; pattern from 07-adding-resources.md.
 
 ## SECTION 5: Code Generator Persona
 
-*Optional: If implementing code generation tools.*
+*Optional: If extending or debugging `generate_resource.py`.*
 
-**When to use:** Auto-generating boilerplate from DOCUMENTATION and OpenAPI specs.
+**When to use:** Extending the generator, debugging generation failures, or adding support for new OpenAPI patterns.
 
 **Agent responsibilities:**
-- Parse DOCUMENTATION YAML → Dataclass
-- Parse OpenAPI → API Model dataclass
-- Generate argspec from DOCUMENTATION
-- Generate action plugin stubs
+- Parse OpenAPI spec (`aap-openapi-specs/<version>/gateway.json`) → all five output files
+- Handle edge cases: polymorphic fields, nested objects, `$ref` chains
+- Validate generated output against design principles (05-design-principles.md)
+- Produce transform mixin skeletons with correct `TODO` markers for human authorship
 
-**Human review required:** Naming choices (Principle 4 from 05-design-principles.md), reference field identification.
+**Human review required:** Naming choices (Principle 4 from 05-design-principles.md), reference field identification, any business logic in the transform mixin.
 
 ---
 
@@ -409,7 +406,7 @@ These standards apply to all agent-generated code. Violations will fail CI.
 
 **No magic strings**: Version numbers, operation names, and state values must match the exact strings used by the framework:
 - Operations: `'create'`, `'update'`, `'delete'`, `'find'`, `'enforced'`
-- States: `'present'`, `'absent'`, `'exists'`, `'enforced'`, `'merged'`
+- States: `'present'`, `'absent'`, `'exists'`, `'enforced'`
 
 **Type hints**: All method signatures must have type hints. Return types required.
 
@@ -498,7 +495,7 @@ Which documents to read for which task:
 
 | Task | Primary doc | Secondary doc |
 |------|------------|--------------|
-| Adding a new resource module | [07-adding-resources.md](07-adding-resources.md) | [04-data-model-transformation.md](04-data-model-transformation.md) |
+| Adding a new platform action plugin | [07-adding-resources.md](07-adding-resources.md) | [04-data-model-transformation.md](04-data-model-transformation.md) |
 | Understanding the framework | [06-foundation-components.md](06-foundation-components.md) | [03-sdk-architecture.md](03-sdk-architecture.md) |
 | Understanding the data flow | [04-data-model-transformation.md](04-data-model-transformation.md) | [06-foundation-components.md](06-foundation-components.md) |
 | Adding tests | [08-testing-strategy.md](08-testing-strategy.md) | [07-adding-resources.md](07-adding-resources.md) |

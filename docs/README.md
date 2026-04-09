@@ -20,7 +20,7 @@ See [01-overview.md](01-overview.md) for the problem statement and vision.
 
 ### For Collection Developers
 
-Start with [07-adding-resources.md](07-adding-resources.md) to add a new resource module. Foundation developers should begin with [06-foundation-components.md](06-foundation-components.md).
+Start with [07-adding-resources.md](07-adding-resources.md) to add a new platform action plugin. Foundation developers should begin with [06-foundation-components.md](06-foundation-components.md).
 
 ### For AI Agents
 
@@ -33,7 +33,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | # | File | Audience | Description |
 |---|------|----------|-------------|
 | 01 | [01-overview.md](01-overview.md) | All | Problem, vision, personas, user stories, module coverage, doc map |
-| 02 | [02-resource-module-pattern.md](02-resource-module-pattern.md) | All | States (present/absent/exists/enforced), entities vs endpoints, convergence contract |
+| 02 | [02-action-plugin-pattern.md](02-action-plugin-pattern.md) | All | States (present/absent/exists/enforced), entities vs endpoints, convergence contract |
 | 03 | [03-sdk-architecture.md](03-sdk-architecture.md) | Architects / Senior devs | Persistent connection manager, two connection modes, RPC interface, directory structure |
 | 04 | [04-data-model-transformation.md](04-data-model-transformation.md) | Framework devs | Three-tier data flow, Ansible model, API model, transform mixin, ref fields, case studies |
 | 05 | [05-design-principles.md](05-design-principles.md) | All devs | 10 rules governing every decision, quality checklist, human-in-the-loop triggers |
@@ -50,7 +50,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 ### "I want to understand what this collection does"
 
 → Start here: [01-overview.md](01-overview.md)  
-→ Then read: [02-resource-module-pattern.md](02-resource-module-pattern.md)
+→ Then read: [02-action-plugin-pattern.md](02-action-plugin-pattern.md)
 
 **Time**: 20–30 minutes
 
@@ -66,13 +66,13 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 
 ---
 
-### "I need to add a new resource module"
+### "I need to add a new platform action plugin"
 
 → **Primary**: [07-adding-resources.md](07-adding-resources.md) — Step-by-step 7-file workflow  
 → **Reference**: [05-design-principles.md](05-design-principles.md) — Rules to follow  
 → **Reference**: [10-case-study-aap-platform.md](10-case-study-aap-platform.md) — Find your module's identity category and API quirks
 
-**Prerequisites**: [01-overview.md](01-overview.md), [02-resource-module-pattern.md](02-resource-module-pattern.md)  
+**Prerequisites**: [01-overview.md](01-overview.md), [02-action-plugin-pattern.md](02-action-plugin-pattern.md)  
 **Time**: 1–2 hours + implementation time (1–4 hours per module)
 
 ---
@@ -112,7 +112,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 ```
 01-overview (start here)
   │
-  ├── 02-resource-module-pattern (what resource modules are)
+  ├── 02-action-plugin-pattern (entity-centric action plugin pattern)
   │     │
   │     └── 03-sdk-architecture (persistent connection, manager lifecycle)
   │           │
@@ -144,7 +144,7 @@ Naïve 1:1 API endpoint → module mapping produces 100+ modules where a single 
 **Platform SDK** with:
 - **Persistent connection manager** — One HTTP session for the entire play
 - **Versioned data model** — Stable Ansible interface regardless of API version
-- **22 resource modules** — One per logical entity, not endpoint
+- **22 action plugins** — One per logical entity, not endpoint
 
 ### The Three Tiers
 ```
@@ -171,9 +171,9 @@ HTTP to AAP Gateway API
 - Auto-terminates after idle timeout (prevents orphaned processes)
 
 ### Version Compatibility
-- `api/v1/` directory for AAP 2.4 API
-- `api/v2/` directory for AAP 2.5+ API
-- Ansible interface (`AnsibleUser`, etc.) never changes
+- `api/v1/` directory for AAP 2.6 (current release)
+- `api/v2/` directory for AAP 2.7+ (upcoming — add when API changes ship)
+- Ansible interface (`AnsibleUser`, etc.) never changes across versions
 - Registry auto-detects API version and routes to correct mixin
 - Fallback to latest available version if exact match not found
 
@@ -184,7 +184,7 @@ HTTP to AAP Gateway API
 ```
 docs/
   01-overview.md                         ← Start here
-  02-resource-module-pattern.md
+  02-action-plugin-pattern.md
   03-sdk-architecture.md
   04-data-model-transformation.md
   05-design-principles.md
@@ -262,9 +262,9 @@ A: Yes, but it requires careful review. See [06-foundation-components.md](06-fou
 
 | Version | Date | Notable Changes |
 |---------|------|-----------------|
-| 1.0 | 2024-Q2 | Initial 22-module release; AAP 2.4/2.5 support |
-| 1.1 | 2024-Q3 | AAP 3.x support via v3 transform mixins; idle_timeout feature |
-| 1.2 | 2024-Q4 | Enhanced agent collaboration guide; anti-pattern documentation |
+| 1.0 | 2025-Q1 | Initial 22-module release; AAP 2.6 support |
+| 1.1 | 2025-Q2 | idle_timeout feature; integration test coverage; backward compat fixes |
+| 1.2 | 2025-Q3 | AAP 2.7 support via v2 transform mixins (when API changes ship) |
 
 ---
 

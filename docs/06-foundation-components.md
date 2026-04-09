@@ -727,7 +727,6 @@ def _detect_operation(self, args: dict) -> str:
         'absent':   'delete',
         'exists':   'find',
         'enforced': 'enforced',
-        'merged':   'update',
     }[state]
 ```
 
@@ -747,19 +746,33 @@ def run(self, tmp=None, task_vars=None):
 
 **5. Cleanup**
 
+`cleanup()` is called by Ansible after each task completes. Its behaviour depends on
+which connection mode is active:
+
+- **Ephemeral (direct mode)**: shuts down the manager immediately after the single
+  task that spawned it.
+- **Persistent mode**: does nothing. Persistent managers are shut down by the
+  `platform_manager_cleanup` callback plugin when the play ends.
+
 ```python
 def cleanup(self, force: bool = False):
     """
-    Remove task tracking file. Shut down manager process when last task completes.
-    Uses file-based lock to prevent race conditions between concurrent tasks.
-    """
-    tracking_dir = Path(f"/tmp/ansible_platform_tracking/{self._play_id}/")
-    task_file = tracking_dir / self._task_id
-    task_file.unlink(missing_ok=True)
+    Called by Ansible after each task completes.
 
-    if not list(tracking_dir.iterdir()):
-        # No more tasks in this play — shut down the manager
-        self._shutdown_manager()
+    Persistent managers are shut down by the platform_manager_cleanup
+    callback plugin which fires v2_playbook_on_play_end in the main
+    process — no task counting or file locking needed here.
+
+    This method only handles ephemeral managers (direct mode), which
+    must be torn down immediately after the single task that used them.
+    """
+    super().cleanup(force)
+
+    # Ephemeral managers (direct / non-persistent mode): shut down now.
+    if hasattr(self, "_client") and getattr(self._client, "_ephemeral", False):
+        socket_path = getattr(self._client, "socket_path", None)
+        if socket_path:
+            self._shutdown_manager_process(socket_path, ProcessManager)
 ```
 
 ---

@@ -981,7 +981,7 @@ jobs:
 
 ### Test Requirements Per Module
 
-For any new resource module, these tests MUST exist:
+For any new platform action plugin, these tests MUST exist:
 
 | Layer | Test Type | File | Required? |
 |-------|-----------|------|-----------|

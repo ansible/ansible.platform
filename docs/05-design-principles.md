@@ -402,7 +402,7 @@ behavior: if the config file accepts it, the env var must too.
 
 ## SECTION 13: Quality Checklist
 
-Before submitting any new resource module, verify:
+Before submitting any new platform action plugin, verify:
 
 - [ ] `AnsibleFoo` dataclass exists in `ansible_models/foo.py`
 - [ ] `APIFoo_v1` dataclass exists in `api/v1/foo.py`
@@ -427,7 +427,7 @@ Before submitting any new resource module, verify:
 
 ## SECTION 14: Human-in-the-Loop Triggers
 
-When adding a new resource module, the following situations require human review and
+When adding a new platform action plugin, the following situations require human review and
 cannot be automated:
 
 ### 1. The API Resource Has No Stable Unique Key

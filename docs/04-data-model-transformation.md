@@ -817,7 +817,7 @@ User wants to change password without changing other fields:
   ansible.platform.user:
     username: alice
     password: "new_password_123"
-    state: merged
+    state: present
 ```
 
 The action plugin:

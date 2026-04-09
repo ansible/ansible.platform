@@ -36,7 +36,7 @@ action plugins, MCP tools, CLI utilities, and future consumers all call the same
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Playbook (YAML tasks)                                          │
-│     state: present / absent / exists / enforced / merged        │
+│     state: present / absent / exists / enforced                 │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ task args
                            ▼
@@ -282,17 +282,33 @@ Play starts
         └── delete socket file
 ```
 
-### Process-Safe Task Tracking
+### Persistent Manager Shutdown — Callback Plugin
 
-Multiple tasks run concurrently in Ansible. To safely shut down the manager only after
-all tasks in a play have completed (not after the first task finishes), the framework
-uses a **file-based reference counter**:
+Persistent managers are shut down by the `platform_manager_cleanup` callback plugin
+(`plugins/callback/platform_manager_cleanup.py`), which Ansible auto-loads from the
+collection with zero configuration (`CALLBACK_NEEDS_ENABLED = False`).
 
-- Directory: `/tmp/ansible_platform_tracking/`
-- One file per in-flight task (named by task UUID)
-- `cleanup()` removes the task's file and shuts down the manager only when the
-  directory is empty (no other tasks running)
-- File locking prevents race conditions between concurrent workers
+The callback fires two hooks in the Ansible main process:
+
+- `v2_playbook_on_play_end` — fires when each play finishes
+- `v2_playbook_on_stats` — fires at the very end of the playbook (belt-and-suspenders,
+  covers plays that were skipped and never triggered `play_end`)
+
+On each hook it scans `/tmp/ansible_platform/` for `.meta` JSON files written next to
+each socket at spawn time. For each live manager found it:
+
+1. Attempts a graceful RPC shutdown (`client.shutdown_manager()`)
+2. Waits up to 5 seconds for the process to exit cleanly
+3. Escalates to `SIGTERM` if still running
+4. Escalates to `SIGKILL` if still running after 1 more second
+5. Removes the `.meta` and socket files
+
+Because the callback runs in the **main Ansible process** (not a forked worker), it
+always fires at the right moment regardless of how many worker forks were used.
+
+`cleanup()` in the action plugin only handles **ephemeral (direct mode)** managers —
+those are torn down immediately after the single task that spawned them. Persistent
+managers are left entirely to the callback plugin.
 
 ---
 

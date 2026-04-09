@@ -322,8 +322,9 @@ manager = PlatformManager(idle_timeout=0)     # Never auto-terminate (debug only
 
 ### 2.x Backward Compatibility via Transform Mixin Versioning
 
-**Challenge**: AAP 2.4 and 2.5 have API differences (field names, endpoint paths, etc.).
-The collection must support both without requiring users to change their playbooks.
+**Challenge**: Future AAP releases (2.7, 2.8, and beyond) may introduce API field
+changes or new endpoint paths. The collection must continue working across releases
+without requiring users to change their playbooks.
 
 **Solution**: Version-specific transform mixins in `api/v1/`, `api/v2/` directories.
 The registry auto-detects the platform API version and routes to the correct mixin.
@@ -333,13 +334,13 @@ The Ansible-facing interface (`AnsibleUser`, `AnsibleOrganization`, etc.) never 
 ```
 plugins/plugin_utils/api/
   v1/
-    user.py  (APIUser_v1, UserTransformMixin_v1 — for AAP 2.4)
+    user.py  (APIUser_v1, UserTransformMixin_v1 — current, AAP 2.6)
   v2/
-    user.py  (APIUser_v2, UserTransformMixin_v2 — for AAP 2.5+)
+    user.py  (APIUser_v2, UserTransformMixin_v2 — added when AAP 2.7 API changes ship)
 ```
 
-**Fallback logic**: If the registry detects a 2.5 platform but v2 mixin is not found,
-it falls back to v1 automatically, with a warning logged.
+**Fallback logic**: If the registry detects a version with no exact mixin match,
+it falls back to the highest available version automatically, with a warning logged.
 
 ---
 
@@ -371,20 +372,20 @@ This prevents stale data from the old type leaking into the new type's configura
 
 ## SECTION 6: Version Strategy
 
-### How AAP 2.4 / 2.5 / 3.x Are Handled
+### How AAP 2.6, 2.7, and Future 2.x Releases Are Handled
 
 1. **Platform detection**: On first task execution, the action plugin asks the manager to
    detect the AAP Gateway API version.
 
 2. **Version → Mixin routing**: The registry maps API version to the correct mixin:
-   - v1 API → `UserTransformMixin_v1` (AAP 2.4)
-   - v2 API → `UserTransformMixin_v2` (AAP 2.5)
-   - v3 API → `UserTransformMixin_v3` (AAP 3.x)
+   - v1 API → `UserTransformMixin_v1` (AAP 2.6, current)
+   - v2 API → `UserTransformMixin_v2` (AAP 2.7+, added when API changes ship)
+   - Future → new versioned directory, no framework changes needed
 
 3. **Fallback**: If a version is not found, the registry falls back to the highest
    available version with a warning:
    ```
-   WARN: AAP 3.0 detected but no v3 mixin for 'user'. Using v2 mixin.
+   WARN: API v2 detected but no v2 mixin for 'user'. Using v1 mixin.
    ```
 
 4. **Single playbook works everywhere**: Users write:
@@ -394,14 +395,14 @@ This prevents stale data from the old type leaking into the new type's configura
        username: alice
        organization: engineering
    ```
-   The same playbook works on AAP 2.4, 2.5, and 3.x without modification.
+   The same playbook works on AAP 2.6, 2.7, and future 2.x releases without modification.
 
 ### Adding Support for a New API Version
 
-To support a new AAP version (e.g., 3.0):
+To support a new AAP release (e.g., 2.7) when its API changes ship:
 
-1. Create `plugins/plugin_utils/api/v3/` directory
-2. Copy existing v2 files as a starting point
+1. Create `plugins/plugin_utils/api/v2/` directory
+2. Copy existing v1 files as a starting point
 3. Update dataclasses and field mappings to match the 3.0 API
 4. Update mixin class names: `UserTransformMixin_v2` → `UserTransformMixin_v3`
 5. The registry auto-discovers the new version on startup

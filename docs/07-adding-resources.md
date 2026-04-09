@@ -1,10 +1,21 @@
 # Adding Resources
 
-This is the step-by-step guide for adding a new resource module to `ansible.platform`.
+This is the step-by-step guide for adding a new platform action plugin to `ansible.platform`.
 Follow these steps in order. Each step has a clear deliverable and a quality check.
 
-**Time estimate**: 1–2 hours for a simple resource, 2–4 hours for complex (ref fields,
-secondary endpoints, version-specific quirks).
+**Time estimate**:
+
+| Phase | Simple resource | Complex resource |
+|-------|----------------|-----------------|
+| `generate_resource.py` (boilerplate generation) | ~2 minutes | ~2 minutes |
+| Review + fix generated `DOCUMENTATION` stub | 10–15 minutes | 20–30 minutes |
+| Transform mixin business logic (manual) | 20–30 minutes | 1–2 hours |
+| Molecule mock scenario (manual) | 30–45 minutes | 45–60 minutes |
+| Integration test run + fix failures | 30–45 minutes | 45–90 minutes |
+| **Total** | **~1.5 hours** | **~3–5 hours** |
+
+A **simple resource** has mostly 1:1 field mappings and no reference fields (e.g. `organization`, `feature_flag`).
+A **complex resource** has ref fields (name → ID resolution), secondary endpoints, `fields_to_null` transitions, or write-only fields (e.g. `authenticator_map`, `service_node`, `user`).
 
 ---
 
@@ -12,10 +23,10 @@ secondary endpoints, version-specific quirks).
 
 1. [Prerequisites Checklist](#section-0-prerequisites-checklist)
 2. [Overview: The Seven Files](#overview-the-seven-files)
-3. [Step 1: Module Stub](#section-1-write-the-module-stub)
-4. [Step 2: Ansible Model](#section-2-create-the-ansible-model)
-5. [Step 3: API Model & Transform](#section-3-create-the-api-model-and-transform-mixin)
-6. [Step 4: Action Plugin](#section-4-create-the-action-plugin)
+3. [Step 1: Run the Generator](#section-1-run-the-generator)
+4. [Step 2: Review Generated DOCUMENTATION and AnsibleFoo](#section-2-review-the-generated-documentation-and-ansiblefoo-dataclass)
+5. [Step 3: Complete the Transform Mixin](#section-3-complete-the-transform-mixin)
+6. [Step 4: Review the Generated Action Plugin](#section-4-review-the-generated-action-plugin)
 7. [Step 5: Integration Tests](#section-5-integration-test)
 8. [Step 6: Molecule Scenario](#section-6-molecule-mock-scenario)
 9. [Common Patterns Catalog](#common-patterns-catalog)
@@ -51,123 +62,96 @@ Before starting, verify these foundations exist:
 
 ## Overview: The Seven Files
 
-Every resource requires these seven files:
+Every platform action plugin requires these seven files. Files 1–4 are generated
+automatically. Files 5–7 require manual work.
 
-| # | File | Contents |
-|---|------|---------|
-| 1 | `plugins/modules/<resource>.py` | `DOCUMENTATION` + `EXAMPLES` |
-| 2 | `plugins/plugin_utils/ansible_models/<resource>.py` | `AnsibleFoo` dataclass |
-| 3 | `plugins/plugin_utils/api/v1/<resource>.py` | `APIFoo_v1` + `FooTransformMixin_v1` |
-| 4 | `plugins/action/<resource>.py` | `ActionModule(BaseResourceActionPlugin)` |
-| 5 | `tests/integration/targets/<resource>s_test/tasks/main.yml` | Integration tests |
-| 6 | `extensions/molecule/<resource>_mock/` | Molecule mock scenario |
-| 7 | (optional) Unit tests | `tests/unit/` |
+| # | File | How produced |
+|---|------|-------------|
+| 1 | `plugins/modules/<resource>.py` | **Generated** — `DOCUMENTATION` + `EXAMPLES` scaffold from OpenAPI spec |
+| 2 | `plugins/plugin_utils/ansible_models/<resource>.py` | **Generated** — `AnsibleFoo` dataclass from OpenAPI spec |
+| 3 | `plugins/plugin_utils/api/v1/<resource>.py` | **Generated skeleton, manual completion** — `APIFoo_v1` dataclass + `FooTransformMixin_v1` business logic |
+| 4 | `plugins/action/<resource>.py` | **Generated** — `ActionModule(BaseResourceActionPlugin)` skeleton |
+| 5 | `tests/integration/targets/<resource>s_test/tasks/main.yml` | **Generated scaffold, manual completion** — integration test structure |
+| 6 | `extensions/molecule/<resource>_mock/` | **Manual** — Molecule mock scenario |
+| 7 | (optional) `tests/unit/` | **Manual** — unit tests for complex transform logic |
 
 ---
 
-## SECTION 1: Write the Module Stub (`plugins/modules/`)
+## SECTION 1: Run the Generator
 
-Start with `DOCUMENTATION`. This is the contract with playbook authors and the source
-of truth for the `AnsibleFoo` dataclass.
+All boilerplate is produced in one command from the Gateway OpenAPI spec. Run from
+the collection root:
 
-```python
-# plugins/modules/notification_profile.py
-
-DOCUMENTATION = r"""
----
-module: notification_profile
-short_description: Manage notification profiles on Ansible Automation Platform
-description:
-  - Create, update, delete, and query notification profiles on AAP Gateway.
-version_added: "2.5.0"
-author:
-  - Your Name (@yourhandle)
-extends_documentation_fragment:
-  - ansible.platform.auth
-  - ansible.platform.state
-options:
-  name:
-    description:
-      - Name of the notification profile.
-    type: str
-    required: true
-  notification_type:
-    description:
-      - The type of notification backend.
-    type: str
-    choices: [email, slack, webhook]
-    required: true
-  url:
-    description:
-      - Destination URL (required for slack and webhook types).
-    type: str
-  organization:
-    description:
-      - Name of the organization that owns this profile.
-    type: str
-"""
-
-EXAMPLES = r"""
-- name: Create a Slack notification profile
-  ansible.platform.notification_profile:
-    name: ops-alerts
-    notification_type: slack
-    url: https://hooks.slack.com/services/T00/B00/xxx
-    organization: Red Hat
-    state: present
-
-- name: Delete a notification profile
-  ansible.platform.notification_profile:
-    name: ops-alerts
-    state: absent
-...
-"""
+```bash
+python tools/generate_resource.py \
+    --tag <openapi_tag> \
+    --spec ../aap-openapi-specs/2.6/gateway.json
 ```
 
-**Quality check**: Run `ansible-doc -t module ansible.platform.notification_profile`
-and verify all options render correctly.
+Use `--dry-run` first to preview what will be created without writing files:
 
----
-
-## SECTION 2: Create the Ansible Model (`plugins/plugin_utils/ansible_models/`)
-
-Translate `DOCUMENTATION.options` directly into a `@dataclass`. Rules:
-- `required: true` → positional field (no default)
-- `required: false` / not required → `Optional[T] = None`
-- `type: str` → `str` or `Optional[str]`
-- `type: bool` → `Optional[bool]`
-- `type: int` → `Optional[int]`
-- `type: list` → `Optional[List[str]]`
-- `type: dict` → `Optional[Dict[str, Any]]`
-- Reference fields (org names, cluster names) → `Optional[Union[str, int]]` to accept
-  both names and IDs
-
-```python
-# plugins/plugin_utils/ansible_models/notification_profile.py
-from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional
-
-@dataclass
-class AnsibleNotificationProfile:
-    name: str                              # required (no default)
-    notification_type: str                 # required
-    url: Optional[str] = None
-    organization: Optional[str] = None    # ref field — org name
-    state: str = 'present'
-    # read-only (populated from API response):
-    id: Optional[int] = None
-    created: Optional[str] = None
-    modified: Optional[str] = None
+```bash
+python tools/generate_resource.py \
+    --tag notification_profiles \
+    --spec ../aap-openapi-specs/2.6/gateway.json \
+    --dry-run
 ```
 
-**Quality check**: Field names must match `DOCUMENTATION.options` keys exactly.
+**What the generator produces**:
+
+```
+plugins/modules/notification_profile.py                    ← DOCUMENTATION + EXAMPLES
+plugins/plugin_utils/ansible_models/notification_profile.py ← AnsibleNotificationProfile dataclass
+plugins/plugin_utils/api/v1/notification_profile.py        ← APINotificationProfile_v1 + TransformMixin skeleton
+plugins/action/notification_profile.py                     ← ActionModule skeleton
+tests/integration/targets/notification_profiles_test/
+  tasks/main.yml                                           ← integration test scaffold
+```
+
+The generator skips files that already exist. Use `--overwrite` to regenerate them.
+
+**Quality check**: Confirm all five files were created. Run:
+
+```bash
+ansible-doc -t module ansible.platform.notification_profile
+```
+
+All options from the OpenAPI spec should render correctly.
 
 ---
 
-## SECTION 3: Create the API Model and Transform Mixin (`plugins/plugin_utils/api/v1/`)
+## SECTION 2: Review the Generated `DOCUMENTATION` and `AnsibleFoo` Dataclass
 
-This is the most important file. It bridges Ansible model ↔ Gateway API wire format.
+The generator produces these from the OpenAPI spec. They are usually correct but
+always need a human review pass before proceeding.
+
+**For `plugins/modules/<resource>.py`** — check:
+- `short_description` is clear and user-facing (not an API description copy-paste)
+- `required: true` is set on truly required fields only
+- Reference fields (org names, cluster names) have a description mentioning they
+  accept the resource name, not an ID
+- `EXAMPLES` block covers at least `state: present` and `state: absent`
+- `extends_documentation_fragment` includes `ansible.platform.auth` and `ansible.platform.state`
+
+**For `plugins/plugin_utils/ansible_models/<resource>.py`** — check:
+- Field names match `DOCUMENTATION.options` keys exactly
+- Reference fields are `Optional[str]` (name), not `Optional[int]` (ID)
+- Write-only fields like `password` have no default and are not in the reverse transform
+- Read-only fields (`id`, `created`, `modified`) are `Optional[int/str] = None`
+
+**Quality check**: Field names in `AnsibleFoo` must match `DOCUMENTATION.options`
+keys exactly — they are what the action plugin receives as `task_vars`.
+
+---
+
+## SECTION 3: Complete the Transform Mixin (`plugins/plugin_utils/api/v1/`)
+
+The generator produces the `APIFoo_v1` dataclass and a `FooTransformMixin_v1` skeleton.
+The `APIFoo_v1` dataclass is usually correct as-is. The transform mixin skeleton needs
+to be completed — this is the only file that requires real authorship.
+
+It bridges Ansible model ↔ Gateway API wire format. The generator stubs out the
+methods; you fill in the logic.
 
 ```python
 # plugins/plugin_utils/api/v1/notification_profile.py
@@ -292,10 +276,10 @@ class NotificationProfileTransformMixin_v1(BaseTransformMixin):
 
 ---
 
-## SECTION 4: Create the Action Plugin (`plugins/action/`)
+## SECTION 4: Review the Generated Action Plugin (`plugins/action/`)
 
-The action plugin is thin. It delegates everything to `BaseResourceActionPlugin`.
-The only resource-specific code here is `MODULE_NAME` and the idempotency comparison.
+The generator produces a complete `ActionModule` skeleton. For most resources it
+requires no changes — review it and move on. The only things to check:
 
 ```python
 # plugins/action/notification_profile.py
