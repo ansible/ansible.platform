@@ -1,0 +1,167 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — authenticator_user (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Move authenticator user to local authenticator (connection local)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-local"
+        authenticator: "molecule-mock-authenticator"
+        keep_memberships: false
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+        state: present
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+        fail_msg: "Expected authenticator_user to be created/changed. Got: {{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Idempotency — re-run authenticator_user (connection local)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-local"
+        authenticator: "molecule-mock-authenticator"
+        keep_memberships: false
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+        state: present
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotency (connection local)
+      ansible.builtin.assert:
+        that:
+          - idem_result_local is not changed
+        fail_msg: "Expected no change on second run. Got: {{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+- name: Converge — authenticator_user (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Move authenticator user (http direct)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-hd"
+        authenticator: "molecule-mock-authenticator"
+        keep_memberships: false
+        state: present
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+        fail_msg: "Expected changed on create (http direct). Got: {{ create_result_http_direct }}"
+
+    - name: Idempotency — re-run authenticator_user (http direct)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-hd"
+        authenticator: "molecule-mock-authenticator"
+        keep_memberships: false
+        state: present
+      register: idem_result_http_direct
+
+    - name: Assert idempotency (http direct)
+      ansible.builtin.assert:
+        that:
+          - idem_result_http_direct is not changed
+        fail_msg: "Expected no change on second run (http direct). Got: {{ idem_result_http_direct }}"
+
+- name: Converge — authenticator_user (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Move authenticator user (http persistent)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-hp"
+        authenticator: "molecule-mock-authenticator"
+        keep_memberships: false
+        state: present
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+        fail_msg: "Expected changed on create (http persistent). Got: {{ create_result_http_persistent }}"
+
+    - name: Idempotency — re-run authenticator_user (http persistent)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-hp"
+        authenticator: "molecule-mock-authenticator"
+        keep_memberships: false
+        state: present
+      register: idem_result_http_persistent
+
+    - name: Assert idempotency (http persistent)
+      ansible.builtin.assert:
+        that:
+          - idem_result_http_persistent is not changed
+        fail_msg: "Expected no change on second run (http persistent). Got: {{ idem_result_http_persistent }}"

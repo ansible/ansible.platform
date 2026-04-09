@@ -1,0 +1,206 @@
+---
+# infra.* Compatibility Integration Test
+#
+# PURPOSE
+# -------
+# Validates that ansible.platform works correctly as a dependency of infra.*
+# validated content collections. Intended to be run during testathons with a
+# live AAP 2.6+ instance where an infra.* collection is also installed.
+#
+# PREREQUISITES
+# -------------
+# 1. ansible.platform collection installed (this collection)
+# 2. At least one infra.* collection installed that depends on ansible.platform
+#    - Candidate: infra.platform or infra.aap_configuration (confirm with @sean-m-sullivan)
+# 3. Live AAP 2.6+ gateway reachable
+# 4. gateway_hostname / gateway_username / gateway_password set in integration_config.yml
+#
+# TO RUN
+# ------
+#   ansible-test integration infra_compat_test -v
+#
+# WHAT IT TESTS
+# -------------
+# Round 1 — Direct ansible.platform tasks
+#   Create org, team, user via ansible.platform modules directly. Confirms the
+#   collection works standalone before testing infra.* layering.
+#
+# Round 2 — infra.* role invocation (requires infra.* collection installed)
+#   Invoke an infra.* role that internally uses ansible.platform. Confirms
+#   that the infra.* → ansible.platform dependency chain works end-to-end.
+#
+# Round 3 — Idempotency check
+#   Re-run both rounds. Everything should report changed=false.
+#
+# TESTATHON NOTES
+# ---------------
+# - Skip Round 2 if infra.* is not installed: set infra_compat_skip_infra_role=true
+# - Document which infra.* collection + version was tested in the testathon notes
+# - If Round 2 fails, open a GitHub issue with label infra-compat
+
+- name: Generate unique test ID to avoid collision with existing data
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=12') }}"
+  when: test_id is not defined
+
+- name: Set test resource names
+  ansible.builtin.set_fact:
+    test_org_name: "infra-compat-test-org-{{ test_id }}"
+    test_team_name: "infra-compat-test-team-{{ test_id }}"
+    test_user_name: "infra-compat-test-user-{{ test_id }}"
+
+- name: "ROUND 1 — Direct ansible.platform tasks"
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(true) | bool }}"
+  block:
+    - name: Create test organization
+      ansible.platform.organization:
+        name: "{{ test_org_name }}"
+        description: "Created by infra_compat_test — safe to delete"
+        state: present
+      register: r_org
+
+    - name: Assert organization created
+      ansible.builtin.assert:
+        that:
+          - r_org is changed
+          - r_org.organization.name == test_org_name
+        fail_msg: "Organization creation failed: {{ r_org }}"
+
+    - name: Create test team inside organization
+      ansible.platform.team:
+        name: "{{ test_team_name }}"
+        organization: "{{ test_org_name }}"
+        state: present
+      register: r_team
+
+    - name: Assert team created
+      ansible.builtin.assert:
+        that:
+          - r_team is changed
+          - r_team.team.name == test_team_name
+        fail_msg: "Team creation failed: {{ r_team }}"
+
+    - name: Create test user
+      ansible.platform.user:
+        username: "{{ test_user_name }}"
+        first_name: "Infra"
+        last_name: "CompatTest"
+        email: "{{ test_user_name }}@example.com"
+        password: "CompatTest1234!"
+        state: present
+      register: r_user
+
+    - name: Assert user created
+      ansible.builtin.assert:
+        that:
+          - r_user is changed
+          - r_user.user.username == test_user_name
+        fail_msg: "User creation failed: {{ r_user }}"
+
+    - name: Assign user to team
+      ansible.platform.team_member:
+        team: "{{ test_team_name }}"
+        user: "{{ test_user_name }}"
+        state: present
+      register: r_member
+
+    - name: Assert team membership created
+      ansible.builtin.assert:
+        that:
+          - r_member is changed
+        fail_msg: "Team membership failed: {{ r_member }}"
+
+    - name: "ROUND 1 idempotency — re-run all tasks, expect no changes"
+      block:
+        - name: Re-create organization (should be no-op)
+          ansible.platform.organization:
+            name: "{{ test_org_name }}"
+            description: "Created by infra_compat_test — safe to delete"
+            state: present
+          register: r_org_idem
+
+        - name: Re-create team (should be no-op)
+          ansible.platform.team:
+            name: "{{ test_team_name }}"
+            organization: "{{ test_org_name }}"
+            state: present
+          register: r_team_idem
+
+        - name: Assert idempotency
+          ansible.builtin.assert:
+            that:
+              - r_org_idem is not changed
+              - r_team_idem is not changed
+            fail_msg: "Idempotency failure — resources changed on second run"
+
+- name: "ROUND 2 — infra.* role invocation (skipped if infra_compat_skip_infra_role=true)"
+  when: not (infra_compat_skip_infra_role | default(false) | bool)
+  block:
+    # NOTE: Replace the role name below with the actual infra.* role confirmed
+    # during testathon coordination with @sean-m-sullivan.
+    # Placeholder: infra.platform.config or infra.aap_configuration.organizations
+    - name: Check if infra.* collection is installed
+      ansible.builtin.command: ansible-galaxy collection list
+      register: r_galaxy_list
+      changed_when: false
+
+    - name: Skip Round 2 if infra.* not installed
+      ansible.builtin.meta: end_play
+      when: "'infra.' not in r_galaxy_list.stdout"
+
+    # TODO (testathon): Replace this task with the actual infra.* role invocation.
+    # Example (update role name after confirming with CaC team):
+    #
+    #   - name: Run infra.* role that uses ansible.platform internally
+    #     ansible.builtin.include_role:
+    #       name: infra.aap_configuration.organizations
+    #     vars:
+    #       aap_organizations:
+    #         - name: "{{ test_org_name }}-via-infra"
+    #           description: "Created via infra.* role"
+    #
+    - name: Placeholder — replace during testathon
+      ansible.builtin.debug:
+        msg: >
+          Round 2 placeholder. During testathon, replace this task with the
+          actual infra.* role call. See task comments above for guidance.
+          Contact @sean-m-sullivan to confirm which infra.* collection + role to use.
+
+- name: "CLEANUP — Remove test resources"
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(true) | bool }}"
+  block:
+    - name: Remove test team membership
+      ansible.platform.team_member:
+        team: "{{ test_team_name }}"
+        user: "{{ test_user_name }}"
+        state: absent
+      ignore_errors: true  # noqa: ignore-errors
+
+    - name: Remove test user
+      ansible.platform.user:
+        username: "{{ test_user_name }}"
+        state: absent
+      ignore_errors: true  # noqa: ignore-errors
+
+    - name: Remove test team
+      ansible.platform.team:
+        name: "{{ test_team_name }}"
+        organization: "{{ test_org_name }}"
+        state: absent
+      ignore_errors: true  # noqa: ignore-errors
+
+    - name: Remove test organization
+      ansible.platform.organization:
+        name: "{{ test_org_name }}"
+        state: absent
+      ignore_errors: true  # noqa: ignore-errors
