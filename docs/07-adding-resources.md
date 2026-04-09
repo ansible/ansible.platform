@@ -92,20 +92,24 @@ Use `--dry-run` first to preview what will be created without writing files:
 
 ```bash
 python tools/generate_resource.py \
-    --tag notification_profiles \
+    --tag teams \
     --spec ../aap-openapi-specs/2.6/gateway.json \
     --dry-run
 ```
 
+> **Note**: `team` already exists in the collection — this example uses it because
+> the real spec fields (`name`, `organization`, `description`) make the workflow
+> concrete. When adding a genuinely new resource, use its actual OpenAPI tag.
+
 **What the generator produces**:
 
 ```
-plugins/modules/notification_profile.py                    ← DOCUMENTATION + EXAMPLES
-plugins/plugin_utils/ansible_models/notification_profile.py ← AnsibleNotificationProfile dataclass
-plugins/plugin_utils/api/v1/notification_profile.py        ← APINotificationProfile_v1 + TransformMixin skeleton
-plugins/action/notification_profile.py                     ← ActionModule skeleton
-tests/integration/targets/notification_profiles_test/
-  tasks/main.yml                                           ← integration test scaffold
+plugins/modules/team.py                    ← DOCUMENTATION + EXAMPLES
+plugins/plugin_utils/ansible_models/team.py ← AnsibleTeam dataclass
+plugins/plugin_utils/api/v1/team.py        ← APITeam_v1 + TransformMixin skeleton
+plugins/action/team.py                     ← ActionModule skeleton
+tests/integration/targets/teams_test/
+  tasks/main.yml                           ← integration test scaffold
 ```
 
 The generator skips files that already exist. Use `--overwrite` to regenerate them.
@@ -113,7 +117,7 @@ The generator skips files that already exist. Use `--overwrite` to regenerate th
 **Quality check**: Confirm all five files were created. Run:
 
 ```bash
-ansible-doc -t module ansible.platform.notification_profile
+ansible-doc -t module ansible.platform.team
 ```
 
 All options from the OpenAPI spec should render correctly.
@@ -154,10 +158,10 @@ It bridges Ansible model ↔ Gateway API wire format. The generator stubs out th
 methods; you fill in the logic.
 
 ```python
-# plugins/plugin_utils/api/v1/notification_profile.py
+# plugins/plugin_utils/api/v1/team.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, ClassVar
+from typing import Optional, Dict, Any
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_transform import (
     BaseTransformMixin,
@@ -165,70 +169,70 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_tra
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import (
     EndpointOperation, TransformContext,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.notification_profile import (
-    AnsibleNotificationProfile,
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.team import (
+    AnsibleTeam,
 )
 
 
 @dataclass
-class APINotificationProfile_v1:
-    """Wire format for Gateway API v1 notification profiles."""
+class APITeam_v1:
+    """Wire format for Gateway API v1 teams.
+
+    Note: organization is an INTEGER ID in the API wire format.
+    The Ansible model uses a name string — the mixin resolves the name to an ID.
+    """
     name: str
-    notification_type: str
-    url: Optional[str] = None
-    organization: Optional[int] = None   # INTEGER ID in API, not name
+    organization: int              # INTEGER ID in API, not name
+    description: Optional[str] = None
     id: Optional[int] = None
     created: Optional[str] = None
     modified: Optional[str] = None
 
 
-class NotificationProfileTransformMixin_v1(BaseTransformMixin):
+class TeamTransformMixin_v1(BaseTransformMixin):
     """
-    Transforms between AnsibleNotificationProfile and APINotificationProfile_v1.
+    Transforms between AnsibleTeam (name-based) and APITeam_v1 (ID-based).
     """
 
     def from_ansible_data(
         self,
-        ansible_instance: AnsibleNotificationProfile,
+        ansible_instance: AnsibleTeam,
         context: TransformContext,
-    ) -> APINotificationProfile_v1:
+    ) -> APITeam_v1:
         """Forward: Ansible model → API wire format."""
+        # Reference field: resolve organization name → integer ID
+        org_id = context.manager.lookup_resource_id(
+            'organization', ansible_instance.organization
+        )
+
         params: Dict[str, Any] = {
             'name': ansible_instance.name,
-            'notification_type': ansible_instance.notification_type,
+            'organization': org_id,
         }
 
-        if ansible_instance.url is not None:
-            params['url'] = ansible_instance.url
+        if ansible_instance.description is not None:
+            params['description'] = ansible_instance.description
 
-        # Reference field: resolve organization name → integer ID
-        if ansible_instance.organization is not None:
-            org_id = context.manager.lookup_resource_id(
-                'organization', ansible_instance.organization
-            )
-            params['organization'] = org_id
-
-        return APINotificationProfile_v1(**params)
+        return APITeam_v1(**params)
 
     def from_api(
         self,
         api_data: dict,
         context: TransformContext,
-    ) -> AnsibleNotificationProfile:
+    ) -> AnsibleTeam:
         """Reverse: API response → Ansible model."""
         # Resolve organization ID back to name for the return value
         org_name = None
         if api_data.get('organization'):
-            org_name = context.manager.lookup_resource_id(
+            org_name = context.manager.lookup_resource_name(
                 'organization', api_data['organization']
             )
 
-        return AnsibleNotificationProfile(
+        return AnsibleTeam(
             id=api_data.get('id'),
             name=api_data.get('name'),
-            notification_type=api_data.get('notification_type'),
-            url=api_data.get('url'),
             organization=org_name,
+            description=api_data.get('description'),
             created=api_data.get('created'),
             modified=api_data.get('modified'),
         )
@@ -238,23 +242,23 @@ class NotificationProfileTransformMixin_v1(BaseTransformMixin):
         return {
             'create': EndpointOperation(
                 method='POST',
-                path='/api/gateway/v1/notification-profiles/',
+                path='/api/gateway/v1/teams/',
             ),
             'update': EndpointOperation(
                 method='PATCH',
-                path='/api/gateway/v1/notification-profiles/{id}/',
+                path='/api/gateway/v1/teams/{id}/',
             ),
             'delete': EndpointOperation(
                 method='DELETE',
-                path='/api/gateway/v1/notification-profiles/{id}/',
+                path='/api/gateway/v1/teams/{id}/',
             ),
             'get': EndpointOperation(
                 method='GET',
-                path='/api/gateway/v1/notification-profiles/{id}/',
+                path='/api/gateway/v1/teams/{id}/',
             ),
             'list': EndpointOperation(
                 method='GET',
-                path='/api/gateway/v1/notification-profiles/',
+                path='/api/gateway/v1/teams/',
             ),
         }
 
@@ -263,16 +267,17 @@ class NotificationProfileTransformMixin_v1(BaseTransformMixin):
         return 'name'
 
     @classmethod
-    def get_find_list_query_params(cls, ansible_instance: AnsibleNotificationProfile) -> dict:
+    def get_find_list_query_params(cls, ansible_instance: AnsibleTeam) -> dict:
+        # Teams are scoped per organization — include both in the lookup
         return {'name': ansible_instance.name}
 ```
 
 **Quality check**:
-- All fields in `APINotificationProfile_v1` correspond to actual Gateway API fields
-- `from_ansible_data` handles all non-null optional fields
-- `from_api` maps all fields back correctly
-- `get_lookup_field()` returns the field that uniquely identifies the resource
-- Endpoint paths match the actual Gateway API
+- All fields in `APITeam_v1` correspond to actual Gateway API fields (cross-check against `gateway.json` `Team` schema)
+- `from_ansible_data` resolves `organization` name → ID before sending to API
+- `from_api` resolves `organization` ID → name in the return value
+- `get_lookup_field()` returns `'name'` — the unique identifier within an org
+- Endpoint paths match the actual Gateway API (`/api/gateway/v1/teams/`)
 
 ---
 
@@ -282,99 +287,26 @@ The generator produces a complete `ActionModule` skeleton. For most resources it
 requires no changes — review it and move on. The only things to check:
 
 ```python
-# plugins/action/notification_profile.py
+# plugins/action/team.py
+# Auto-generated by tools/generate_resource.py — review before committing.
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
-import dataclasses
 from ansible_collections.ansible.platform.plugins.action.base_action import (
     BaseResourceActionPlugin,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.notification_profile import (
-    AnsibleNotificationProfile,
-)
-
-DOCUMENTATION_MODULE = 'notification_profile'
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME = 'notification_profile'
+    """Resource module action plugin for team."""
 
-    def run(self, tmp=None, task_vars=None):
-        if task_vars is None:
-            task_vars = {}
-
-        result = super().run(tmp, task_vars)
-        if result.get('failed'):
-            return result
-
-        # Load and validate args from DOCUMENTATION
-        from ansible_collections.ansible.platform.plugins.modules import notification_profile as mod
-        argspec = self._build_argspec_from_docs(mod.DOCUMENTATION)
-        validated, errors = self._validate_args(self._task.args, argspec)
-        if errors:
-            return dict(failed=True, msg=f"Invalid arguments: {errors}")
-
-        state = validated.get('state', 'present')
-        manager = self._get_or_spawn_manager(task_vars)
-
-        ansible_data = {k: v for k, v in validated.items() if v is not None}
-
-        try:
-            if state == 'absent':
-                find_result = manager.execute('find', self.MODULE_NAME, ansible_data)
-                if not find_result.get('id'):
-                    return dict(changed=False, exists=False)
-                if self._task.check_mode:
-                    return dict(changed=True, check_mode=True)
-                manager.execute('delete', self.MODULE_NAME,
-                                {**ansible_data, 'id': find_result['id']})
-                return dict(changed=True)
-
-            elif state == 'exists':
-                find_result = manager.execute('find', self.MODULE_NAME, ansible_data)
-                exists = bool(find_result.get('id'))
-                return dict(changed=False, exists=exists, **find_result)
-
-            else:  # present / enforced
-                find_result = manager.execute('find', self.MODULE_NAME, ansible_data)
-                if find_result.get('id'):
-                    # Check idempotency
-                    if self._is_idempotent(validated, find_result):
-                        return dict(changed=False, **find_result)
-                    if self._task.check_mode:
-                        return dict(changed=True, check_mode=True)
-                    result = manager.execute('update', self.MODULE_NAME,
-                                            {**ansible_data, 'id': find_result['id']})
-                else:
-                    if self._task.check_mode:
-                        return dict(changed=True, check_mode=True)
-                    result = manager.execute('create', self.MODULE_NAME, ansible_data)
-
-                return dict(changed=True, **result)
-
-        except Exception as exc:
-            return dict(failed=True, msg=str(exc))
-        finally:
-            self.cleanup()
-
-    def _is_idempotent(self, desired: dict, existing: dict) -> bool:
-        """Return True if all specified desired fields match the existing resource."""
-        for key, desired_val in desired.items():
-            if key in ('state', 'id'):
-                continue
-            if desired_val is None:
-                continue
-            if existing.get(key) != desired_val:
-                return False
-        return True
+    USER_MODEL = "plugins.plugin_utils.ansible_models.team.AnsibleTeam"
 ```
 
 **Quality check**:
-- `MODULE_NAME` matches the module file name
-- All states handled: `present`, `absent`, `exists`
-- `check_mode` respected
-- `cleanup()` called in `finally` block
+- `USER_MODEL` dotted path resolves to the correct `AnsibleFoo` dataclass for this resource
+- The class has no extra logic — all behaviour lives in `BaseResourceActionPlugin` and the transform mixin
+- File name matches the module stub (`team.py` → `ansible.platform.team`)
 
 ---
 
@@ -417,20 +349,24 @@ Reference the fragment:
 ```python
 DOCUMENTATION = r"""
 ---
-module: notification_profile
-short_description: Manage notification profiles
+module: team
+short_description: Manage teams in the AAP platform
 extends_documentation_fragment:
   - ansible.platform.auth
   - ansible.platform.state
 options:
   name:
-    description: Name of the profile.
+    description: Name of the team.
+    type: str
+    required: true
+  organization:
+    description: Name of the organization this team belongs to.
     type: str
     required: true
 """
 ```
 
-When you run `ansible-doc -t module ansible.platform.notification_profile`, the `gateway_idle_timeout` option will appear in the final documentation.
+When you run `ansible-doc -t module ansible.platform.team`, the `gateway_idle_timeout` option will appear in the final documentation.
 
 **Quality check**: `ansible-doc -t module ansible.platform.<resource>` shows the new option.
 
@@ -441,7 +377,7 @@ When you run `ansible-doc -t module ansible.platform.notification_profile`, the 
 Create a test target that exercises all states against a live (or mock) AAP instance.
 
 ```
-tests/integration/targets/notification_profiles_test/
+tests/integration/targets/teams_test/
 ├── tasks/
 │   └── main.yml
 └── meta/
@@ -463,16 +399,17 @@ dependencies:
     test_id: "{{ lookup('password', '/dev/null length=8 chars=ascii_lowercase') }}"
 
 - name: Delete any pre-existing test resource (cleanup from failed runs)
-  ansible.platform.notification_profile:
+  ansible.platform.team:
     name: "test-{{ test_id }}"
+    organization: Default
     state: absent
   failed_when: false
 
-- name: Create a notification profile
-  ansible.platform.notification_profile:
+- name: Create a team
+  ansible.platform.team:
     name: "test-{{ test_id }}"
-    notification_type: webhook
-    url: https://example.com/hook
+    organization: Default
+    description: "Integration test team"
     state: present
   register: create_result
 
@@ -484,10 +421,10 @@ dependencies:
       - create_result.name == "test-{{ test_id }}"
 
 - name: Run create again (idempotency check)
-  ansible.platform.notification_profile:
+  ansible.platform.team:
     name: "test-{{ test_id }}"
-    notification_type: webhook
-    url: https://example.com/hook
+    organization: Default
+    description: "Integration test team"
     state: present
   register: idempotent_result
 
@@ -497,8 +434,9 @@ dependencies:
       - not idempotent_result.changed
 
 - name: Check existence
-  ansible.platform.notification_profile:
+  ansible.platform.team:
     name: "test-{{ test_id }}"
+    organization: Default
     state: exists
   register: exists_result
 
@@ -508,9 +446,10 @@ dependencies:
       - exists_result.exists
       - not exists_result.changed
 
-- name: Delete the notification profile
-  ansible.platform.notification_profile:
+- name: Delete the team
+  ansible.platform.team:
     name: "test-{{ test_id }}"
+    organization: Default
     state: absent
   register: delete_result
 
@@ -520,8 +459,9 @@ dependencies:
       - delete_result.changed
 
 - name: Delete again (idempotency check)
-  ansible.platform.notification_profile:
+  ansible.platform.team:
     name: "test-{{ test_id }}"
+    organization: Default
     state: absent
   register: delete_idempotent
 
@@ -533,8 +473,9 @@ dependencies:
 - name: Clean up always block
   block:
     - name: Final cleanup
-      ansible.platform.notification_profile:
+      ansible.platform.team:
         name: "test-{{ test_id }}"
+        organization: Default
         state: absent
       failed_when: false
   tags: [always]
@@ -596,11 +537,11 @@ verifier:
         name: start_mock_server
 
   tasks:
-    - name: Create notification profile (first run)
-      ansible.platform.notification_profile:
-        name: test-profile
-        notification_type: webhook
-        url: https://example.com/hook
+    - name: Create team (first run)
+      ansible.platform.team:
+        name: test-team
+        organization: Default
+        description: "Mock test team"
         state: present
       register: first_run
 
@@ -608,11 +549,11 @@ verifier:
       assert:
         that: first_run.changed
 
-    - name: Create notification profile (idempotency run)
-      ansible.platform.notification_profile:
-        name: test-profile
-        notification_type: webhook
-        url: https://example.com/hook
+    - name: Create team (idempotency run)
+      ansible.platform.team:
+        name: test-team
+        organization: Default
+        description: "Mock test team"
         state: present
       register: second_run
 
@@ -624,7 +565,7 @@ verifier:
 
 Run locally:
 ```bash
-cd extensions/molecule/notification_profile_mock
+cd extensions/molecule/team_mock
 molecule converge
 molecule verify
 molecule destroy
@@ -814,11 +755,11 @@ else:  # present
 
 **Fix**:
 ```python
-def from_api(self, api_data: dict, context: TransformContext) -> AnsibleNotificationProfile:
+def from_api(self, api_data: dict, context: TransformContext) -> AnsibleTeam:
     # WRONG: return api_data  # This is a dict, not a dataclass
     
     # RIGHT: create an instance
-    return AnsibleNotificationProfile(
+    return AnsibleTeam(
         id=api_data.get('id'),
         name=api_data.get('name'),
         # ... other fields
