@@ -4,29 +4,19 @@
 # (c) 2025, Ansible Platform Collection Contributors
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""
-Callback plugin: platform_manager_cleanup
-
-Shuts down all ansible.platform manager subprocesses gracefully when a play
-ends.  Runs in the Ansible main process (not in a worker fork), so it always
-has the right moment to clean up regardless of forks count or task ordering.
-
-How it works
-------------
-When a persistent manager is spawned, base_action.py writes a companion
-`<socket>.meta` JSON file containing the manager's PID and authkey.  This
-callback scans the socket directory for those files on play-end and
-terminates every live manager process.
-
-Activation
-----------
-No configuration required.  This plugin sets CALLBACK_NEEDS_ENABLED = False
-so Ansible auto-loads it from the collection without any ansible.cfg entry.
-"""
-
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
+
+import base64
+import json
+import os
+import signal
+import tempfile
+import time
+from pathlib import Path
+
+from ansible.plugins.callback import CallbackBase
 
 DOCUMENTATION = r"""
 name: platform_manager_cleanup
@@ -45,16 +35,6 @@ type: notification
 requirements: []
 options: {}
 """
-
-import base64
-import json
-import os
-import signal
-import tempfile
-import time
-from pathlib import Path
-
-from ansible.plugins.callback import CallbackBase
 
 CALLBACK_TYPE = "notification"
 # False = Ansible auto-loads this plugin from the collection with zero
