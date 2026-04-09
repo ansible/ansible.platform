@@ -1,0 +1,31 @@
+---
+# Scenario: verify persistent manager exits after idle_timeout (mock Gateway).
+# Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
+
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+ansible:
+  executor:
+    args:
+      ansible_playbook: []
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      collections_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../../../"
+      log_verbosity: 4
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup
+...

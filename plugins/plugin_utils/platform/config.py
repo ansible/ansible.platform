@@ -26,14 +26,25 @@ class GatewayConfig:
     verify_ssl: bool = True
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
+    idle_timeout: float = 3600.0
 
     def __post_init__(self):
         """Normalize URL after initialization."""
         original_url = self.base_url
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
-            logger.debug("Normalized gateway URL: %s -> %s", original_url, self.base_url)
-        logger.info("GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s", self.base_url, self.verify_ssl, self.request_timeout)
+            logger.debug(
+                "Normalized gateway URL: %s -> %s",
+                original_url,
+                self.base_url,
+            )
+        logger.info(
+            "GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s, idle_timeout=%s",
+            self.base_url,
+            self.verify_ssl,
+            self.request_timeout,
+            self.idle_timeout,
+        )
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -54,7 +65,30 @@ class GatewayConfig:
         return url
 
 
-def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars: Optional[Dict[str, Any]] = None, required: bool = True) -> GatewayConfig:
+def _extract_persistent_manager_idle_timeout(
+    task_args: Dict[str, Any],
+    host_vars: Dict[str, Any],
+) -> Optional[Any]:
+    """Return ``persistent_manager_idle_timeout`` if set in task or host scope (including ``0``).
+
+    Controls how long the *local* manager process on the control node may stay
+    idle before exiting; it is not a gateway server-side timeout.
+
+    Uses ``key in dict`` so ``0`` is not dropped (unlike ``a or b`` chains).
+    Task arguments override host/inventory variables.
+    """
+    if "persistent_manager_idle_timeout" in task_args:
+        return task_args["persistent_manager_idle_timeout"]
+    if "persistent_manager_idle_timeout" in host_vars:
+        return host_vars["persistent_manager_idle_timeout"]
+    return None
+
+
+def extract_gateway_config(
+    task_args: Optional[Dict[str, Any]] = None,
+    host_vars: Optional[Dict[str, Any]] = None,
+    required: bool = True,
+) -> GatewayConfig:
     """
     Extract gateway configuration from task arguments and host variables.
 
@@ -76,7 +110,11 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
     task_args = task_args or {}
     host_vars = host_vars or {}
 
-    logger.debug("Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)", list(task_args.keys()), list(host_vars.keys()))
+    logger.debug(
+        "Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)",
+        list(task_args.keys()),
+        list(host_vars.keys()),
+    )
 
     # Get gateway URL from task args first, then host_vars
     gateway_url = task_args.get("gateway_url") or task_args.get("gateway_hostname") or host_vars.get("gateway_url") or host_vars.get("gateway_hostname")
@@ -104,6 +142,9 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         gateway_token = gateway_token_raw
     gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
     gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
+    # Local persistent manager idle shutdown (not a gateway session timeout).
+    # Default: 3600 s. Set to 0 to disable. See _extract_persistent_manager_idle_timeout.
+    pm_idle_timeout = _extract_persistent_manager_idle_timeout(task_args, host_vars)
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
     connection_mode = task_args.get("platform_connection_mode") or host_vars.get("platform_connection_mode") or "standard"
 
@@ -112,9 +153,18 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         raise ValueError("gateway_url or gateway_hostname must be provided as task parameter or defined in inventory")
 
     # Log auth method being used (without exposing secrets)
-    auth_method = "token" if gateway_token else ("username/password" if gateway_username else "none")
+    if gateway_token:
+        auth_method = "token"
+    elif gateway_username:
+        auth_method = "username/password"
+    else:
+        auth_method = "none"
     logger.info(
-        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s", gateway_url, auth_method, gateway_validate_certs, gateway_request_timeout
+        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s",
+        gateway_url,
+        auth_method,
+        gateway_validate_certs,
+        gateway_request_timeout,
     )
 
     config = GatewayConfig(
@@ -125,6 +175,7 @@ def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars
         verify_ssl=gateway_validate_certs,
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
+        idle_timeout=(float(pm_idle_timeout) if pm_idle_timeout is not None else 3600.0),
     )
 
     logger.debug("GatewayConfig created successfully")

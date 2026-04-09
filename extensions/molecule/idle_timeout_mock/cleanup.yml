@@ -1,0 +1,23 @@
+---
+- name: Cleanup — idle timeout scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: Cleanup any leftover manager sockets
+      ansible.builtin.shell: >-
+        TMPDIR="$(python3 -c 'import tempfile; print(tempfile.gettempdir())')"
+        HOME_DIR="$(python3 -c 'import os,pwd; print(os.environ.get(\"HOME\") or pwd.getpwuid(os.getuid()).pw_dir)')"
+        rm -f
+        /tmp/ansible_platform/manager_*_localhost_*.sock
+        /tmp/ansible_platform/manager_*_localhost_*.sock.meta
+        "${TMPDIR}/ansible_platform/manager_*_localhost_*.sock"
+        "${TMPDIR}/ansible_platform/manager_*_localhost_*.sock.meta"
+        "${HOME_DIR}/.ansible/tmp/"*/ansible_platform/manager_*_localhost_*.sock
+        "${HOME_DIR}/.ansible/tmp/"*/ansible_platform/manager_*_localhost_*.sock.meta
+        || true
+      changed_when: false
+      failed_when: false
+...

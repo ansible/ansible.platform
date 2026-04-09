@@ -13,6 +13,41 @@ import traceback
 from pathlib import Path
 
 
+def _compute_poll_interval(idle_timeout: float) -> int:
+    """Return the idle-monitor sleep interval derived from the configured timeout.
+
+    The interval is set to 10 % of ``idle_timeout`` so the manager checks
+    roughly 10 times per timeout window, giving a worst-case overshoot of
+    one poll interval (10 % of the timeout) instead of a fixed 60 s.
+
+    Bounds:
+      - Floor: 5 s  — avoids busy-looping for very short timeouts.
+      - Cap:  60 s  — avoids infrequent checks for very long timeouts.
+      - ``idle_timeout <= 0`` (disabled): returns 60 s (interval is irrelevant).
+    """
+    if idle_timeout <= 0:
+        return 60
+    return max(5, min(60, int(idle_timeout / 10)))
+
+
+_SENSITIVE_ARGV_POSITIONS = {5, 6, 7}
+
+
+def _redact_argv(argv=None):
+    """Return a copy of argv with credential positions replaced by '<redacted>'.
+
+    Always safe to log — sensitive positions (username, password, token) are
+    replaced even when the value is an empty string, so length cannot be inferred.
+    """
+    if argv is None:
+        argv = sys.argv
+    redacted = list(argv)
+    for i in _SENSITIVE_ARGV_POSITIONS:
+        if i < len(redacted) and redacted[i]:
+            redacted[i] = "<redacted>"
+    return redacted
+
+
 def main():
     """Main entry point for the manager process."""
 
@@ -29,13 +64,13 @@ def main():
         marker = Path("/tmp/ansible_platform_manager_started.txt")
         with open(marker, "a") as f:
             f.write(f"Script started with {len(sys.argv)} args\n")
-            f.write(f"Args: {_safe_argv()}\n")
+            f.write(f"Args: {_redact_argv()}\n")
     except Exception:
         pass
 
     if len(sys.argv) < 10:
-        print(f"ERROR: Expected 9 args, got {len(sys.argv) - 1}", file=sys.stderr)
-        print(f"Args received: {_safe_argv()}", file=sys.stderr)
+        print(f"ERROR: Expected at least 9 args (optional 10th: idle_timeout), got {len(sys.argv) - 1}", file=sys.stderr)
+        print(f"Args received: {_redact_argv()}", file=sys.stderr)
         sys.exit(1)
 
     marker = Path("/tmp/ansible_platform_manager_started.txt")
@@ -57,6 +92,7 @@ def main():
     gateway_token = sys.argv[7] or None
     gateway_validate_certs = sys.argv[8].lower() == "true"
     gateway_request_timeout = float(sys.argv[9])
+    pm_idle_timeout_arg = float(sys.argv[10]) if len(sys.argv) > 10 else 3600.0
     log_marker("Arguments parsed successfully")
 
     log_marker("Reading environment variables...")
@@ -146,6 +182,7 @@ def main():
                 verify_ssl=gateway_validate_certs,
                 request_timeout=gateway_request_timeout,
                 connection_mode="experimental",  # Persistent manager is always experimental mode
+                idle_timeout=pm_idle_timeout_arg,
             )
             with open(error_log, "a") as f:
                 f.write("GatewayConfig created successfully\n")
@@ -251,22 +288,6 @@ def main():
             except ValueError:
                 pass
 
-        # ------------------------------------------------------------------ #
-        # Watchdog — decides when the manager should shut down.              #
-        #                                                                    #
-        # Two modes, selected at startup:                                    #
-        #                                                                    #
-        #  Production (no .survive flag):                                    #
-        #    Poll os.kill(owner_pid, 0) every 3 s.  Exit when the main      #
-        #    ansible-playbook process (owner_pid) is gone.                   #
-        #                                                                    #
-        #  Molecule (.survive flag present in socket_dir at startup):        #
-        #    Poll for the flag file's existence every 2 s.  Exit when        #
-        #    destroy.yml removes it.  The owner PID is not used — each       #
-        #    Molecule phase (converge / verify / cleanup) is a separate      #
-        #    ansible-playbook invocation, so the watchdog must not fire       #
-        #    between phases.                                                  #
-        # ------------------------------------------------------------------ #
         _survive_path = Path(socket_dir) / ".survive"
         _survive_mode = _survive_path.exists()
 
@@ -334,6 +355,61 @@ def main():
         # NOW start PlatformService init in background (socket already bound)
         _init_thread = threading.Thread(target=_init_service, daemon=True)
         _init_thread.start()
+
+        idle_poll_interval = _compute_poll_interval(config.idle_timeout)
+
+        if float(config.idle_timeout) > 0:
+
+            def _idle_monitor():
+                import time as _time
+
+                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+
+                while True:
+                    _time.sleep(idle_poll_interval)
+                    if not _service_ready.is_set():
+                        continue
+                    svc = _service_container.get("service")
+                    if svc is None:
+                        continue
+                    if not svc.should_exit_for_idle():
+                        continue
+                    try:
+                        with open(error_log, "a") as _f:
+                            _f.write("Idle timeout exceeded, shutting down manager\n")
+                            _f.flush()
+                    except Exception:
+                        pass
+                    try:
+                        _shutdown_service()
+                    except Exception as _e:
+                        try:
+                            with open(error_log, "a") as _f:
+                                _f.write(f"Idle shutdown (service): {_e}\n")
+                                _f.flush()
+                        except Exception:
+                            pass
+                    try:
+                        server.shutdown()
+                    except Exception as _e:
+                        try:
+                            with open(error_log, "a") as _f:
+                                _f.write(f"Idle shutdown (server): {_e}\n")
+                                _f.flush()
+                        except Exception:
+                            pass
+                    try:
+                        ProcessManager.cleanup_old_socket(socket_path)
+                    except Exception as _e:
+                        print(f"Idle shutdown (socket cleanup failed): {_e}", file=sys.stderr)
+                    finally:
+                        os._exit(0)
+
+            _idle_thread = threading.Thread(target=_idle_monitor, daemon=True, name="idle-timeout")
+            _idle_thread.start()
+            with open(error_log, "a") as f:
+                f.write(f"Idle timeout monitor started (interval={idle_poll_interval}s, idle_timeout={config.idle_timeout}s)\n")
+                f.flush()
 
         try:
             server.serve_forever()
