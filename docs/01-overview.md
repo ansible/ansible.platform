@@ -81,7 +81,7 @@ modules without repeating boilerplate — the framework handles argument spec ge
 input validation, output validation, connection management, and version routing.
 
 **What they care about:**
-- Adding a new resource in < 2 hours
+- Generation takes 2 minutes (`generate_resource.py`); manual transform mixin + testing takes 1–3 hours depending on complexity
 - Clear pattern: Ansible model → API model → transform mixin → action plugin
 - Transform mixin is the only place to write custom logic
 - `BaseResourceActionPlugin` handles everything else
@@ -101,20 +101,22 @@ Gateway API versions to be supported in the collection with minimum friction.
 ### AI Agent / Code Generator
 
 Assists collection developers by generating boilerplate (Ansible models, API models,
-transform mixin stubs, action plugin skeletons) from the `DOCUMENTATION` string in a
-module stub file.
+transform mixin stubs, action plugin skeletons) from the Gateway OpenAPI specification
+and the scaffolded `DOCUMENTATION` string.
 
 **What they care about:**
-- `DOCUMENTATION` string is the single source of truth for module interface
-- Clear, mechanical patterns to follow for each layer
+- OpenAPI spec (`aap-openapi-specs/`) is the primary generation source
+- `generate_resource.py --tag <tag> --spec gateway.json` produces all five files in one pass
+- Transform mixin business logic is the only part that requires human authorship
 - `09-agent-collaboration.md` defines quality gates and boundaries
 
 ## User Stories
 
 ### Playbook Author Stories
 
-**Stable module interface**: Use the same module YAML across AAP 2.4, 2.5, and 3.x
-without playbook changes. The collection detects the API version automatically.
+**Stable module interface**: Use the same module YAML across AAP 2.6, the upcoming
+2.7, and future 2.x releases without playbook changes. The collection detects the
+API version automatically.
 
 **Idempotent operations**: Run the same playbook multiple times without side effects.
 `changed: false` when the resource already matches desired state. `changed: true` only
@@ -128,8 +130,7 @@ without touching the platform.
 
 ### Collection Developer Stories
 
-**Generate from docstring**: Write `DOCUMENTATION` in a stub module file. Run the
-generator to produce the `AnsibleFoo` dataclass. The docstring IS the module interface.
+**Generate from OpenAPI spec**: Run `generate_resource.py --tag <resource_tag> --spec aap-openapi-specs/2.6/gateway.json`. In one pass it produces the `AnsibleFoo` dataclass, `APIFoo_v1` dataclass, `DOCUMENTATION` stub, action plugin skeleton, and integration test scaffold. The developer then fills in only the transform mixin's business logic — field renaming, name-to-ID resolution, secondary endpoints.
 
 **Implement only the business logic**: Write one transform mixin class that maps
 Ansible fields to API fields. The base classes handle everything else.
@@ -163,10 +164,10 @@ in normal operation.
 - Clear, actionable error messages
 
 ### For Collection Developers
-- New resource module in < 2 hours
+- New platform action plugin: ~2 min generation + 1–3 hours manual (transform mixin + testing)
 - Transform mixin is the only custom code required per resource
 - New API version = new directory, no framework changes
-- Single `DOCUMENTATION` string defines the stable interface
+- OpenAPI spec is the generation source; transform mixin is the only manual code per resource
 
 ### For Platform Team
 - Automatic version detection and fallback
@@ -186,6 +187,7 @@ in normal operation.
 - **`AnsibleModel` dataclasses** — stable user-facing interface, never changes
 - **`APIModel` dataclasses** — version-specific API wire format
 - **`TransformMixin`** — field mapping + business logic between the two tiers
+- **`PlatformManager.idle_timeout`** — auto-terminates manager after N seconds of inactivity (default 3600s, set to 0 to disable)
 - **`PlatformService`** — the HTTP client + transform engine running in the manager process
 - **`BaseResourceActionPlugin`** — base class wiring all 22 action plugins to the framework
 - **`APIVersionRegistry`** — auto-discovers api/v*/ directories at startup
@@ -211,7 +213,7 @@ and document numbering.
 
 ### For Product Managers / Architects
 Start here (`01-overview.md`), then:
-- [02-resource-module-pattern.md](02-resource-module-pattern.md) — what resource modules are
+- [02-action-plugin-pattern.md](02-action-plugin-pattern.md) — action plugin pattern — entity-centric platform management
 - [03-sdk-architecture.md](03-sdk-architecture.md) — persistent manager and connection modes
 
 ### For Architects / Senior Developers
@@ -238,7 +240,7 @@ All of the above, plus:
 ```
 01-overview (you are here)
   |
-  +-- 02-resource-module-pattern (what resource modules are)
+  +-- 02-action-plugin-pattern (entity-centric action plugin pattern)
   |     |
   |     +-- 03-sdk-architecture (persistent connection, manager lifecycle)
   |           |
@@ -259,10 +261,12 @@ All of the above, plus:
 
 ### Time Estimates
 
-| Task | Who | First Time | Subsequent |
-|------|-----|-----------|------------|
-| Add simple resource | Feature developer | 1–2 hours | 1 hour |
-| Add complex resource | Feature developer | 2–4 hours | 1–2 hours |
-| Add API version for existing resource | Framework developer | 30 min | 30 min |
-| Add new API version globally | Framework developer | 1–2 hours | N/A |
-| Write mock scenario for a resource | QE / developer | 1–2 hours | 30 min |
+| Task | Who | Time |
+|------|-----|------|
+| Generate boilerplate (`generate_resource.py`) | Feature developer | ~2 minutes |
+| Transform mixin — simple (1:1 fields) | Feature developer | 20–30 minutes |
+| Transform mixin — complex (ref fields, secondary endpoints) | Feature developer | 1–2 hours |
+| Molecule mock scenario | Feature developer / QE | 30–60 minutes |
+| Integration test run + fix failures | Feature developer / QE | 30–90 minutes |
+| Add new API version for existing plugin | Framework developer | 30–60 minutes |
+| Add new API version globally (new `api/v<N>/` directory) | Framework developer | 1–2 hours |
