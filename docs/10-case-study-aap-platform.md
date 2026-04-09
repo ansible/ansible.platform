@@ -6,7 +6,7 @@ known AAP API quirks that affect the collection design.
 
 ---
 
-## The Platform API Landscape
+## SECTION 1: The Platform API Landscape
 
 AAP Gateway exposes a REST API with resources grouped across several functional domains.
 The collection models these as 22 Ansible modules, each covering exactly one logical entity.
@@ -25,7 +25,7 @@ The collection models these as 22 Ansible modules, each covering exactly one log
 
 ---
 
-## Module Map
+## SECTION 2: Module Map
 
 ### Identity Domain
 
@@ -187,7 +187,7 @@ The collection models these as 22 Ansible modules, each covering exactly one log
 
 ---
 
-## Identity Categories
+## SECTION 3: Identity Categories
 
 Resources fall into three identity categories that affect how the module implements
 `get_lookup_field()` and `get_find_list_query_params()`:
@@ -236,7 +236,7 @@ returns multiple query parameters.
 
 ---
 
-## Known API Quirks
+## SECTION 4: Known API Quirks
 
 ### Immutable fields after creation
 
@@ -283,10 +283,137 @@ be a no-op with a warning, or fail with a clear error message (not a 403 crash).
 
 ---
 
-## Implementation Roadmap
+## SECTION 5: Platform-Specific Challenges
+
+### macOS + Python 3.12 SSL Fork-Safety
+
+**Challenge**: Python 3.12 on macOS disallows HTTP/SSL socket reuse across process forks
+(multiprocessing safety). A naïve approach where the action plugin and manager process
+share an HTTP session causes a crash on the fork.
+
+**Solution**: The collection uses a subprocess-based manager (not threads or forked processes
+with shared state). The manager process owns the HTTP session. Action plugins communicate
+via Unix domain socket RPC, never touching the socket directly.
+
+**Relevant code**:
+- `plugins/plugin_utils/manager/platform_manager.py` — PlatformManager spawns subprocess
+- `plugins/plugin_utils/manager/rpc_client.py` — ManagerRPCClient communicates via socket
+
+---
+
+### Manager Idle Timeout (Orphaned Process Prevention)
+
+**Challenge**: The manager process is a long-lived subprocess. If a playbook fails, is
+cancelled, or the Ansible worker is killed, the manager subprocess may be orphaned,
+consuming memory and sockets indefinitely.
+
+**Solution**: `PlatformManager.idle_timeout` (default 3600s) auto-terminates the manager
+if no RPC requests are received for that duration. Set to 0 to disable.
+
+**Configuration**:
+```python
+manager = PlatformManager(idle_timeout=3600)  # 1 hour
+manager = PlatformManager(idle_timeout=0)     # Never auto-terminate (debug only)
+```
+
+**Monitoring**: Playbook logs report manager creation and termination timestamps.
+
+---
+
+### 2.x Backward Compatibility via Transform Mixin Versioning
+
+**Challenge**: Future AAP releases (2.7, 2.8, and beyond) may introduce API field
+changes or new endpoint paths. The collection must continue working across releases
+without requiring users to change their playbooks.
+
+**Solution**: Version-specific transform mixins in `api/v1/`, `api/v2/` directories.
+The registry auto-detects the platform API version and routes to the correct mixin.
+The Ansible-facing interface (`AnsibleUser`, `AnsibleOrganization`, etc.) never changes.
+
+**Example**:
+```
+plugins/plugin_utils/api/
+  v1/
+    user.py  (APIUser_v1, UserTransformMixin_v1 — current, AAP 2.6)
+  v2/
+    user.py  (APIUser_v2, UserTransformMixin_v2 — added when AAP 2.7 API changes ship)
+```
+
+**Fallback logic**: If the registry detects a version with no exact mixin match,
+it falls back to the highest available version automatically, with a warning logged.
+
+---
+
+### `fields_to_null` for Composite Field Transitions
+
+**Challenge**: Some fields are conditional on others. For example, in `authenticator_map`,
+changing `map_type` should null out related fields that no longer apply.
+
+**Solution**: In the transform mixin's `update()` method, detect the transition and
+explicitly null the affected fields:
+
+```python
+class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
+    def update(self, context, api_instance, desired_ansible_instance):
+        # If map_type is changing, null out fields specific to the old type
+        if desired_ansible_instance.map_type != api_instance.map_type:
+            return context.manager.update(
+                api_url,
+                desired_api_instance,
+                fields_to_null=['field_a', 'field_b']
+            )
+        else:
+            return context.manager.update(api_url, desired_api_instance)
+```
+
+This prevents stale data from the old type leaking into the new type's configuration.
+
+---
+
+## SECTION 6: Version Strategy
+
+### How AAP 2.6, 2.7, and Future 2.x Releases Are Handled
+
+1. **Platform detection**: On first task execution, the action plugin asks the manager to
+   detect the AAP Gateway API version.
+
+2. **Version → Mixin routing**: The registry maps API version to the correct mixin:
+   - v1 API → `UserTransformMixin_v1` (AAP 2.6, current)
+   - v2 API → `UserTransformMixin_v2` (AAP 2.7+, added when API changes ship)
+   - Future → new versioned directory, no framework changes needed
+
+3. **Fallback**: If a version is not found, the registry falls back to the highest
+   available version with a warning:
+   ```
+   WARN: API v2 detected but no v2 mixin for 'user'. Using v1 mixin.
+   ```
+
+4. **Single playbook works everywhere**: Users write:
+   ```yaml
+   - name: Ensure user exists
+     ansible.platform.user:
+       username: alice
+       organization: engineering
+   ```
+   The same playbook works on AAP 2.6, 2.7, and future 2.x releases without modification.
+
+### Adding Support for a New API Version
+
+To support a new AAP release (e.g., 2.7) when its API changes ship:
+
+1. Create `plugins/plugin_utils/api/v2/` directory
+2. Copy existing v1 files as a starting point
+3. Update dataclasses and field mappings to match the 3.0 API
+4. Update mixin class names: `UserTransformMixin_v2` → `UserTransformMixin_v3`
+5. The registry auto-discovers the new version on startup
+6. No action plugin changes needed
+
+---
+
+## SECTION 7: Implementation Roadmap
 
 ### Phase 1: Core Identity ✅
-`organization`, `user`, `team`
+`organization`, `user`, `team` — Idle timeout and integration test coverage complete
 
 ### Phase 2: Service Infrastructure ✅
 `service_type`, `service_cluster`, `service`, `service_key`, `service_node`
@@ -306,3 +433,34 @@ be a no-op with a warning, or fail with a clear error message (not a 403 crash).
 - Job templates (if Gateway API exposes them)
 - Webhook receivers
 - Notification profiles (pending API availability)
+
+---
+
+## Complete Module Reference
+
+| # | Module | Domain | Lookup Field | Complexity | Status |
+|---|--------|--------|--------------|-----------|--------|
+| 1 | `organization` | Identity | `name` | Low | ✅ |
+| 2 | `user` | Identity | `username` | Medium | ✅ |
+| 3 | `team` | Identity | `name` | Medium | ✅ |
+| 4 | `authenticator` | Auth | `name` | Medium | ✅ |
+| 5 | `authenticator_map` | Auth | (composite) | High | ✅ |
+| 6 | `authenticator_user` | Auth | (composite) | Medium | ✅ |
+| 7 | `role_definition` | Access Control | `name` | Medium | ✅ |
+| 8 | `role_user_assignment` | Access Control | (composite) | High | ✅ |
+| 9 | `role_team_assignment` | Access Control | (composite) | High | ✅ |
+| 10 | `service` | Services | `name` | Medium | ✅ |
+| 11 | `service_type` | Services | `name` | Low | ✅ |
+| 12 | `service_cluster` | Services | `name` | Medium | ✅ |
+| 13 | `service_key` | Services | `name` | Medium | ✅ |
+| 14 | `service_node` | Services | `name` | Medium | ✅ |
+| 15 | `http_port` | Config | `port` | Low | ✅ |
+| 16 | `route` | Config | `name` | Low | ✅ |
+| 17 | `ui_plugin_route` | Config | `name` | Low | ✅ |
+| 18 | `settings` | Config | (singleton) | Low | ✅ |
+| 19 | `feature_flag` | Config | `name` | Low | ✅ |
+| 20 | `ca_certificate` | Security | `name` | Low | ✅ |
+| 21 | `token` | Security | `name` | Low | ✅ |
+| 22 | `application` | Applications | (composite) | Medium | ✅ |
+
+**Total: 22 modules across 7 domains.**

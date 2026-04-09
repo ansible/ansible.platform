@@ -16,7 +16,20 @@ Each layer catches different classes of bugs. All three must pass before a PR is
 
 ---
 
-## Layer 1: Unit Tests
+## Table of Contents
+
+1. [Layer 1: Unit Tests](#section-1-layer-1-unit-tests)
+2. [Layer 2: Molecule Mock Tests](#section-2-layer-2-molecule-mock-tests)
+3. [Layer 3: Integration Tests](#section-3-layer-3-integration-tests)
+4. [Linting Tests](#linting-tests)
+5. [Running Tests](#section-4-running-tests)
+6. [CI Pipeline](#section-5-ci-pipeline)
+7. [Test Coverage Requirements](#section-6-test-coverage-requirements)
+8. [What Each Layer Catches](#section-7-what-each-layer-catches)
+
+---
+
+## SECTION 1: Layer 1 — Unit Tests
 
 **Location**: `tests/unit/`  
 **Runner**: `pytest tests/unit/ -v`  
@@ -57,6 +70,78 @@ operations) are mocked with `unittest.mock`.
 - `__init__.py` files ignored, only `.py` module files counted
 - Exact version match, closest-lower fallback, unknown module → `None`
 
+### Unit Test File Structure
+
+Each unit test file follows this pattern:
+
+```python
+# tests/unit/plugins/plugin_utils/platform/test_registry.py
+
+import pytest
+from unittest.mock import MagicMock, patch, mock_open
+import tempfile
+import os
+
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import (
+    APIVersionRegistry,
+    DynamicClassLoader,
+)
+
+
+class TestAPIVersionRegistry:
+    """Test suite for APIVersionRegistry."""
+
+    def test_discover_modules_finds_all_versions(self):
+        """Registry discovers all module files from api/ directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create fake api/v1/ and api/v2/ directories
+            os.makedirs(os.path.join(tmpdir, 'api', 'v1'))
+            os.makedirs(os.path.join(tmpdir, 'api', 'v2'))
+            
+            # Create fake module files
+            open(os.path.join(tmpdir, 'api', 'v1', 'user.py'), 'w').close()
+            open(os.path.join(tmpdir, 'api', 'v2', 'user.py'), 'w').close()
+            
+            registry = APIVersionRegistry(api_dir=tmpdir)
+            modules = registry.discover_modules()
+            
+            assert 'user' in modules
+            assert set(modules['user']) == {'v1', 'v2'}
+
+    def test_version_fallback_to_highest(self):
+        """Requesting unknown version falls back to highest available."""
+        registry = APIVersionRegistry()
+        # Request v99 (doesn't exist); should return v1 (highest available)
+        loader = registry.get_loader('user', api_version='99')
+        assert loader is not None
+        # Verify it loaded the v1 version
+        assert loader.api_class.__module__.endswith('v1')
+
+    def test_raises_when_module_has_no_versions(self):
+        """ValueError raised for module with zero versions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, 'api', 'v1'))
+            # Create no modules in the directory
+            
+            registry = APIVersionRegistry(api_dir=tmpdir)
+            with pytest.raises(ValueError, match="no versions available"):
+                registry.get_loader('nonexistent_module', api_version='1')
+
+
+class TestDynamicClassLoader:
+    """Test suite for DynamicClassLoader."""
+
+    def test_loads_ansible_api_mixin_classes(self):
+        """Loader returns (AnsibleClass, APIClass, MixinClass) tuple."""
+        loader = DynamicClassLoader(module_name='user', api_version='1')
+        ansible_class, api_class, mixin_class = loader.load()
+        
+        assert ansible_class.__name__ == 'AnsibleUser'
+        assert api_class.__name__ == 'APIUser_v1'
+        assert hasattr(mixin_class, 'from_ansible_data')
+        assert hasattr(mixin_class, 'from_api')
+```
+
 ### Running Unit Tests
 
 ```bash
@@ -90,11 +175,11 @@ Unit tests run in GitHub Actions on every PR and push to `devel`:
 
 The checkout path `ansible_collections/ansible/platform` is critical — it creates the
 namespace directory structure required for `import ansible_collections.ansible.platform.*`
-to resolve correctly. See [conftest.py](../conftest.py).
+to resolve correctly.
 
 ---
 
-## Layer 2: Molecule Mock Tests
+## SECTION 2: Layer 2 — Molecule Mock Tests
 
 **Location**: `extensions/molecule/<resource>_mock/`  
 **Runner**: `molecule converge && molecule verify`  
@@ -125,7 +210,7 @@ Starting the mock server:
 python tools/mock_gateway_server.py --port 8080
 ```
 
-### Scenario Structure
+### Molecule Scenario File Structure
 
 Each mock scenario has four files:
 
@@ -137,9 +222,46 @@ extensions/molecule/<resource>_mock/
 └── cleanup.yml       — ensure test resources are removed after the run
 ```
 
-### Standard converge.yml Pattern
+**molecule.yml**:
 
-All mock scenarios follow this pattern:
+```yaml
+---
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      collections_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../../../"
+      log_verbosity: 4
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup
+...
+```
+
+### Converge Playbook Pattern
+
+All mock scenarios follow this structure:
+
+**converge.yml**:
 
 ```yaml
 ---
@@ -147,10 +269,19 @@ All mock scenarios follow this pattern:
   hosts: localhost
   gather_facts: false
 
+  pre_tasks:
+    - name: Start mock Gateway server
+      include_role:
+        name: start_mock_server
+
   tasks:
-    - name: Run create (first time)
-      ansible.platform.<resource>:
-        <primary_key>: test-value
+    # PHASE 1: Create resource on first run
+    - name: Create application (first run)
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
+        authorization_grant_type: password
+        client_type: public
         state: present
       register: first_run
 
@@ -158,11 +289,15 @@ All mock scenarios follow this pattern:
       assert:
         that:
           - first_run.changed
-          - first_run.id is defined
+          - first_run.application.id is defined
 
-    - name: Run again (idempotency check)
-      ansible.platform.<resource>:
-        <primary_key>: test-value
+    # PHASE 2: Idempotency check — same create again
+    - name: Create application (idempotency check)
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
+        authorization_grant_type: password
+        client_type: public
         state: present
       register: second_run
 
@@ -170,32 +305,56 @@ All mock scenarios follow this pattern:
       assert:
         that:
           - not second_run.changed
+          - second_run.application.id == first_run.application.id
 
-    - name: Verify exists check
-      ansible.platform.<resource>:
-        <primary_key>: test-value
+    # PHASE 3: Exists check (if state: exists is supported)
+    - name: Check resource exists
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
         state: exists
       register: exists_check
 
-    - name: Assert exists
+    - name: Assert exists check
       assert:
         that:
           - exists_check.exists
+          - not exists_check.changed
 
-    - name: Delete the resource
-      ansible.platform.<resource>:
-        <primary_key>: test-value
+    # PHASE 4: Update test (if applicable)
+    - name: Update application
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
+        authorization_grant_type: authorization-code  # changed
+        client_type: confidential  # changed
+        state: present
+      register: update_run
+
+    - name: Assert update changed
+      assert:
+        that:
+          - update_run.changed
+          - update_run.application.authorization_grant_type == 'authorization-code'
+
+    # PHASE 5: Delete resource
+    - name: Delete application
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
         state: absent
       register: delete_run
 
-    - name: Assert deletion changed
+    - name: Assert delete changed
       assert:
         that:
           - delete_run.changed
 
-    - name: Delete again (idempotency)
-      ansible.platform.<resource>:
-        <primary_key>: test-value
+    # PHASE 6: Delete idempotency — delete again
+    - name: Delete application (idempotency check)
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
         state: absent
       register: delete_again
 
@@ -203,6 +362,52 @@ All mock scenarios follow this pattern:
       assert:
         that:
           - not delete_again.changed
+
+  always:
+    - name: Stop mock server
+      include_role:
+        name: stop_mock_server
+...
+```
+
+**verify.yml** (optional, for additional assertions):
+
+```yaml
+---
+- name: Verify final state
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Verify no test resources remain
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
+        state: exists
+      register: final_check
+
+    - name: Assert resource was deleted
+      assert:
+        that:
+          - not final_check.exists
+...
+```
+
+**cleanup.yml** (ensure test resources removed):
+
+```yaml
+---
+- name: Cleanup test resources
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Delete test application if exists
+      ansible.platform.application:
+        name: test-app
+        organization: Engineering
+        state: absent
+      failed_when: false
 ...
 ```
 
@@ -255,7 +460,7 @@ All 22 modules have a corresponding mock scenario:
 
 ---
 
-## Layer 3: Integration Tests
+## SECTION 3: Layer 3 — Integration Tests
 
 **Location**: `tests/integration/targets/`  
 **Runner**: `ansible-test integration <target>_test --venv --requirements`  
@@ -275,26 +480,13 @@ Integration tests run against a real AAP Gateway API. They validate:
 gateway_host: https://aap.example.com
 gateway_username: admin
 gateway_password: secret
-gateway_verify_ssl: false
+gateway_validate_ssl: false
 ```
 
-### Running Integration Tests
-
-```bash
-# Single target
-ansible-test integration users_test --venv --requirements --color yes -vvv
-
-# All targets
-ansible-test integration --venv --requirements --color yes
-
-# With verbose output for debugging
-ansible-test integration users_test --venv --requirements -vvv 2>&1 | tee test.log
-```
-
-### Target Structure
+### Integration Test Target Structure
 
 ```
-tests/integration/targets/users_test/
+tests/integration/targets/<resource>s_test/
 ├── tasks/
 │   └── main.yml      — test tasks
 ├── meta/
@@ -303,35 +495,298 @@ tests/integration/targets/users_test/
     └── main.yml      — test-specific variables (optional)
 ```
 
-### Test Phases in Each Target
+### Test Anatomy — Full Integration Test Phases
 
-Each integration test target follows this sequence:
+Each integration test target follows this 9-phase sequence:
 
-1. **Pre-cleanup**: Delete any resources left over from previous failed runs
-   ```yaml
-   - name: Delete test user if exists (pre-cleanup)
-     ansible.platform.user:
-       username: "test-{{ test_id }}"
-       state: absent
-     failed_when: false
-   ```
+**Phase 1: Generate Unique Test ID**
 
-2. **Create + assert**: Verify resource creation
-3. **Idempotency**: Run create again, assert `changed: false`
-4. **Update**: Modify a field, assert `changed: true`
-5. **Update idempotency**: Same update again, assert `changed: false`
-6. **exists check**: Verify `state: exists` works
-7. **Delete + assert**: Verify deletion
-8. **Delete idempotency**: Delete again, assert `changed: false`
-9. **Always cleanup**: `failed_when: false` in a `block: ... always:` construct
+```yaml
+- name: Generate a test ID to avoid conflicts
+  set_fact:
+    test_id: "{{ lookup('password', '/dev/null length=8 chars=ascii_lowercase') }}"
+  when: test_id is not defined
+```
+
+The test ID ensures:
+- Resource names are unique per run (e.g., `test-app-abc123def`)
+- Concurrent test runs don't collide
+- Failed runs don't leave orphaned resources with predictable names
+
+**Phase 2: Pre-Cleanup (cleanup from failed runs)**
+
+```yaml
+- name: Pre-cleanup — delete any leftover test resources
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    state: absent
+  failed_when: false  # Ignore if resource doesn't exist
+```
+
+This ensures:
+- Test is idempotent (can be run multiple times safely)
+- Leftover resources from previous failed runs don't interfere
+
+**Phase 3: Create + Assert**
+
+```yaml
+- name: Create application
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    authorization_grant_type: password
+    client_type: public
+    state: present
+  register: create_result
+
+- name: Assert create succeeded
+  assert:
+    that:
+      - create_result.changed
+      - create_result.application.id is defined
+      - create_result.application.name == "test-app-{{ test_id }}"
+```
+
+Assertions verify:
+- `changed: true` (resource was created)
+- `id` field populated (resource has stable identity)
+- Name matches what was requested
+
+**Phase 4: Idempotency Check (run same create again)**
+
+```yaml
+- name: Create application again (idempotency check)
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    authorization_grant_type: password
+    client_type: public
+    state: present
+  register: idempotent_result
+
+- name: Assert idempotent run did not change
+  assert:
+    that:
+      - not idempotent_result.changed
+      - idempotent_result.application.id == create_result.application.id
+```
+
+This critical phase verifies:
+- Second run does not change the system (`changed: false`)
+- ID remains the same (same resource, not re-created)
+- No infinite loops or drift
+
+**Phase 5: Exists Check (if `state: exists` is supported)**
+
+```yaml
+- name: Check resource exists
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    state: exists
+  register: exists_result
+
+- name: Assert exists check
+  assert:
+    that:
+      - exists_result.exists
+      - not exists_result.changed
+```
+
+Verifies:
+- `state: exists` returns correct boolean
+- Gathering state does not change the system
+
+**Phase 6: Update (if applicable)**
+
+```yaml
+- name: Update application redirect URIs
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    redirect_uris:
+      - "https://example.com/callback"  # new value
+    state: present
+  register: update_result
+
+- name: Assert update changed
+  assert:
+    that:
+      - update_result.changed
+      - update_result.application.redirect_uris | join(' ') == "https://example.com/callback"
+```
+
+Verifies:
+- Update triggers `changed: true`
+- Updated field has new value
+- Other fields remain unchanged
+
+**Phase 7: Update Idempotency (run same update again)**
+
+```yaml
+- name: Update application again (idempotency check)
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    redirect_uris:
+      - "https://example.com/callback"
+    state: present
+  register: update_again
+
+- name: Assert second update is no-op
+  assert:
+    that:
+      - not update_again.changed
+```
+
+Verifies the update operation is also idempotent.
+
+**Phase 8: Delete + Assert**
+
+```yaml
+- name: Delete application
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    organization: Engineering
+    state: absent
+  register: delete_result
+
+- name: Assert delete succeeded
+  assert:
+    that:
+      - delete_result.changed
+```
+
+Verifies:
+- Deletion triggers `changed: true`
+- Resource is removed
+
+**Phase 9: Always — Cleanup Block**
+
+```yaml
+- name: Cleanup phase
+  block:
+    - name: Final cleanup — delete test resource
+      ansible.platform.application:
+        name: "test-app-{{ test_id }}"
+        organization: Engineering
+        state: absent
+      failed_when: false
+  tags: [always]
+```
+
+Critical for test hygiene:
+- Runs even if earlier phases fail (`tags: [always]`)
+- Uses `failed_when: false` (not `ignore_errors: true`) to match ansible-lint rules
+- Ensures test infrastructure is cleaned up
 
 ### Important Test Hygiene Rules
 
-- Use `set_fact: test_id: "{{ lookup('password', ...) }}"` to generate unique resource
-  names per run — prevents conflicts with existing data and between concurrent runs.
-- **Never** use `ignore_errors: true` for cleanup. Use `failed_when: false` instead
-  (ansible-lint enforces this — `ignore-errors` is flagged).
-- Always have an `always:` cleanup block so failed tests don't leave orphaned resources.
+**1. Always use `test_id` for unique names**
+
+```yaml
+# WRONG — hardcoded name, conflicts on second run
+- ansible.platform.application:
+    name: test-app
+    state: present
+
+# RIGHT — unique per run, safe for concurrent execution
+- ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    state: present
+```
+
+**2. Use `failed_when: false`, NOT `ignore_errors: true`**
+
+```yaml
+# WRONG — ansible-lint flag: ignore-errors
+- name: Cleanup
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    state: absent
+  ignore_errors: true
+
+# RIGHT — preferred by ansible-lint
+- name: Cleanup
+  ansible.platform.application:
+    name: "test-app-{{ test_id }}"
+    state: absent
+  failed_when: false
+```
+
+**3. Always have an `always:` block for cleanup**
+
+```yaml
+block:
+  - name: Test phases
+    # ... all test tasks ...
+  
+always:
+  - name: Cleanup
+    ansible.platform.application:
+      name: "test-app-{{ test_id }}"
+      state: absent
+    failed_when: false
+```
+
+### Error Patterns in Tests
+
+**Pattern 1: `ignore_errors: true` vs `failed_when: false`**
+
+| Scenario | Use | Example |
+|----------|-----|---------|
+| Pre-cleanup, resource might not exist | `failed_when: false` | Delete in pre-cleanup phase |
+| Always cleanup block | `failed_when: false` | Final cleanup regardless of failures |
+| Expect an error as test case | `ignore_errors: true` | "Try to create duplicate and verify error" |
+
+Preference: `failed_when: false` is cleaner and ansible-lint compliant.
+
+**Pattern 2: Resource Guards for Pre-Existing Resources**
+
+Some system resources (like API Port, HTTP Port) already exist in a fresh AAP instance:
+
+```yaml
+- name: Create API Port (may already exist)
+  ansible.platform.http_port:
+    name: api
+    port: 6000
+    state: present
+  register: api_port_create
+  ignore_errors: true  # OK here: we expect it might fail with "already exists"
+
+- name: Continue only if create succeeded
+  set_fact:
+    api_port_id: "{{ api_port_create.http_port.id }}"
+  when: api_port_create is not failed
+```
+
+Alternatively, use exists check:
+
+```yaml
+- name: Check if API Port exists
+  ansible.platform.http_port:
+    name: api
+    state: exists
+  register: api_port_exists
+
+- name: Use existing or create new
+  set_fact:
+    api_port_id: "{{ (api_port_exists.http_port.id if api_port_exists.exists else create_result.http_port.id) }}"
+```
+
+### Running Integration Tests
+
+```bash
+# Single target
+ansible-test integration applications_test --venv --requirements --color yes -vvv
+
+# All targets (requires live AAP)
+ansible-test integration --venv --requirements --color yes
+
+# With verbose output for debugging
+ansible-test integration applications_test --venv --requirements -vvv 2>&1 | tee test.log
+```
 
 ---
 
@@ -379,48 +834,190 @@ Key rules enforced:
 
 ---
 
-## What Each Layer Catches
+## SECTION 4: Running Tests
+
+### Quick Reference
+
+```bash
+# Full test suite (fastest first, slowest last)
+pytest tests/unit/ -v                                  # Unit tests (seconds)
+molecule test -s application_mock                      # Single mock scenario (30s)
+ansible-test integration applications_test --venv      # Single integration (1-5 min)
+
+# All tests together
+make test-all  # If Makefile target exists, or:
+
+pytest tests/unit/ -v && \
+  molecule test -s application_mock && \
+  ansible-test integration applications_test --venv --requirements
+```
+
+### Environment Setup
+
+```bash
+# Install test dependencies
+pip install ansible-core pytest pytest-cov molecule ansible-lint
+
+# Install collection dependencies
+ansible-galaxy collection install -r requirements.yml
+
+# Verify mock server is accessible
+python tools/mock_gateway_server.py --port 8080
+# In another terminal:
+curl http://localhost:8080/api/gateway/v1/organizations/
+```
+
+---
+
+## SECTION 5: CI Pipeline
+
+### GitHub Actions Workflows
+
+| Workflow | File | Trigger | What runs |
+|----------|------|---------|-----------|
+| Unit tests | `.github/workflows/unit.yml` | Every commit | `pytest tests/unit/ -v` |
+| Linting | `.github/workflows/lint.yml` | Every commit | `tox + ansible-lint` |
+| Molecule mock | `.github/workflows/molecule.yml` | Every commit | All `*_mock` scenarios |
+| Integration | `.github/workflows/integration.yml` | Manual or on tag | All `*_test` targets (requires AAP) |
+
+### Execution Order
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. Unit Tests (fast, ~2s, no network)                           │
+│    MUST PASS before proceeding                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. Linting (fast, ~5s)                                          │
+│    black, isort, flake8, ansible-lint                           │
+│    MUST PASS before proceeding                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. Molecule Mock Tests (medium, ~1-2 min for all scenarios)     │
+│    All 22 *_mock scenarios run in parallel (if CI allows)       │
+│    MUST PASS before proceeding                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. Integration Tests (slow, ~5-15 min, requires live AAP)       │
+│    Only runs on manual trigger or tagged releases                │
+│    Requires valid AAP instance + credentials                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Example GitHub Actions Workflow
+
+```yaml
+# .github/workflows/molecule.yml
+name: Molecule Mock Tests
+
+on:
+  push:
+    branches: [devel, main]
+  pull_request:
+
+jobs:
+  molecule:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scenario: [
+          application_mock,
+          organization_mock,
+          users_mock,
+          # ... all 22 scenarios
+        ]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          pip install molecule ansible-core
+          ansible-galaxy collection install -r requirements.yml
+      
+      - name: Run Molecule scenario
+        run: |
+          cd extensions/molecule/${{ matrix.scenario }}
+          molecule converge
+          molecule verify
+        env:
+          MOCK_SERVER_URL: http://localhost:8080
+```
+
+---
+
+## SECTION 6: Test Coverage Requirements
+
+### Which Tests Cover Which Scenarios
+
+| Scenario | Unit | Molecule | Integration | Notes |
+|----------|------|----------|-------------|-------|
+| **Create resource** | — | ✅ | ✅ | First run, `changed: true` |
+| **Create idempotency** | — | ✅ | ✅ | Second run same params, `changed: false` |
+| **Read (exists)** | — | ✅ | ✅ | `state: exists` check |
+| **Update field** | — | ✅ | ✅ | Change one field, `changed: true` |
+| **Update idempotency** | — | ✅ | ✅ | Second update same params, `changed: false` |
+| **Delete resource** | — | ✅ | ✅ | `state: absent`, `changed: true` |
+| **Delete idempotency** | — | ✅ | ✅ | Delete non-existent, `changed: false` |
+| **Ref field resolution** | ✅ | ✅ | ✅ | Name → ID lookup, ID → Name reverse |
+| **Transform mixin** | ✅ | ✅ | — | Ansible model ↔ API model roundtrip |
+| **Registry discovery** | ✅ | — | — | Module found by APIVersionRegistry |
+| **Version fallback** | ✅ | — | — | Requesting v99 falls back to v1 |
+| **check_mode** | — | ✅ | ✅ | No API calls, correct `changed` |
+| **Error handling** | ✅ | — | ✅ | Invalid input, not-found, permission error |
+| **Write-only fields** | ✅ | ✅ | ✅ | Password never in output |
+| **Read-only fields** | — | ✅ | ✅ | `id`, `created` in output |
+
+### Test Requirements Per Module
+
+For any new platform action plugin, these tests MUST exist:
+
+| Layer | Test Type | File | Required? |
+|-------|-----------|------|-----------|
+| 1 (Unit) | Transform roundtrip | `tests/unit/...test_<resource>.py` | Recommended |
+| 2 (Mock) | Full CRUD lifecycle | `extensions/molecule/<resource>_mock/` | **Yes** |
+| 3 (Integration) | Live API test | `tests/integration/targets/<resource>s_test/` | **Yes** |
+
+### Before Merging
+
+```
+Layer 1 (Unit):      ✅ PASSING
+Layer 2 (Mock):      ✅ PASSING
+Layer 3 (Integration): ✅ PASSING (or N/A if live AAP unavailable)
+Linting:             ✅ PASSING (black, isort, flake8, ansible-lint)
+```
+
+---
+
+## SECTION 7: What Each Layer Catches
 
 | Bug Category | Unit | Molecule Mock | Integration |
 |-------------|------|--------------|-------------|
 | Registry/loader logic error | ✅ | — | — |
 | Connection plugin routing bug | ✅ | — | — |
-| Transform mixin field mapping error | — | ✅ | ✅ |
+| Transform mixin field mapping error | ✅ | ✅ | ✅ |
 | Idempotency logic failure | — | ✅ | ✅ |
 | check_mode violation | — | ✅ | ✅ |
 | Ref field ID comparison bug | — | ✅ | ✅ |
 | API version incompatibility | — | — | ✅ |
 | Secondary endpoint ordering bug | — | ✅ | ✅ |
 | Real API schema mismatch | — | — | ✅ |
-| Name-to-ID resolution failure | — | ✅ | ✅ |
+| Name-to-ID resolution failure | ✅ | ✅ | ✅ |
 | Manager process lifecycle bug | ✅ | — | — |
-| Write-only field leak (password) | — | ✅ | ✅ |
+| Write-only field leak (password) | ✅ | ✅ | ✅ |
+| Module not discovered by registry | ✅ | — | — |
+| Type mismatch (int vs str) in comparison | ✅ | ✅ | ✅ |
+| Always block cleanup failure | — | ✅ | ✅ |
+| Test ID collision (concurrent runs) | — | ✅ | ✅ |
 
----
-
-## Adding Tests for a New Module
-
-When adding a new resource module (see [07-adding-resources.md](07-adding-resources.md)):
-
-1. **Molecule mock scenario** (required, fastest validation):
-   - Copy `extensions/molecule/users_mock/` to `extensions/molecule/<resource>_mock/`
-   - Update `converge.yml` with the new module name and its parameters
-
-2. **Integration test target** (required):
-   - Create `tests/integration/targets/<resource>s_test/tasks/main.yml`
-   - Follow the seven-phase pattern above
-
-3. **Unit test** (optional but recommended for complex transform logic):
-   - Add `tests/unit/plugins/plugin_utils/api/v1/test_<resource>.py`
-   - Mock `TransformContext` and verify `from_ansible_data` and `from_api` round-trips
-
----
-
-## CI Workflows
-
-| Workflow | File | What runs |
-|----------|------|-----------|
-| Unit tests | `.github/workflows/unit.yml` | `pytest tests/unit/ -v` |
-| Linting | `.github/workflows/lint.yml` | `tox -e black,flake8,isort` + `ansible-lint` |
-| Molecule mock | `.github/workflows/molecule.yml` | All `*_mock` scenarios |
-| Integration | `.github/workflows/integration.yml` | All `*_test` targets (requires AAP) |
