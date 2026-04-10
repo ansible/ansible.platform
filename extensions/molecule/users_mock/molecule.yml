@@ -1,0 +1,36 @@
+---
+# Scenario: test ansible.platform.user against the mock Gateway server (no real AAP).
+# Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+# Use scenario inventory (connection: local + gateway vars).
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/inventory.yml
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      collections_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../../../"
+      # Write verbose messages (vv/vvvv) to ANSIBLE_LOG_PATH even without -v on the terminal.
+      # Without this, Display.verbose() only logs when self.log_verbosity > caplevel,
+      # and log_verbosity defaults to the terminal verbosity (0).
+      log_verbosity: 4
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup
+...

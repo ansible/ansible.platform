@@ -1,0 +1,84 @@
+---
+# Run all Molecule *_mock scenarios against the mock Gateway (no real AAP).
+# Each scenario spins up its own mock server, runs converge → verify → cleanup,
+# then tears down — fully parallel and independent.
+#
+# New module scenarios are picked up automatically: add an extensions/molecule/*_mock/
+# directory with converge.yml + verify.yml and this workflow runs it on the next PR.
+name: molecule (mock)
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches: [devel, ANSTRAT-1640]
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+  PY_COLORS: "1"
+
+jobs:
+  # ── Discover all *_mock scenarios ──────────────────────────────────────────
+  list-scenarios:
+    name: Discover mock scenarios
+    runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.list.outputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List *_mock scenario directories
+        id: list
+        run: |
+          scenarios=$(ls extensions/molecule/ | grep '_mock$' | jq -R . | jq -sc .)
+          echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
+          echo "Found scenarios: $scenarios"
+
+  # ── Run each scenario in parallel, each with its own mock server ────────────
+  molecule-mock:
+    name: Molecule (${{ matrix.scenario }})
+    needs: list-scenarios
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJson(needs.list-scenarios.outputs.scenarios) }}
+    env:
+      # galaxy install puts the collection here; keeps Molecule's collections_path resolvable
+      ANSIBLE_COLLECTIONS_PATH: $HOME/.ansible/collections
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-core, molecule, and collection runtime deps
+        run: pip install ansible-core molecule requests
+
+      - name: Install collection
+        run: ansible-galaxy collection install . --force
+
+      - name: Start mock Gateway (default scenario)
+        run: molecule create -s default
+
+      - name: Wait for mock Gateway health endpoint
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health && break
+            echo "Waiting for mock ($i/30)..."
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/health
+
+      - name: Run ${{ matrix.scenario }}
+        run: molecule test -s ${{ matrix.scenario }}
+
+      - name: Stop mock Gateway
+        if: always()
+        run: molecule destroy -s default
+...

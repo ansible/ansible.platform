@@ -1,0 +1,32 @@
+---
+- name: Verify — feature_flag value (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get feature_flag value
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert feature_flag value is True
+      ansible.builtin.assert:
+        that:
+          - verify_result is not failed
+          - verify_result.feature_flag.value | string | lower == 'true'
+        fail_msg: "Verify: feature_flag FEATURE_EXAMPLE_ENABLED value is not True."
+      vars:
+        ansible_connection: local
+...

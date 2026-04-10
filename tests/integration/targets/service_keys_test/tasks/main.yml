@@ -8,17 +8,6 @@
   ansible.builtin.set_fact:
     name_prefix: "GW-Collection-Test-ServiceKeys-{{ test_id }}"
 
-- name: Get existing service clusters
-  ansible.builtin.set_fact:
-    _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters', **connection_info) }}"
-
-- name: Fail if more than one service cluster or that cluster is not a gateway cluster
-  ansible.builtin.fail:
-    msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
-  when:
-    - _sc_query | length > 1
-    - _sc_query | length != 1 and _sc_query[0].type != 'gateway'
-
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -28,6 +17,55 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    # Pre-cleanup: remove leftovers from prior failed runs
+    - name: Pre-cleanup service keys by name
+      ansible.platform.service_key:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ name_prefix }}-Key 1"
+        - "{{ name_prefix }}-Key 2"
+        - "{{ name_prefix }}-Key 3"
+        - "{{ name_prefix }}-Key 4"
+        - "{{ name_prefix }}-Key 5"
+      failed_when: false
+
+    - name: Pre-cleanup service cluster - Automation Controller
+      ansible.platform.service_cluster:
+        name: "Automation Controller"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup service cluster - Automation Hub
+      ansible.platform.service_cluster:
+        name: "Automation Hub"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup service cluster - Event Driven Automation
+      ansible.platform.service_cluster:
+        name: "Event Driven Automation"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup service type - controller
+      ansible.platform.service_type:
+        name: "{{ test_id }}controller"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup service type - hub
+      ansible.platform.service_type:
+        name: "{{ test_id }}hub"
+        state: absent
+      failed_when: false
+
+    - name: Pre-cleanup service type - eda
+      ansible.platform.service_type:
+        name: "{{ test_id }}eda"
+        state: absent
+      failed_when: false
+
     # <Service Clusters> ----------------------------
     - name: Create Controller Service Type
       ansible.platform.service_type:
@@ -41,7 +79,7 @@
     - name: Create Controller Service Cluster
       ansible.platform.service_cluster:
         name: "Automation Controller"
-        service_type: "{{ controller_st.id }}"
+        service_type: "{{ controller_st.service_type.id }}"
       register: controller_sc
 
     - name: Create Hub Service Type
@@ -56,7 +94,7 @@
     - name: Create Hub Service Cluster
       ansible.platform.service_cluster:
         name: Automation Hub
-        service_type: "{{ hub_st.id }}"
+        service_type: "{{ hub_st.service_type.id }}"
       register: hub_sc
 
     - name: Create EDA Service Type
@@ -71,7 +109,7 @@
     - name: "Create EDA Service Cluster"
       ansible.platform.service_cluster:
         name: Event Driven Automation
-        service_type: "{{ eda_st.id }}"
+        service_type: "{{ eda_st.service_type.id }}"
       register: eda_sc
     # </Service Clusters> ----------------------------
 
@@ -80,28 +118,35 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         is_active: true
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         algorithm: HS384
         secret: "gateway-secret"
         mark_previous_inactive: false
       check_mode: true
 
     - name: Search for Service Key 1
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'service_keys',
-          query_params={'name': '{{ name_prefix }}-Key 1'}, **connection_info) }}"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/service_keys/?name={{ (name_prefix + '-Key 1') | urlencode }}"
+        method: GET
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) }}"
+        status_code: [200]
+      delegate_to: localhost
+      register: service_key_search
 
     - name: Assert that Service Key 1 does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - service_key_search.json.count == 0
         fail_msg: "Service Key '{{ name_prefix }}-Key 1' exists in the system!"
 
     - name: Create Service Key 1
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         is_active: true
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         algorithm: HS384
         secret: "gateway-secret"
         mark_previous_inactive: false
@@ -117,7 +162,7 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
         is_active: true
-        service_cluster: "{{ controller_sc.id }}"
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
         algorithm: HS384
         mark_previous_inactive: false
       register: recreate_service_key1
@@ -130,7 +175,7 @@
     - name: Create Service Key 2
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 2"
-        service_cluster: "{{ hub_sc.name }}"
+        service_cluster: "{{ hub_sc.service_cluster.name }}"
         secret: "gateway-secret"
         mark_previous_inactive: true
       register: service_key2
@@ -144,7 +189,7 @@
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 3"
         is_active: false
-        service_cluster: "{{ controller_sc.id }}"  # Controller
+        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller
         mark_previous_inactive: false
       register: service_key3
 
@@ -156,7 +201,7 @@
     - name: Create Service Key 4
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 4"
-        service_cluster: "{{ eda_sc.id }}"  # EDA
+        service_cluster: "{{ eda_sc.service_cluster.id }}"  # EDA
         mark_previous_inactive: false
       register: service_key4
 
@@ -168,7 +213,7 @@
     - name: Create Service Key 5
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 5"
-        service_cluster: "{{ controller_sc.id }}"  # Controller, have to set others as inactive
+        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller, have to set others as inactive
         mark_previous_inactive: true
       register: service_key5
 
@@ -179,7 +224,7 @@
 
     - name: Deactivate a key
       ansible.platform.service_key:
-        name: "{{ service_key2.name }}"
+        name: "{{ service_key2.service_key.name }}"
         is_active: false
       register: change_service_key2
 
@@ -187,11 +232,11 @@
       ansible.builtin.assert:
         that:
           - change_service_key2 is changed
-          - change_service_key2.id == change_service_key2.id
+          - change_service_key2.service_key.id == service_key2.service_key.id
 
     - name: See if a key exists
       ansible.platform.service_key:
-        name: "{{ service_key3.id }}"
+        name: "{{ service_key3.service_key.id }}"
         state: exists
       register: exists_service_key3
 
@@ -202,15 +247,15 @@
 
     - name: Rename a key
       ansible.platform.service_key:
-        name: "{{ service_key4.id }}"
-        new_name: "{{ service_key4.id }}-New"
+        name: "{{ service_key4.service_key.id }}"
+        new_name: "{{ service_key4.service_key.id }}-New"
       register: rename_service_key4
 
     - name: Assert that the rename changed an existing service key
       ansible.builtin.assert:
         that:
           - rename_service_key4 is changed
-          - rename_service_key4.id == service_key4.id
+          - rename_service_key4.service_key.id == service_key4.service_key.id
 
     - name: Delete a non-existing service key
       ansible.platform.service_key:
@@ -225,7 +270,7 @@
 
     - name: Delete an actual service key
       ansible.platform.service_key:
-        name: "{{ service_key5.id }}"
+        name: "{{ service_key5.service_key.id }}"
         state: absent
       register: delete
 
@@ -235,37 +280,69 @@
           - delete is changed
 
   always:
-    # Always Cleanup
-    - name: Delete Service Keys
+    - name: Delete Service Key 1
       ansible.platform.service_key:
+        name: "{{ name_prefix }}-Key 1"
         state: absent
-        name: "{{ vars[item].id }}"
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "service_key1"
-        - "service_key2"
-        - "service_key3"
-        - "service_key4"
-        - "service_key5"
+      failed_when: false
 
-    - name: Delete Service Clusters
+    - name: Delete Service Key 2
+      ansible.platform.service_key:
+        name: "{{ name_prefix }}-Key 2"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Key 3
+      ansible.platform.service_key:
+        name: "{{ name_prefix }}-Key 3"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Key 4
+      ansible.platform.service_key:
+        name: "{{ name_prefix }}-Key 4"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Key 5
+      ansible.platform.service_key:
+        name: "{{ name_prefix }}-Key 5"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Cluster - Automation Controller
       ansible.platform.service_cluster:
-        name: "{{ vars[item].id }}"
+        name: "Automation Controller"
         state: absent
-      loop:
-        - "controller_sc"
-        - "hub_sc"
-        - "eda_sc"
-      when: "item in vars and 'id' in vars[item]"
+      failed_when: false
 
-    - name: Delete Service Types
-      ansible.platform.service_type:
-        name: "{{ item.name }}"
+    - name: Delete Service Cluster - Automation Hub
+      ansible.platform.service_cluster:
+        name: "Automation Hub"
         state: absent
-      loop: "{{ gateway_service_types }}"
-      vars:
-        gateway_service_types:
-          - name: "{{ test_id }}controller"
-          - name: "{{ test_id }}hub"
-          - name: "{{ test_id }}eda"
+      failed_when: false
+
+    - name: Delete Service Cluster - Event Driven Automation
+      ansible.platform.service_cluster:
+        name: "Event Driven Automation"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Type - controller
+      ansible.platform.service_type:
+        name: "{{ test_id }}controller"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Type - hub
+      ansible.platform.service_type:
+        name: "{{ test_id }}hub"
+        state: absent
+      failed_when: false
+
+    - name: Delete Service Type - eda
+      ansible.platform.service_type:
+        name: "{{ test_id }}eda"
+        state: absent
+      failed_when: false
 ...

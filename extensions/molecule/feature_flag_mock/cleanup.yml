@@ -1,0 +1,39 @@
+---
+- name: Cleanup — reset feature_flag
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Reset feature_flag to False
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "False"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: reset_result
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert feature_flag reset or already at False
+      ansible.builtin.assert:
+        that: reset_result is not failed
+        fail_msg: "Cleanup: failed to reset feature_flag."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

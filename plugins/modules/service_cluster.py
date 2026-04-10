@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: service_cluster
@@ -92,7 +91,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 """
 
-
 EXAMPLES = """
 - name: Add service cluster
   ansible.platform.service_cluster:
@@ -112,40 +110,4 @@ EXAMPLES = """
 ...
 """
 
-from ..module_utils.aap_module import AAPModule  # noqa
-from ..module_utils.aap_service_cluster import AAPServiceCluster  # noqa
-
-
-def main():
-    # Any additional arguments that are not fields of the item can be added here
-    argument_spec = dict(
-        name=dict(required=True, type='str'),
-        new_name=dict(type='str'),
-        service_type=dict(type='str'),
-        auth_type=dict(choices=['JWT', 'BASIC', 'TOKEN']),
-        upstream_hostname=dict(type='str'),
-        dns_discovery_type=dict(choices=['STRICT_DNS', 'LOGICAL_DNS']),
-        dns_lookup_family=dict(choices=['ALL', 'V4_ONLY', 'V6_ONLY', 'V4_PREFERRED', 'AUTO']),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-        outlier_detection_enabled=dict(type='bool'),
-        outlier_detection_consecutive_5xx=dict(type='int'),
-        outlier_detection_interval_seconds=dict(type='int'),
-        outlier_detection_base_ejection_time_seconds=dict(type='int'),
-        outlier_detection_max_ejection_percent=dict(type='int'),
-        health_checks_enabled=dict(type='bool'),
-        health_check_timeout_seconds=dict(type='int'),
-        health_check_interval_seconds=dict(type='int'),
-        health_check_unhealthy_threshold=dict(type='int'),
-        health_check_healthy_threshold=dict(type='int'),
-        healthy_panic_threshold=dict(type='int'),
-    )
-
-    # Create a module with spec
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    # Manage objects through API
-    AAPServiceCluster(module).manage()
-
-
-if __name__ == "__main__":
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

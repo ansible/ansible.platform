@@ -1,0 +1,230 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — authenticator_map (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create authenticator (prerequisite)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: true
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: auth_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Create authenticator_map (connection local)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local"
+        authenticator: "molecule-mock-auth-local"
+        map_type: "team"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that: create_result_local is changed
+        fail_msg: "Create (local) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local"
+        authenticator: "molecule-mock-auth-local"
+        map_type: "team"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update authenticator_map (connection local)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local"
+        authenticator: "molecule-mock-auth-local"
+        map_type: "organization"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed."
+      vars:
+        ansible_connection: local
+
+- name: Converge — authenticator_map (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create authenticator (prerequisite)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local-hd"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: true
+      register: auth_result_http_direct
+
+    - name: Create authenticator_map (http direct)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local-hd"
+        authenticator: "molecule-mock-auth-local-hd"
+        map_type: "team"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that: create_result_http_direct is changed
+        fail_msg: "Create (http direct) should report changed."
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local-hd"
+        authenticator: "molecule-mock-auth-local-hd"
+        map_type: "team"
+        state: present
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed."
+
+    - name: Update authenticator_map (http direct)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local-hd"
+        authenticator: "molecule-mock-auth-local-hd"
+        map_type: "organization"
+      register: update_result_http_direct
+
+    - name: Assert update changed (http direct)
+      ansible.builtin.assert:
+        that: update_result_http_direct is changed
+        fail_msg: "Update (http direct) should report changed."
+
+- name: Converge — authenticator_map (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create authenticator (prerequisite)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local-hp"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: true
+      register: auth_result_http_persistent
+
+    - name: Create authenticator_map (http persistent)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local-hp"
+        authenticator: "molecule-mock-auth-local-hp"
+        map_type: "team"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that: create_result_http_persistent is changed
+        fail_msg: "Create (http persistent) should report changed."
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local-hp"
+        authenticator: "molecule-mock-auth-local-hp"
+        map_type: "team"
+        state: present
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed."
+
+    - name: Update authenticator_map (http persistent)
+      ansible.platform.authenticator_map:
+        name: "molecule-mock-auth-map-local-hp"
+        authenticator: "molecule-mock-auth-local-hp"
+        map_type: "organization"
+      register: update_result_http_persistent
+
+    - name: Assert update changed (http persistent)
+      ansible.builtin.assert:
+        that: update_result_http_persistent is changed
+        fail_msg: "Update (http persistent) should report changed."
+...

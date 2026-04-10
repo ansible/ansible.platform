@@ -1,0 +1,183 @@
+---
+- name: Verify — routes created
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert route was found and updated (direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('route', {}).get('description') == "Updated mock route (direct)"
+        fail_msg: "Verify: route not found or description not updated (direct)."
+      vars:
+        ansible_connection: local
+
+    - name: Get route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert route was found and updated (persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
+          - exists_result_persistent.get('route', {}).get('description') == "Updated mock route (persistent)"
+        fail_msg: "Verify: route not found or description not updated (persistent)."
+      vars:
+        ansible_connection: local
+
+    - name: Get route (local)
+      ansible.platform.route:
+        name: "molecule-mock-route-local"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert route was found and updated (local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('route', {}).get('description') == "Updated mock route (local)"
+        fail_msg: "Verify: route not found or description not updated (local)."
+      vars:
+        ansible_connection: local
+
+- name: Verify — routes created
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct-hd"
+        state: exists
+      register: exists_result
+
+    - name: Assert route was found and updated (direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('route', {}).get('description') == "Updated mock route (direct)"
+        fail_msg: "Verify: route not found or description not updated (direct)."
+
+    - name: Get route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent-hd"
+        state: exists
+      register: exists_result_persistent
+
+    - name: Assert route was found and updated (persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
+          - exists_result_persistent.get('route', {}).get('description') == "Updated mock route (persistent)"
+        fail_msg: "Verify: route not found or description not updated (persistent)."
+
+    - name: Get route (http direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-local-hd"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert route was found and updated (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+          - exists_result_http_direct.get('route', {}).get('description') == "Updated mock route (http direct)"
+        fail_msg: "Verify: route not found or description not updated (http direct)."
+
+- name: Verify — routes created
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get route (direct)
+      ansible.platform.route:
+        name: "molecule-mock-route-direct-hp"
+        state: exists
+      register: exists_result
+
+    - name: Assert route was found and updated (direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('route', {}).get('description') == "Updated mock route (direct)"
+        fail_msg: "Verify: route not found or description not updated (direct)."
+
+    - name: Get route (persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-persistent-hp"
+        state: exists
+      register: exists_result_persistent
+
+    - name: Assert route was found and updated (persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
+          - exists_result_persistent.get('route', {}).get('description') == "Updated mock route (persistent)"
+        fail_msg: "Verify: route not found or description not updated (persistent)."
+
+    - name: Get route (http persistent)
+      ansible.platform.route:
+        name: "molecule-mock-route-local-hp"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert route was found and updated (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+          - exists_result_http_persistent.get('route', {}).get('description') == "Updated mock route (http persistent)"
+        fail_msg: "Verify: route not found or description not updated (http persistent)."
+...

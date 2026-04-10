@@ -1,0 +1,116 @@
+---
+# Converge: spawn persistent manager, then assert it exits after idle_timeout and removes its socket.
+
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+- name: Converge — idle timeout (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    persistent_manager_idle_timeout: 15
+
+  tasks:
+    - name: Trigger manager activity (create a user)
+      ansible.platform.user:
+        username: "idle-timeout-molecule-user"
+        password: "TestPassword123!"
+        state: present
+      register: user_result
+
+    - name: Assert module call succeeded
+      ansible.builtin.assert:
+        that:
+          - user_result is not failed
+        fail_msg: "Manager failed to process the request against the mock server. result={{ user_result }}"
+
+    - name: Get uid
+      ansible.builtin.command: id -u
+      register: uid
+      changed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Determine HOME (for Molecule tmp paths)
+      ansible.builtin.command: sh -lc 'printf "%s" "$HOME"'
+      register: home_dir
+      changed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Find persistent manager socket for localhost + current uid (common locations)
+      ansible.builtin.find:
+        paths:
+          - "/tmp/ansible_platform"
+          - "{{ home_dir.stdout }}/.ansible/tmp"
+        patterns:
+          - "manager_{{ uid.stdout }}_localhost_*.sock"
+        file_type: any
+        recurse: true
+      register: sock_find_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert a persistent manager socket was created
+      ansible.builtin.assert:
+        that:
+          - sock_find_persistent.files | length > 0
+        fail_msg: >-
+          Expected a *persistent* manager socket but found none.
+          searched_paths=['/tmp/ansible_platform','{{ home_dir.stdout }}/.ansible/tmp']
+          persistent_found={{ sock_find_persistent }}
+      vars:
+        ansible_connection: local
+
+    - name: Record socket path
+      ansible.builtin.set_fact:
+        manager_socket_path: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path }}"
+        manager_meta_path: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path }}.meta"
+        manager_socket_dir: "{{ (sock_find_persistent.files | sort(attribute='mtime'))[-1].path | dirname }}"
+      vars:
+        ansible_connection: local
+
+    - name: Wait past idle_timeout (poll=2s in scenario molecule.yml)
+      ansible.builtin.pause:
+        seconds: 20
+      vars:
+        ansible_connection: local
+
+    - name: Assert socket removed after idle shutdown
+      ansible.builtin.wait_for:
+        path: "{{ manager_socket_path }}"
+        state: absent
+        timeout: 30
+      vars:
+        ansible_connection: local
+
+    - name: Assert meta removed after idle shutdown
+      ansible.builtin.wait_for:
+        path: "{{ manager_meta_path }}"
+        state: absent
+        timeout: 30
+      vars:
+        ansible_connection: local
+...

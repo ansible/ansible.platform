@@ -9,8 +9,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: application
 author: "John Westcott IV (@john-westcott-iv)"
@@ -88,10 +87,9 @@ options:
       required: False
 
 extends_documentation_fragment: ansible.platform.auth
-'''
+"""
 
-
-EXAMPLES = '''
+EXAMPLES = """
 - name: Add Foo application
   ansible.platform.application:
     name: "Foo"
@@ -114,35 +112,6 @@ EXAMPLES = '''
       - http://example.com/api/gateway/v1/
     app_url: http://example.com
 ...
-'''
+"""
 
-from ..module_utils.aap_application import AAPApplication
-from ..module_utils.aap_module import AAPModule
-
-
-def main():
-    # Any additional arguments that are not fields of the item can be added here
-    argument_spec = dict(
-        name=dict(required=True),
-        new_name=dict(),
-        organization=dict(required=True),
-        new_organization=dict(type="str"),
-        description=dict(),
-        authorization_grant_type=dict(choices=["password", "authorization-code"]),
-        client_type=dict(choices=['public', 'confidential']),
-        redirect_uris=dict(type="list", elements='str'),
-        skip_authorization=dict(type='bool'),
-        algorithm=dict(choices=["", "RS256", "HS256"]),
-        post_logout_redirect_uris=dict(type="list", elements="str"),
-        app_url=dict(type="str"),
-        user=dict(type="str"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    # Create a module for ourselves
-    module = AAPModule(argument_spec=argument_spec)
-    AAPApplication(module).manage(json_output_fields=['client_id', 'client_secret'])
-
-
-if __name__ == '__main__':
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

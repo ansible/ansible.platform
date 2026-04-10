@@ -51,15 +51,18 @@
         client_type: public
       check_mode: true
 
-    - name: Search for Application 1
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'applications',
-          query_params={'name': '{{ name_prefix }}-app1'}, **connection_info) }}"
+    # Avoid gateway_api lookup here (can crash worker on macOS). Use module state: exists instead.
+    - name: Check that Application 1 does not exist
+      ansible.platform.application:
+        name: "{{ name_prefix }}-app1"
+        organization: "{{ name_prefix }}-Organization-1"
+        state: exists
+      register: app1_search
 
     - name: Assert that Application 1 does not exist
       ansible.builtin.assert:
         that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
+          - not app1_search.exists | default(false)
         fail_msg: "App '{{ name_prefix }}-app1' exists in the system!"
 
     - name: Create Application 1
@@ -87,12 +90,12 @@
       ansible.builtin.assert:
         that:
           - recreate_app1 is not changed
-          - recreate_app1.id == app1.id
+          - recreate_app1.application.id == app1.application.id
 
     - name: Create Application 2
       ansible.platform.application:
         name: "{{ name_prefix }}-app2"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: authorization-code
         client_type: confidential
         description: Another application
@@ -109,10 +112,10 @@
     - name: Create Application 3
       ansible.platform.application:
         name: "{{ name_prefix }}-app3"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: public
-        user: "{{ user1.username }}"
+        user: "{{ user1.user.username }}"
       register: app3
 
     - name: Assert that we created application 3
@@ -123,11 +126,11 @@
     - name: Create Application 4
       ansible.platform.application:
         name: "{{ name_prefix }}-app4"
-        organization: "{{ org1.name }}"
+        organization: "{{ org1.organization.name }}"
         authorization_grant_type: password
         client_type: confidential
         skip_authorization: true
-        user: "{{ user1.username }}"
+        user: "{{ user1.user.username }}"
       register: app4
 
     - name: Assert that we created application 4
@@ -138,7 +141,7 @@
     - name: Create Application 5
       ansible.platform.application:
         name: "{{ name_prefix }}-app5"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: confidential
       register: app5
@@ -151,7 +154,7 @@
     - name: Create Application 6
       ansible.platform.application:
         name: "{{ name_prefix }}-app6"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         authorization_grant_type: password
         client_type: confidential
         app_url: "https://tower.com"
@@ -164,8 +167,8 @@
 
     - name: Test exists does not change
       ansible.platform.application:
-        name: "{{ app1.name }}"
-        organization: "{{ org1.id }}"
+        name: "{{ app1.application.name }}"
+        organization: "{{ org1.organization.id }}"
         state: exists
       register: exists_app1
 
@@ -176,8 +179,8 @@
 
     - name: Change application uris
       ansible.platform.application:
-        name: "{{ app1.name }}"
-        organization: "{{ org1.id }}"
+        name: "{{ app1.application.name }}"
+        organization: "{{ org1.organization.id }}"
         redirect_uris:  # changed
           - "https://tower.com/api/v3/"
           - "https://tower.com/api/v3/teams"
@@ -187,51 +190,51 @@
       ansible.builtin.assert:
         that:
           - change_app1 is changed
-          - change_app1.id == app1.id
+          - change_app1.application.id == app1.application.id
 
     - name: Change an application to a user owned application
       ansible.platform.application:
-        name: "{{ app2.id }}"
-        organization: "{{  org1.id }}"
-        user: "{{ user1.username }}"
+        name: "{{ app2.application.id }}"
+        organization: "{{  org1.organization.id }}"
+        user: "{{ user1.user.username }}"
       register: change_app2
 
     - name: Assert that we can change an application to a new user
       ansible.builtin.assert:
         that:
           - change_app2 is changed
-          - change_app2.id == app2.id
+          - change_app2.application.id == app2.application.id
 
     - name: Rename an application
       ansible.platform.application:
-        name: "{{ app4.name }}"
-        new_name: "{{ app4.name }}-new"
-        organization: "{{ org1.id }}"
+        name: "{{ app4.application.name }}"
+        new_name: "{{ app4.application.name }}-new"
+        organization: "{{ org1.organization.id }}"
       register: rename_app4
 
     - name: Assert that we can rename an application
       ansible.builtin.assert:
         that:
           - rename_app4 is changed
-          - rename_app4.id == app4.id
+          - rename_app4.application.id == app4.application.id
 
     - name: Move an application to a new organization
       ansible.platform.application:
-        name: "{{ app5.name }}"
-        organization: "{{ org1.name }}"
-        new_organization: "{{ org2.name }}"
+        name: "{{ app5.application.name }}"
+        organization: "{{ org1.organization.name }}"
+        new_organization: "{{ org2.organization.name }}"
       register: change_app5
 
     - name: Assert that we can move an application to a new org
       ansible.builtin.assert:
         that:
           - change_app5 is changed
-          - change_app5.id == app5.id
+          - change_app5.application.id == app5.application.id
 
     - name: Change application app_url
       ansible.platform.application:
         name: "{{ name_prefix }}-app6"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         app_url: https://awx.com
       register: change_app6
 
@@ -239,12 +242,12 @@
       ansible.builtin.assert:
         that:
           - change_app6 is changed
-          - change_app6.id == app6.id
+          - change_app6.application.id == app6.application.id
 
     - name: Change application app_url (blank out app_url)
       ansible.platform.application:
         name: "{{ name_prefix }}-app6"
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         app_url: ""
       register: change_app6
 
@@ -252,12 +255,12 @@
       ansible.builtin.assert:
         that:
           - change_app6 is changed
-          - change_app6.id == app6.id
+          - change_app6.application.id == app6.application.id
 
     - name: Delete not existent ID
       ansible.platform.application:
         name: "{{ name_prefix }}-app314159"  # Does not exist
-        organization: "{{ org1.id }}"
+        organization: "{{ org1.organization.id }}"
         state: absent
       register: delete_application
 
@@ -268,8 +271,8 @@
 
     - name: Delete a real application
       ansible.platform.application:
-        name: "{{ app5.name }}"
-        organization: "{{ org2.name }}"
+        name: "{{ app5.application.name }}"
+        organization: "{{ org2.organization.name }}"
         state: absent
       register: delete_app5
 
@@ -281,8 +284,8 @@
   always:
     - name: Delete Applications in Org1
       ansible.platform.application:
-        name: "{{ vars[item].id }}"
-        organization: "{{ org1.id }}"
+        name: "{{ vars[item].application.id }}"
+        organization: "{{ org1.organization.id }}"
         state: absent
       loop:
         - "app1"
@@ -291,12 +294,12 @@
         - "app4"
         - "app5"
         - "app6"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].application is defined and 'id' in vars[item].application"
 
     - name: Delete Applications in Org2
       ansible.platform.application:
-        name: "{{ vars[item].id }}"
-        organization: "{{ org2.id }}"
+        name: "{{ vars[item].application.id }}"
+        organization: "{{ org2.organization.id }}"
         state: absent
       loop:
         - "app1"
@@ -305,22 +308,22 @@
         - "app4"
         - "app5"
         - "app6"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].application is defined and 'id' in vars[item].application"
 
     - name: Delete Users
       ansible.platform.user:
-        username: "{{ vars[item].username }}"
+        username: "{{ vars[item].user.username }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].user is defined and 'id' in vars[item].user"
       loop:
         - "user1"
         - "user2"
 
     - name: Delete Organizations
       ansible.platform.organization:
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].organization.id }}"
         state: absent
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
       loop:
         - "org1"
         - "org2"

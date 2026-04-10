@@ -54,14 +54,14 @@
     - name: Make user 2 admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
-        user: "{{ user2.id }}"
-        object_id: "{{ org1.id }}"
+        user: "{{ user2.user.id }}"
+        object_id: "{{ org1.organization.id }}"
 
     - name: Make admin user admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
-        user: "{{ admin1.id }}"
-        object_id: "{{ org1.id }}"
+        user: "{{ admin1.user.id }}"
+        object_id: "{{ org1.organization.id }}"
 
     - name: Use lookup plugin to query created objects
       ansible.builtin.set_fact:
@@ -74,7 +74,7 @@
                query_params={'username__startswith': name_prefix, 'order_by': 'username'},
                **connection_info) | list }}
         _admins: >-
-          {{ query(plugin_name, 'organizations/' ~ (org1.id | string) ~ '/admins/',
+          {{ query(plugin_name, 'organizations/' ~ (org1.organization.id | string) ~ '/admins/',
                query_params=admins_query, **connection_info) | list }}
       vars:
         admins_query:
@@ -84,24 +84,24 @@
     - name: Check Org 2
       ansible.builtin.assert:
         that:
-          - _org2.name == org2.name
-          - _org2.id == org2.id
+          - _org2.name == org2.organization.name
+          - _org2.id == org2.organization.id
 
     - name: Check all Users
       ansible.builtin.assert:
         that:
           - _users | length == 3
-          - _users[0].username == admin1.username
-          - _users[1].username == user1.username
-          - _users[2].username == user2.username
+          - _users[0].username == admin1.user.username
+          - _users[1].username == user1.user.username
+          - _users[2].username == user2.user.username
 
     - name: Check Org-1 Admins
       ansible.builtin.assert:
         that:
           - _admins | length == 2
-          - _admins[0].username == admin1.username
+          - _admins[0].username == admin1.user.username
           - _admins[0].password == "Password Disabled"
-          - _admins[1].username == user2.username
+          - _admins[1].username == user2.user.username
           - _admins[1].password == "$encrypted$"
 
     - name: Expect One - Get 0
@@ -133,19 +133,19 @@
     - name: Delete Organizations
       ansible.platform.organization:
         state: absent
-        name: "{{ vars[item].id }}"
+        name: "{{ vars[item].organization.id }}"
       loop:
         - "org1"
         - "org2"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].organization is defined and 'id' in vars[item].organization"
 
     - name: Delete Users
       ansible.platform.user:
         state: absent
-        username: "{{ vars[item].id }}"
+        username: "{{ vars[item].user.id }}"
       loop:
         - "user1"
         - "user2"
         - "admin1"
-      when: "item in vars and 'id' in vars[item]"
+      when: "item in vars and vars[item].user is defined and 'id' in vars[item].user"
 ...

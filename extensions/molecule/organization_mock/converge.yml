@@ -1,0 +1,238 @@
+---
+# Converge: organization create, idempotency, update, delete against mock Gateway.
+# Play 1: health check runs on controller (connection: local); platform connection cannot run uri.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+# Play 2: organization with ansible.platform.http direct mode (ephemeral manager per task).
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — organization (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_org_name_local: "Molecule Test Org Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        description: "Created by Molecule organization_mock (connection local)"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.organization.id is defined
+          - create_result_local.organization.name == molecule_org_name_local
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Assert RETURN shape — no internal/readonly keys in result.organization (ANSTRAT-1640)
+      ansible.builtin.assert:
+        that:
+          - "'_timing' not in create_result_local"
+          - "'_timing' not in create_result_local.organization"
+          - "'changed' not in create_result_local.organization"
+          - "'state' not in create_result_local.organization"
+          - "'new_name' not in create_result_local.organization"
+          - "'created' not in create_result_local.organization"
+          - "'modified' not in create_result_local.organization"
+          - "'url' not in create_result_local.organization"
+        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.organization. result={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        description: "Created by Molecule organization_mock (connection local)"
+        state: present
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed. idem_result_local={{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        description: "Updated by Molecule organization_mock (connection local)"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed. update_result_local={{ update_result_local }}"
+      vars:
+        ansible_connection: local
+
+- name: Converge — organization (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_http_direct: "Molecule Test Org HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_direct }}"
+        description: "Created by Molecule organization_mock (http direct)"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.organization.id is defined
+          - create_result_http_direct.organization.name == molecule_org_name_http_direct
+        fail_msg: "Create (http direct) should report changed. create_result_http_direct={{ create_result_http_direct }}"
+
+    - name: Assert RETURN shape — no internal/readonly keys in result.organization (ANSTRAT-1640)
+      ansible.builtin.assert:
+        that:
+          - "'_timing' not in create_result_http_direct"
+          - "'_timing' not in create_result_http_direct.organization"
+          - "'changed' not in create_result_http_direct.organization"
+          - "'state' not in create_result_http_direct.organization"
+          - "'new_name' not in create_result_http_direct.organization"
+          - "'created' not in create_result_http_direct.organization"
+          - "'modified' not in create_result_http_direct.organization"
+          - "'url' not in create_result_http_direct.organization"
+        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.organization. result={{ create_result_http_direct }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_direct }}"
+        description: "Created by Molecule organization_mock (http direct)"
+        state: present
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_http_direct={{ idem_result_http_direct }}"
+
+    - name: Update organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_direct }}"
+        description: "Updated by Molecule organization_mock (http direct)"
+      register: update_result_http_direct
+
+    - name: Assert update changed (http direct)
+      ansible.builtin.assert:
+        that: update_result_http_direct is changed
+        fail_msg: "Update (http direct) should report changed. update_result_http_direct={{ update_result_http_direct }}"
+
+- name: Converge — organization (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_http_persistent: "Molecule Test Org HTTP Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_persistent }}"
+        description: "Created by Molecule organization_mock (http persistent)"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.organization.id is defined
+          - create_result_http_persistent.organization.name == molecule_org_name_http_persistent
+        fail_msg: "Create (http persistent) should report changed. create_result_http_persistent={{ create_result_http_persistent }}"
+
+    - name: Assert RETURN shape — no internal/readonly keys in result.organization (ANSTRAT-1640)
+      ansible.builtin.assert:
+        that:
+          - "'_timing' not in create_result_http_persistent"
+          - "'_timing' not in create_result_http_persistent.organization"
+          - "'changed' not in create_result_http_persistent.organization"
+          - "'state' not in create_result_http_persistent.organization"
+          - "'new_name' not in create_result_http_persistent.organization"
+          - "'created' not in create_result_http_persistent.organization"
+          - "'modified' not in create_result_http_persistent.organization"
+          - "'url' not in create_result_http_persistent.organization"
+        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.organization. result={{ create_result_http_persistent }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_persistent }}"
+        description: "Created by Molecule organization_mock (http persistent)"
+        state: present
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_http_persistent={{ idem_result_http_persistent }}"
+
+    - name: Update organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_persistent }}"
+        description: "Updated by Molecule organization_mock (http persistent)"
+      register: update_result_http_persistent
+
+    - name: Assert update changed (http persistent)
+      ansible.builtin.assert:
+        that: update_result_http_persistent is changed
+        fail_msg: "Update (http persistent) should report changed. update_result_http_persistent={{ update_result_http_persistent }}"
+...

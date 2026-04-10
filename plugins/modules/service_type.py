@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: service_type
@@ -42,7 +41,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 """
 
-
 EXAMPLES = """
 - name: Add service type
   ansible.platform.service_type:
@@ -65,28 +63,4 @@ EXAMPLES = """
 ...
 """
 
-from ..module_utils.aap_module import AAPModule  # noqa
-from ..module_utils.aap_service_type import AAPServiceType  # noqa
-
-
-def main():
-    # Any additional arguments that are not fields of the item can be added here
-    argument_spec = dict(
-        name=dict(required=True, type='str'),
-        new_name=dict(type='str'),
-        ping_url=dict(type="str"),
-        login_path=dict(type="str"),
-        logout_path=dict(type="str"),
-        service_index_path=dict(type="str"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    # Create a module with spec
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    # Manage objects through API
-    AAPServiceType(module).manage()
-
-
-if __name__ == "__main__":
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

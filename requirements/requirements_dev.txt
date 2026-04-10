@@ -1,6 +1,7 @@
-black==25.1.0           # Linting tool, if changed update pyproject.toml as well
-flake8==7.1.1           # Linting tool, if changed update pyproject.toml as well
-Flake8-pyproject==1.2.3 # Linting tool, if changed update pyproject.toml as well
-isort==6.0.0            # Linting tool, if changed update pyproject.toml as well
+ruff                    # Lint + format (replaces flake8, black, isort); config in pyproject.toml
+mypy                    # Static type checking; config in pyproject.toml
+types-requests          # Type stubs for the requests library (used by mypy)
+types-PyYAML            # Type stubs for PyYAML / yaml (used by mypy)
+pydoclint               # Docstring style enforcement; config in pyproject.toml
 tox                     # Used for unit tests
 requests

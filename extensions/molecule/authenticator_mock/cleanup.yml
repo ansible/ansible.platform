@@ -1,0 +1,100 @@
+---
+- name: Cleanup — delete authenticators (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete authenticator (connection local)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert authenticator removed (connection local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete authenticator (connection local)."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete authenticators (http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete authenticator (http direct)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local-hd"
+        state: absent
+      register: delete_result_http_direct
+      failed_when: false
+
+    - name: Assert authenticator removed (http direct)
+      ansible.builtin.assert:
+        that: delete_result_http_direct is not failed
+        fail_msg: "Cleanup: failed to delete authenticator (http direct)."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+
+- name: Cleanup — delete authenticators (http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete authenticator (http persistent)
+      ansible.platform.authenticator:
+        name: "molecule-mock-auth-local-hp"
+        state: absent
+      register: delete_result_http_persistent
+      failed_when: false
+
+    - name: Assert authenticator removed (http persistent)
+      ansible.builtin.assert:
+        that: delete_result_http_persistent is not failed
+        fail_msg: "Cleanup: failed to delete authenticator (http persistent)."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+...

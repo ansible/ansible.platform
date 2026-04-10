@@ -1,0 +1,31 @@
+---
+- name: Verify -- settings updated
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    mock_auth: "Basic bW9jazptb2Nr"
+  tasks:
+    - name: Read current settings from mock
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/settings/all/"
+        method: GET
+        headers:
+          Authorization: "{{ mock_auth }}"
+        return_content: true
+        status_code: 200
+      register: settings_check
+      vars:
+        ansible_connection: local
+
+    - name: Assert SESSION_COOKIE_AGE is 3600
+      ansible.builtin.assert:
+        that:
+          - settings_check.json.SESSION_COOKIE_AGE == 3600
+        fail_msg: >-
+          Verify: SESSION_COOKIE_AGE not set to 3600.
+          Got: {{ settings_check.json.SESSION_COOKIE_AGE | default('missing') }}
+      vars:
+        ansible_connection: local
+...
