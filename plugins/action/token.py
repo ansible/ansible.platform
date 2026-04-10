@@ -117,10 +117,17 @@ class ActionModule(BaseResourceActionPlugin):
             else:
                 # state == 'present': create a new token (always creates, never idempotent)
                 token_obj_data = {}
-                for field in ("description", "scope", "application", "organization"):
+                for field in ("description", "application", "organization"):
                     val = validated_params.get(field)
                     if val is not None:
                         token_obj_data[field] = val
+
+                # scope is type:list in argspec but the gateway API expects a
+                # space-separated string (e.g. "read write").  Join here so the
+                # AnsibleToken dataclass and the API both receive a str.
+                scope = validated_params.get("scope")
+                if scope is not None:
+                    token_obj_data["scope"] = " ".join(scope) if isinstance(scope, list) else scope
 
                 token = AnsibleToken(**token_obj_data)
 
