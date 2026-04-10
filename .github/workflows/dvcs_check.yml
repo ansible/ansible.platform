@@ -9,6 +9,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     name: Check the PR for DVCS integration
+    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
     steps:
       - uses: ansible/dvcs-action@devel
         with:

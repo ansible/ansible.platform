@@ -302,6 +302,40 @@
           - rename_controller_service is changed
           - rename_controller_service.service.id == controller_service.service.id
 
+    ### Test request_timeout_seconds ###
+    - name: Set request_timeout_seconds on a service
+      ansible.platform.service:
+        name: "{{ controller_service.name }}-New"
+        request_timeout_seconds: 3600
+      register: __service_timeout_result
+
+    - name: Assert request_timeout_seconds was set
+      ansible.builtin.assert:
+        that:
+          - __service_timeout_result is changed
+
+    - name: Set request_timeout_seconds again (idempotency)
+      ansible.platform.service:
+        name: "{{ controller_service.name }}-New"
+        request_timeout_seconds: 3600
+      register: __service_timeout_idempotent_result
+
+    - name: Assert request_timeout_seconds idempotency
+      ansible.builtin.assert:
+        that:
+          - __service_timeout_idempotent_result is not changed
+
+    - name: Update request_timeout_seconds to a new value
+      ansible.platform.service:
+        name: "{{ controller_service.name }}-New"
+        request_timeout_seconds: 7200
+      register: __service_timeout_update_result
+
+    - name: Assert request_timeout_seconds was updated
+      ansible.builtin.assert:
+        that:
+          - __service_timeout_update_result is changed
+
   always:
     # <Cleanup> -----------------------------------
     ### Delete Services ###

@@ -49,10 +49,14 @@ options:
       type: str
     scope:
       description:
-        - Allowed scopes, further restricts user's permissions. Must be a simple space-separated string with allowed scopes ['read', 'write'].
+        - Allowed scopes, further restricts user's permissions.
+        - "Acceptable values are: 'read', 'write', 'openid', 'roles'."
+        - Multiple scopes can be provided as a list to combine them (e.g. openid + roles for OIDC identity and role claims).
+        - A single scope can also be provided as a string for convenience.
       required: False
-      type: str
-      choices: ["read", "write"]
+      type: list
+      elements: str
+      choices: ["read", "write", "openid", "roles"]
     state:
       description:
         - Desired state of the resource.
@@ -96,6 +100,14 @@ EXAMPLES = """
         existing_token: "{{ aap_token }}"
         state: absent
       when: token is defined
+
+- name: Create a token with openid and roles scopes for OIDC
+  ansible.platform.token:
+    description: 'OIDC token'
+    scope:
+      - openid
+      - roles
+    state: present
 
 - name: Delete a token by its id
   ansible.platform.token:
