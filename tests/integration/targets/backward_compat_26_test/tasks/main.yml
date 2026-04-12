@@ -226,13 +226,15 @@
         fail_msg: "REGRESSION: joe_updated.first_name flat key missing after update"
 
     # ==========================================================================
-    # 4. TEAM — flat keys: id, name, org
+    # 4. TEAM — flat keys: id, name, organization
+    # (the 'organization' parameter name was the same in 2.6 and 2.7;
+    #  the backward compat here is result.id / result.name, not team1.team.id)
     # ==========================================================================
 
     - name: "[team] Create team"
       ansible.platform.team:
         name: "{{ bc_team_name }}"
-        org: "{{ org.name }}"
+        organization: "{{ org.name }}"
       register: team1
 
     - name: "[team] Assert changed"
@@ -493,7 +495,7 @@
     - name: "[cleanup] Delete team"
       ansible.platform.team:
         name: "{{ bc_team_name }}"
-        org: "{{ org.name }}"
+        organization: "{{ org.name }}"
         state: absent
       failed_when: false
       when: team1 is defined
