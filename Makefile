@@ -13,7 +13,7 @@ PYTHON_VERSION:
 
 .PHONY: PYTHON_VERSION clean git_hooks_config \
 	check_ruff check_mypy check_pydoclint \
-	collection-install collection-test collection-docs \
+	collection-install sync-installed collection-test collection-docs \
 	collection-lint collection-sanity  collection-test-completeness \
 	collection-test-integration-check \
 	collection-test-local collection-test-http-direct collection-test-http-persistent \
@@ -45,6 +45,17 @@ check_pydoclint:
 ## Install the collection locally on your machine
 collection-install:
 	ansible-galaxy collection install . --force
+
+## Sync plugins/ source tree into the local installed copy (collections/).
+## Run this after editing any plugin before running unit tests, which execute
+## against the installed copy in collections/ rather than the source plugins/.
+## This target is the fix for "unexpected keyword argument" errors caused by
+## stale installed code diverging from the source tree.
+sync-installed:
+	rsync -av --delete plugins/ \
+		collections/ansible_collections/ansible/platform/plugins/
+	rsync -av --delete meta/ \
+		collections/ansible_collections/ansible/platform/meta/
 
 ## Run the collection sanity tests
 collection-sanity: collection-install

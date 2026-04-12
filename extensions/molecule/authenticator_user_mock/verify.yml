@@ -1,0 +1,83 @@
+---
+- name: Verify — authenticator_user exists (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Check authenticator_user exists (connection local)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-local"
+        authenticator: "molecule-mock-authenticator"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert authenticator_user found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+        fail_msg: "Verify: authenticator_user not found (connection local)."
+      vars:
+        ansible_connection: local
+
+- name: Verify — authenticator_user exists (http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Check authenticator_user exists (http direct)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-hd"
+        authenticator: "molecule-mock-authenticator"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert authenticator_user found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+        fail_msg: "Verify: authenticator_user not found (http direct)."
+
+- name: Verify — authenticator_user exists (http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Check authenticator_user exists (http persistent)
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "molecule-mock-auth-user-hp"
+        authenticator: "molecule-mock-authenticator"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert authenticator_user found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+        fail_msg: "Verify: authenticator_user not found (http persistent)."
+...
