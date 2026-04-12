@@ -454,7 +454,7 @@
           - name: "{{ org.name }}"
             type: "organizations"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: rua is defined
 
     - name: "[cleanup] Delete role team assignment"
@@ -465,14 +465,14 @@
           - name: "{{ org.name }}"
             type: "organizations"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: rta is defined
 
     - name: "[cleanup] Delete token"
       ansible.platform.token:
         existing_token: "{{ tok.token }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: tok is defined and tok.token is defined
 
     - name: "[cleanup] Delete application"
@@ -480,14 +480,14 @@
         name: "{{ bc_app_name }}"
         organization: "{{ org.name }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: app is defined
 
     - name: "[cleanup] Delete role definition"
       ansible.platform.role_definition:
         name: "{{ bc_role_name }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: custom_role is defined
 
     - name: "[cleanup] Delete team"
@@ -495,14 +495,14 @@
         name: "{{ bc_team_name }}"
         org: "{{ org.name }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: team1 is defined
 
     - name: "[cleanup] Delete user"
       ansible.platform.user:
         username: "{{ bc_user_name }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: joe is defined
 
     - name: "[cleanup] Delete authenticator"
@@ -512,7 +512,7 @@
         type: "ansible_base.authentication.authenticator_plugins.local"
         configuration: {}
         state: absent
-      ignore_errors: true
+      failed_when: false
       when: auth is defined
 
     - name: "[cleanup] Delete organizations"
@@ -522,4 +522,5 @@
       loop:
         - "{{ bc_org_name }}"
         - "{{ bc_org2_name }}"
-      ignore_errors: true
+      failed_when: false
+...
