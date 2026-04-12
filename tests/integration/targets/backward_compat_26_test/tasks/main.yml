@@ -40,7 +40,7 @@
     bc_app_name: "BC26-App-{{ test_id }}"
     bc_role_name: "BC26-Role-{{ test_id }}"
     bc_auth_name: "BC26-Auth-{{ test_id }}"
-    bc_auth_slug: "bc26-auth-{{ test_id }}"
+    bc_auth_slug: "bc26-auth-{{ test_id | lower }}"
 
 - name: Run backward-compat 2.6 regression tests
   module_defaults:
