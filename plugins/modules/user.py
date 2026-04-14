@@ -23,6 +23,28 @@ description:
 version_added: "1.0.0"
 
 options:
+  organizations:
+    description:
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For associating a user to an organization, please use the ansible.platform.role_user_assignment module.
+      - HORIZONTALLINE
+      - List of organization names or IDs to associate with the user.
+      - Organizations must already exist - the module will not create missing organizations.
+      - If any specified organization doesn't exist, the operation will fail.
+    type: list
+    elements: str
+
+  is_platform_auditor:
+    description:
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For designating a user as an auditor, please use the ansible.platform.role_user_assignment module.
+      - HORIZONTALLINE
+      - Designates that this user is a platform auditor.
+    type: bool
+    aliases: ['auditor']
+
   username:
     description:
       - Username for the user
@@ -74,15 +96,21 @@ options:
 
   authenticators:
     description:
-      - List of authenticator IDs to associate with the user
-      - Deprecated - use I(associated_authenticators) instead
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For associating a user with authenticators, please use the associated_authenticators option.
+      - HORIZONTALLINE
+      - A list of authenticators to associate the user with
     type: list
     elements: int
 
   authenticator_uid:
     description:
-      - UID for authenticator association
-      - Deprecated - use I(associated_authenticators) instead
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For specifying UIDs per authenticator, please use the associated_authenticators option.
+      - HORIZONTALLINE
+      - The UID to associate with this user's authenticators
     type: str
 
   state:

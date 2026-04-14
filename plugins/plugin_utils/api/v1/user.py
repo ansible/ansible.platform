@@ -6,7 +6,7 @@ Handles transformations between Ansible format and Gateway API v1 format.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Optional, Union
+from typing import Any, ClassVar, Dict, List, Optional, Union
 
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
@@ -29,6 +29,7 @@ class APIUser_v1(BaseTransformMixin):
     last_name: Optional[str] = None
     password: Optional[str] = None
     is_superuser: Optional[bool] = None
+    is_platform_auditor: Optional[bool] = None
 
     # Read-only fields from API
     id: Optional[int] = None
@@ -36,6 +37,8 @@ class APIUser_v1(BaseTransformMixin):
     modified: Optional[str] = None
     url: Optional[str] = None
 
+    # For organizations - handled separately via associations
+    organization_ids: Optional[List[int]] = None
     associated_authenticators: Optional[Dict[str, Any]] = None
 
 
@@ -69,6 +72,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
             "last_name",
             "password",
             "is_superuser",
+            "is_platform_auditor",
             "id",
             "created",
             "modified",
@@ -99,8 +103,45 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 api_data[field] = ""
                 logger.debug("Mapped field %s: '' (enforced clear)", field)
 
+        # Complex transformation: organizations (names -> IDs)
+        if ansible_instance.organizations:
+            logger.debug("Transforming organizations from names to IDs: %s", ansible_instance.organizations)
+            org_ids = cls._names_to_ids(ansible_instance.organizations, context)
+            api_data["organization_ids"] = org_ids
+            logger.info("Organizations transformed: %s -> %s", ansible_instance.organizations, org_ids)
+
         logger.debug("APIUser_v1 data prepared with %s fields", len(api_data))
         return APIUser_v1(**api_data)
+
+    @staticmethod
+    def _names_to_ids(names: List[str], context: Union[TransformContext, Dict[str, Any]]) -> List[int]:
+        """Convert organization names to IDs."""
+        if not names:
+            return []
+        if isinstance(context, TransformContext):
+            return context.manager.lookup_organization_ids(names)
+        else:
+            manager = context.get("manager")
+            if manager:
+                return manager.lookup_organization_ids(names)
+        return []
+
+    @staticmethod
+    def _ids_to_names(ids: List[int], context: Union[TransformContext, Dict[str, Any]]) -> List[str]:
+        """Convert organization IDs to names."""
+        if not ids:
+            logger.debug("No organization IDs to convert")
+            return []
+        logger.debug("Looking up organization names for IDs: %s", ids)
+        if isinstance(context, TransformContext):
+            return context.manager.lookup_organization_names(ids)
+        else:
+            manager = context.get("manager")
+            if manager:
+                return manager.lookup_organization_names(ids)
+            else:
+                logger.warning("No manager in context for organization lookup")
+                return []
 
     # Field mapping: ansible_field -> api_field or complex mapping
     _field_mapping: ClassVar[Dict[str, Any]] = {
@@ -110,15 +151,25 @@ class UserTransformMixin_v1(BaseTransformMixin):
         "last_name": "last_name",
         "password": "password",
         "is_superuser": "is_superuser",
+        "is_platform_auditor": "is_platform_auditor",
         "associated_authenticators": "associated_authenticators",
         "id": "id",
         "created": "created",
         "modified": "modified",
         "url": "url",
+        # Complex mapping for organizations (names <-> IDs)
+        "organizations": {
+            "api_field": "organization_ids",
+            "forward_transform": "names_to_ids",
+            "reverse_transform": "ids_to_names",
+        },
     }
 
     # Transform functions registry
-    _transform_registry: ClassVar[Dict[str, Any]] = {}
+    _transform_registry: ClassVar[Dict[str, Any]] = {
+        "names_to_ids": lambda names, ctx: ctx.manager.lookup_organization_ids(names) if names else [],
+        "ids_to_names": lambda ids, ctx: ctx.manager.lookup_organization_names(ids) if ids else [],
+    }
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
@@ -132,7 +183,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
             "create": EndpointOperation(
                 path="/api/gateway/v1/users/",
                 method="POST",
-                fields=["username", "email", "first_name", "last_name", "password", "is_superuser"],
+                fields=["username", "email", "first_name", "last_name", "password", "is_superuser", "is_platform_auditor"],
                 required_for="create",
                 order=1,
             ),
@@ -140,7 +191,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 path="/api/gateway/v1/users/{id}/",
                 method="PATCH",
                 # Omit username from body; resource is identified by URL (many APIs reject username in PATCH)
-                fields=["email", "first_name", "last_name", "password", "is_superuser", "associated_authenticators"],
+                fields=["email", "first_name", "last_name", "password", "is_superuser", "is_platform_auditor", "associated_authenticators"],
                 path_params=["id"],
                 required_for="update",
                 order=1,

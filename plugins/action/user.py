@@ -58,7 +58,11 @@ class ActionModule(BaseResourceActionPlugin):
     def _build_ansible_data(self, resource: Any, validated_params: dict, operation: str) -> dict:
         """Build ansible_data from explicitly-provided task parameters only.
 
-        Only sends fields the operator actually specified in the task, preventing
+        AnsibleUser.__post_init__ sets ``organizations=[]`` for any instance
+        where organizations was not supplied.  Using ``asdict(resource)`` would
+        therefore send ``organizations: []`` on every task, silently clearing
+        the user's organization memberships.  This override sends only the
+        fields the operator actually specified in the task, preventing
         unintended side-effects from default values in the dataclass.
 
         Args:
