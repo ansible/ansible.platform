@@ -68,7 +68,7 @@ class AAPModule(AnsibleModule):
             aliases=["aap_token"],
             no_log=True,
             required=False,
-            fallback=(env_fallback, ["GATEWAY_API_TOKEN", 'AAP_TOKEN']),
+            fallback=(env_fallback, ["GATEWAY_API_TOKEN", "AAP_TOKEN"]),
         ),
         gateway_request_timeout=dict(
             aliases=["request_timeout", "aap_request_timeout"],
@@ -337,8 +337,8 @@ class AAPModule(AnsibleModule):
         elif kwargs.get("binary", False):
             data = kwargs.get("data", None)
 
-        if method.upper() in {'PUT', 'POST', 'DELETE', 'PATCH'} and self.check_mode:
-            self.json_output['changed'] = True
+        if method.upper() in {"PUT", "POST", "DELETE", "PATCH"} and self.check_mode:
+            self.json_output["changed"] = True
             self.exit_json(**self.json_output)
 
         try:
@@ -600,7 +600,7 @@ class AAPModule(AnsibleModule):
                             found = False
 
                     if found:
-                        return '_'.join([str(item[sub_field_name]) for sub_field_name in field_name])
+                        return "_".join([str(item[sub_field_name]) for sub_field_name in field_name])
                 else:
                     if field_name in item:
                         return item[field_name]
@@ -614,7 +614,7 @@ class AAPModule(AnsibleModule):
             self.fail_json(msg="Cannot determine identity field for Undefined object.")
 
     def get_endpoint(self, endpoint, *args, **kwargs):
-        url = self.build_url(endpoint, query_params=kwargs.get('data'))
+        url = self.build_url(endpoint, query_params=kwargs.get("data"))
         return self.make_request("GET", url, **kwargs)
 
     def get_all_endpoint(self, endpoint, *args, **kwargs):

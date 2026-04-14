@@ -1268,14 +1268,9 @@ class BaseResourceActionPlugin(ActionBase):
                 {
                     "changed": manager_result.get("changed", False),
                     "failed": False,
-                    # ----------------------------------------------------------------
-                    # Nested resource dict — argspec fields only, round-trip safe.
-                    # Use result.<module_name>.<field> in new playbooks.
-                    # ----------------------------------------------------------------
                     self.MODULE_NAME: validated_output,
-                    # Flat top-level keys kept for backward compatibility with
-                    # playbooks written against <=2.6.
-                    **validated_output,
+                    # Extra non-argspec fields returned flat (e.g. client_id for
+                    # application) — never nested as they are not valid module inputs.
                     **extra_flat,
                 }
             )

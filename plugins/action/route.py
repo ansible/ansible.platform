@@ -16,8 +16,8 @@ class ActionModule(BaseResourceActionPlugin):
     # Gateway API schema defaults for proxy timeout floors.
     # These are used when the settings endpoint does not return the value
     # (older gateway versions may not expose all settings keys).
-    _DEFAULT_REQUEST_TIMEOUT_FLOOR = 30   # seconds; gateway API schema default
-    _DEFAULT_IDLE_TIMEOUT_FLOOR = 15      # seconds; gateway API schema default
+    _DEFAULT_REQUEST_TIMEOUT_FLOOR = 30  # seconds; gateway API schema default
+    _DEFAULT_IDLE_TIMEOUT_FLOOR = 15  # seconds; gateway API schema default
 
     def _pre_execute_hook(self, ansible_data, write_only_data, validated_params, operation):
         """Validate route timeout values against global proxy settings floors.
@@ -64,8 +64,7 @@ class ActionModule(BaseResourceActionPlugin):
             try:
                 if int(request_timeout_seconds) < int(floor_request):
                     errors.append(
-                        "request_timeout_seconds ({val}) is below the global proxy "
-                        "request_timeout floor ({floor})".format(
+                        "request_timeout_seconds ({val}) is below the global proxy request_timeout floor ({floor})".format(
                             val=request_timeout_seconds, floor=floor_request
                         )
                     )
@@ -76,10 +75,7 @@ class ActionModule(BaseResourceActionPlugin):
             try:
                 if int(idle_timeout_seconds) < int(floor_idle):
                     errors.append(
-                        "idle_timeout_seconds ({val}) is below the global proxy "
-                        "idle_timeout floor ({floor})".format(
-                            val=idle_timeout_seconds, floor=floor_idle
-                        )
+                        "idle_timeout_seconds ({val}) is below the global proxy idle_timeout floor ({floor})".format(val=idle_timeout_seconds, floor=floor_idle)
                     )
             except (TypeError, ValueError):
                 pass

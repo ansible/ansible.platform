@@ -140,10 +140,6 @@ class ActionModule(BaseResourceActionPlugin):
                     "changed": all_changed,
                     "failed": False,
                     self.MODULE_NAME: clean,
-                    # DEPRECATED (ansible.platform 2.7): flat top-level keys kept for
-                    # backward compatibility with playbooks written against <=2.6.
-                    # Scheduled for removal after 2028-04-01.
-                    **clean,
                 }
             )
             if len(assignments) > 1:
@@ -192,8 +188,6 @@ class ActionModule(BaseResourceActionPlugin):
                                 "changed": False,
                                 "failed": False,
                                 self.MODULE_NAME: clean,
-                                # DEPRECATED (ansible.platform 2.7): flat keys for <=2.6 compat
-                                **clean,
                             }
                         )
                         return result
@@ -243,9 +237,6 @@ class ActionModule(BaseResourceActionPlugin):
                 "changed": manager_result.get("changed", False),
                 "failed": False,
                 self.MODULE_NAME: clean,
-                # DEPRECATED (ansible.platform 2.7): flat keys for <=2.6 compat
-                # Not spread for delete operations (clean would only have state=absent).
-                **(clean if operation != "delete" else {}),
             }
         )
         if operation == "delete":
