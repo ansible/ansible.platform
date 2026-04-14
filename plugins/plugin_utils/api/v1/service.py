@@ -199,6 +199,13 @@ class ServiceTransformMixin_v1(BaseTransformMixin):
     def get_lookup_field(cls) -> str:
         return "name"
 
+    #: After a list-based find returns a match, perform a follow-up GET-by-ID
+    #: to retrieve the full resource state.  The services list endpoint omits or
+    #: null-out certain fields (e.g. idle_timeout_seconds, request_timeout_seconds)
+    #: that the individual GET endpoint returns correctly.  Setting this to True
+    #: ensures idempotency comparisons use complete resource data.
+    full_resource_lookup: bool = True
+
     @classmethod
     def from_api(
         cls,

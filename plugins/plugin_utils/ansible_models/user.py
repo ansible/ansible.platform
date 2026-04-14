@@ -6,7 +6,7 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -28,8 +28,6 @@ class AnsibleUser:
     last_name: Optional[str] = None
     password: Optional[str] = None
     is_superuser: Optional[bool] = None
-    is_platform_auditor: Optional[bool] = None
-    organizations: Optional[List[str]] = None
     associated_authenticators: Optional[Dict[str, Any]] = None
     state: str = "present"
 
@@ -38,11 +36,3 @@ class AnsibleUser:
     created: Optional[str] = None
     modified: Optional[str] = None
     url: Optional[str] = None
-
-    def __post_init__(self):
-        """Validate and normalize data after initialization."""
-        # Ensure organizations is a list
-        if self.organizations is None:
-            self.organizations = []
-        elif not isinstance(self.organizations, list):
-            self.organizations = [self.organizations]

@@ -58,21 +58,6 @@ options:
     type: bool
     aliases: ['superuser']
 
-  is_platform_auditor:
-    description:
-      - Whether this user is a platform auditor
-      - Deprecated - use role_user_assignment module instead
-    type: bool
-    aliases: ['auditor']
-
-  organizations:
-    description:
-      - List of organization names to associate with the user
-      - Organizations must already exist
-      - Deprecated - use role_user_assignment module instead
-    type: list
-    elements: str
-
   associated_authenticators:
     description:
       - Map of authenticator id to user attributes (uid, email) for that authenticator
@@ -118,7 +103,6 @@ extends_documentation_fragment:
 notes:
   - This module uses a persistent connection manager for improved performance
   - Multiple tasks in a playbook will reuse the same connection
-  - The organizations and is_platform_auditor fields are deprecated
   - For C(exists), only I(username) is required; returns current state (read-only, no change)
   - For C(enforced), omitted fields are left unchanged on the server (merge semantics)
 
@@ -267,10 +251,6 @@ user:
       description: Whether the user has superuser privileges.
       type: bool
       sample: false
-    is_platform_auditor:
-      description: Whether the user is a platform auditor (deprecated field).
-      type: bool
-      sample: false
     password:
       description: >
         Always returned as C(Password Disabled) because the gateway API never
@@ -279,11 +259,6 @@ user:
         C(Password Disabled).
       type: str
       sample: "Password Disabled"
-    organizations:
-      description: List of organisation names associated with the user (deprecated field).
-      type: list
-      elements: str
-      sample: []
     associated_authenticators:
       description: >
         Map of authenticator ID (integer key as string) to user attributes
