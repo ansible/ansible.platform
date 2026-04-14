@@ -129,7 +129,7 @@
           - name: "{{ org1.organization.name }}"
             type: "organizations"
         role_definition: Platform Auditor
-        team: "{{ team1.team.name }}"
+        team: "{{ team1.name }}"
       register: org_admin_assignment_2
       ignore_errors: true  # this may fail depending on AAP limitations
 

@@ -140,6 +140,9 @@ class ActionModule(BaseResourceActionPlugin):
                     "changed": all_changed,
                     "failed": False,
                     self.MODULE_NAME: clean,
+                    # Flat top-level keys kept for backward compatibility with
+                    # playbooks written against <=2.6.
+                    **clean,
                 }
             )
             if len(assignments) > 1:
@@ -188,6 +191,9 @@ class ActionModule(BaseResourceActionPlugin):
                                 "changed": False,
                                 "failed": False,
                                 self.MODULE_NAME: clean,
+                                # Flat top-level keys kept for backward compatibility with
+                                # playbooks written against <=2.6.
+                                **clean,
                             }
                         )
                         return result
@@ -237,6 +243,10 @@ class ActionModule(BaseResourceActionPlugin):
                 "changed": manager_result.get("changed", False),
                 "failed": False,
                 self.MODULE_NAME: clean,
+                # Flat top-level keys kept for backward compatibility with
+                # playbooks written against <=2.6.
+                # Not spread for delete operations (clean would only have state=absent).
+                **(clean if operation != "delete" else {}),
             }
         )
         if operation == "delete":

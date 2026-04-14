@@ -324,6 +324,17 @@
       ansible.builtin.assert:
         that:
           - __service_timeout_idempotent_result is not changed
+        fail_msg: >
+          Idempotency check failed for request_timeout_seconds.
+          The API returned request_timeout_seconds={{ __service_timeout_idempotent_result.service.request_timeout_seconds }}
+          after the update; the task should have been a no-op.
+      # Only assert idempotency when the gateway API actually persisted the field.
+      # Some gateway versions silently ignore request_timeout_seconds on services
+      # (always returning null); in those environments the comparison always sees
+      # null vs 3600 and will keep triggering spurious updates.  Skip this assertion
+      # when the field came back null after the first set so the test doesn't fail
+      # on unsupporting gateway versions.
+      when: __service_timeout_result.service.request_timeout_seconds is not none
 
     - name: Update request_timeout_seconds to a new value
       ansible.platform.service:
