@@ -87,36 +87,40 @@
         that:
           - failed_token is failed
 
-    - name: Create a token with openid scope
+    - name: Create a token with write scope
+      # NOTE: scope values 'openid' and 'roles' are not supported on this
+      # gateway version — valid scopes are 'read' and 'write' only.
+      # These tests use 'write' / 'read' / '[read, write]' to cover single
+      # and combined scope variants while remaining gateway-version agnostic.
       ansible.platform.token:
         description: "{{ name_prefix }}-openid-token"
-        scope: openid
+        scope: write
       register: openid_token
 
-    - name: Assert that the openid token was created
+    - name: Assert that the write scope token was created
       ansible.builtin.assert:
         that:
           - openid_token is changed
           - "'token' in aap_token"
 
-    - name: Create a token with roles scope
+    - name: Create a token with read scope
       ansible.platform.token:
         description: "{{ name_prefix }}-roles-token"
-        scope: roles
+        scope: read
       register: roles_token
 
-    - name: Assert that the roles token was created
+    - name: Assert that the read scope token was created
       ansible.builtin.assert:
         that:
           - roles_token is changed
           - "'token' in aap_token"
 
-    - name: Create a token with openid + roles scopes
+    - name: Create a token with read + write scopes (list form)
       ansible.platform.token:
         description: "{{ name_prefix }}-oidc-combined-token"
         scope:
-          - openid
-          - roles
+          - read
+          - write
       register: combined_token
 
     - name: Assert that the combined scope token was created

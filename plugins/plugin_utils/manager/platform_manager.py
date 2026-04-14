@@ -905,6 +905,18 @@ class PlatformService(BaseAPIClient):
                 raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
             api_result = results[0]
 
+            # Some API list endpoints return incomplete data for certain fields
+            # (e.g. the routes list omits idle_timeout_seconds / request_timeout_seconds
+            # even when they have been explicitly set).  When the mixin declares
+            # full_resource_lookup=True, follow up with a GET-by-ID so that
+            # idempotency comparisons use the complete stored resource state.
+            if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
+                full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])))
+                logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
+                full_response = self.session.get(full_url, timeout=self.request_timeout, verify=self.verify_ssl)
+                if full_response.ok:
+                    api_result = full_response.json()
+
         # REVERSE TRANSFORM: API -> Ansible
         ansible_instance = mixin_class.from_api(api_result, context)
         from dataclasses import asdict

@@ -339,9 +339,9 @@
 
     - name: Delete Authenticators
       ansible.platform.authenticator:
-        name: "{{ vars[item].authenticator.id }}"
+        name: "{{ vars[item].authenticator.name }}"
         state: absent
-      when: "item in vars and vars[item].authenticator is defined and 'id' in vars[item].authenticator"
+      when: "item in vars and vars[item].authenticator is defined and 'name' in vars[item].authenticator"
       loop:
         - "authenticator1"
         - "authenticator2"

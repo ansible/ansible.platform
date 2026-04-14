@@ -160,12 +160,29 @@ class ActionModule(BaseResourceActionPlugin):
                     "url": manager_result.get("url"),
                 }
 
+                # Flat keys for 2.6 backward compat — strip read-only/internal
+                # metadata fields that are not meaningful to the caller.
+                # Note: because MODULE_NAME == "token" and the API also returns a
+                # "token" field (the secret string), the **flat_keys spread below
+                # intentionally overwrites result["token"] (the nested dict set by
+                # self.MODULE_NAME: manager_result) with the actual token string.
+                # This matches the 2.6 behaviour where tok.token was the string.
+                # DEPRECATED (ansible.platform 2.7): scheduled for removal 2028-04-01.
+                _flat_strip = {"created", "modified", "url", "changed"}
+                flat_keys = {
+                    k: v
+                    for k, v in manager_result.items()
+                    if k not in _flat_strip and v is not None
+                }
+
                 result.update(
                     {
                         "changed": True,
                         "failed": False,
                         self.MODULE_NAME: manager_result,
-                        "id": manager_result.get("id"),
+                        # Flat spread (overwrites nested-dict "token" key above
+                        # with the actual token string — correct 2.6 behaviour).
+                        **flat_keys,
                         "ansible_facts": {"aap_token": aap_token},
                         "_ansible_facts_cacheable": False,
                     }

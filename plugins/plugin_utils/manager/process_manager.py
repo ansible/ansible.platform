@@ -340,6 +340,7 @@ def spawn_ephemeral_client(task_vars, gateway_config):
         Tuple of (client, None). Facts are never set for ephemeral (local) path.
     """
     import hashlib
+    import time
 
     from .rpc_client import ManagerRPCClient
 
@@ -354,7 +355,17 @@ def spawn_ephemeral_client(task_vars, gateway_config):
 
     inventory_hostname = task_vars.get("inventory_hostname", "localhost")
     host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
-    identifier = f"e{host_hash}"
+
+    # Use a per-invocation time suffix so each ephemeral manager gets a UNIQUE
+    # socket path.  Without this, orphaned managers from prior tasks (which are
+    # never explicitly killed for connection: local) hold a reference to the
+    # same socket path.  When those orphans eventually exit, Python's
+    # SocketListener._unlink finalizer calls os.unlink(socket_path) — deleting
+    # the *current* task's socket file and causing FileNotFoundError in
+    # ManagerRPCClient._incref() even though connect() succeeded moments before.
+    task_suffix = format(int(time.monotonic() * 1000) % 65536, "04x")
+    identifier = f"e{host_hash}{task_suffix}"
+
     socket_dir = Path("/tmp") / "ap"
     socket_dir.mkdir(exist_ok=True, parents=True)
 
@@ -375,6 +386,10 @@ def spawn_ephemeral_client(task_vars, gateway_config):
         gateway_config=gateway_config,
         authkey_b64=conn_info.authkey_b64,
         sys_path=list(sys.path),
+        # Pass ansible-playbook's PID so the manager self-terminates when the
+        # playbook exits.  This prevents accumulation of orphaned manager
+        # processes across successive test runs.
+        owner_pid=os.getppid(),
     )
     ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=identifier, process=process, max_wait=50)
 
