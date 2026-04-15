@@ -490,6 +490,9 @@
     - name: "[cleanup] Delete role definition"
       ansible.platform.role_definition:
         name: "{{ bc_role_name }}"
+        permissions:
+          - "shared.view_organization"
+        content_type: "shared.organization"
         state: absent
       register: _cleanup_role_def
       failed_when: _cleanup_role_def.failed and 'Not Found' not in (_cleanup_role_def.msg | default(''))
