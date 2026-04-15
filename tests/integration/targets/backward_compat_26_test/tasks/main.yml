@@ -454,7 +454,8 @@
         user: "{{ joe.username }}"
         object_id: "{{ org.id }}"
         state: absent
-      ignore_errors: true
+      register: _cleanup_rua
+      failed_when: _cleanup_rua.failed and 'Not Found' not in (_cleanup_rua.msg | default(''))
       when: rua is defined
 
     - name: "[cleanup] Delete role team assignment"
@@ -465,29 +466,33 @@
           - name: "{{ org.name }}"
             type: "organizations"
         state: absent
-      ignore_errors: true
+      register: _cleanup_rta
+      failed_when: _cleanup_rta.failed and 'Not Found' not in (_cleanup_rta.msg | default(''))
       when: rta is defined
 
     - name: "[cleanup] Delete token"
       ansible.platform.token:
-        existing_token: "{{ tok.token }}"
+        existing_token_id: "{{ tok.id }}"
         state: absent
-      ignore_errors: true
-      when: tok is defined and tok.token is defined
+      register: _cleanup_tok
+      failed_when: _cleanup_tok.failed and 'Not Found' not in (_cleanup_tok.msg | default(''))
+      when: tok is defined and tok.id is defined
 
     - name: "[cleanup] Delete application"
       ansible.platform.application:
         name: "{{ bc_app_name }}"
         organization: "{{ org.name }}"
         state: absent
-      ignore_errors: true
+      register: _cleanup_app
+      failed_when: _cleanup_app.failed and 'Not Found' not in (_cleanup_app.msg | default(''))
       when: app is defined
 
     - name: "[cleanup] Delete role definition"
       ansible.platform.role_definition:
         name: "{{ bc_role_name }}"
         state: absent
-      ignore_errors: true
+      register: _cleanup_role_def
+      failed_when: _cleanup_role_def.failed and 'Not Found' not in (_cleanup_role_def.msg | default(''))
       when: custom_role is defined
 
     - name: "[cleanup] Delete team"
@@ -495,14 +500,16 @@
         name: "{{ bc_team_name }}"
         organization: "{{ org.name }}"
         state: absent
-      ignore_errors: true
+      register: _cleanup_team
+      failed_when: _cleanup_team.failed and 'Not Found' not in (_cleanup_team.msg | default(''))
       when: team1 is defined
 
     - name: "[cleanup] Delete user"
       ansible.platform.user:
         username: "{{ bc_user_name }}"
         state: absent
-      ignore_errors: true
+      register: _cleanup_user
+      failed_when: _cleanup_user.failed and 'Not Found' not in (_cleanup_user.msg | default(''))
       when: joe is defined
 
     - name: "[cleanup] Delete authenticator"
@@ -512,7 +519,8 @@
         type: "ansible_base.authentication.authenticator_plugins.local"
         configuration: {}
         state: absent
-      ignore_errors: true
+      register: _cleanup_auth
+      failed_when: _cleanup_auth.failed and 'Not Found' not in (_cleanup_auth.msg | default(''))
       when: auth is defined
 
     - name: "[cleanup] Delete organizations"
@@ -522,4 +530,6 @@
       loop:
         - "{{ bc_org_name }}"
         - "{{ bc_org2_name }}"
-      ignore_errors: true
+      register: _cleanup_org
+      failed_when: _cleanup_org.failed and 'Not Found' not in (_cleanup_org.msg | default(''))
+...
