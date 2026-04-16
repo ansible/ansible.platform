@@ -1273,12 +1273,8 @@ class BaseResourceActionPlugin(ActionBase):
                     # Use result.<module_name>.<field> in new playbooks.
                     # ----------------------------------------------------------------
                     self.MODULE_NAME: validated_output,
-                    # ----------------------------------------------------------------
-                    # DEPRECATED (ansible.platform 2.7): flat top-level keys kept for
-                    # backward compatibility with playbooks written against <=2.6.
-                    # Scheduled for removal after 2028-04-01.
-                    # Migrate to result.<module_name>.<field> before that date.
-                    # ----------------------------------------------------------------
+                    # Flat top-level keys kept for backward compatibility with
+                    # playbooks written against <=2.6.
                     **validated_output,
                     **extra_flat,
                 }

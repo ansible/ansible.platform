@@ -23,6 +23,28 @@ description:
 version_added: "1.0.0"
 
 options:
+  organizations:
+    description:
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For associating a user to an organization, please use the ansible.platform.role_user_assignment module.
+      - HORIZONTALLINE
+      - List of organization names or IDs to associate with the user.
+      - Organizations must already exist - the module will not create missing organizations.
+      - If any specified organization doesn't exist, the operation will fail.
+    type: list
+    elements: str
+
+  is_platform_auditor:
+    description:
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For designating a user as an auditor, please use the ansible.platform.role_user_assignment module.
+      - HORIZONTALLINE
+      - Designates that this user is a platform auditor.
+    type: bool
+    aliases: ['auditor']
+
   username:
     description:
       - Username for the user
@@ -58,21 +80,6 @@ options:
     type: bool
     aliases: ['superuser']
 
-  is_platform_auditor:
-    description:
-      - Whether this user is a platform auditor
-      - Deprecated - use role_user_assignment module instead
-    type: bool
-    aliases: ['auditor']
-
-  organizations:
-    description:
-      - List of organization names to associate with the user
-      - Organizations must already exist
-      - Deprecated - use role_user_assignment module instead
-    type: list
-    elements: str
-
   associated_authenticators:
     description:
       - Map of authenticator id to user attributes (uid, email) for that authenticator
@@ -89,15 +96,21 @@ options:
 
   authenticators:
     description:
-      - List of authenticator IDs to associate with the user
-      - Deprecated - use I(associated_authenticators) instead
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For associating a user with authenticators, please use the associated_authenticators option.
+      - HORIZONTALLINE
+      - A list of authenticators to associate the user with
     type: list
     elements: int
 
   authenticator_uid:
     description:
-      - UID for authenticator association
-      - Deprecated - use I(associated_authenticators) instead
+      - B(Deprecated)
+      - This option is deprecated and will be removed in a release after 2026-05-20.
+      - For specifying UIDs per authenticator, please use the associated_authenticators option.
+      - HORIZONTALLINE
+      - The UID to associate with this user's authenticators
     type: str
 
   state:
@@ -118,7 +131,6 @@ extends_documentation_fragment:
 notes:
   - This module uses a persistent connection manager for improved performance
   - Multiple tasks in a playbook will reuse the same connection
-  - The organizations and is_platform_auditor fields are deprecated
   - For C(exists), only I(username) is required; returns current state (read-only, no change)
   - For C(enforced), omitted fields are left unchanged on the server (merge semantics)
 
@@ -267,10 +279,6 @@ user:
       description: Whether the user has superuser privileges.
       type: bool
       sample: false
-    is_platform_auditor:
-      description: Whether the user is a platform auditor (deprecated field).
-      type: bool
-      sample: false
     password:
       description: >
         Always returned as C(Password Disabled) because the gateway API never
@@ -279,11 +287,6 @@ user:
         C(Password Disabled).
       type: str
       sample: "Password Disabled"
-    organizations:
-      description: List of organisation names associated with the user (deprecated field).
-      type: list
-      elements: str
-      sample: []
     associated_authenticators:
       description: >
         Map of authenticator ID (integer key as string) to user attributes

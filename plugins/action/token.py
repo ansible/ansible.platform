@@ -160,12 +160,17 @@ class ActionModule(BaseResourceActionPlugin):
                     "url": manager_result.get("url"),
                 }
 
+                # Flat top-level keys kept for backward compatibility with
+                # playbooks written against <=2.6.
+                _flat_strip = {"state", "changed", "failed"}
+                flat_keys = {k: v for k, v in manager_result.items() if k not in _flat_strip}
+
                 result.update(
                     {
                         "changed": True,
                         "failed": False,
                         self.MODULE_NAME: manager_result,
-                        "id": manager_result.get("id"),
+                        **flat_keys,
                         "ansible_facts": {"aap_token": aap_token},
                         "_ansible_facts_cacheable": False,
                     }

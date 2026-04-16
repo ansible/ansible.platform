@@ -62,7 +62,8 @@ class ActionModule(BaseResourceActionPlugin):
         where organizations was not supplied.  Using ``asdict(resource)`` would
         therefore send ``organizations: []`` on every task, silently clearing
         the user's organization memberships.  This override sends only the
-        fields the operator actually specified in the task.
+        fields the operator actually specified in the task, preventing
+        unintended side-effects from default values in the dataclass.
 
         Args:
             resource: The AnsibleUser instance.

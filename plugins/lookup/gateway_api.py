@@ -135,6 +135,13 @@ class LookupModule(LookupBase):
     worker process completely free of SSL initialisation.  This avoids the
     macOS + Python 3.12 SIGABRT ("A worker was found in a dead state") that
     occurs when urllib or requests initialises an SSL context inside a fork.
+
+    The stable-2.6 call signature is fully preserved: the same plugin options
+    (host, username, password, verify_ssl, oauth_token, request_timeout,
+    query_params, return_objects, return_ids, expect_one, expect_objects,
+    return_all, max_objects) are accepted unchanged.  aap_module.py and
+    aap_object.py are retained in plugins/module_utils/ for import backward
+    compatibility with any custom code that imports them directly.
     """
 
     display = Display()

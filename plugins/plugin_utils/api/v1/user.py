@@ -118,15 +118,12 @@ class UserTransformMixin_v1(BaseTransformMixin):
         """Convert organization names to IDs."""
         if not names:
             return []
-
-        # Use manager to lookup IDs
         if isinstance(context, TransformContext):
             return context.manager.lookup_organization_ids(names)
         else:
             manager = context.get("manager")
             if manager:
                 return manager.lookup_organization_ids(names)
-
         return []
 
     @staticmethod
@@ -135,22 +132,16 @@ class UserTransformMixin_v1(BaseTransformMixin):
         if not ids:
             logger.debug("No organization IDs to convert")
             return []
-
         logger.debug("Looking up organization names for IDs: %s", ids)
-
-        # Use manager to lookup names
         if isinstance(context, TransformContext):
-            result = context.manager.lookup_organization_names(ids)
+            return context.manager.lookup_organization_names(ids)
         else:
             manager = context.get("manager")
             if manager:
-                result = manager.lookup_organization_names(ids)
+                return manager.lookup_organization_names(ids)
             else:
                 logger.warning("No manager in context for organization lookup")
                 return []
-
-        logger.info("Organization lookup completed: %s -> %s", ids, result)
-        return result
 
     # Field mapping: ansible_field -> api_field or complex mapping
     _field_mapping: ClassVar[Dict[str, Any]] = {
@@ -175,7 +166,6 @@ class UserTransformMixin_v1(BaseTransformMixin):
     }
 
     # Transform functions registry
-    # Note: context is normalized to TransformContext in base_transform._apply_transform
     _transform_registry: ClassVar[Dict[str, Any]] = {
         "names_to_ids": lambda names, ctx: ctx.manager.lookup_organization_ids(names) if names else [],
         "ids_to_names": lambda ids, ctx: ctx.manager.lookup_organization_names(ids) if ids else [],

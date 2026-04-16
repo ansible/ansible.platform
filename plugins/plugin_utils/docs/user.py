@@ -52,21 +52,6 @@ options:
     type: bool
     aliases: ['superuser']
 
-  is_platform_auditor:
-    description:
-      - Whether this user is a platform auditor
-      - Deprecated - use role_user_assignment module instead
-    type: bool
-    aliases: ['auditor']
-
-  organizations:
-    description:
-      - List of organization names to associate with the user
-      - Organizations must already exist
-      - Deprecated - use role_user_assignment module instead
-    type: list
-    elements: str
-
   update_secrets:
     description:
       - When C(false), secret fields (e.g. I(password)) will not be sent during updates,
@@ -106,7 +91,6 @@ extends_documentation_fragment:
 notes:
   - This module uses a persistent connection manager for improved performance
   - Multiple tasks in a playbook will reuse the same connection
-  - The organizations and is_platform_auditor fields are deprecated
   - For C(exists), only I(username) is required; returns current state (read-only, no change)
   - For C(enforced), omitted fields are left unchanged on the server (merge semantics)
 
