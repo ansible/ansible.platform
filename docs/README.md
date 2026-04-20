@@ -43,6 +43,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas (Foundation Builder, Feature Developer), phase-by-phase guidance, coding standards, anti-patterns, troubleshooting |
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map (all 22 modules), identity categories, API quirks, platform-specific challenges, version strategy |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
+| 12 | [12-migration-gateway-connection.md](12-migration-gateway-connection.md) | Operators / playbook authors | Migrate to `ansible.platform.http`: before/after, credentials, connection and inventory settings |
 
 ---
 
@@ -109,6 +110,9 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 ### "I need to understand persistent manager idle timeout behavior"
 → [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md)
 
+### "I'm migrating to the Gateway HTTP connection plugin (AAP 2.7)"
+→ [12-migration-gateway-connection.md](12-migration-gateway-connection.md)
+
 ---
 
 ## Document Dependency Map
@@ -136,7 +140,9 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
   │     ├── Section 3: Foundation Builder (build framework)
   │     └── Section 4: Feature Developer (add resources)
   │
-  └── 10-case-study-aap-platform (module map, API quirks, version strategy)
+  ├── 10-case-study-aap-platform (module map, API quirks, version strategy)
+  │
+  └── 12-migration-gateway-connection (HTTP connection migration for operators)
 ```
 
 ---
