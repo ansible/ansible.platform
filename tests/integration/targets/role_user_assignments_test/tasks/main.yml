@@ -412,7 +412,11 @@
           - "{{ org.id }}"
         state: absent
       when: custom_role is defined
-      ignore_errors: true
+      register: custom_user_assignment_delete
+      failed_when: >-
+        custom_user_assignment_delete is failed and
+        'Not found' not in custom_user_assignment_delete.msg | default('') and
+        'does not exist' not in custom_user_assignment_delete.msg | default('')
 
     - name: Delete custom role definition
       ansible.platform.role_definition:
