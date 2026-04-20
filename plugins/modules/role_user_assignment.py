@@ -188,7 +188,7 @@ def main():
 
     raw_content_type = role_definition.get('content_type') or ''
     content_suffix = raw_content_type.split('.')[-1] if '.' in raw_content_type else raw_content_type
-    
+
     endpoint_map = {
         'organization': 'organizations',
         'team': 'teams',
