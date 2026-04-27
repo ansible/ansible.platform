@@ -289,11 +289,15 @@
           - "shared.view_team"
         state: present
       register: custom_team_role
+      failed_when: >-
+        custom_team_role is failed and
+        'Creating custom roles for teams is disabled' not in custom_team_role.msg | default('')
 
     - name: Assert custom team role definition was created
       ansible.builtin.assert:
         that:
           - custom_team_role is changed
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Assign custom team role to user (object_ids by id)
       ansible.platform.role_user_assignment: &custom_user_team_assignment
@@ -303,20 +307,24 @@
           - "{{ team1.id }}"
         state: present
       register: custom_team_user_role_assignment
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Assert custom team role user assignment changed the system
       ansible.builtin.assert:
         that:
           - custom_team_user_role_assignment is changed
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Assign custom team role to user (idempotent check)
       ansible.platform.role_user_assignment: *custom_user_team_assignment
       register: custom_team_user_role_assignment_idem
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Assert custom team role user assignment idempotent re-run is unchanged
       ansible.builtin.assert:
         that:
           - custom_team_user_role_assignment_idem is not changed
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Query API for custom team role user assignment
       ansible.builtin.uri:
@@ -327,6 +335,7 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         return_content: true
       register: custom_team_user_assignment_query
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Assert custom team role user assignment exists in API
       ansible.builtin.assert:
@@ -334,6 +343,7 @@
           - custom_team_user_assignment_query.json.count | int > 0
         fail_msg: >-
           No role_user_assignment found for custom team role id {{ custom_team_role.id }} and user id {{ user.id }}.
+      when: custom_team_role is defined and custom_team_role.id is defined
 
     - name: Assign Platform Auditor by Role User Assignments
       ansible.platform.role_user_assignment: &platform_auditor_assignment
@@ -467,7 +477,7 @@
         object_ids:
           - "{{ team1.id }}"
         state: absent
-      when: custom_team_role is defined and team1 is defined
+      when: custom_team_role is defined and custom_team_role.id is defined and team1 is defined
       register: custom_team_user_assignment_delete
       failed_when: >-
         custom_team_user_assignment_delete is failed and
@@ -481,7 +491,7 @@
         permissions:
           - "shared.view_team"
         state: absent
-      when: custom_team_role_name is defined
+      when: custom_team_role is defined and custom_team_role.id is defined
       register: custom_team_role_delete
       failed_when: >-
         custom_team_role_delete is failed and
