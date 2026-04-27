@@ -93,6 +93,30 @@ EXAMPLES = '''
     user: bob
     state: present
 
+- name: Custom organization-scoped role (content_type shared.organization; name can be anything)
+  ansible.platform.role_user_assignment:
+    role_definition: MyCustomOrgViewRole
+    object_ids:
+      - "Default Organization"
+    user: bob
+    state: present
+
+- name: Custom team-scoped role (content_type shared.team)
+  ansible.platform.role_user_assignment:
+    role_definition: MyCustomTeamViewRole
+    object_ids:
+      - "42"
+    user: anna
+    state: present
+
+- name: Inventory role by primary key (content_type awx.inventory) when the inventories API is available
+  ansible.platform.role_user_assignment:
+    role_definition: Organization Inventory Admin
+    object_ids:
+      - "1"
+    user: bob
+    state: present
+
 ...
 '''
 
@@ -186,16 +210,17 @@ def main():
     if user_ansible_id is not None:
         kwargs['user_ansible_id'] = user_ansible_id
 
-    role_map = {
-        'Team': 'teams',
-        'Organization': 'organizations',
-    }
+    raw_content_type = role_definition.get('content_type') or ''
+    content_suffix = raw_content_type.split('.')[-1] if '.' in raw_content_type else raw_content_type
 
-    entity_type = next((
-        mapped
-        for prefix, mapped in role_map.items()
-        if role_definition_str.startswith(prefix)
-    ), None)
+    endpoint_map = {
+        'organization': 'organizations',
+        'team': 'teams',
+        'inventory': 'inventories',
+        'credential': 'credentials',
+        'project': 'projects'
+    }
+    entity_type = endpoint_map.get(content_suffix, f"{content_suffix}s") if content_suffix else None
     object_param = object_ids or object_id
 
     role_args = {
