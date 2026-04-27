@@ -93,6 +93,30 @@ EXAMPLES = '''
     user: bob
     state: present
 
+- name: Custom organization-scoped role (content_type shared.organization; name can be anything)
+  ansible.platform.role_user_assignment:
+    role_definition: MyCustomOrgViewRole
+    object_ids:
+      - "Default Organization"
+    user: bob
+    state: present
+
+- name: Custom team-scoped role (content_type shared.team)
+  ansible.platform.role_user_assignment:
+    role_definition: MyCustomTeamViewRole
+    object_ids:
+      - "42"
+    user: anna
+    state: present
+
+- name: Inventory role by primary key (content_type awx.inventory) when the inventories API is available
+  ansible.platform.role_user_assignment:
+    role_definition: Organization Inventory Admin
+    object_ids:
+      - "1"
+    user: bob
+    state: present
+
 ...
 '''
 
