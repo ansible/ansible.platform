@@ -10,6 +10,7 @@
     organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
     name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
     custom_role_name: "GW-Custom-RoleUser-{{ test_id }}"
+    custom_team_role_name: "GW-Custom-RoleUser-Team-{{ test_id }}"
 
 - name: Run Tests
   module_defaults:
@@ -224,17 +225,17 @@
         that:
           - team2_admin_role_assignment_check is not changed
 
-    - name: Create custom role for role_user_assignment integration test
+    - name: Create custom org-scoped role (shared.organization)
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
-        description: "Custom role for role_user_assignment content_type resolution test"
+        description: "Custom role for role_user_assignment content_type resolution test (organization)"
         content_type: "shared.organization"
         permissions:
           - "shared.view_organization"
         state: present
       register: custom_role
 
-    - name: Assert custom role definition was created
+    - name: Assert custom org role definition was created
       ansible.builtin.assert:
         that:
           - custom_role is changed
@@ -278,6 +279,61 @@
           - custom_user_assignment_query.json.count | int > 0
         fail_msg: >-
           No role_user_assignment found for custom role id {{ custom_role.id }} and user id {{ user4.id }}.
+
+    - name: Create custom team-scoped role (shared.team)
+      ansible.platform.role_definition:
+        name: "{{ custom_team_role_name }}"
+        description: "Custom role for role_user_assignment content_type resolution test (team)"
+        content_type: "shared.team"
+        permissions:
+          - "shared.view_team"
+        state: present
+      register: custom_team_role
+
+    - name: Assert custom team role definition was created
+      ansible.builtin.assert:
+        that:
+          - custom_team_role is changed
+
+    - name: Assign custom team role to user (object_ids by id)
+      ansible.platform.role_user_assignment: &custom_user_team_assignment
+        role_definition: "{{ custom_team_role_name }}"
+        user: "{{ user.id }}"
+        object_ids:
+          - "{{ team1.id }}"
+        state: present
+      register: custom_team_user_role_assignment
+
+    - name: Assert custom team role user assignment changed the system
+      ansible.builtin.assert:
+        that:
+          - custom_team_user_role_assignment is changed
+
+    - name: Assign custom team role to user (idempotent check)
+      ansible.platform.role_user_assignment: *custom_user_team_assignment
+      register: custom_team_user_role_assignment_idem
+
+    - name: Assert custom team role user assignment idempotent re-run is unchanged
+      ansible.builtin.assert:
+        that:
+          - custom_team_user_role_assignment_idem is not changed
+
+    - name: Query API for custom team role user assignment
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/gateway/v1/role_user_assignments/?role_definition={{ custom_team_role.id }}&user={{ user.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: custom_team_user_assignment_query
+
+    - name: Assert custom team role user assignment exists in API
+      ansible.builtin.assert:
+        that:
+          - custom_team_user_assignment_query.json.count | int > 0
+        fail_msg: >-
+          No role_user_assignment found for custom team role id {{ custom_team_role.id }} and user id {{ user.id }}.
 
     - name: Assign Platform Auditor by Role User Assignments
       ansible.platform.role_user_assignment: &platform_auditor_assignment
@@ -404,7 +460,35 @@
   # # <Cleanup>
   always:
   # Always Cleanup
-    - name: Remove custom role user assignment if test created it
+    - name: Remove custom team role user assignment if test created it
+      ansible.platform.role_user_assignment:
+        role_definition: "{{ custom_team_role_name }}"
+        user: "{{ user.id }}"
+        object_ids:
+          - "{{ team1.id }}"
+        state: absent
+      when: custom_team_role is defined and team1 is defined
+      register: custom_team_user_assignment_delete
+      failed_when: >-
+        custom_team_user_assignment_delete is failed and
+        'Not found' not in custom_team_user_assignment_delete.msg | default('') and
+        'does not exist' not in custom_team_user_assignment_delete.msg | default('')
+
+    - name: Delete custom team role definition
+      ansible.platform.role_definition:
+        name: "{{ custom_team_role_name }}"
+        content_type: "shared.team"
+        permissions:
+          - "shared.view_team"
+        state: absent
+      when: custom_team_role_name is defined
+      register: custom_team_role_delete
+      failed_when: >-
+        custom_team_role_delete is failed and
+        'Not found' not in custom_team_role_delete.msg | default('') and
+        'does not exist' not in custom_team_role_delete.msg | default('')
+
+    - name: Remove custom org role user assignment if test created it
       ansible.platform.role_user_assignment:
         role_definition: "{{ custom_role_name }}"
         user: "{{ user4.id }}"
@@ -418,7 +502,7 @@
         'Not found' not in custom_user_assignment_delete.msg | default('') and
         'does not exist' not in custom_user_assignment_delete.msg | default('')
 
-    - name: Delete custom role definition
+    - name: Delete custom org role definition
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         content_type: "shared.organization"
