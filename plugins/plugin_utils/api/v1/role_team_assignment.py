@@ -25,6 +25,7 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
     except Exception:
         return None
 
+
 @dataclass
 class APIRoleTeamAssignment_v1:
     """API v1 wire format for a role-team assignment."""
