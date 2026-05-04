@@ -147,7 +147,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
         """Build composite query params for finding an existing assignment."""
         params = {}
-        
+
         def _get(key):
             if isinstance(ansible_data, dict):
                 return ansible_data.get(key)
@@ -158,7 +158,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
         if _get("team_ansible_id") is not None: params["team_ansible_id"] = str(_get("team_ansible_id"))
         if _get("object_id") is not None: params["object_id"] = str(_get("object_id"))
         if _get("object_ansible_id") is not None: params["object_ansible_id"] = str(_get("object_ansible_id"))
-            
+
         return params
 
     @classmethod

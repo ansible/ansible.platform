@@ -35,7 +35,7 @@ class ActionModule(BaseResourceActionPlugin):
                     data_dict["team"] = str(data_dict["team"])
             else:
                 data_dict["team"] = str(data_dict["team"])
-                
+
         return data_dict
 
     def run(self, tmp=None, task_vars=None):
@@ -199,7 +199,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "assignment_objects"}
         resource_data = self._resolve_fks_to_strings(manager, resource_data)
-                
+
         if "object_id" in resource_data and resource_data["object_id"] is not None:
             resource_data["object_id"] = str(resource_data["object_id"])
 
