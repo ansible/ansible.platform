@@ -153,11 +153,21 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
                 return ansible_data.get(key)
             return getattr(ansible_data, key, None)
 
-        if _get("role_definition") is not None: params["role_definition"] = str(_get("role_definition"))
-        if _get("team") is not None: params["team"] = str(_get("team"))
-        if _get("team_ansible_id") is not None: params["team_ansible_id"] = str(_get("team_ansible_id"))
-        if _get("object_id") is not None: params["object_id"] = str(_get("object_id"))
-        if _get("object_ansible_id") is not None: params["object_ansible_id"] = str(_get("object_ansible_id"))
+        role_def = _get("role_definition")
+        if role_def is not None:
+            params["role_definition"] = str(role_def)
+        team = _get("team")
+        if team is not None:
+            params["team"] = str(team)
+        team_ansible_id = _get("team_ansible_id")
+        if team_ansible_id is not None:
+            params["team_ansible_id"] = str(team_ansible_id)
+        object_id = _get("object_id")
+        if object_id is not None:
+            params["object_id"] = str(object_id)
+        object_ansible_id = _get("object_ansible_id")
+        if object_ansible_id is not None:
+            params["object_ansible_id"] = str(object_ansible_id)
 
         return params
 
