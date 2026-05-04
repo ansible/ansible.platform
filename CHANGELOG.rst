@@ -31,3 +31,7 @@ Additional changes:
 * Add conditional check for 'safe to test' label.
 * Expose collection checkout to aap-gateway build.
 * Integration test workflow use GH environment.
+
+v2.6.20260504
+=============
+Fixed role user assignment - The hardcoded role name check is being replaced with a dynamic API endpoint mapping derived directly from the role definition's content_type attribute.

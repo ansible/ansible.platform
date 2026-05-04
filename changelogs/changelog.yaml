@@ -13,3 +13,5 @@ releases:
     fragments:
       - fix_pagination.yaml
     release_date: '2026-03-06'
+  2.6.20260504:
+    release_date: '2026-05-04'
