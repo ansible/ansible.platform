@@ -16,6 +16,28 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleRoleTeamAssignment
     LOOKUP_FIELD = "id"
 
+    def _resolve_fks_to_strings(self, manager, data_dict):
+        """Helper to safely resolve and cast foreign keys."""
+        if "role_definition" in data_dict:
+            if not str(data_dict["role_definition"]).isdigit():
+                try:
+                    data_dict["role_definition"] = str(manager.lookup_resource_id("role_definitions", "name", data_dict["role_definition"]))
+                except Exception:
+                    data_dict["role_definition"] = str(data_dict["role_definition"])
+            else:
+                data_dict["role_definition"] = str(data_dict["role_definition"])
+
+        if "team" in data_dict:
+            if not str(data_dict["team"]).isdigit():
+                try:
+                    data_dict["team"] = str(manager.lookup_resource_id("teams", "name", data_dict["team"]))
+                except Exception:
+                    data_dict["team"] = str(data_dict["team"])
+            else:
+                data_dict["team"] = str(data_dict["team"])
+                
+        return data_dict
+
     def run(self, tmp=None, task_vars=None):
         """
         Custom run() for role_team_assignment.
@@ -66,6 +88,7 @@ class ActionModule(BaseResourceActionPlugin):
                 "object_ansible_id",
             }
             base_data = {k: v for k, v in validated_params.items() if v is not None and k not in _skip}
+            base_data = self._resolve_fks_to_strings(manager, base_data)
 
             all_changed = False
             assignments = []
@@ -73,22 +96,19 @@ class ActionModule(BaseResourceActionPlugin):
             for obj in assignment_objects_raw:
                 per_obj = dict(base_data)
 
-                # Resolve this entry's object identity
+                # Resolve and strict string-cast object identity
                 if obj.get("object_id") is not None:
-                    per_obj["object_id"] = obj["object_id"]
+                    per_obj["object_id"] = str(obj["object_id"])
                 elif obj.get("object_ansible_id"):
-                    per_obj["object_ansible_id"] = obj["object_ansible_id"]
+                    per_obj["object_ansible_id"] = str(obj["object_ansible_id"])
                 elif obj.get("name") and obj.get("type"):
                     try:
                         oid = manager.lookup_resource_id(obj["type"], "name", obj["name"])
-                        per_obj["object_id"] = oid
+                        per_obj["object_id"] = str(oid)  # CRITICAL: Must be string
                     except Exception:
-                        # If lookup fails, pass the name — from_ansible_data
-                        # will attempt its own FK resolution.
-                        per_obj["object_id"] = obj["name"]
+                        per_obj["object_id"] = str(obj["name"])
 
                 if state == "present":
-                    # Idempotency: check if assignment already exists
                     try:
                         find_result = manager.execute(
                             operation="find",
@@ -118,14 +138,12 @@ class ActionModule(BaseResourceActionPlugin):
                             ansible_data=per_obj,
                         )
                         if find_result and find_result.get("id"):
-                            manager.execute(
-                                operation="delete",
-                                module_name=self.MODULE_NAME,
-                                ansible_data={"id": find_result["id"]},
-                            )
+                            delete_payload = dict(per_obj)
+                            delete_payload["id"] = find_result["id"]
+                            manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
                             all_changed = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        self._display.vvv("Delete failed: %s" % exc)
 
                 elif state == "exists":
                     # Check existence without modifying; collect found assignments
@@ -180,6 +198,11 @@ class ActionModule(BaseResourceActionPlugin):
         from dataclasses import asdict
 
         resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "assignment_objects"}
+        resource_data = self._resolve_fks_to_strings(manager, resource_data)
+                
+        if "object_id" in resource_data and resource_data["object_id"] is not None:
+            resource_data["object_id"] = str(resource_data["object_id"])
+
         try:
             resource = self.MODEL_CLASS(**resource_data)
         except TypeError as exc:
@@ -188,8 +211,6 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         operation = self._detect_operation(validated_params)
-        _lookup_val = getattr(resource, self.LOOKUP_FIELD, None)
-
         _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "assignment_objects", "assignments"}
 
         if state == "present" and operation == "create":

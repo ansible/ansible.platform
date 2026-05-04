@@ -19,24 +19,22 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
     if value is None:
         return None
     if str(value).isdigit():
-        return int(value)
+        return str(value)
     try:
-        return manager.lookup_resource_id(endpoint, lookup_field, str(value))
+        return str(manager.lookup_resource_id(endpoint, lookup_field, str(value)))
     except Exception:
         return None
-
 
 @dataclass
 class APIRoleTeamAssignment_v1:
     """API v1 wire format for a role-team assignment."""
 
-    role_definition: Optional[int] = None
-    team: Optional[int] = None
+    role_definition: Optional[str] = None
+    team: Optional[str] = None
     team_ansible_id: Optional[str] = None
-    object_id: Optional[int] = None
+    object_id: Optional[str] = None
     object_ansible_id: Optional[str] = None
 
-    # Read-only
     id: Optional[int] = None
     url: Optional[str] = None
     created: Optional[str] = None
@@ -55,51 +53,52 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
 
-        # Resolve role_definition name -> id
-        role_definition = getattr(ansible_instance, "role_definition", None)
+        def _get(key):
+            if isinstance(ansible_instance, dict):
+                return ansible_instance.get(key)
+            return getattr(ansible_instance, key, None)
+
+        role_definition = _get("role_definition")
         if role_definition is not None and manager:
             resolved = _resolve_fk(manager, "role_definitions", "name", role_definition)
             if resolved is not None:
-                api_data["role_definition"] = resolved
-        elif role_definition is not None and str(role_definition).isdigit():
-            api_data["role_definition"] = int(role_definition)
+                api_data["role_definition"] = str(resolved)
+        elif role_definition is not None:
+            api_data["role_definition"] = str(role_definition)
 
-        # Resolve team name -> id
-        team = getattr(ansible_instance, "team", None)
+        team = _get("team")
         if team is not None and manager:
             resolved = _resolve_fk(manager, "teams", "name", team)
             if resolved is not None:
-                api_data["team"] = resolved
-        elif team is not None and str(team).isdigit():
-            api_data["team"] = int(team)
+                api_data["team"] = str(resolved)
+        elif team is not None:
+            api_data["team"] = str(team)
 
-        team_ansible_id = getattr(ansible_instance, "team_ansible_id", None)
+        team_ansible_id = _get("team_ansible_id")
         if team_ansible_id is not None:
-            api_data["team_ansible_id"] = team_ansible_id
+            api_data["team_ansible_id"] = str(team_ansible_id)
 
-        object_id = getattr(ansible_instance, "object_id", None)
+        object_id = _get("object_id")
         if object_id is not None:
-            if isinstance(object_id, int):
-                api_data["object_id"] = object_id
-            elif str(object_id).isdigit():
-                api_data["object_id"] = int(object_id)
+            if isinstance(object_id, int) or str(object_id).isdigit():
+                api_data["object_id"] = str(object_id)
             elif manager:
                 for endpoint in ("organizations", "teams"):
                     resolved = _resolve_fk(manager, endpoint, "name", object_id)
                     if resolved is not None:
-                        api_data["object_id"] = resolved
+                        api_data["object_id"] = str(resolved)
                         break
                 else:
-                    api_data["object_id"] = object_id
+                    api_data["object_id"] = str(object_id)
             else:
-                api_data["object_id"] = object_id
+                api_data["object_id"] = str(object_id)
 
-        object_ansible_id = getattr(ansible_instance, "object_ansible_id", None)
+        object_ansible_id = _get("object_ansible_id")
         if object_ansible_id is not None:
-            api_data["object_ansible_id"] = object_ansible_id
+            api_data["object_ansible_id"] = str(object_ansible_id)
 
         for ro_field in ("id", "url", "created", "modified"):
-            val = getattr(ansible_instance, ro_field, None)
+            val = _get(ro_field)
             if val is not None:
                 api_data[ro_field] = val
 
@@ -142,28 +141,24 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def get_lookup_field(cls) -> str:
-        # Assignments have no single unique name; lookup uses composite query params.
-        return "role_definition"
+        return "id"
 
     @classmethod
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
         """Build composite query params for finding an existing assignment."""
         params = {}
-        role_def = getattr(ansible_data, "role_definition", None)
-        if role_def is not None:
-            params["role_definition"] = role_def
-        team = getattr(ansible_data, "team", None)
-        if team is not None:
-            params["team"] = team
-        team_ansible_id = getattr(ansible_data, "team_ansible_id", None)
-        if team_ansible_id is not None:
-            params["team_ansible_id"] = team_ansible_id
-        object_id = getattr(ansible_data, "object_id", None)
-        if object_id is not None:
-            params["object_id"] = object_id
-        object_ansible_id = getattr(ansible_data, "object_ansible_id", None)
-        if object_ansible_id is not None:
-            params["object_ansible_id"] = object_ansible_id
+        
+        def _get(key):
+            if isinstance(ansible_data, dict):
+                return ansible_data.get(key)
+            return getattr(ansible_data, key, None)
+
+        if _get("role_definition") is not None: params["role_definition"] = str(_get("role_definition"))
+        if _get("team") is not None: params["team"] = str(_get("team"))
+        if _get("team_ansible_id") is not None: params["team_ansible_id"] = str(_get("team_ansible_id"))
+        if _get("object_id") is not None: params["object_id"] = str(_get("object_id"))
+        if _get("object_ansible_id") is not None: params["object_ansible_id"] = str(_get("object_ansible_id"))
+            
         return params
 
     @classmethod
