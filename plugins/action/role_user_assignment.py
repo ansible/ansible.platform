@@ -167,7 +167,11 @@ class ActionModule(BaseResourceActionPlugin):
             if state == "exists" and not assignments:
                 raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
 
-            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
+            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {
+                "changed",
+                "object_ids",
+                "assignments",
+            }
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
 
@@ -182,7 +186,9 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
             if len(assignments) > 1:
-                result["assignments"] = [{k: v for k, v in a.items() if k not in _strip} for a in assignments]
+                result["assignments"] = [
+                    {k: v for k, v in a.items() if k not in _strip} for a in assignments
+                ]
 
         except Exception as exc:
             # Catch everything and return it cleanly as a dictionary so failed_when can intercept it
@@ -196,7 +202,11 @@ class ActionModule(BaseResourceActionPlugin):
         """Single-object / system-wide path: standard present/absent logic."""
         from dataclasses import asdict
 
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "object_ids"}
+        resource_data = {
+            k: v
+            for k, v in validated_params.items()
+            if v is not None and k not in self._AUTH_PARAMS and k != "object_ids"
+        }
 
         try:
             resource_data = self._resolve_fks_to_strings(manager, resource_data)
@@ -217,7 +227,11 @@ class ActionModule(BaseResourceActionPlugin):
 
         operation = self._detect_operation(validated_params)
 
-        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
+        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {
+            "changed",
+            "object_ids",
+            "assignments",
+        }
 
         if state == "present" and operation == "create":
             try:
@@ -284,12 +298,14 @@ class ActionModule(BaseResourceActionPlugin):
 
         is_failed = manager_result.get("failed", False)
 
-        result.update({
-            "changed": manager_result.get("changed", False),
-            "failed": is_failed,
-            self.MODULE_NAME: clean,
-            **(clean if operation != "delete" else {}),
-        })
+        result.update(
+            {
+                "changed": manager_result.get("changed", False),
+                "failed": is_failed,
+                self.MODULE_NAME: clean,
+                **(clean if operation != "delete" else {}),
+            }
+        )
 
         if is_failed and "msg" in manager_result:
             result["msg"] = manager_result["msg"]
