@@ -157,6 +157,74 @@
             type: "organizations"
         state: exists
 
+    # --------------------------------------------------------------------------
+    # Role Deletion: assignment_objects + state absent must delete and
+    # report changed (composite list find + delete must receive full per_obj + id).
+    # --------------------------------------------------------------------------
+    - name: Regression pre-cleanup - team2/org2 custom role assignment absent
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: absent
+      failed_when: false
+
+    - name: Regression - create team2 assignment on org2 with custom role
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: present
+      register: rta_delete_bug_create
+      failed_when: rta_delete_bug_create.failed or not rta_delete_bug_create.changed
+
+    - name: Regression - delete assignment must report changed
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: absent
+      register: rta_delete_bug_absent
+      failed_when: rta_delete_bug_absent.failed or not rta_delete_bug_absent.changed
+
+    - name: Regression - absent again is idempotent (changed false)
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: absent
+      register: rta_delete_bug_absent_idempotent
+      failed_when: rta_delete_bug_absent_idempotent.failed or rta_delete_bug_absent_idempotent.changed
+
+    - name: Regression - recreate after delete must report changed
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: present
+      register: rta_delete_bug_recreate
+      failed_when: rta_delete_bug_recreate.failed or not rta_delete_bug_recreate.changed
+
+    - name: Regression teardown - remove team2/org2 assignment before global cleanup
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: absent
+      failed_when: false
+
     # Once we have role_definition , module available we can uncomment these
     # 3. Assign Org Inventory Admin role to Team2 on Org2
     # - name: Assign Org Inventory Admin to Team2 on Org2
@@ -211,6 +279,16 @@
     #       - org_admin_assignment_5 is changed
 
   always:
+    - name: Cleanup role team assignment delete regression (team2/org2/custom role)
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.team.name }}"
+        assignment_objects:
+          - name: "{{ org2.organization.name }}"
+            type: "organizations"
+        state: absent
+      failed_when: false
+
     # ----------------------------------------------------------------------
     # Explicit Role Cleanup (Uncomment once role_definition implemented)
     # ----------------------------------------------------------------------
