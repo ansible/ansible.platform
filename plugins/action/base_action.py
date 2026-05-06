@@ -955,8 +955,9 @@ class BaseResourceActionPlugin(ActionBase):
             if (
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)
+                and isinstance(current_val, str)
                 and not desired_val.isdigit()
-                and (isinstance(current_val, int) or (isinstance(current_val, str) and current_val.isdigit()))
+                and current_val.isdigit()
             ):
                 continue
             # Same type: direct equality
