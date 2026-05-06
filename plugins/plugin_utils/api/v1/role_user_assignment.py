@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Union
 from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
 
+
 def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[str]:
     if value is None:
         return None
@@ -143,18 +144,32 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
         """Build query params for finding an existing assignment."""
         params = {}
-        
+
         def _get(key):
             if isinstance(ansible_data, dict):
                 return ansible_data.get(key)
             return getattr(ansible_data, key, None)
 
-        if _get("role_definition") is not None: params["role_definition"] = str(_get("role_definition"))
-        if _get("user") is not None: params["user"] = str(_get("user"))
-        if _get("user_ansible_id") is not None: params["user_ansible_id"] = str(_get("user_ansible_id"))
-        if _get("object_id") is not None: params["object_id"] = str(_get("object_id"))
-        if _get("object_ansible_id") is not None: params["object_ansible_id"] = str(_get("object_ansible_id"))
-            
+        role_definition = _get("role_definition")
+        if role_definition is not None:
+            params["role_definition"] = str(role_definition)
+
+        user = _get("user")
+        if user is not None:
+            params["user"] = str(user)
+
+        user_ansible_id = _get("user_ansible_id")
+        if user_ansible_id is not None:
+            params["user_ansible_id"] = str(user_ansible_id)
+
+        object_id = _get("object_id")
+        if object_id is not None:
+            params["object_id"] = str(object_id)
+
+        object_ansible_id = _get("object_ansible_id")
+        if object_ansible_id is not None:
+            params["object_ansible_id"] = str(object_ansible_id)
+
         return params
 
     @classmethod

@@ -37,7 +37,7 @@ class ActionModule(BaseResourceActionPlugin):
                     raise ValueError("User lookup failed: %s" % e)
             else:
                 data_dict["user"] = str(data_dict["user"])
-                
+
         return data_dict
 
     def run(self, tmp=None, task_vars=None):
@@ -82,7 +82,7 @@ class ActionModule(BaseResourceActionPlugin):
             # Base data (role + user, shared across all assignments)
             _skip = self._AUTH_PARAMS | {"object_ids", "state", "object_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and k not in _skip}
-            
+
             # Apply FK Resolution and Casting
             base_data = self._resolve_fks_to_strings(manager, base_data)
 
@@ -117,10 +117,10 @@ class ActionModule(BaseResourceActionPlugin):
                         ansible_data=per_obj,
                     )
                     if mgr_result.get("failed", False):
-                         result["failed"] = True
-                         result["msg"] = mgr_result.get("msg", "Unknown error during creation.")
-                         return result
-                         
+                        result["failed"] = True
+                        result["msg"] = mgr_result.get("msg", "Unknown error during creation.")
+                        return result
+
                     all_changed = True
                     assignments.append(mgr_result)
 
@@ -134,13 +134,17 @@ class ActionModule(BaseResourceActionPlugin):
                         if find_result and find_result.get("id"):
                             delete_payload = dict(per_obj)
                             delete_payload["id"] = find_result["id"]
-                            mgr_result = manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
-                            
+                            mgr_result = manager.execute(
+                                operation="delete",
+                                module_name=self.MODULE_NAME,
+                                ansible_data=delete_payload,
+                            )
+
                             if mgr_result.get("failed", False):
                                 result["failed"] = True
                                 result["msg"] = mgr_result.get("msg", "Unknown error during deletion.")
                                 return result
-                                
+
                             all_changed = True
                     except Exception as exc:
                         result["failed"] = True
@@ -193,14 +197,14 @@ class ActionModule(BaseResourceActionPlugin):
         from dataclasses import asdict
 
         resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "object_ids"}
-        
+
         try:
             resource_data = self._resolve_fks_to_strings(manager, resource_data)
         except Exception as exc:
-             result["failed"] = True
-             result["msg"] = str(exc)
-             return result
-                
+            result["failed"] = True
+            result["msg"] = str(exc)
+            return result
+
         if "object_id" in resource_data and resource_data["object_id"] is not None:
             resource_data["object_id"] = str(resource_data["object_id"])
 
@@ -277,19 +281,19 @@ class ActionModule(BaseResourceActionPlugin):
         )
 
         clean = {k: v for k, v in manager_result.items() if k not in _strip}
-        
+
         is_failed = manager_result.get("failed", False)
-        
+
         result.update({
             "changed": manager_result.get("changed", False),
-            "failed": is_failed, 
+            "failed": is_failed,
             self.MODULE_NAME: clean,
             **(clean if operation != "delete" else {}),
         })
-        
+
         if is_failed and "msg" in manager_result:
             result["msg"] = manager_result["msg"]
-            
+
         if operation == "delete":
             result[self.MODULE_NAME]["state"] = "absent"
 
