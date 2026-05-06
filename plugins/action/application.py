@@ -18,3 +18,15 @@ class ActionModule(BaseResourceActionPlugin):
 
     # redirect_uris fields are stored as space-separated strings by the API; split to list on output.
     _SPACE_SEPARATED_LIST_FIELDS = frozenset({"redirect_uris", "post_logout_redirect_uris"})
+
+    def _should_update(self, desired_data, current_data):
+        """
+        Override to normalise space-separated list fields before comparison.
+
+        """
+        desired_norm = dict(desired_data)
+        for field in self._SPACE_SEPARATED_LIST_FIELDS:
+            val = desired_norm.get(field)
+            if val is not None and isinstance(val, list):
+                desired_norm[field] = " ".join(str(u) for u in val)
+        return super(ActionModule, self)._should_update(desired_norm, current_data)
