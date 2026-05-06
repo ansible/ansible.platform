@@ -956,10 +956,7 @@ class BaseResourceActionPlugin(ActionBase):
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)
                 and not desired_val.isdigit()
-                and (
-                    isinstance(current_val, int)
-                    or (isinstance(current_val, str) and current_val.isdigit())
-                )
+                and (isinstance(current_val, int) or (isinstance(current_val, str) and current_val.isdigit()))
             ):
                 continue
             # Same type: direct equality
@@ -971,8 +968,6 @@ class BaseResourceActionPlugin(ActionBase):
                 if str(desired_val) != str(current_val):
                     return True
 
-        import sys
-        print("BASE-DEBUG _should_update returning False, caller=%s" % type(self).__name__, file=sys.stderr, flush=True)
         return False
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
