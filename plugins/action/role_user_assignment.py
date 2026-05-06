@@ -16,6 +16,30 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleRoleUserAssignment
     LOOKUP_FIELD = "id"
 
+    def _resolve_fks_to_strings(self, manager, data_dict):
+        """Helper to safely resolve and cast foreign keys for users."""
+        if "role_definition" in data_dict:
+            if not str(data_dict["role_definition"]).isdigit():
+                try:
+                    resolved_id = manager.lookup_resource_id("role_definitions", "name", data_dict["role_definition"])
+                    data_dict["role_definition"] = str(resolved_id)
+                except Exception as e:
+                    raise ValueError("Role definition lookup failed: %s" % e)
+            else:
+                data_dict["role_definition"] = str(data_dict["role_definition"])
+
+        if "user" in data_dict:
+            if not str(data_dict["user"]).isdigit():
+                try:
+                    resolved_id = manager.lookup_resource_id("users", "username", data_dict["user"])
+                    data_dict["user"] = str(resolved_id)
+                except Exception as e:
+                    raise ValueError("User lookup failed: %s" % e)
+            else:
+                data_dict["user"] = str(data_dict["user"])
+                
+        return data_dict
+
     def run(self, tmp=None, task_vars=None):
         """
         Custom run() for role_user_assignment.
@@ -58,6 +82,9 @@ class ActionModule(BaseResourceActionPlugin):
             # Base data (role + user, shared across all assignments)
             _skip = self._AUTH_PARAMS | {"object_ids", "state", "object_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and k not in _skip}
+            
+            # Apply FK Resolution and Casting
+            base_data = self._resolve_fks_to_strings(manager, base_data)
 
             all_changed = False
             assignments = []
@@ -67,7 +94,7 @@ class ActionModule(BaseResourceActionPlugin):
                 # from_ansible_data's existing FK resolver handles str->int
                 # resolution (via role_definition-type-aware endpoint probing).
                 per_obj = dict(base_data)
-                per_obj["object_id"] = raw_oid
+                per_obj["object_id"] = str(raw_oid)
 
                 if state == "present":
                     # Idempotency: find existing assignment
@@ -89,6 +116,11 @@ class ActionModule(BaseResourceActionPlugin):
                         module_name=self.MODULE_NAME,
                         ansible_data=per_obj,
                     )
+                    if mgr_result.get("failed", False):
+                         result["failed"] = True
+                         result["msg"] = mgr_result.get("msg", "Unknown error during creation.")
+                         return result
+                         
                     all_changed = True
                     assignments.append(mgr_result)
 
@@ -100,14 +132,20 @@ class ActionModule(BaseResourceActionPlugin):
                             ansible_data=per_obj,
                         )
                         if find_result and find_result.get("id"):
-                            manager.execute(
-                                operation="delete",
-                                module_name=self.MODULE_NAME,
-                                ansible_data={"id": find_result["id"]},
-                            )
+                            delete_payload = dict(per_obj)
+                            delete_payload["id"] = find_result["id"]
+                            mgr_result = manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
+                            
+                            if mgr_result.get("failed", False):
+                                result["failed"] = True
+                                result["msg"] = mgr_result.get("msg", "Unknown error during deletion.")
+                                return result
+                                
                             all_changed = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        result["failed"] = True
+                        result["msg"] = "Multi-object delete failed: %s" % str(exc)
+                        return result
 
                 elif state == "exists":
                     # Check existence without modifying; collect found assignments
@@ -122,16 +160,10 @@ class ActionModule(BaseResourceActionPlugin):
                     except Exception:
                         pass
 
-            # ---- build clean result -------------------------------------------
-            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
-
-            # For state=exists: fail (without setting MODULE_NAME key) if nothing
-            # was found — mirrors the single-object path's "not found" behaviour
-            # so that `failed_when: false` + `result.role_user_assignment is not defined`
-            # idiom works identically for both scalar and list object selectors.
             if state == "exists" and not assignments:
                 raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
 
+            _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
 
@@ -149,13 +181,9 @@ class ActionModule(BaseResourceActionPlugin):
                 result["assignments"] = [{k: v for k, v in a.items() if k not in _strip} for a in assignments]
 
         except Exception as exc:
-            import traceback as _tb
-
-            self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
+            # Catch everything and return it cleanly as a dictionary so failed_when can intercept it
             result["failed"] = True
             result["msg"] = str(exc)
-            if self._display.verbosity >= 3:
-                result["exception"] = _tb.format_exc()
 
         return result
 
@@ -165,6 +193,17 @@ class ActionModule(BaseResourceActionPlugin):
         from dataclasses import asdict
 
         resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "object_ids"}
+        
+        try:
+            resource_data = self._resolve_fks_to_strings(manager, resource_data)
+        except Exception as exc:
+             result["failed"] = True
+             result["msg"] = str(exc)
+             return result
+                
+        if "object_id" in resource_data and resource_data["object_id"] is not None:
+            resource_data["object_id"] = str(resource_data["object_id"])
+
         try:
             resource = self.MODEL_CLASS(**resource_data)
         except TypeError as exc:
@@ -238,17 +277,19 @@ class ActionModule(BaseResourceActionPlugin):
         )
 
         clean = {k: v for k, v in manager_result.items() if k not in _strip}
-        result.update(
-            {
-                "changed": manager_result.get("changed", False),
-                "failed": False,
-                self.MODULE_NAME: clean,
-                # Flat top-level keys kept for backward compatibility with
-                # playbooks written against <=2.6.
-                # Not spread for delete operations (clean would only have state=absent).
-                **(clean if operation != "delete" else {}),
-            }
-        )
+        
+        is_failed = manager_result.get("failed", False)
+        
+        result.update({
+            "changed": manager_result.get("changed", False),
+            "failed": is_failed, 
+            self.MODULE_NAME: clean,
+            **(clean if operation != "delete" else {}),
+        })
+        
+        if is_failed and "msg" in manager_result:
+            result["msg"] = manager_result["msg"]
+            
         if operation == "delete":
             result[self.MODULE_NAME]["state"] = "absent"
 
