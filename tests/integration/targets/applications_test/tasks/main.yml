@@ -109,6 +109,29 @@
         that:
           - app2 is changed
 
+    - name: Idempotency check — redirect_uris list must not trigger a change on re-run
+      ansible.platform.application:
+        name: "{{ name_prefix }}-app2"
+        organization: "{{ org1.organization.id }}"
+        authorization_grant_type: authorization-code
+        client_type: confidential
+        description: Another application
+        redirect_uris:
+          - "https://tower.com/api/v2/"
+          - "https://tower.com/api/v2/teams"
+      register: app2_idem
+
+    - name: Assert redirect_uris list idempotency — changed must be false
+      ansible.builtin.assert:
+        that:
+          - app2_idem is not changed
+          - app2_idem.application.id == app2.application.id
+        success_msg: "redirect_uris list idempotency OK: changed=false as expected"
+        fail_msg: >-
+          BUG-APP-01 REGRESSION: redirect_uris list idempotency broken —
+          changed=true on re-run with identical redirect_uris list.
+          Check _should_update() in plugins/action/application.py.
+
     - name: Create Application 3
       ansible.platform.application:
         name: "{{ name_prefix }}-app3"
@@ -137,6 +160,27 @@
       ansible.builtin.assert:
         that:
           - app4 is changed
+
+    - name: Idempotency check — organization name string must not trigger a change on re-run
+      ansible.platform.application:
+        name: "{{ name_prefix }}-app4"
+        organization: "{{ org1.organization.name }}"
+        authorization_grant_type: password
+        client_type: confidential
+        skip_authorization: true
+        user: "{{ user1.user.username }}"
+      register: app4_idem
+
+    - name: Assert organization name-string idempotency — changed must be false
+      ansible.builtin.assert:
+        that:
+          - app4_idem is not changed
+          - app4_idem.application.id == app4.application.id
+        success_msg: "organization name-string idempotency OK: changed=false as expected"
+        fail_msg: >-
+          BUG-APP-01 REGRESSION: organization name-string idempotency broken —
+          changed=true on re-run when organization is a name string.
+          Check _should_update() FK skip in plugins/action/base_action.py.
 
     - name: Create Application 5
       ansible.platform.application:
