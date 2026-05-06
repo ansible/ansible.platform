@@ -21,6 +21,7 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[st
     except Exception:
         return None
 
+
 @dataclass
 class APIRoleUserAssignment_v1:
     """API v1 representation of a role-user assignment."""
