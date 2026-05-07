@@ -178,6 +178,9 @@ class ActionModule(BaseResourceActionPlugin):
                     **clean,
                 }
             )
+            if state == "exists":
+                result["exists"] = True
+                result[self.MODULE_NAME]["exists"] = True
             if len(assignments) > 1:
                 result["assignments"] = [{k: v for k, v in a.items() if k not in _strip} for a in assignments]
 
