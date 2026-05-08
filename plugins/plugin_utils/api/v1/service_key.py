@@ -103,7 +103,7 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
         secret = api_data.get("secret")
         if secret == "$encrypted$":
             secret = None
-            
+
         return AnsibleServiceKey(
             name=api_data.get("name", ""),
             is_active=api_data.get("is_active"),

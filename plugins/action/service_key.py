@@ -19,8 +19,8 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _should_update(self, resource_data, find_result):
         """Override to strictly ignore write-only fields during idempotency checks.
-        
-        This prevents the API's 'null' responses for hidden fields from falsely 
+
+        This prevents the API's 'null' responses for hidden fields from falsely
         triggering a changed: true state against the user's playbook values.
         """
         res_data = {k: v for k, v in resource_data.items() if k not in self._WRITE_ONLY_FIELDS}
@@ -30,7 +30,7 @@ class ActionModule(BaseResourceActionPlugin):
     def _pre_execute_hook(self, ansible_data, write_only_data, validated_params, operation):
         """Re-inject write-only fields so they reach the API payload.
 
-        ``secret`` is strictly non-editable after creation, so we only inject 
+        ``secret`` is strictly non-editable after creation, so we only inject
         it for "create" operations, never for "update" (PATCH) requests.
         """
         if operation == "create":
