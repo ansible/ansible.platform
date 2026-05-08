@@ -952,12 +952,6 @@ class BaseResourceActionPlugin(ActionBase):
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
-            # FK stored as digit string by from_api() (e.g. role_definition='3100'):
-            # when the task supplies a name like 'my-role', skip the comparison so
-            # we don't trigger a spurious update for an unchanged FK.
-            # Exception: fields in _MUTABLE_FK_FIELDS (e.g. service_cluster on
-            # service_node) CAN change to a different resource, so let those through
-            # — _update_resource() will resolve both sides to integers and decide.
             if (
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)
