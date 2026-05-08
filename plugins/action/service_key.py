@@ -14,29 +14,33 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleServiceKey
     # mark_previous_inactive: operation-time directive; API never returns it.
     # secret: write-only; API returns null/hash, not the original value.
-    # Including either in _should_update() causes false positives.
-    _WRITE_ONLY_FIELDS = frozenset({"mark_previous_inactive", "secret"})
+    # secret_length: write-only; API returns null on GET requests.
+    _WRITE_ONLY_FIELDS = frozenset({"mark_previous_inactive", "secret", "secret_length"})
+
+    def _should_update(self, resource_data, find_result):
+        """Override to strictly ignore write-only fields during idempotency checks.
+        
+        This prevents the API's 'null' responses for hidden fields from falsely 
+        triggering a changed: true state against the user's playbook values.
+        """
+        res_data = {k: v for k, v in resource_data.items() if k not in self._WRITE_ONLY_FIELDS}
+        fnd_data = {k: v for k, v in find_result.items() if k not in self._WRITE_ONLY_FIELDS}
+        return super(ActionModule, self)._should_update(res_data, fnd_data)
 
     def _pre_execute_hook(self, ansible_data, write_only_data, validated_params, operation):
         """Re-inject write-only fields so they reach the API payload.
 
-        ``mark_previous_inactive`` and ``secret`` are excluded from the
-        AnsibleServiceKey dataclass (via _WRITE_ONLY_FIELDS) to prevent
-        false-positive idempotency checks — the API never echoes these
-        fields back in GET responses, so _should_update() would always
-        see None vs. a user-supplied value and report changed.
-
-        For create/update operations however, both fields must still reach
-        the transform and ultimately the API request body.  This hook puts
-        them back into ansible_data (from the write_only_data stash) so
-        the transform can include them when they are non-None.
-
-        Note: mark_previous_inactive=False is a valid explicit value and
-        must not be filtered out here — only skip genuinely absent (None)
-        values.
+        ``secret`` is strictly non-editable after creation, so we only inject 
+        it for "create" operations, never for "update" (PATCH) requests.
         """
-        if operation in ("create", "update"):
-            for field in ("mark_previous_inactive", "secret"):
+        if operation == "create":
+            for field in ("mark_previous_inactive", "secret", "secret_length"):
+                val = write_only_data.get(field)
+                if val is not None:
+                    ansible_data[field] = val
+        elif operation == "update":
+            # Secret is non-editable, do not inject it for PATCH
+            for field in ("mark_previous_inactive", "secret_length"):
                 val = write_only_data.get(field)
                 if val is not None:
                     ansible_data[field] = val
