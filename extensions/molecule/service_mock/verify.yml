@@ -1,0 +1,183 @@
+---
+- name: Verify — services created
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert service was found and updated (direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('service', {}).get('description') == "Updated mock service (direct)"
+        fail_msg: "Verify: service not found or description not updated (direct)."
+      vars:
+        ansible_connection: local
+
+    - name: Get service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert service was found and updated (persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
+          - exists_result_persistent.get('service', {}).get('description') == "Updated mock service (persistent)"
+        fail_msg: "Verify: service not found or description not updated (persistent)."
+      vars:
+        ansible_connection: local
+
+    - name: Get service (local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert service was found and updated (local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('service', {}).get('description') == "Updated mock service (local)"
+        fail_msg: "Verify: service not found or description not updated (local)."
+      vars:
+        ansible_connection: local
+
+- name: Verify — services created
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hd"
+        state: exists
+      register: exists_result
+
+    - name: Assert service was found and updated (direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('service', {}).get('description') == "Updated mock service (direct)"
+        fail_msg: "Verify: service not found or description not updated (direct)."
+
+    - name: Get service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hd"
+        state: exists
+      register: exists_result_persistent
+
+    - name: Assert service was found and updated (persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
+          - exists_result_persistent.get('service', {}).get('description') == "Updated mock service (persistent)"
+        fail_msg: "Verify: service not found or description not updated (persistent)."
+
+    - name: Get service (http direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hd"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert service was found and updated (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+          - exists_result_http_direct.get('service', {}).get('description') == "Updated mock service (http direct)"
+        fail_msg: "Verify: service not found or description not updated (http direct)."
+
+- name: Verify — services created
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hp"
+        state: exists
+      register: exists_result
+
+    - name: Assert service was found and updated (direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result is not failed
+          - exists_result.get('exists') | default(false) | bool
+          - exists_result.get('service', {}).get('description') == "Updated mock service (direct)"
+        fail_msg: "Verify: service not found or description not updated (direct)."
+
+    - name: Get service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hp"
+        state: exists
+      register: exists_result_persistent
+
+    - name: Assert service was found and updated (persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
+          - exists_result_persistent.get('service', {}).get('description') == "Updated mock service (persistent)"
+        fail_msg: "Verify: service not found or description not updated (persistent)."
+
+    - name: Get service (http persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hp"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert service was found and updated (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+          - exists_result_http_persistent.get('service', {}).get('description') == "Updated mock service (http persistent)"
+        fail_msg: "Verify: service not found or description not updated (http persistent)."
+...

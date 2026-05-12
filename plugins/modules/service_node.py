@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: service_node
@@ -66,26 +65,4 @@ EXAMPLES = """
 ...
 """
 
-from ..module_utils.aap_module import AAPModule  # noqa
-from ..module_utils.aap_service_node import AAPServiceNode  # noqa
-
-
-def main():
-    argument_spec = dict(
-        name=dict(type="str", required=True),
-        new_name=dict(type="str"),
-        address=dict(type="str"),
-        service_cluster=dict(type="str"),
-        tags=dict(type="str"),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    # Create a module with spec
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    # Manage objects through API
-    AAPServiceNode(module).manage()
-
-
-if __name__ == '__main__':
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

@@ -1,0 +1,8 @@
+---
+# Default scenario only: run create/destroy on controller with connection: local.
+# Do not use the shared inventory (ansible.platform.http) for this scenario.
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+...

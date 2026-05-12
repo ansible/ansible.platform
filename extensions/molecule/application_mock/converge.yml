@@ -1,0 +1,203 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — application (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create application
+      ansible.platform.application:
+        name: "molecule-mock-app"
+        organization: "Default"
+        description: "Created by Molecule"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency)
+      ansible.platform.application:
+        name: "molecule-mock-app"
+        organization: "Default"
+        description: "Created by Molecule"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update application
+      ansible.platform.application:
+        name: "molecule-mock-app"
+        organization: "Default"
+        description: "Updated by Molecule"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed. update_result={{ update_result }}"
+      vars:
+        ansible_connection: local
+
+- name: Converge — application (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create application
+      ansible.platform.application:
+        name: "molecule-mock-app-hd"
+        organization: "Default"
+        description: "Created by Molecule"
+      register: create_result
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+
+    - name: Run again (idempotency)
+      ansible.platform.application:
+        name: "molecule-mock-app-hd"
+        organization: "Default"
+        description: "Created by Molecule"
+        state: present
+      register: idem_result
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+
+    - name: Update application
+      ansible.platform.application:
+        name: "molecule-mock-app-hd"
+        organization: "Default"
+        description: "Updated by Molecule"
+      register: update_result
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed. update_result={{ update_result }}"
+
+- name: Converge — application (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create application
+      ansible.platform.application:
+        name: "molecule-mock-app-hp"
+        organization: "Default"
+        description: "Created by Molecule"
+      register: create_result
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+
+    - name: Run again (idempotency)
+      ansible.platform.application:
+        name: "molecule-mock-app-hp"
+        organization: "Default"
+        description: "Created by Molecule"
+        state: present
+      register: idem_result
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+
+    - name: Update application
+      ansible.platform.application:
+        name: "molecule-mock-app-hp"
+        organization: "Default"
+        description: "Updated by Molecule"
+      register: update_result
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed. update_result={{ update_result }}"
+...

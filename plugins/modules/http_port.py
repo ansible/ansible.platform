@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-
 DOCUMENTATION = """
 ---
 module: http_port
@@ -45,7 +44,6 @@ extends_documentation_fragment:
 - ansible.platform.auth
 """
 
-
 EXAMPLES = """
 - name: Add API http port
   ansible.platform.http_port:
@@ -68,26 +66,4 @@ EXAMPLES = """
 ...
 """
 
-from ..module_utils.aap_http_port import AAPHttpPort  # noqa
-from ..module_utils.aap_module import AAPModule  # noqa
-
-
-def main():
-    args_spec = dict(
-        name=dict(required=True, type='str'),
-        new_name=dict(type='str'),
-        number=dict(type='int'),
-        use_https=dict(type="bool", default=False),
-        is_api_port=dict(type="bool", default=False),
-        state=dict(choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    # Create a module with spec
-    module = AAPModule(argument_spec=args_spec, supports_check_mode=True)
-
-    # Manage objects through API
-    AAPHttpPort(module).manage()
-
-
-if __name__ == "__main__":
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

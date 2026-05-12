@@ -1,0 +1,538 @@
+---
+# ---------------------------------------------------------------------------
+# Backward-compatibility regression test: ansible.platform 2.6 → 2.7
+# ---------------------------------------------------------------------------
+# PURPOSE:
+#   Verify that playbooks written against stable-2.6 still work unchanged
+#   when the collection is upgraded to stable-2.7.
+#
+#   The key invariant tested here is that result keys are still accessible
+#   as FLAT top-level keys (e.g., result.id, result.name) exactly as they
+#   were in 2.6, even though 2.7 also provides them nested under a
+#   module-name key (e.g., result.user.id, result.organization.name).
+#
+#   The flat keys are preserved by base_action.py via **validated_output.
+#   Removal is scheduled for 2028-04-01.
+#
+# COVERAGE:
+#   - organization  (flat keys: id, name, description)
+#   - user          (flat keys: id, username, first_name, last_name)
+#   - team          (flat keys: id, name, org, member_roles)
+#   - authenticator (flat keys: id, name, slug, type, enabled)
+#   - role_definition    (flat keys: id, name, description, content_type)
+#   - role_team_assignment   (flat keys: id, role_definition, team)
+#   - role_user_assignment   (flat keys: id, role_definition, user)
+#   - token         (flat keys: token, description, scope)
+#   - application   (flat keys: id, name, client_id, authorization_grant_type)
+# ---------------------------------------------------------------------------
+
+- name: Generate a unique test ID for this run
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=12') }}"
+  when: test_id is not defined
+
+- name: Set resource names
+  ansible.builtin.set_fact:
+    bc_org_name: "BC26-Org-{{ test_id }}"
+    bc_org2_name: "BC26-Org2-{{ test_id }}"
+    bc_user_name: "bc26-user-{{ test_id }}"
+    bc_team_name: "BC26-Team-{{ test_id }}"
+    bc_app_name: "BC26-App-{{ test_id }}"
+    bc_role_name: "BC26-Role-{{ test_id }}"
+    bc_auth_name: "BC26-Auth-{{ test_id }}"
+    bc_auth_slug: "bc26-auth-{{ test_id | lower }}"
+
+- name: Run backward-compat 2.6 regression tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+
+    # ==========================================================================
+    # 1. ORGANIZATION — flat keys: id, name, description
+    # ==========================================================================
+
+    - name: "[org] Create organization"
+      ansible.platform.organization:
+        name: "{{ bc_org_name }}"
+        description: "BC26 regression org"
+      register: org
+
+    - name: "[org] Assert changed"
+      ansible.builtin.assert:
+        that: org is changed
+
+    # 2.6-style: access result.id and result.name (flat, not result.organization.id)
+    - name: "[org] Assert flat key: org.id is defined"
+      ansible.builtin.assert:
+        that:
+          - org.id is defined
+          - org.id | int > 0
+        fail_msg: "REGRESSION: org.id not available as flat key (was org.organization.id in 2.7)"
+
+    - name: "[org] Assert flat key: org.name matches"
+      ansible.builtin.assert:
+        that:
+          - org.name == bc_org_name
+        fail_msg: "REGRESSION: org.name not available as flat key"
+
+    - name: "[org] Assert flat key: org.description matches"
+      ansible.builtin.assert:
+        that:
+          - org.description == "BC26 regression org"
+        fail_msg: "REGRESSION: org.description not available as flat key"
+
+    - name: "[org] Assert new 2.7 nested key also works (both styles available)"
+      ansible.builtin.assert:
+        that:
+          - org.organization.id == org.id
+          - org.organization.name == org.name
+        fail_msg: "2.7 nested key org.organization.* should also be present"
+
+    - name: "[org] Create second organization"
+      ansible.platform.organization:
+        name: "{{ bc_org2_name }}"
+      register: org2
+
+    - name: "[org] Assert flat key: org2.id is defined"
+      ansible.builtin.assert:
+        that:
+          - org2.id is defined
+          - org2.id | int > 0
+        fail_msg: "REGRESSION: org2.id flat key missing"
+
+    # 2.6-style: idempotent re-create uses the flat id
+    - name: "[org] Idempotent re-create (state: present) using flat org.id in name param"
+      ansible.platform.organization:
+        name: "{{ org.name }}"
+        state: present
+      register: org_idem
+
+    - name: "[org] Assert idempotent re-create did not change"
+      ansible.builtin.assert:
+        that: org_idem is not changed
+
+    # ==========================================================================
+    # 2. AUTHENTICATOR — flat keys: id, name, slug, type, enabled
+    # ==========================================================================
+
+    - name: "[auth] Create authenticator"
+      ansible.platform.authenticator:
+        name: "{{ bc_auth_name }}"
+        slug: "{{ bc_auth_slug }}"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        enabled: true
+        configuration: {}
+      register: auth
+
+    - name: "[auth] Assert changed"
+      ansible.builtin.assert:
+        that: auth is changed
+
+    - name: "[auth] Assert flat key: auth.id is defined"
+      ansible.builtin.assert:
+        that:
+          - auth.id is defined
+          - auth.id | int > 0
+        fail_msg: "REGRESSION: auth.id flat key missing"
+
+    - name: "[auth] Assert flat key: auth.name matches"
+      ansible.builtin.assert:
+        that:
+          - auth.name == bc_auth_name
+        fail_msg: "REGRESSION: auth.name flat key missing"
+
+    - name: "[auth] Assert flat key: auth.slug matches nested"
+      ansible.builtin.assert:
+        that:
+          - auth.slug is defined
+          - auth.slug == auth.authenticator.slug
+        fail_msg: >
+          REGRESSION: auth.slug flat key missing or doesn't match nested.
+          auth.slug={{ auth.slug }},
+          auth.authenticator.slug={{ auth.authenticator.slug }}
+
+    - name: "[auth] Assert flat key: auth.enabled is true"
+      ansible.builtin.assert:
+        that:
+          - auth.enabled == true
+        fail_msg: "REGRESSION: auth.enabled flat key missing"
+
+    # ==========================================================================
+    # 3. USER — flat keys: id, username, first_name, last_name, email
+    # ==========================================================================
+
+    - name: "[user] Create user"
+      ansible.platform.user:
+        username: "{{ bc_user_name }}"
+        first_name: "BackCompat"
+        last_name: "Test"
+        email: "{{ bc_user_name }}@example.com"
+        password: "{{ 65535 | random | to_uuid }}"
+      register: joe
+
+    - name: "[user] Assert changed"
+      ansible.builtin.assert:
+        that: joe is changed
+
+    # 2.6-style: joe.id (not joe.user.id)
+    - name: "[user] Assert flat key: joe.id is defined"
+      ansible.builtin.assert:
+        that:
+          - joe.id is defined
+          - joe.id | int > 0
+        fail_msg: "REGRESSION: joe.id not available as flat key (was joe.user.id in 2.7)"
+
+    - name: "[user] Assert flat key: joe.username matches"
+      ansible.builtin.assert:
+        that:
+          - joe.username == bc_user_name
+        fail_msg: "REGRESSION: joe.username flat key missing"
+
+    - name: "[user] Assert flat key: joe.first_name matches"
+      ansible.builtin.assert:
+        that:
+          - joe.first_name == "BackCompat"
+        fail_msg: "REGRESSION: joe.first_name flat key missing"
+
+    - name: "[user] Assert flat key: joe.last_name matches"
+      ansible.builtin.assert:
+        that:
+          - joe.last_name == "Test"
+        fail_msg: "REGRESSION: joe.last_name flat key missing"
+
+    - name: "[user] Assert new 2.7 nested key also works"
+      ansible.builtin.assert:
+        that:
+          - joe.user.id == joe.id
+          - joe.user.username == joe.username
+        fail_msg: "2.7 nested key joe.user.* should also be present"
+
+    # 2.6-style: reference result by flat id in subsequent module call
+    - name: "[user] Update user using flat joe.id as reference (2.6 pattern)"
+      ansible.platform.user:
+        username: "{{ joe.username }}"
+        first_name: "BackCompatUpdated"
+      register: joe_updated
+
+    - name: "[user] Assert update changed"
+      ansible.builtin.assert:
+        that: joe_updated is changed
+
+    - name: "[user] Assert updated flat key: joe_updated.first_name"
+      ansible.builtin.assert:
+        that:
+          - joe_updated.first_name == "BackCompatUpdated"
+        fail_msg: "REGRESSION: joe_updated.first_name flat key missing after update"
+
+    # ==========================================================================
+    # 4. TEAM — flat keys: id, name, org
+    # ==========================================================================
+
+    - name: "[team] Create team"
+      ansible.platform.team:
+        name: "{{ bc_team_name }}"
+        organization: "{{ org.name }}"
+      register: team1
+
+    - name: "[team] Assert changed"
+      ansible.builtin.assert:
+        that: team1 is changed
+
+    # 2.6-style: team1.id (not team1.team.id)
+    - name: "[team] Assert flat key: team1.id is defined"
+      ansible.builtin.assert:
+        that:
+          - team1.id is defined
+          - team1.id | int > 0
+        fail_msg: "REGRESSION: team1.id flat key missing"
+
+    - name: "[team] Assert flat key: team1.name matches"
+      ansible.builtin.assert:
+        that:
+          - team1.name == bc_team_name
+        fail_msg: "REGRESSION: team1.name flat key missing"
+
+    # ==========================================================================
+    # 5. ROLE DEFINITION — flat keys: id, name, description, content_type
+    # ==========================================================================
+
+    - name: "[role_def] Create role definition"
+      ansible.platform.role_definition:
+        name: "{{ bc_role_name }}"
+        description: "BC26 regression role"
+        permissions:
+          - "shared.view_organization"
+        content_type: "shared.organization"
+      register: custom_role
+
+    - name: "[role_def] Assert changed"
+      ansible.builtin.assert:
+        that: custom_role is changed
+
+    # 2.6-style: custom_role.id (not custom_role.role_definition.id)
+    - name: "[role_def] Assert flat key: custom_role.id is defined"
+      ansible.builtin.assert:
+        that:
+          - custom_role.id is defined
+          - custom_role.id | int > 0
+        fail_msg: "REGRESSION: custom_role.id flat key missing"
+
+    - name: "[role_def] Assert flat key: custom_role.name matches"
+      ansible.builtin.assert:
+        that:
+          - custom_role.name == bc_role_name
+        fail_msg: "REGRESSION: custom_role.name flat key missing"
+
+    - name: "[role_def] Assert flat key: custom_role.description matches"
+      ansible.builtin.assert:
+        that:
+          - custom_role.description == "BC26 regression role"
+        fail_msg: "REGRESSION: custom_role.description flat key missing"
+
+    # ==========================================================================
+    # 6. ROLE TEAM ASSIGNMENT — flat keys: id, role_definition, team
+    # ==========================================================================
+
+    - name: "[rta] Assign custom role to team on org (2.6 pattern)"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role.name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org.name }}"
+            type: "organizations"
+      register: rta
+
+    - name: "[rta] Assert changed"
+      ansible.builtin.assert:
+        that: rta is changed
+
+    # 2.6-style: rta.id (not rta.role_team_assignment.id)
+    - name: "[rta] Assert flat key: rta.id is defined"
+      ansible.builtin.assert:
+        that:
+          - rta.id is defined
+          - rta.id | int > 0
+        fail_msg: "REGRESSION: rta.id flat key missing (role_team_assignment)"
+
+    - name: "[rta] Idempotent re-assign"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role.name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org.name }}"
+            type: "organizations"
+      register: rta_idem
+
+    - name: "[rta] Assert idempotent re-assign did not change"
+      ansible.builtin.assert:
+        that: rta_idem is not changed
+
+    # ==========================================================================
+    # 7. ROLE USER ASSIGNMENT — flat keys: id, role_definition, user
+    # ==========================================================================
+
+    - name: "[rua] Assign custom role to user on org (2.6 pattern)"
+      ansible.platform.role_user_assignment:
+        role_definition: "{{ custom_role.name }}"
+        user: "{{ joe.username }}"
+        object_id: "{{ org.id }}"
+      register: rua
+
+    - name: "[rua] Assert changed"
+      ansible.builtin.assert:
+        that: rua is changed
+
+    # 2.6-style: rua.id (not rua.role_user_assignment.id)
+    - name: "[rua] Assert flat key: rua.id is defined"
+      ansible.builtin.assert:
+        that:
+          - rua.id is defined
+          - rua.id | int > 0
+        fail_msg: "REGRESSION: rua.id flat key missing (role_user_assignment)"
+
+    # ==========================================================================
+    # 8. APPLICATION — flat keys: id, name, client_id, authorization_grant_type
+    # ==========================================================================
+
+    - name: "[app] Create application"
+      ansible.platform.application:
+        name: "{{ bc_app_name }}"
+        organization: "{{ org.name }}"
+        authorization_grant_type: "password"
+        client_type: "public"
+      register: app
+
+    - name: "[app] Assert changed"
+      ansible.builtin.assert:
+        that: app is changed
+
+    # 2.6-style: app.id (not app.application.id)
+    - name: "[app] Assert flat key: app.id is defined"
+      ansible.builtin.assert:
+        that:
+          - app.id is defined
+          - app.id | int > 0
+        fail_msg: "REGRESSION: app.id flat key missing"
+
+    - name: "[app] Assert flat key: app.name matches"
+      ansible.builtin.assert:
+        that:
+          - app.name == bc_app_name
+        fail_msg: "REGRESSION: app.name flat key missing"
+
+    - name: "[app] Assert flat key: app.client_id is defined"
+      ansible.builtin.assert:
+        that:
+          - app.client_id is defined
+          - app.client_id | length > 0
+        fail_msg: "REGRESSION: app.client_id flat key missing"
+
+    # ==========================================================================
+    # 9. TOKEN — flat keys: token, description, scope
+    # ==========================================================================
+
+    - name: "[token] Create personal access token"
+      ansible.platform.token:
+        description: "BC26 regression token"
+        scope:
+          - read
+          - write
+      register: tok
+
+    - name: "[token] Assert changed"
+      ansible.builtin.assert:
+        that: tok is changed
+
+    # token value — 2.6-style: tok.token (still flat in 2.7)
+    - name: "[token] Assert flat key: tok.token is defined"
+      ansible.builtin.assert:
+        that:
+          - tok.token is defined
+          - tok.token | length > 0
+        fail_msg: "REGRESSION: tok.token flat key missing"
+
+    - name: "[token] Assert flat key: tok.description matches"
+      ansible.builtin.assert:
+        that:
+          - tok.description == "BC26 regression token"
+        fail_msg: "REGRESSION: tok.description flat key missing"
+
+    # ==========================================================================
+    # 10. CONNECTION PARAMETER ALIASES (2.6 style: gateway_hostname etc.)
+    # ==========================================================================
+    # Verify the 2.6 connection param names still work (they are kept as
+    # aliases in the ansible.platform.auth doc_fragment).
+
+    - name: "[conn] Verify 2.6 connection aliases still accepted by re-running with explicit params"
+      ansible.platform.organization:
+        name: "{{ bc_org_name }}"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: conn_alias_test
+
+    - name: "[conn] Assert connection alias test did not fail"
+      ansible.builtin.assert:
+        that: conn_alias_test is not failed
+        fail_msg: "REGRESSION: 2.6 connection param aliases (gateway_hostname etc.) no longer accepted"
+
+    # ==========================================================================
+    # CLEANUP
+    # ==========================================================================
+
+  always:
+    - name: "[cleanup] Delete role user assignment"
+      ansible.platform.role_user_assignment:
+        role_definition: "{{ custom_role.name }}"
+        user: "{{ joe.username }}"
+        object_id: "{{ org.id }}"
+        state: absent
+      register: _cleanup_rua
+      failed_when: _cleanup_rua.failed and 'Not Found' not in (_cleanup_rua.msg | default(''))
+      when: rua is defined
+
+    - name: "[cleanup] Delete role team assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role.name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org.name }}"
+            type: "organizations"
+        state: absent
+      register: _cleanup_rta
+      failed_when: _cleanup_rta.failed and 'Not Found' not in (_cleanup_rta.msg | default(''))
+      when: rta is defined
+
+    - name: "[cleanup] Delete token"
+      ansible.platform.token:
+        existing_token_id: "{{ tok.id }}"
+        state: absent
+      register: _cleanup_tok
+      failed_when: _cleanup_tok.failed and 'Not Found' not in (_cleanup_tok.msg | default(''))
+      when: tok is defined and tok.id is defined
+
+    - name: "[cleanup] Delete application"
+      ansible.platform.application:
+        name: "{{ bc_app_name }}"
+        organization: "{{ org.name }}"
+        state: absent
+      register: _cleanup_app
+      failed_when: _cleanup_app.failed and 'Not Found' not in (_cleanup_app.msg | default(''))
+      when: app is defined
+
+    - name: "[cleanup] Delete role definition"
+      ansible.platform.role_definition:
+        name: "{{ bc_role_name }}"
+        permissions:
+          - "shared.view_organization"
+        content_type: "shared.organization"
+        state: absent
+      register: _cleanup_role_def
+      failed_when: _cleanup_role_def.failed and 'Not Found' not in (_cleanup_role_def.msg | default(''))
+      when: custom_role is defined
+
+    - name: "[cleanup] Delete team"
+      ansible.platform.team:
+        name: "{{ bc_team_name }}"
+        organization: "{{ org.name }}"
+        state: absent
+      register: _cleanup_team
+      failed_when: _cleanup_team.failed and 'Not Found' not in (_cleanup_team.msg | default(''))
+      when: team1 is defined
+
+    - name: "[cleanup] Delete user"
+      ansible.platform.user:
+        username: "{{ bc_user_name }}"
+        state: absent
+      register: _cleanup_user
+      failed_when: _cleanup_user.failed and 'Not Found' not in (_cleanup_user.msg | default(''))
+      when: joe is defined
+
+    - name: "[cleanup] Delete authenticator"
+      ansible.platform.authenticator:
+        name: "{{ bc_auth_name }}"
+        slug: "{{ bc_auth_slug }}"
+        type: "ansible_base.authentication.authenticator_plugins.local"
+        configuration: {}
+        state: absent
+      register: _cleanup_auth
+      failed_when: _cleanup_auth.failed and 'Not Found' not in (_cleanup_auth.msg | default(''))
+      when: auth is defined
+
+    - name: "[cleanup] Delete organizations"
+      ansible.platform.organization:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ bc_org_name }}"
+        - "{{ bc_org2_name }}"
+      register: _cleanup_org
+      failed_when: _cleanup_org.failed and 'Not Found' not in (_cleanup_org.msg | default(''))
+...

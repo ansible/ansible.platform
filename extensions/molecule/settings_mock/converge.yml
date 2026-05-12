@@ -1,0 +1,154 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — settings (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Set settings (SESSION_COOKIE_AGE)
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 3600
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: set_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert settings set changed
+      ansible.builtin.assert:
+        that: set_result is changed
+        fail_msg: "Set should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency)
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 3600
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed."
+      vars:
+        ansible_connection: local
+
+# Play 3: settings via connection plugin direct mode (http, no persistent manager).
+# Uses a different value (7200) so this play is always changed relative to play 2 (3600).
+- name: Converge — settings (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Set settings (SESSION_COOKIE_AGE, http direct)
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 7200
+      register: set_result_hd
+
+    - name: Assert settings set changed (http direct)
+      ansible.builtin.assert:
+        that: set_result_hd is changed
+        fail_msg: "Set (http direct) should report changed. set_result_hd={{ set_result_hd }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 7200
+      register: idem_result_hd
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_hd is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_hd={{ idem_result_hd }}"
+
+# Play 4: settings via connection plugin persistent mode (manager process).
+# Resets back to 3600 so verify.yml (which checks == 3600) passes after all plays.
+- name: Converge — settings (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Set settings (SESSION_COOKIE_AGE, http persistent)
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 3600
+      register: set_result_hp
+
+    - name: Assert settings set changed (http persistent)
+      ansible.builtin.assert:
+        that: set_result_hp is changed
+        fail_msg: "Set (http persistent) should report changed. set_result_hp={{ set_result_hp }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 3600
+      register: idem_result_hp
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_hp is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_hp={{ idem_result_hp }}"
+...

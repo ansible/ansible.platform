@@ -1,0 +1,133 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+- name: Setup prerequisites for role_team_assignment test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    mock_auth: "Basic bW9jazptb2Nr"
+  tasks:
+    - name: Create prerequisite role_definition (Organization Admin)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/role_definitions/"
+        method: POST
+        headers:
+          Authorization: "{{ mock_auth }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "Organization Admin"
+          description: "Org-scoped admin role for molecule testing"
+        status_code: [200, 201]
+      register: roledef_result
+      vars:
+        ansible_connection: local
+
+    - name: Create prerequisite team (molecule-mock-team)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/teams/"
+        method: POST
+        headers:
+          Authorization: "{{ mock_auth }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "molecule-mock-team"
+          organization: 1
+          description: "Team for molecule role assignment tests"
+        status_code: [200, 201]
+      register: team_result
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge -- role_team_assignment (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create role_team_assignment (org-scoped)
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        assignment_objects:
+          - name: "Default"
+            type: "organizations"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency)
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        assignment_objects:
+          - name: "Default"
+            type: "organizations"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+      vars:
+        ansible_connection: local
+...

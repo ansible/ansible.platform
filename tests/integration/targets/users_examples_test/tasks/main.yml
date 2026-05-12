@@ -1,0 +1,252 @@
+---
+# Integration test that exercises every task shown in the EXAMPLES block of
+# plugins/modules/user.py.  When the EXAMPLES change, this file must be
+# updated to match — that coupling is the enforcement mechanism for
+# ANSTRAT-1640 requirement 8 ("plugin examples are either tested or generated
+# from tests").
+#
+# Naming convention: each test task name starts with "EXAMPLE:" so failures
+# in CI immediately identify which documented example broke.
+
+- name: Generate a unique suffix to avoid collisions with parallel runs
+  ansible.builtin.set_fact:
+    ex_suffix: "{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=8') }}"
+
+- name: Set example username and password
+  ansible.builtin.set_fact:
+    ex_username: "examples-jdoe-{{ ex_suffix }}"
+    ex_password: "ExPass-{{ ex_suffix }}-1!"
+
+- name: Run EXAMPLES tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Create a user
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Create a user"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        first_name: Jane
+        last_name: Doe
+        email: "{{ ex_username }}@example.com"
+        password: "{{ ex_password }}"
+        state: present
+      register: created_user
+
+    - name: Assert creation changed the system
+      ansible.builtin.assert:
+        that:
+          - created_user is changed
+          - created_user.user.username == ex_username
+          - created_user.user.first_name == "Jane"
+          - created_user.user.last_name == "Doe"
+          - created_user.user.email == ex_username ~ "@example.com"
+          - created_user.user.id is integer
+        fail_msg: "EXAMPLE 'Create a user' did not produce expected result"
+
+    - name: Assert result shape matches RETURN docs (no leaked internal keys)
+      ansible.builtin.assert:
+        that:
+          - "'_timing' not in created_user"
+          - "'_timing' not in created_user.user"
+          - "'changed' not in created_user.user"
+          - "'state' not in created_user.user"
+          - "'created' not in created_user.user"
+          - "'modified' not in created_user.user"
+          - "'url' not in created_user.user"
+        fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.user"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Idempotent re-run — no change expected
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Idempotent re-run — no change expected"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        first_name: Jane
+        last_name: Doe
+        email: "{{ ex_username }}@example.com"
+        state: present
+      register: idempotent_run
+
+    - name: Assert idempotent run did not change anything
+      ansible.builtin.assert:
+        that:
+          - idempotent_run is not changed
+        fail_msg: "EXAMPLE 'Idempotent re-run' produced an unexpected change"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Round-trip update using registered result
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Round-trip update using registered result"
+      # Strip read-only 'id' field before feeding the result back as module args;
+      # 'id' is present in the registered result for reference but is not an
+      # accepted input parameter for ansible.platform.user.
+      ansible.platform.user: >-
+        {{
+          created_user.user
+          | combine({'email': ex_username ~ '-updated@example.com'})
+          | dict2items
+          | rejectattr('key', 'equalto', 'id')
+          | items2dict
+        }}
+      register: roundtrip_result
+
+    - name: Assert round-trip update applied the new email
+      ansible.builtin.assert:
+        that:
+          - roundtrip_result is changed
+          - roundtrip_result.user.email == ex_username ~ "-updated@example.com"
+        fail_msg: "EXAMPLE 'Round-trip update' did not apply the email change"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Grant superuser privileges
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Grant superuser privileges"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        is_superuser: true
+      register: grant_super
+
+    - name: Assert superuser was granted
+      ansible.builtin.assert:
+        that:
+          - grant_super is changed
+          - grant_super.user.is_superuser == true
+        fail_msg: "EXAMPLE 'Grant superuser privileges' did not set is_superuser"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Revoke superuser privileges
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Revoke superuser privileges"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        is_superuser: false
+      register: revoke_super
+
+    - name: Assert superuser was revoked
+      ansible.builtin.assert:
+        that:
+          - revoke_super is changed
+          - revoke_super.user.is_superuser == false
+        fail_msg: "EXAMPLE 'Revoke superuser privileges' did not clear is_superuser"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Update user by numeric id
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Update user by id"
+      ansible.platform.user:
+        username: "{{ created_user.user.id }}"
+        first_name: Janet
+      register: update_by_id
+
+    - name: Assert update by id applied the name change
+      ansible.builtin.assert:
+        that:
+          - update_by_id is changed
+          - update_by_id.user.first_name == "Janet"
+        fail_msg: "EXAMPLE 'Update user by id' did not change first_name"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Check whether a user exists (state: exists)
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Check whether a user exists"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        state: exists
+      register: user_check
+
+    - name: Assert exists check returned true and made no change
+      ansible.builtin.assert:
+        that:
+          - user_check is not changed
+          - user_check.exists == true
+        fail_msg: "EXAMPLE 'Check whether a user exists' returned unexpected result"
+
+    - name: "EXAMPLE: Check whether a non-existent user exists"
+      ansible.platform.user:
+        username: "definitely-does-not-exist-{{ ex_suffix }}"
+        state: exists
+      register: missing_check
+
+    - name: Assert exists check returned false for missing user
+      ansible.builtin.assert:
+        that:
+          - missing_check is not changed
+          - missing_check.exists == false
+        fail_msg: "EXAMPLE 'Check whether a user exists' should have returned exists=false"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: update_secrets=false — create then re-run without password change
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Create user with update_secrets=false (first run)"
+      ansible.platform.user:
+        username: "{{ ex_username }}-secrets"
+        password: "{{ ex_password }}"
+        update_secrets: false
+        state: present
+      register: secrets_create
+
+    - name: Assert creation with update_secrets succeeded
+      ansible.builtin.assert:
+        that:
+          - secrets_create is changed
+        fail_msg: "EXAMPLE 'update_secrets=false' first run should have changed"
+
+    - name: "EXAMPLE: Create user with update_secrets=false (idempotent re-run)"
+      ansible.platform.user:
+        username: "{{ ex_username }}-secrets"
+        password: "{{ ex_password }}"
+        update_secrets: false
+        state: present
+      register: secrets_rerun
+
+    - name: Assert re-run with update_secrets=false did not change
+      ansible.builtin.assert:
+        that:
+          - secrets_rerun is not changed
+        fail_msg: "EXAMPLE 'update_secrets=false' second run should not have changed"
+
+    # -----------------------------------------------------------------------
+    # EXAMPLE: Remove a user (state: absent)
+    # -----------------------------------------------------------------------
+    - name: "EXAMPLE: Remove a user"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert deletion changed the system
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+        fail_msg: "EXAMPLE 'Remove a user' should have changed"
+
+    - name: "EXAMPLE: Remove a user — idempotent (already absent)"
+      ansible.platform.user:
+        username: "{{ ex_username }}"
+        state: absent
+      register: delete_idempotent
+
+    - name: Assert second deletion did not change anything
+      ansible.builtin.assert:
+        that:
+          - delete_idempotent is not changed
+        fail_msg: "EXAMPLE 'Remove a user' second run should not have changed"
+
+  always:
+    - name: Cleanup — delete all users created by this test
+      ansible.platform.user:
+        username: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ ex_username }}"
+        - "{{ ex_username }}-secrets"
+      failed_when: false
+...

@@ -1,0 +1,85 @@
+---
+# Verify: confirm the updated user state persists after converge.
+# At this point converge has deleted the user, so we verify absence.
+- name: Verify — user deleted after converge (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_username: "molecule-test-user"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Confirm user no longer exists (state exists)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_absent
+      vars:
+        ansible_connection: local
+
+    - name: Assert user is absent
+      ansible.builtin.assert:
+        that:
+          - verify_absent is not failed
+          - not (verify_absent.get('exists') | default(false) | bool)
+        fail_msg: "Verify: user {{ molecule_username }} should be absent after converge. verify_absent={{ verify_absent }}"
+      vars:
+        ansible_connection: local
+
+- name: Verify — user deleted after converge (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_username: "molecule-test-user-hd"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Confirm user no longer exists (state exists)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        state: exists
+      register: verify_absent
+
+    - name: Assert user is absent
+      ansible.builtin.assert:
+        that:
+          - verify_absent is not failed
+          - not (verify_absent.get('exists') | default(false) | bool)
+        fail_msg: "Verify: user {{ molecule_username }} should be absent after converge. verify_absent={{ verify_absent }}"
+
+- name: Verify — user deleted after converge (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_username: "molecule-test-user-hp"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Confirm user no longer exists (state exists)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        state: exists
+      register: verify_absent
+
+    - name: Assert user is absent
+      ansible.builtin.assert:
+        that:
+          - verify_absent is not failed
+          - not (verify_absent.get('exists') | default(false) | bool)
+        fail_msg: "Verify: user {{ molecule_username }} should be absent after converge. verify_absent={{ verify_absent }}"
+...

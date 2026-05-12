@@ -1,0 +1,446 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — service (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct"
+        description: "Mock service (direct)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (direct)
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency, direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct"
+        description: "Mock service (direct)"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (direct)
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct"
+        description: "Updated mock service (direct)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (direct)
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Create service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent"
+        description: "Mock service (persistent)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (persistent)
+      ansible.builtin.assert:
+        that: create_result_persistent is changed
+        fail_msg: "Create (persistent) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency, persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent"
+        description: "Mock service (persistent)"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (persistent)
+      ansible.builtin.assert:
+        that: idem_result_persistent is not changed
+        fail_msg: "Idempotent run (persistent) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent"
+        description: "Updated mock service (persistent)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result_persistent
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (persistent)
+      ansible.builtin.assert:
+        that: update_result_persistent is changed
+        fail_msg: "Update (persistent) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Create service (local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local"
+        description: "Mock service (local)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (local)
+      ansible.builtin.assert:
+        that: create_result_local is changed
+        fail_msg: "Create (local) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency, local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local"
+        description: "Mock service (local)"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Update service (local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local"
+        description: "Updated mock service (local)"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed."
+      vars:
+        ansible_connection: local
+
+- name: Converge — service (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hd"
+        description: "Mock service (direct)"
+      register: create_result
+
+    - name: Assert create changed (direct)
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed."
+
+    - name: Run again (idempotency, direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hd"
+        description: "Mock service (direct)"
+        state: present
+      register: idem_result
+
+    - name: Assert idempotent run did not change (direct)
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed."
+
+    - name: Update service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hd"
+        description: "Updated mock service (direct)"
+      register: update_result
+
+    - name: Assert update changed (direct)
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed."
+
+    - name: Create service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hd"
+        description: "Mock service (persistent)"
+      register: create_result_persistent
+
+    - name: Assert create changed (persistent)
+      ansible.builtin.assert:
+        that: create_result_persistent is changed
+        fail_msg: "Create (persistent) should report changed."
+
+    - name: Run again (idempotency, persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hd"
+        description: "Mock service (persistent)"
+        state: present
+      register: idem_result_persistent
+
+    - name: Assert idempotent run did not change (persistent)
+      ansible.builtin.assert:
+        that: idem_result_persistent is not changed
+        fail_msg: "Idempotent run (persistent) should not report changed."
+
+    - name: Update service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hd"
+        description: "Updated mock service (persistent)"
+      register: update_result_persistent
+
+    - name: Assert update changed (persistent)
+      ansible.builtin.assert:
+        that: update_result_persistent is changed
+        fail_msg: "Update (persistent) should report changed."
+
+    - name: Create service (http direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hd"
+        description: "Mock service (http direct)"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that: create_result_http_direct is changed
+        fail_msg: "Create (http direct) should report changed."
+
+    - name: Run again (idempotency, local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hd"
+        description: "Mock service (http direct)"
+        state: present
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed."
+
+    - name: Update service (http direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hd"
+        description: "Updated mock service (http direct)"
+      register: update_result_http_direct
+
+    - name: Assert update changed (http direct)
+      ansible.builtin.assert:
+        that: update_result_http_direct is changed
+        fail_msg: "Update (http direct) should report changed."
+
+- name: Converge — service (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hp"
+        description: "Mock service (direct)"
+      register: create_result
+
+    - name: Assert create changed (direct)
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed."
+
+    - name: Run again (idempotency, direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hp"
+        description: "Mock service (direct)"
+        state: present
+      register: idem_result
+
+    - name: Assert idempotent run did not change (direct)
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed."
+
+    - name: Update service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hp"
+        description: "Updated mock service (direct)"
+      register: update_result
+
+    - name: Assert update changed (direct)
+      ansible.builtin.assert:
+        that: update_result is changed
+        fail_msg: "Update should report changed."
+
+    - name: Create service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hp"
+        description: "Mock service (persistent)"
+      register: create_result_persistent
+
+    - name: Assert create changed (persistent)
+      ansible.builtin.assert:
+        that: create_result_persistent is changed
+        fail_msg: "Create (persistent) should report changed."
+
+    - name: Run again (idempotency, persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hp"
+        description: "Mock service (persistent)"
+        state: present
+      register: idem_result_persistent
+
+    - name: Assert idempotent run did not change (persistent)
+      ansible.builtin.assert:
+        that: idem_result_persistent is not changed
+        fail_msg: "Idempotent run (persistent) should not report changed."
+
+    - name: Update service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hp"
+        description: "Updated mock service (persistent)"
+      register: update_result_persistent
+
+    - name: Assert update changed (persistent)
+      ansible.builtin.assert:
+        that: update_result_persistent is changed
+        fail_msg: "Update (persistent) should report changed."
+
+    - name: Create service (http persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hp"
+        description: "Mock service (http persistent)"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that: create_result_http_persistent is changed
+        fail_msg: "Create (http persistent) should report changed."
+
+    - name: Run again (idempotency, local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hp"
+        description: "Mock service (http persistent)"
+        state: present
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed."
+
+    - name: Update service (http persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hp"
+        description: "Updated mock service (http persistent)"
+      register: update_result_http_persistent
+
+    - name: Assert update changed (http persistent)
+      ansible.builtin.assert:
+        that: update_result_http_persistent is changed
+        fail_msg: "Update (http persistent) should report changed."
+...

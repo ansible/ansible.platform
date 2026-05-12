@@ -1,0 +1,32 @@
+---
+# Base Molecule config for ansible.platform (ANSTRAT-1640; inspired by meraki_rm).
+# See: https://ansible.readthedocs.io/projects/molecule/getting-started-collections/
+#
+# With shared_state: true, the "default" scenario is the lifecycle manager for the mock server:
+# - "molecule test --all" runs default create first (start mock), then other scenarios, then default destroy.
+# - Scenarios like "users" (real Gateway) or "users_mock" (mock) use test_sequence: converge, verify, cleanup.
+# See: docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md
+
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/../inventory.yml
+  env:
+    ANSIBLE_FORCE_COLOR: "true"
+    ANSIBLE_HOST_KEY_CHECKING: "false"
+    ANSIBLE_DEPRECATION_WARNINGS: "false"
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup
+
+# Share mock server across scenarios when using "molecule test --all" (default create/destroy once).
+shared_state: true
+prerun: false
+
+verifier:
+  name: ansible
+...

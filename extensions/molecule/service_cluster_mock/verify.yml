@@ -1,0 +1,80 @@
+---
+- name: Verify — service_cluster created (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get service_cluster (state exists, connection local)
+      ansible.platform.service_cluster:
+        name: "molecule-mock-cluster-local"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert service_cluster was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+        fail_msg: "Verify: service_cluster not found (connection local)."
+      vars:
+        ansible_connection: local
+
+- name: Verify — service_cluster created (http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get service_cluster (state exists, http direct)
+      ansible.platform.service_cluster:
+        name: "molecule-mock-cluster-local-hd"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert service_cluster was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+        fail_msg: "Verify: service_cluster not found (http direct)."
+
+- name: Verify — service_cluster created (http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get service_cluster (state exists, http persistent)
+      ansible.platform.service_cluster:
+        name: "molecule-mock-cluster-local-hp"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert service_cluster was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+        fail_msg: "Verify: service_cluster not found (http persistent)."
+...

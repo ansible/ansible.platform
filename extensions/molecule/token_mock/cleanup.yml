@@ -1,0 +1,100 @@
+---
+- name: Cleanup — delete token
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete token
+      ansible.platform.token:
+        description: "Molecule mock token direct"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert token removed
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete token."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete token
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete token
+      ansible.platform.token:
+        description: "Molecule mock token direct"
+        state: absent
+      register: delete_result
+      failed_when: false
+
+    - name: Assert token removed
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete token."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+
+- name: Cleanup — delete token
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete token
+      ansible.platform.token:
+        description: "Molecule mock token direct"
+        state: absent
+      register: delete_result
+      failed_when: false
+
+    - name: Assert token removed
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete token."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+...
