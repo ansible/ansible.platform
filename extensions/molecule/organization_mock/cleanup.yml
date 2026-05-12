@@ -1,0 +1,104 @@
+---
+# Cleanup: delete organizations created by converge (direct, persistent, local).
+- name: Cleanup — delete organization (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_org_name_local: "Molecule Test Org Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert organization removed or already absent (connection local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name_local }}."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete organization (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_http_direct: "Molecule Test Org HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_direct }}"
+        state: absent
+      register: delete_result_http_direct
+      failed_when: false
+
+    - name: Assert organization removed or already absent (http direct)
+      ansible.builtin.assert:
+        that: delete_result_http_direct is not failed
+        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name_http_direct }}."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+
+- name: Cleanup — delete organization (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_http_persistent: "Molecule Test Org HTTP Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_persistent }}"
+        state: absent
+      register: delete_result_http_persistent
+      failed_when: false
+
+    - name: Assert organization removed or already absent (http persistent)
+      ansible.builtin.assert:
+        that: delete_result_http_persistent is not failed
+        fail_msg: "Cleanup: failed to delete organization {{ molecule_org_name_http_persistent }}."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+...

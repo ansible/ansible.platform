@@ -1,0 +1,38 @@
+---
+- name: Cleanup — reset settings
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Reset SESSION_COOKIE_AGE
+      ansible.platform.settings:
+        settings:
+          SESSION_COOKIE_AGE: 1800
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: reset_result
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert settings reset
+      ansible.builtin.assert:
+        that: reset_result is not failed
+        fail_msg: "Cleanup: failed to reset settings."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

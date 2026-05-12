@@ -1,0 +1,5 @@
+# Used by tox-ansible (and optionally pip -r) for test envs.
+# Integration envs need molecule for pytest-ansible molecule_scenario fixture.
+# requests is required by the collection's manager (PlatformService) when running playbooks.
+molecule
+requests

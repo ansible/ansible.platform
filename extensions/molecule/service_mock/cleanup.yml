@@ -1,0 +1,188 @@
+---
+- name: Cleanup — delete services
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert service removed (direct)
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete service (direct)."
+      vars:
+        ansible_connection: local
+
+    - name: Delete service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_persistent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert service removed (persistent)
+      ansible.builtin.assert:
+        that: delete_result_persistent is not failed
+        fail_msg: "Cleanup: failed to delete service (persistent)."
+      vars:
+        ansible_connection: local
+
+    - name: Delete service (local)
+      ansible.platform.service:
+        name: "molecule-mock-service-local"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert service removed (local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete service (local)."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete services
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hd"
+        state: absent
+      register: delete_result
+      failed_when: false
+
+    - name: Assert service removed (direct)
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete service (direct)."
+
+    - name: Delete service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hd"
+        state: absent
+      register: delete_result_persistent
+      failed_when: false
+
+    - name: Assert service removed (persistent)
+      ansible.builtin.assert:
+        that: delete_result_persistent is not failed
+        fail_msg: "Cleanup: failed to delete service (persistent)."
+
+    - name: Delete service (http direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hd"
+        state: absent
+      register: delete_result_http_direct
+      failed_when: false
+
+    - name: Assert service removed (http direct)
+      ansible.builtin.assert:
+        that: delete_result_http_direct is not failed
+        fail_msg: "Cleanup: failed to delete service (http direct)."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+
+- name: Cleanup — delete services
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete service (direct)
+      ansible.platform.service:
+        name: "molecule-mock-service-direct-hp"
+        state: absent
+      register: delete_result
+      failed_when: false
+
+    - name: Assert service removed (direct)
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete service (direct)."
+
+    - name: Delete service (persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-persistent-hp"
+        state: absent
+      register: delete_result_persistent
+      failed_when: false
+
+    - name: Assert service removed (persistent)
+      ansible.builtin.assert:
+        that: delete_result_persistent is not failed
+        fail_msg: "Cleanup: failed to delete service (persistent)."
+
+    - name: Delete service (http persistent)
+      ansible.platform.service:
+        name: "molecule-mock-service-local-hp"
+        state: absent
+      register: delete_result_http_persistent
+      failed_when: false
+
+    - name: Assert service removed (http persistent)
+      ansible.builtin.assert:
+        that: delete_result_http_persistent is not failed
+        fail_msg: "Cleanup: failed to delete service (http persistent)."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+...

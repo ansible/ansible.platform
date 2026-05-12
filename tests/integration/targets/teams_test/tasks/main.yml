@@ -90,7 +90,7 @@
       ansible.builtin.assert:
         that:
           - invalid_team is failed
-          - "'Item organization does not exist:' in invalid_team.msg"
+          - "'not found' in invalid_team.msg"
 
     - name: Recreate Team 1
       ansible.platform.team:

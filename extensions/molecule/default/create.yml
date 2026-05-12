@@ -1,0 +1,38 @@
+---
+# Start the mock Gateway server for integration tests (no real AAP required).
+# Used when running molecule test --all with shared_state; other scenarios use this server.
+# connection: local required so tasks run on controller (shared inventory sets ansible.platform.http).
+- name: Create — Start mock Gateway server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    mock_server_port: 8000
+  tasks:
+    - name: Kill any stale mock server (so port is free)
+      ansible.builtin.shell: pkill -f "mock_gateway_server" || true
+      changed_when: false
+      failed_when: false
+
+    - name: Start mock server in background (daemon)
+      ansible.builtin.command:
+        cmd: >-
+          python3 tools/mock_gateway_server.py
+          --port {{ mock_server_port }}
+          --daemon
+      args:
+        # Collection root (create.yml is in extensions/molecule/default/ -> go up 3 levels)
+        chdir: "{{ playbook_dir }}/../../.."
+      changed_when: true
+      register: server_start
+
+    - name: Wait for mock server to be ready
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ mock_server_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 30
+      delay: 2
+      until: health_check.status == 200
+...

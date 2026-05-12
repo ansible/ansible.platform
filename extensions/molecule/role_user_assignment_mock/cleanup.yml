@@ -1,0 +1,87 @@
+---
+- name: Cleanup -- delete role_user_assignment and prerequisites
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete role_user_assignment
+      ansible.platform.role_user_assignment:
+        role_definition: "molecule-mock-roledef-user"
+        user: "molecule-mock-user"
+        object_ids:
+          - "Default"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert role_user_assignment removed
+      ansible.builtin.assert:
+        that: delete_result is not failed
+        fail_msg: "Cleanup: failed to delete role_user_assignment."
+      vars:
+        ansible_connection: local
+
+    - name: Find prerequisite role_definition (molecule-mock-roledef-user)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/role_definitions/?name=molecule-mock-roledef-user"
+        method: GET
+        headers:
+          Authorization: "Basic bW9jazptb2Nr"
+      register: roledef_list
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete prerequisite role_definition if found
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/role_definitions/{{ item.id }}/"
+        method: DELETE
+        headers:
+          Authorization: "Basic bW9jazptb2Nr"
+        status_code: [200, 204, 404]
+      loop: "{{ roledef_list.json.results | default([]) }}"
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Find prerequisite user (molecule-mock-user)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/users/?username=molecule-mock-user"
+        method: GET
+        headers:
+          Authorization: "Basic bW9jazptb2Nr"
+      register: user_list
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete prerequisite user if found
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/users/{{ item.id }}/"
+        method: DELETE
+        headers:
+          Authorization: "Basic bW9jazptb2Nr"
+        status_code: [200, 204, 404]
+      loop: "{{ user_list.json.results | default([]) }}"
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

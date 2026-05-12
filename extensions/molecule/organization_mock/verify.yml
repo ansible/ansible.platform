@@ -1,0 +1,104 @@
+---
+# Verify: all three connection scenarios (direct, persistent, local).
+- name: Verify — organization created with connection local (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_org_name_local: "Molecule Test Org Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get organization (state exists, connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_local }}"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert organization was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('organization') is defined
+        fail_msg: "Verify: organization {{ molecule_org_name_local }} not found (connection local)."
+      vars:
+        ansible_connection: local
+
+    - name: Assert description updated (connection local)
+      ansible.builtin.assert:
+        that: exists_result_local.organization.description == "Updated by Molecule organization_mock (connection local)"
+        fail_msg: "Verify: organization (local) description was not updated."
+      vars:
+        ansible_connection: local
+
+- name: Verify — organization created with http direct (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_http_direct: "Molecule Test Org HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get organization (state exists, http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_direct }}"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert organization was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+          - exists_result_http_direct.get('organization') is defined
+        fail_msg: "Verify: organization {{ molecule_org_name_http_direct }} not found (http direct)."
+
+    - name: Assert description updated (http direct)
+      ansible.builtin.assert:
+        that: exists_result_http_direct.organization.description == "Updated by Molecule organization_mock (http direct)"
+        fail_msg: "Verify: organization (http direct) description was not updated."
+
+- name: Verify — organization created with http persistent (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_org_name_http_persistent: "Molecule Test Org HTTP Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get organization (state exists, http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name_http_persistent }}"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert organization was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+          - exists_result_http_persistent.get('organization') is defined
+        fail_msg: "Verify: organization {{ molecule_org_name_http_persistent }} not found (http persistent)."
+
+    - name: Assert description updated (http persistent)
+      ansible.builtin.assert:
+        that: exists_result_http_persistent.organization.description == "Updated by Molecule organization_mock (http persistent)"
+        fail_msg: "Verify: organization (http persistent) description was not updated."
+...

@@ -66,23 +66,4 @@ EXAMPLES = """
 ...
 """
 
-from ..module_utils.aap_module import AAPModule  # noqa
-from ..module_utils.aap_role_definition import AAPRoleDefinition  # noqa
-
-
-def main():
-    argument_spec = dict(
-        name=dict(type="str", required=True),
-        new_name=dict(type="str"),
-        description=dict(type="str"),
-        content_type=dict(type="str", required=True),
-        permissions=dict(type="list", elements="str", required=True),
-        state=dict(type="str", choices=["present", "absent", "exists", "enforced"], default="present"),
-    )
-
-    module = AAPModule(argument_spec=argument_spec, supports_check_mode=True)
-    AAPRoleDefinition(module).manage()
-
-
-if __name__ == "__main__":
-    main()
+# This module is doc-only; the action plugin runs all logic via the manager.

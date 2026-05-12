@@ -55,4 +55,11 @@ options:
     - If value not set, will try environment variable C(GATEWAY_REQUEST_TIMEOUT), E(AAP_REQUEST_TIMEOUT)
     type: float
     aliases: [ request_timeout, gateway_request_timeout ]
+  persistent_manager_idle_timeout:
+    description:
+    - Seconds with no RPC or API activity before the persistent manager process on the Ansible control node exits and removes its Unix socket.
+    - This controls local process lifetime only; it is not a gateway server session timeout and is not sent to the gateway.
+    - Defaults to C(3600) (one hour) when unset.
+    - Use C(0) to disable idle-based shutdown of the persistent manager.
+    type: float
 """

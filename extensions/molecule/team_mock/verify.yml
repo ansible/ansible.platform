@@ -1,0 +1,110 @@
+---
+# Verify: all three team connection scenarios (direct, persistent, local).
+- name: Verify — team created with connection local (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    molecule_team_local: "molecule-mock-team-local"
+    molecule_org: "Default"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get team (state exists, connection local)
+      ansible.platform.team:
+        name: "{{ molecule_team_local }}"
+        organization: "{{ molecule_org }}"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert team was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('team') is defined
+        fail_msg: "Verify: could not find team {{ molecule_team_local }} (connection local)."
+      vars:
+        ansible_connection: local
+
+    - name: Assert description updated (local)
+      ansible.builtin.assert:
+        that: exists_result_local.team.description == "Updated by Molecule team_mock (local)"
+        fail_msg: "Verify: team (local) description was not updated."
+      vars:
+        ansible_connection: local
+
+- name: Verify — team created with http direct (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_team_http_direct: "molecule-mock-team-local-hd"
+    molecule_org: "Default"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get team (state exists, http direct)
+      ansible.platform.team:
+        name: "{{ molecule_team_http_direct }}"
+        organization: "{{ molecule_org }}"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert team was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+          - exists_result_http_direct.get('team') is defined
+        fail_msg: "Verify: could not find team {{ molecule_team_http_direct }} (http direct)."
+
+    - name: Assert description updated (http direct)
+      ansible.builtin.assert:
+        that: exists_result_http_direct.team.description == "Updated by Molecule team_mock (http direct)"
+        fail_msg: "Verify: team (http direct) description was not updated."
+
+- name: Verify — team created with http persistent (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    molecule_team_http_persistent: "molecule-mock-team-local-hp"
+    molecule_org: "Default"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get team (state exists, http persistent)
+      ansible.platform.team:
+        name: "{{ molecule_team_http_persistent }}"
+        organization: "{{ molecule_org }}"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert team was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+          - exists_result_http_persistent.get('team') is defined
+        fail_msg: "Verify: could not find team {{ molecule_team_http_persistent }} (http persistent)."
+
+    - name: Assert description updated (http persistent)
+      ansible.builtin.assert:
+        that: exists_result_http_persistent.team.description == "Updated by Molecule team_mock (http persistent)"
+        fail_msg: "Verify: team (http persistent) description was not updated."
+...

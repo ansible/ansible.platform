@@ -1,0 +1,31 @@
+---
+# Default scenario: manages mock Gateway server lifecycle (meraki_rm-style).
+# With shared_state: true in config.yml, this scenario runs create first and destroy last
+# when using "molecule test --all". Other scenarios (e.g. users, users_mock) then share
+# the same mock server and skip their own create/destroy.
+# Uses its own inventory (connection: local) so create/destroy run on controller, not via platform connection.
+# See: docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md
+
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+ansible:
+  executor:
+    args:
+      ansible_playbook:
+        - --inventory=${MOLECULE_SCENARIO_DIRECTORY}/inventory.yml
+
+provisioner:
+  name: ansible
+  playbooks:
+    create: create.yml
+    destroy: destroy.yml
+
+scenario:
+  test_sequence:
+    - create
+    - destroy
+...

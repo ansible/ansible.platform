@@ -1,0 +1,156 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge -- token (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    # Tokens are non-idempotent by design (each present call creates a new token).
+    # Test: create and verify changed, then delete by id.
+    - name: Create token
+      ansible.platform.token:
+        description: "Molecule mock token"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: Delete token by id (cleanup of created token)
+      ansible.platform.token:
+        existing_token_id: "{{ create_result.ansible_facts.aap_token.id }}"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: delete_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that: delete_result is changed
+        fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
+      vars:
+        ansible_connection: local
+
+- name: Converge -- token (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    # Tokens are non-idempotent by design (each present call creates a new token).
+    # Test: create and verify changed, then delete by id.
+    - name: Create token
+      ansible.platform.token:
+        description: "Molecule mock token"
+        state: present
+      register: create_result
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+
+    - name: Delete token by id (cleanup of created token)
+      ansible.platform.token:
+        existing_token_id: "{{ create_result.ansible_facts.aap_token.id }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that: delete_result is changed
+        fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
+
+- name: Converge -- token (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    # Tokens are non-idempotent by design (each present call creates a new token).
+    # Test: create and verify changed, then delete by id.
+    - name: Create token
+      ansible.platform.token:
+        description: "Molecule mock token"
+        state: present
+      register: create_result
+
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+        fail_msg: "Create should report changed. create_result={{ create_result }}"
+
+    - name: Delete token by id (cleanup of created token)
+      ansible.platform.token:
+        existing_token_id: "{{ create_result.ansible_facts.aap_token.id }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that: delete_result is changed
+        fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
+...

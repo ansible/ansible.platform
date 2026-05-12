@@ -1,0 +1,184 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — feature_flag (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get feature_flag (state exists)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: get_result
+      vars:
+        ansible_connection: local
+
+    - name: Set feature_flag to True (state present)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "True"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: set_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert set changed
+      ansible.builtin.assert:
+        that: set_result is changed
+        fail_msg: "Set should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Run again (idempotency)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "True"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change
+      ansible.builtin.assert:
+        that: idem_result is not changed
+        fail_msg: "Idempotent run should not report changed."
+      vars:
+        ansible_connection: local
+
+# Play 3: feature_flag via connection plugin direct mode.
+# Sets to "False" so this play is always changed relative to play 2 which set "True".
+- name: Converge — feature_flag (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get feature_flag (state exists, http direct)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        state: exists
+      register: get_result_hd
+
+    - name: Set feature_flag to False (http direct)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "False"
+        state: present
+      register: set_result_hd
+
+    - name: Assert set changed (http direct)
+      ansible.builtin.assert:
+        that: set_result_hd is changed
+        fail_msg: "Set (http direct) should report changed. set_result_hd={{ set_result_hd }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "False"
+        state: present
+      register: idem_result_hd
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_hd is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_hd={{ idem_result_hd }}"
+
+# Play 4: feature_flag via connection plugin persistent mode.
+# Resets to "True" so verify.yml (which checks value == True) passes after all plays.
+- name: Converge — feature_flag (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get feature_flag (state exists, http persistent)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        state: exists
+      register: get_result_hp
+
+    - name: Set feature_flag to True (http persistent)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "True"
+        state: present
+      register: set_result_hp
+
+    - name: Assert set changed (http persistent)
+      ansible.builtin.assert:
+        that: set_result_hp is changed
+        fail_msg: "Set (http persistent) should report changed. set_result_hp={{ set_result_hp }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.feature_flag:
+        name: "FEATURE_EXAMPLE_ENABLED"
+        value: "True"
+        state: present
+      register: idem_result_hp
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_hp is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_hp={{ idem_result_hp }}"
+...

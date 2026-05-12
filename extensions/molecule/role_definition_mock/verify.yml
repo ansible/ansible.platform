@@ -1,0 +1,89 @@
+---
+- name: Verify — role_definition created (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get role_definition (state exists, connection local)
+      ansible.platform.role_definition:
+        name: "molecule-mock-roledef-local"
+        content_type: "awx.inventory"
+        permissions:
+          - "awx.view_inventory"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert role_definition was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+        fail_msg: "Verify: role_definition not found (connection local)."
+      vars:
+        ansible_connection: local
+
+- name: Verify — role_definition created (http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get role_definition (state exists, http direct)
+      ansible.platform.role_definition:
+        name: "molecule-mock-roledef-local-hd"
+        content_type: "awx.inventory"
+        permissions:
+          - "awx.view_inventory"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert role_definition was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+        fail_msg: "Verify: role_definition not found (http direct)."
+
+- name: Verify — role_definition created (http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get role_definition (state exists, http persistent)
+      ansible.platform.role_definition:
+        name: "molecule-mock-roledef-local-hp"
+        content_type: "awx.inventory"
+        permissions:
+          - "awx.view_inventory"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert role_definition was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+        fail_msg: "Verify: role_definition not found (http persistent)."
+...
