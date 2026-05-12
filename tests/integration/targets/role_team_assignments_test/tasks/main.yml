@@ -156,6 +156,17 @@
           - name: "{{ org1.organization.name }}"
             type: "organizations"
         state: exists
+      register: rta_state_exists_check
+
+    - name: BUG regression - assert exists key is present and true (multi-object path)
+      ansible.builtin.assert:
+        that:
+          - rta_state_exists_check is not changed
+          - rta_state_exists_check.exists | bool
+        fail_msg: >-
+          REGRESSION: state:exists via assignment_objects does not set
+          the 'exists' key. Check result builder in plugins/action/role_team_assignment.py.
+        success_msg: "BUG RTA OK: exists={{ rta_state_exists_check.exists }} is present in the result"
 
     # --------------------------------------------------------------------------
     # Role Deletion: assignment_objects + state absent must delete and
