@@ -209,6 +209,21 @@
         that:
           - org_admin_role_assignment_check is not changed
 
+    - name: Negative - fail when role_definition cannot be resolved (must not reuse prior assignment)
+      ansible.platform.role_user_assignment:
+        role_definition: "Definitely Missing Role {{ test_id }}"
+        user: "{{ user2.user.id }}"
+        state: present
+      register: missing_role_definition_assignment
+      ignore_errors: true
+
+    - name: Assert missing role_definition fails clearly
+      ansible.builtin.assert:
+        that:
+          - missing_role_definition_assignment is failed
+          - missing_role_definition_assignment.msg is search("Role definition")
+          - missing_role_definition_assignment.role_user_assignment is not defined
+
     - name: Assign Organization Admin by Role User Assignments
       ansible.platform.role_user_assignment: &orgs_assignment
         object_ids: ["{{ org.organization.id }}", "{{ organization_name }}-2"]
