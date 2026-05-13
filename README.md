@@ -1,13 +1,8 @@
 # Ansible Platform Collection
 
-## Changelog for v2.6.20260306
+## Changelog for v2.6.20260504
 
-* Enhance plugin description for Gateway API.
-* Strip scheme and hostname from AAP url builder, which previously led to malformed URLs in the ansible.platform.gateway_api lookup plugin.
-* Fix for the custom role team assignment.
-* Add conditional check for 'safe to test' label.
-* Expose collection checkout to aap-gateway build.
-* Integration test workflow use GH environment.
+* Fixed role user assignment - The hardcoded role name check is being replaced with a dynamic API endpoint mapping derived directly from the role definition's content_type attribute.
 
 
 ## Description
