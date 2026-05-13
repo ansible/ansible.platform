@@ -2,3 +2,26 @@ ancestor: null
 releases:
   1.0.0:
     release_date: '2024-05-06'
+  2.7.20260513:
+    changes:
+      minor_changes:
+      - Introduce new action plugin architecture with persistent manager process,
+        RPC-based client, and versioned data model transformation layer. All modules
+        now route through BaseResourceActionPlugin for consistent CRUD dispatch and
+        idempotency handling.
+      bugfixes:
+      - Strip scheme and hostname from AAP url builder, which previously lead to malformed
+        urls in the ansible.platform.gateway_api lookup plugin (ACA-5393).
+      - application - Fix broken idempotency for redirect_uris and organization fields
+        caused by list vs string and name vs integer FK type mismatches (AAP-73293).
+      - role_team_assignment - Fix deletion bug where assignments were not correctly
+        removed when state absent was specified (AAP-73742).
+      - role_user_assignment - Raise a clear error when the specified role_definition
+        or user does not exist on the Gateway rather than silently swallowing the
+        failure (AAP-73741).
+      - role_user_assignment, role_team_assignment - Fix state exists returning a
+        missing key error when no matching assignment was found (AAP-73294)
+    fragments:
+    - create_if_needed.yaml
+    - fix_pagination.yaml
+    release_date: '2026-05-13'

@@ -1,9 +1,44 @@
-=========================================
+==============================
 ansible.platform Release Notes
-=========================================
+==============================
 
 .. contents:: Topics
 
+v2.7.20260513
+=============
+
+Minor Changes
+-------------
+
+- Introduce new action plugin architecture with persistent manager process,
+  RPC-based client, and versioned data model transformation layer
+  (``AnsibleModel`` - ``APIModel_v1``). All modules now route through
+  ``BaseResourceActionPlugin`` for consistent CRUD dispatch and idempotency
+  handling (AAP-73294).
+
+Bugfixes
+--------
+
+- ``application`` - Fix broken idempotency for ``redirect_uris`` and
+  ``organization`` fields; ``redirect_uris`` was compared as a list against
+  the API's space-separated string representation and ``organization`` was
+  compared as a name against the API's integer FK, always causing false drift
+  detection (AAP-73293).
+- ``role_team_assignment`` - Fix deletion bug where assignments were not
+  correctly removed when ``state: absent`` was specified (AAP-73742).
+- ``role_user_assignment`` - Raise a clear error when the specified
+  ``role_definition`` or ``user`` does not exist on the Gateway, rather than
+  silently returning a modified result dict that bypassed Ansible task failure
+  handling (AAP-73741).
+- ``role_user_assignment``, ``role_team_assignment`` - Fix ``state: exists``
+  returning a missing key error when no matching assignment was found
+  (AAP-73294).
+- ``service_key`` - Fix false idempotency failures caused by the API
+  returning ``$encrypted$`` for ``secret`` on GET responses; ``secret`` and
+  ``secret_length`` are now treated as write-only fields and excluded from
+  state comparison (AAP-73743)
+
+- Strip scheme and hostname from AAP url builder, which previously lead to malformed urls in the ansible.platform.gateway_api lookup plugin
 
 v2.7.20260313
 =============
@@ -36,38 +71,6 @@ Additional changes:
 Deprecations:
 * Deprecate authenticator_uid and authenticators fields in favor of associated_authenticators
 
-v2.5.0
+v1.0.0
 ======
-Initial Release
 
-v2.5.1
-======
-No Change
-
-v2.5.2
-======
-No Change
-
-v2.5.3
-======
-Added authenticator_user module
-
-v2.5.20241218
-======
-Removed the default `map_type` of `team` from `authenticator_map` module.
-Removed the `required_if` condition from `authenticator_map` module.
-Added the `secret` field to the output of `secret_key` module.
-Fixed the parameter `authenticator_uid` on the `user` module.
-Fixed a broken doc fragment in the `authenticator_user` module.
-
-v2.5.20250212
-======
-Added application and organization lookup for tokens.
-
-v2.5.20250312
-======
-Bug fix in AAP module that could cause a stack trace when using "present"
-
-v2.5.20250326
-======
-Added support for setting URL for applications
