@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class APIServiceKey_v1(BaseTransformMixin):
+class APIServiceKey_v1:
     """API v1 representation of a service key."""
 
     name: Optional[str] = None
@@ -79,7 +79,7 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
             "update": EndpointOperation(
                 path="/api/gateway/v1/service_keys/{id}/",
                 method="PATCH",
-                fields=["name", "is_active", "service_cluster", "algorithm", "secret", "secret_length", "mark_previous_inactive"],
+                fields=["name", "is_active", "service_cluster", "algorithm", "secret_length", "mark_previous_inactive"],
                 path_params=["id"],
                 required_for="update",
                 order=1,
@@ -100,12 +100,16 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
         from ...ansible_models.service_key import AnsibleServiceKey
 
         sc = api_data.get("service_cluster")
+        secret = api_data.get("secret")
+        if secret == "$encrypted$":
+            secret = None
+
         return AnsibleServiceKey(
             name=api_data.get("name", ""),
             is_active=api_data.get("is_active"),
             service_cluster=str(sc) if sc is not None else None,
             algorithm=api_data.get("algorithm"),
-            secret=api_data.get("secret"),
+            secret=secret,
             secret_length=api_data.get("secret_length"),
             mark_previous_inactive=api_data.get("mark_previous_inactive"),
             id=api_data.get("id"),

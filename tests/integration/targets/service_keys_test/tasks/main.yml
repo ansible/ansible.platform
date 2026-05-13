@@ -157,6 +157,21 @@
         that:
           - service_key1 is changed
 
+    - name: Re-run Service Key 1 with the same raw secret (idempotency)
+      ansible.platform.service_key:
+        name: "{{ name_prefix }}-Key 1"
+        is_active: true
+        service_cluster: "{{ controller_sc.service_cluster.id }}"
+        algorithm: HS384
+        secret: "gateway-secret"
+        mark_previous_inactive: false
+      register: rerun_service_key1_with_secret
+
+    - name: Assert that re-run with secret does not change the system
+      ansible.builtin.assert:
+        that:
+          - rerun_service_key1_with_secret is not changed
+
     # We have to take out the secret because its encrypted
     - name: Recreate Service Key 1
       ansible.platform.service_key:
