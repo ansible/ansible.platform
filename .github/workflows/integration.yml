@@ -63,6 +63,17 @@ jobs:
         # that interpreter via sys.executable, so requests must be available there too.
         run: sudo apt-get update && sudo apt-get install -y python3-requests
 
+      - name: Force PR collection over any Galaxy-installed version
+        # make docker-compose-build / smoke-test may install the published Galaxy
+        # version of ansible.platform into ~/.ansible/collections, which would
+        # shadow our PR changes.  Replace it with the checked-out PR code so
+        # register-services.yml and all gateway setup uses the fixed collection.
+        run: |
+          mkdir -p ~/.ansible/collections/ansible_collections/ansible
+          rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
+          cp -r ${{ github.workspace }}/ansible-platform \
+                ~/.ansible/collections/ansible_collections/ansible/platform
+
       - name: Spin up the dev env
         run: |
           ansible-playbook -v tools/ansible/smoke-test-no-services.yml \
@@ -116,6 +127,13 @@ jobs:
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
 
+      - name: Force PR collection over any Galaxy-installed version
+        run: |
+          mkdir -p ~/.ansible/collections/ansible_collections/ansible
+          rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
+          cp -r ${{ github.workspace }}/ansible-platform \
+                ~/.ansible/collections/ansible_collections/ansible/platform
+
       - name: Install make
         run: sudo apt install make
 
@@ -156,6 +174,13 @@ jobs:
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
+
+      - name: Force PR collection over any Galaxy-installed version
+        run: |
+          mkdir -p ~/.ansible/collections/ansible_collections/ansible
+          rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
+          cp -r ${{ github.workspace }}/ansible-platform \
+                ~/.ansible/collections/ansible_collections/ansible/platform
 
       - name: Install make
         run: sudo apt install make
