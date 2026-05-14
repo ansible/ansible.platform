@@ -7,7 +7,7 @@ permissions:
 on:
   pull_request:
   push:
-    branches: [devel, ANSTRAT-1640]
+    branches: [devel, stable-2.7]
 
 env:
   LC_ALL: "C.UTF-8"

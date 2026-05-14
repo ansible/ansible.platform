@@ -13,7 +13,7 @@ permissions:
 on:
   pull_request:
   push:
-    branches: [devel, ANSTRAT-1640]
+    branches: [devel, stable-2.7]
 
 env:
   ANSIBLE_FORCE_COLOR: "1"
