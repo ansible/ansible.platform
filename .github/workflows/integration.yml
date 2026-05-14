@@ -61,7 +61,7 @@ jobs:
         # register-services.yml (called during spin-up) uses the system ansible-playbook
         # which runs under /usr/bin/python3.12.  The persistent manager subprocess inherits
         # that interpreter via sys.executable, so requests must be available there too.
-        run: sudo apt-get update && sudo apt-get install -y python3-requests
+        run: sudo apt-get install -y python3-requests
 
       - name: Spin up the dev env
         run: |
