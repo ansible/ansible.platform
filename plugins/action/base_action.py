@@ -401,7 +401,7 @@ class BaseResourceActionPlugin(ActionBase):
                 # These must be overlaid on the subprocess environment so that playbook-level
                 # ``environment:`` blocks — e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, or HTTP
                 # proxy settings — actually reach the manager process that makes HTTP requests.
-                self._display.warning(f"[DEBUG] self._task.environment = {self._task.environment!r}")
+                self._display.vvvv(f"self._task.environment = {self._task.environment!r}")
                 task_env = {}
                 for env_block in (self._task.environment or []):
                     if isinstance(env_block, dict):
