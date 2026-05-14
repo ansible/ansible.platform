@@ -57,6 +57,12 @@ jobs:
         run: pip install -r tests/integration/requirements.txt ansible-core requests
         working-directory: ansible-platform
 
+      - name: Install requests for system Python
+        # register-services.yml (called during spin-up) uses the system ansible-playbook
+        # which runs under /usr/bin/python3.12.  The persistent manager subprocess inherits
+        # that interpreter via sys.executable, so requests must be available there too.
+        run: sudo apt-get install -y python3-requests
+
       - name: Spin up the dev env
         run: |
           ansible-playbook -v tools/ansible/smoke-test-no-services.yml \
