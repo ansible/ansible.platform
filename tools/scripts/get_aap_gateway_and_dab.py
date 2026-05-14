@@ -48,18 +48,21 @@ def _get_requires(pr_body, target):
 
 
 def _checkout_aap_gateway(pr_body):
-    """Checkout aap-gateway, either from devel OR from a specified Pull Request.
+    """Checkout jewel (successor to aap-gateway), either from devel OR from a specified Pull Request.
        Return the body of the specified Pull Request, if any.
     :param pr_body: The ansible.platform PR body.
     """
-    repo_url = "https://github.com/ansible-automation-platform/aap-gateway"
+    repo_url = "https://github.com/ansible/jewel"
     branch = "devel"
     aap_gateway_pr_body = ""
 
-    required_pr = _get_requires(pr_body, target="aap-gateway")
+    required_pr = _get_requires(pr_body, target="jewel")
+    if not required_pr:
+        # Also accept the old aap-gateway target for backward compatibility
+        required_pr = _get_requires(pr_body, target="aap-gateway")
     if required_pr:
-        print(f"This ansible.platform PR requires aap-gateway PR {required_pr}")
-        url = f"https://api.github.com/repos/ansible-automation-platform/aap-gateway/pulls/{required_pr}"
+        print(f"This ansible.platform PR requires jewel PR {required_pr}")
+        url = f"https://api.github.com/repos/ansible/jewel/pulls/{required_pr}"
         response = requests.get(url, headers=GH_API_HEADERS)
 
         if response.status_code != 200:
