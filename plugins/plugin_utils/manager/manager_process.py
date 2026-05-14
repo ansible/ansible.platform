@@ -126,9 +126,15 @@ def main():
 
     try:
         log_marker("Restoring sys.path...")
-        # Restore parent's sys.path in child process
-        sys.path = sys_path_list
-        log_marker(f"sys.path restored with entries: {sys_path_list}")
+        # Augment sys.path with parent's entries rather than replacing it.
+        # Replacing wipes the subprocess's own site-packages, causing
+        # ModuleNotFoundError for runtime deps (e.g. 'requests') that are
+        # installed on the controller but not in Ansible's worker sys.path.
+        # Prepend parent paths so collection/ansible paths take priority.
+        for _p in reversed(sys_path_list):
+            if _p and _p not in sys.path:
+                sys.path.insert(0, _p)
+        log_marker(f"sys.path augmented: {len(sys_path_list)} parent entries merged, total={len(sys.path)}")
 
         # Ensure collections directory is on sys.path
         # The script is in: ansible_collections/ansible/platform/plugins/plugin_utils/manager/

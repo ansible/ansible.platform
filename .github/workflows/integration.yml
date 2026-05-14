@@ -54,7 +54,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install integration controller requirements
-        run: pip install -r tests/integration/requirements.txt ansible-core
+        run: pip install -r tests/integration/requirements.txt ansible-core requests
         working-directory: ansible-platform
 
       - name: Spin up the dev env
@@ -119,7 +119,7 @@ jobs:
           python-version: 3.11
 
       - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core requests
         working-directory: ansible-platform
 
       - name: Perform completeness tests
@@ -171,7 +171,7 @@ jobs:
         working-directory: aap-gateway
 
       - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core requests
         working-directory: ansible-platform
 
       - name: Perform completeness tests
