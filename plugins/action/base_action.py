@@ -396,7 +396,25 @@ class BaseResourceActionPlugin(ActionBase):
                 )
                 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import spawn_ephemeral_client
 
-                client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config)
+                # Resolve and forward task-level environment variables to the manager subprocess.
+                # self._task.environment is a list of dicts (may contain Jinja2 templates).
+                # These must be overlaid on the subprocess environment so that playbook-level
+                # ``environment:`` blocks — e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, or HTTP
+                # proxy settings — actually reach the manager process that makes HTTP requests.
+                self._display.warning(f"[DEBUG] self._task.environment = {self._task.environment!r}")
+                task_env = {}
+                for env_block in (self._task.environment or []):
+                    if isinstance(env_block, dict):
+                        try:
+                            resolved = self._templar.template(env_block)
+                            if isinstance(resolved, dict):
+                                task_env.update(resolved)
+                        except Exception as _env_err:
+                            self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
+                if task_env:
+                    self._display.vvvv(f"Forwarding {len(task_env)} task-level env var(s) to ephemeral manager: {list(task_env.keys())}")
+
+                client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config, task_env=task_env)
                 return client, facts_to_set
         except Exception as e:
             import traceback
@@ -513,6 +531,19 @@ class BaseResourceActionPlugin(ActionBase):
         # watchdog thread watches that PID and self-terminates when it exits.
         import os as _os_spawn
 
+        # Resolve and forward task-level environment variables (same logic as the
+        # ephemeral path above) so that persistent manager processes also receive
+        # cert and proxy settings set via the task ``environment:`` block.
+        _persistent_task_env: dict = {}
+        for _env_block in (self._task.environment or []):
+            if isinstance(_env_block, dict):
+                try:
+                    _resolved = self._templar.template(_env_block)
+                    if isinstance(_resolved, dict):
+                        _persistent_task_env.update(_resolved)
+                except Exception as _env_err:
+                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
+
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -522,6 +553,7 @@ class BaseResourceActionPlugin(ActionBase):
             authkey_b64=authkey_b64,
             sys_path=parent_sys_path,
             owner_pid=_os_spawn.getppid(),
+            task_env=_persistent_task_env or None,
         )
 
         self._display.vv(f"Manager process spawned (pid={process.pid}, socket={socket_path})")
