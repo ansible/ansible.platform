@@ -232,12 +232,6 @@ class ProcessManager:
             env.update({k: str(v) for k, v in task_env.items() if v is not None})
             logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
 
-        # Map SSL_CERT_FILE → REQUESTS_CA_BUNDLE so the requests library picks up
-        # custom CA bundles set by containerised installers.
-        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
-            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
-            logger.debug("Mapped SSL_CERT_FILE → REQUESTS_CA_BUNDLE: %s", env["REQUESTS_CA_BUNDLE"])
-
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
         if owner_pid is not None:
