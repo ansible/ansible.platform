@@ -46,8 +46,14 @@ jobs:
 
       - name: Install requests for ansible.platform manager subprocess
         # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
-        # requests. This must be available before any ansible-playbook step.
-        run: sudo apt-get install -y python3-requests
+        # requests. The subprocess receives its sys.path from the parent ansible-playbook
+        # process (via sys_path_list), which is a restricted path that does NOT include
+        # /usr/lib/python3/dist-packages (where apt installs packages).
+        # Setting PYTHONPATH ensures Python adds that directory to sys.path at startup,
+        # so it flows through sys_path_list into the subprocess.
+        run: |
+          sudo apt-get install -y python3-requests
+          echo "PYTHONPATH=/usr/lib/python3/dist-packages${PYTHONPATH:+:${PYTHONPATH}}" >> $GITHUB_ENV
 
       - name: Build the image
         run: make docker-compose-build
@@ -113,8 +119,14 @@ jobs:
 
       - name: Install requests for ansible.platform manager subprocess
         # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
-        # requests. This must be available before any ansible-playbook step.
-        run: sudo apt-get install -y python3-requests
+        # requests. The subprocess receives its sys.path from the parent ansible-playbook
+        # process (via sys_path_list), which is a restricted path that does NOT include
+        # /usr/lib/python3/dist-packages (where apt installs packages).
+        # Setting PYTHONPATH ensures Python adds that directory to sys.path at startup,
+        # so it flows through sys_path_list into the subprocess.
+        run: |
+          sudo apt-get install -y python3-requests
+          echo "PYTHONPATH=/usr/lib/python3/dist-packages${PYTHONPATH:+:${PYTHONPATH}}" >> $GITHUB_ENV
 
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
@@ -170,8 +182,14 @@ jobs:
 
       - name: Install requests for ansible.platform manager subprocess
         # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
-        # requests. This must be available before any ansible-playbook step.
-        run: sudo apt-get install -y python3-requests
+        # requests. The subprocess receives its sys.path from the parent ansible-playbook
+        # process (via sys_path_list), which is a restricted path that does NOT include
+        # /usr/lib/python3/dist-packages (where apt installs packages).
+        # Setting PYTHONPATH ensures Python adds that directory to sys.path at startup,
+        # so it flows through sys_path_list into the subprocess.
+        run: |
+          sudo apt-get install -y python3-requests
+          echo "PYTHONPATH=/usr/lib/python3/dist-packages${PYTHONPATH:+:${PYTHONPATH}}" >> $GITHUB_ENV
 
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
