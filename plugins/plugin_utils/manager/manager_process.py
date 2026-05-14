@@ -151,6 +151,82 @@ def main():
         else:
             log_marker("Workspace root already in sys.path")
 
+        # Ensure runtime dependencies (requests, etc.) are importable.
+        #
+        # When sys.executable is a virtualenv Python created WITHOUT
+        # --system-site-packages, neither the subprocess's own default sys.path
+        # nor the parent Ansible worker's captured sys.path includes the base
+        # Python's site-packages.  The Makefile's `pip install requests` often
+        # calls the *system* pip (finding requests in /usr/lib/python3/dist-packages)
+        # while ansible-playbook uses the venv — so the install appears to
+        # succeed but the package is invisible at runtime.
+        #
+        # We probe for `requests` after augmentation and apply a cascade of
+        # fallbacks so the subprocess can find it regardless of the execution
+        # environment.
+        _requests_importable = True
+        try:
+            import requests as _req_probe  # noqa: F401
+            del _req_probe
+            log_marker("requests: importable from current sys.path")
+        except ImportError:
+            _requests_importable = False
+            log_marker("requests: not importable after augmentation; applying fallbacks")
+            _fallback_added = []
+
+            # Fallback 1: base Python site-packages (venv-without-system-site-packages)
+            _base_pfx = getattr(sys, "base_prefix", sys.prefix)
+            _base_epfx = getattr(sys, "base_exec_prefix", sys.exec_prefix)
+            if _base_pfx != sys.prefix:  # we are inside a venv
+                try:
+                    import sysconfig as _sc
+
+                    for _key in ("purelib", "platlib"):
+                        try:
+                            _pb = _sc.get_path(_key, vars={"base": _base_pfx, "platbase": _base_epfx})
+                            if _pb and os.path.isdir(_pb) and _pb not in sys.path:
+                                sys.path.append(_pb)
+                                _fallback_added.append(_pb)
+                        except (KeyError, TypeError):
+                            pass
+                    del _sc
+                except ImportError:
+                    pass
+
+            # Fallback 2: Debian/Ubuntu generic dist-packages directory
+            # (apt install python3-requests puts requests here; all Python 3.x
+            # minor versions can import pure-Python packages from this path)
+            for _deb_path in ("/usr/lib/python3/dist-packages",):
+                if os.path.isdir(_deb_path) and _deb_path not in sys.path:
+                    sys.path.append(_deb_path)
+                    _fallback_added.append(_deb_path)
+
+            # Fallback 3: user site-packages
+            try:
+                import site as _site_mod
+
+                _user_sp = _site_mod.getusersitepackages()
+                if _user_sp and os.path.isdir(_user_sp) and _user_sp not in sys.path:
+                    sys.path.append(_user_sp)
+                    _fallback_added.append(_user_sp)
+                del _site_mod
+            except (AttributeError, ImportError):
+                pass
+
+            log_marker(f"requests fallback: added {len(_fallback_added)} path(s): {_fallback_added}")
+            del _fallback_added
+
+            # Re-probe after fallbacks
+            try:
+                import requests as _req_probe2  # noqa: F401
+                del _req_probe2
+                _requests_importable = True
+                log_marker("requests: importable after fallbacks")
+            except ImportError:
+                log_marker("requests: STILL not importable after all fallbacks — service init will fail")
+
+        del _requests_importable
+
         log_marker("Decoding authkey...")
         authkey = base64.b64decode(authkey_b64)
         log_marker(f"Authkey decoded, length: {len(authkey)}")
@@ -158,7 +234,11 @@ def main():
         log_marker(f"Writing to error log: {error_log}")
         with open(error_log, "w") as f:
             f.write(f"Process started, socket_path={socket_path}\n")
-            f.write(f"sys.path has {len(sys_path_list)} entries\n")
+            f.write(f"sys.executable: {sys.executable}\n")
+            f.write(f"sys.version: {sys.version}\n")
+            f.write(f"sys.prefix: {sys.prefix}  base_prefix: {getattr(sys, 'base_prefix', 'n/a')}\n")
+            f.write(f"Parent sys.path ({len(sys_path_list)} entries): {sys_path_list!r}\n")
+            f.write(f"Current sys.path ({len(sys.path)} entries): {sys.path!r}\n")
             f.write(f"Manager starting at {socket_path}\n")
             f.write(f"About to create service with base_url={gateway_url}\n")
             f.flush()
