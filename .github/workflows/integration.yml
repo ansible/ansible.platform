@@ -44,6 +44,11 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Install requests for ansible.platform manager subprocess
+        # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
+        # requests. This must be available before any ansible-playbook step.
+        run: sudo apt-get install -y python3-requests
+
       - name: Build the image
         run: make docker-compose-build
         working-directory: aap-gateway
@@ -106,9 +111,25 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Install requests for ansible.platform manager subprocess
+        # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
+        # requests. This must be available before any ansible-playbook step.
+        run: sudo apt-get install -y python3-requests
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
+
+      - name: Force PR collection over any Galaxy-installed version
+        # make docker-compose installs the published Galaxy version of
+        # ansible.platform into ~/.ansible/collections, which shadows our PR
+        # changes.  Replace it with the checked-out PR code so all subsequent
+        # ansible-playbook calls use the PR collection.
+        run: |
+          mkdir -p ~/.ansible/collections/ansible_collections/ansible
+          rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
+          cp -r ${{ github.workspace }}/ansible-platform \
+                ~/.ansible/collections/ansible_collections/ansible/platform
 
       - name: Install make
         run: sudo apt install make
@@ -119,7 +140,7 @@ jobs:
           python-version: 3.11
 
       - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core requests
         working-directory: ansible-platform
 
       - name: Perform completeness tests
@@ -147,9 +168,25 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Install requests for ansible.platform manager subprocess
+        # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
+        # requests. This must be available before any ansible-playbook step.
+        run: sudo apt-get install -y python3-requests
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
+
+      - name: Force PR collection over any Galaxy-installed version
+        # make docker-compose installs the published Galaxy version of
+        # ansible.platform into ~/.ansible/collections, which shadows our PR
+        # changes.  Replace it with the checked-out PR code so all subsequent
+        # ansible-playbook calls use the PR collection.
+        run: |
+          mkdir -p ~/.ansible/collections/ansible_collections/ansible
+          rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
+          cp -r ${{ github.workspace }}/ansible-platform \
+                ~/.ansible/collections/ansible_collections/ansible/platform
 
       - name: Install make
         run: sudo apt install make
@@ -171,7 +208,7 @@ jobs:
         working-directory: aap-gateway
 
       - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core requests
         working-directory: ansible-platform
 
       - name: Perform completeness tests
