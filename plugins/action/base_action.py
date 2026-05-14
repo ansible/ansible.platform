@@ -399,7 +399,7 @@ class BaseResourceActionPlugin(ActionBase):
                 # Resolve and forward task-level env vars (e.g. SSL_CERT_FILE, proxy settings)
                 # to the manager subprocess so they are available for HTTP requests.
                 task_env = {}
-                for env_block in (self._task.environment or []):
+                for env_block in self._task.environment or []:
                     if isinstance(env_block, dict):
                         try:
                             resolved = self._templar.template(env_block)
@@ -529,7 +529,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         # Resolve and forward task-level env vars to the persistent manager subprocess.
         _persistent_task_env: dict = {}
-        for _env_block in (self._task.environment or []):
+        for _env_block in self._task.environment or []:
             if isinstance(_env_block, dict):
                 try:
                     _resolved = self._templar.template(_env_block)
