@@ -44,6 +44,11 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Install requests for ansible.platform manager subprocess
+        # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
+        # requests. This must be available before any ansible-playbook step.
+        run: sudo apt-get install -y python3-requests
+
       - name: Build the image
         run: make docker-compose-build
         working-directory: aap-gateway
@@ -123,11 +128,20 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Install requests for ansible.platform manager subprocess
+        # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
+        # requests. This must be available before any ansible-playbook step.
+        run: sudo apt-get install -y python3-requests
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
 
       - name: Force PR collection over any Galaxy-installed version
+        # make docker-compose installs the published Galaxy version of
+        # ansible.platform into ~/.ansible/collections, which shadows our PR
+        # changes.  Replace it with the checked-out PR code so all subsequent
+        # ansible-playbook calls use the PR collection.
         run: |
           mkdir -p ~/.ansible/collections/ansible_collections/ansible
           rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
@@ -171,11 +185,20 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Install requests for ansible.platform manager subprocess
+        # ansible.platform 2.7.20260513+ spawns a manager subprocess that imports
+        # requests. This must be available before any ansible-playbook step.
+        run: sudo apt-get install -y python3-requests
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
 
       - name: Force PR collection over any Galaxy-installed version
+        # make docker-compose installs the published Galaxy version of
+        # ansible.platform into ~/.ansible/collections, which shadows our PR
+        # changes.  Replace it with the checked-out PR code so all subsequent
+        # ansible-playbook calls use the PR collection.
         run: |
           mkdir -p ~/.ansible/collections/ansible_collections/ansible
           rm -rf ~/.ansible/collections/ansible_collections/ansible/platform
