@@ -22,17 +22,33 @@
   ansible.builtin.debug:
     msg: "Running ssl_env_forwarding_test in connection_mode={{ connection_mode | default('local') }}"
 
-# ── Skip forwarding assertions for persistent mode ────────────────────────────
-- name: Set skip flag for persistent connection mode
+# ── Skip conditions ────────────────────────────────────────────────────────────
+# Tests 1 and 2 rely on REQUESTS_CA_BUNDLE=/dev/null causing an SSL error.
+# This only works when the gateway's TLS certificate is NOT trusted by the
+# system CA store on the controller.  In standard CI the cert IS system-trusted
+# (added during cluster setup), so /dev/null still lets the connection succeed.
+#
+# Set  gateway_ssl_private_ca: true  in integration_config.yml to opt-in when
+# running against a gateway whose cert is signed by a private (non-system) CA.
+#
+# http-persistent mode is always skipped: the manager is spawned once at
+# connection time, before any task environment: block is evaluated.
+- name: Set skip flags
   ansible.builtin.set_fact:
-    _skip_forwarding_tests: "{{ (connection_mode | default('local')) == 'http-persistent' }}"
+    _skip_forwarding_tests: >-
+      {{ (connection_mode | default('local')) == 'http-persistent'
+         or not (gateway_ssl_private_ca | default(false) | bool) }}
 
-- name: Note about persistent mode
+- name: Note about skipped forwarding assertions
   ansible.builtin.debug:
     msg: >-
-      Skipping SSL env forwarding assertions for http-persistent mode.
-      In persistent mode the manager process is spawned once at connection setup
-      time and task-level environment vars do not affect the already-running manager.
+      Skipping SSL env forwarding assertions (Tests 1 and 2).
+      Reason: {{ 'http-persistent mode — manager spawned before task env is evaluated'
+                 if (connection_mode | default('local')) == 'http-persistent'
+                 else 'gateway_ssl_private_ca not set — system CA may trust the gateway cert,
+                 making REQUESTS_CA_BUNDLE=/dev/null ineffective as a negative test.
+                 Set gateway_ssl_private_ca: true in integration_config.yml when running
+                 against a gateway with a private (non-system-trusted) CA certificate.' }}
   when: _skip_forwarding_tests | bool
 
 # ── Baseline: module works normally (validate_certs from global config) ───────
