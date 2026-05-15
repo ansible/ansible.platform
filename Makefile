@@ -87,8 +87,8 @@ CONNECTION_MODE ?= local
 
 _write_integration_config:
 	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
-	@printf 'gateway_password: %s\nconnection_mode: %s\n' \
-		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
+	@printf 'gateway_password: %s\nconnection_mode: %s\ngateway_tls_ca_bundle_path: %s\n' \
+		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' '$(GATEWAY_TLS_CA_BUNDLE_PATH)' \
 		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
