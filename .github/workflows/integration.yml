@@ -156,6 +156,10 @@ jobs:
       - name: Expose collection checkout to aap-gateway build
         run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
 
+      - name: Start the dev environment
+        run: COMPOSE_UP_OPTS='-d' make docker-compose
+        working-directory: aap-gateway
+
       - name: Install make
         run: sudo apt install make
 
