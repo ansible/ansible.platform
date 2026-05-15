@@ -249,6 +249,20 @@ class ProcessManager:
                     ssl_cert_file,
                 )
 
+        # Guard against REQUESTS_CA_BUNDLE pointing to a non-existent path — either
+        # inherited from the controller shell environment or set directly in task env.
+        # requests raises "Could not find a suitable TLS CA certificate bundle" in this
+        # case, which is misleading. Remove the variable so requests falls back to the
+        # system CA store instead of crashing.
+        requests_ca_bundle = env.get("REQUESTS_CA_BUNDLE")
+        if requests_ca_bundle and not os.path.isfile(requests_ca_bundle):
+            logger.warning(
+                "REQUESTS_CA_BUNDLE is set to '%s' but the file does not exist on the controller; "
+                "removing it so requests falls back to the system CA store.",
+                requests_ca_bundle,
+            )
+            del env["REQUESTS_CA_BUNDLE"]
+
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
         if owner_pid is not None:
