@@ -135,6 +135,35 @@ def main():
                 sys.path.append(_p)
         log_marker(f"sys.path augmented; total entries: {len(sys.path)}")
 
+        # Restore site-packages for this interpreter.
+        # ansible-playbook runs with a restricted sys.path that deliberately
+        # excludes some site-packages directories (it only keeps paths it
+        # needs for ansible itself).  The subprocess inherits that restriction
+        # via sys_path_list, so packages like 'requests' — installed into the
+        # Python environment but not ansible's restricted path — become
+        # unreachable even after the augmentation loop above.
+        # Fix: ask the site module what site-packages directories belong to
+        # this interpreter and add any that are missing.  This is safer than
+        # hardcoding OS-specific paths and works across Python versions and
+        # installation methods (pip venv, apt, brew, etc.).
+        import site as _site
+
+        _site_dirs: list = []
+        try:
+            _site_dirs.extend(_site.getsitepackages())
+        except AttributeError:
+            pass  # getsitepackages() unavailable inside some minimal venvs
+        try:
+            _user_site = _site.getusersitepackages()
+            if _user_site:
+                _site_dirs.append(_user_site)
+        except AttributeError:
+            pass
+        for _sp in _site_dirs:
+            if os.path.isdir(_sp) and _sp not in sys.path:
+                sys.path.append(_sp)
+                log_marker(f"Restored site-packages entry: {_sp}")
+
         # Ensure collections directory is on sys.path
         # The script is in: ansible_collections/ansible/platform/plugins/plugin_utils/manager/
         # To import ansible_collections.ansible.platform, we need the PARENT of ansible_collections/
