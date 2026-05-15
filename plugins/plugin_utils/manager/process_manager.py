@@ -189,6 +189,7 @@ class ProcessManager:
         authkey_b64: str,
         sys_path: Optional[list] = None,
         owner_pid: Optional[int] = None,
+        task_env: Optional[dict] = None,
     ) -> subprocess.Popen:
         """
         Spawn a manager process.
@@ -201,6 +202,11 @@ class ProcessManager:
             gateway_config: Gateway configuration
             authkey_b64: Base64-encoded authkey
             sys_path: Python sys.path to pass to child process
+            owner_pid: PID of the owner process (manager self-terminates when owner exits)
+            task_env: Resolved task-level environment variables (from Ansible task ``environment:``
+                block).  Applied on top of ``os.environ`` so playbook-level cert and proxy
+                settings reach the manager subprocess even when they are not present in the
+                control-node shell environment.
 
         Returns:
             Popen process object
@@ -220,8 +226,20 @@ class ProcessManager:
         sys_path_json = json.dumps(sys_path)
         sys_path_b64 = base64.b64encode(sys_path_json.encode("utf-8")).decode("utf-8")
 
-        # Prepare environment
+        # Build subprocess environment: shell env + task-level overrides.
         env = os.environ.copy()
+        if task_env:
+            env.update({k: str(v) for k, v in task_env.items() if v is not None})
+            logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
+
+        # The requests library reads REQUESTS_CA_BUNDLE (and CURL_CA_BUNDLE) for
+        # custom CA bundles but does NOT read SSL_CERT_FILE.  Containerised
+        # installers (e.g. containerized_installer) set SSL_CERT_FILE; map it
+        # across so requests picks up the correct CA bundle automatically.
+        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
+            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
+            logger.debug("Mapped SSL_CERT_FILE → REQUESTS_CA_BUNDLE: %s", env["REQUESTS_CA_BUNDLE"])
+
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
         if owner_pid is not None:
@@ -319,7 +337,7 @@ def _af_unix_available():
         return False
 
 
-def spawn_ephemeral_client(task_vars, gateway_config):
+def spawn_ephemeral_client(task_vars, gateway_config, task_env=None):
     """
     Spawn an ephemeral manager process and return (client, None).
 
@@ -335,6 +353,10 @@ def spawn_ephemeral_client(task_vars, gateway_config):
     Args:
         task_vars: Ansible task variables (must contain inventory_hostname or default 'localhost').
         gateway_config: Gateway configuration.
+        task_env: Optional dict of resolved task-level environment variables.  These are
+            overlaid on top of the control-node shell environment so that playbook-level
+            ``environment:`` blocks (e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE) reach the
+            manager subprocess.
 
     Returns:
         Tuple of (client, None). Facts are never set for ephemeral (local) path.
@@ -390,6 +412,7 @@ def spawn_ephemeral_client(task_vars, gateway_config):
         # playbook exits.  This prevents accumulation of orphaned manager
         # processes across successive test runs.
         owner_pid=os.getppid(),
+        task_env=task_env,
     )
     ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=identifier, process=process, max_wait=50)
 
