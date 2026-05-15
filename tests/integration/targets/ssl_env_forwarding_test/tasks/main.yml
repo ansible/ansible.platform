@@ -193,11 +193,29 @@
     and (gateway_tls_ca_bundle_path is not defined or gateway_tls_ca_bundle_path | length == 0)
 
 # ── Summary ───────────────────────────────────────────────────────────────────
+- name: Compute SSL env forwarding test result statuses
+  ansible.builtin.set_fact:
+    _ssl_t1_status: >-
+      {{ 'PASS' if (_requests_ca_bundle_result is defined
+      and _requests_ca_bundle_result is failed)
+      else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool
+      else 'FAIL' }}
+    _ssl_t2_status: >-
+      {{ 'PASS' if (_ssl_cert_file_result is defined
+      and _ssl_cert_file_result is failed)
+      else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool
+      else 'FAIL' }}
+    _ssl_t3_status: >-
+      {{ 'PASS' if (_positive_result is defined
+      and _positive_result is not failed)
+      else 'SKIPPED (gateway_tls_ca_bundle_path not set)' }}
+
 - name: SSL env forwarding test summary
   ansible.builtin.debug:
     msg:
       - "connection_mode : {{ connection_mode | default('local') }}"
       - "BASELINE        : {{ 'PASS' if _baseline_result is not failed else 'FAIL' }}"
-      - "TEST 1 (REQUESTS_CA_BUNDLE=/dev/null → SSL error) : {{ 'PASS' if (_requests_ca_bundle_result is defined and _requests_ca_bundle_result is failed) else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool else 'FAIL' }}"
-      - "TEST 2 (SSL_CERT_FILE=/dev/null → SSL error via shim): {{ 'PASS' if (_ssl_cert_file_result is defined and _ssl_cert_file_result is failed) else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool else 'FAIL' }}"
-      - "TEST 3 (REQUESTS_CA_BUNDLE=<real CA> → success)   : {{ 'PASS' if (_positive_result is defined and _positive_result is not failed) else 'SKIPPED (gateway_tls_ca_bundle_path not set)' }}"
+      - "TEST 1 (REQUESTS_CA_BUNDLE=/dev/null → SSL error) : {{ _ssl_t1_status }}"
+      - "TEST 2 (SSL_CERT_FILE=/dev/null → SSL error via shim) : {{ _ssl_t2_status }}"
+      - "TEST 3 (REQUESTS_CA_BUNDLE=<real CA> → success)   : {{ _ssl_t3_status }}"
+...

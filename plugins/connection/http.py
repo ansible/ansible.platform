@@ -95,7 +95,9 @@ class Connection(ConnectionBase):
         self._connected = True
         return self
 
-    def get_client(self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
+    def get_client(
+        self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None
+    ) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get the appropriate client based on connection configuration.
 
@@ -159,7 +161,9 @@ class Connection(ConnectionBase):
             logger.debug("Connection plugin dispatcher: Routing to direct client (DirectHTTPClient)")
             return self._get_direct_client(task_vars, gateway_config, task_env=task_env)
 
-    def _get_direct_client(self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
+    def _get_direct_client(
+        self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None
+    ) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get ManagerRPCClient for direct mode (non-persistent).
 
