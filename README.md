@@ -1,14 +1,9 @@
 # Ansible Platform Collection
 
-## Changelog for v2.7.20260513
+## Changelog for v2.7.20260515
 
-* New action plugin architecture with persistent manager process and versioned data model transforms
-* Fix broken idempotency for `application` module (`redirect_uris` and `organization` fields)
-* Fix `role_team_assignment` deletion bug when `state: absent`
-* Fix `role_user_assignment` to raise a clear error when the specified role or user does not exist
-* Fix `state: exists` missing key error for role assignment modules
-* Fix `service_key` false idempotency failures caused by API returning `$encrypted$` for secrets
-* Fix malformed URLs in `gateway_api` lookup plugin
+* Fix task-level `environment:` variables (e.g. `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, proxy settings) not forwarded to the manager subprocess for `connection: ansible.platform.http` (direct and persistent modes) — previously only `connection: local` forwarded them
+* Map `SSL_CERT_FILE` - `REQUESTS_CA_BUNDLE` automatically in the manager subprocess; the `requests` library reads `REQUESTS_CA_BUNDLE`, not `SSL_CERT_FILE`, so the containerized AAP installer's SSL environment was silently ignored without this shim (deprecated)
 
 ## Description
 

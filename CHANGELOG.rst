@@ -4,6 +4,22 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
+v2.7.20260515
+=============
+
+Bugfixes
+--------
+
+- All modules - Fix task-level ``environment:`` variables (e.g. ``SSL_CERT_FILE``,
+  ``REQUESTS_CA_BUNDLE``, proxy settings) not being forwarded to the manager
+  subprocess when using ``connection: ansible.platform.http`` in direct or
+  persistent mode. Previously forwarding only worked for ``connection: local``.
+- All modules - Map ``SSL_CERT_FILE`` - ``REQUESTS_CA_BUNDLE`` automatically in
+  the manager subprocess environment. The manager uses the ``requests`` library
+  which reads ``REQUESTS_CA_BUNDLE``, not ``SSL_CERT_FILE``; without this shim
+  the containerized AAP installer's SSL environment was silently ignored.
+  ``SSL_CERT_FILE`` support is deprecated and will be removed in a future release.
+
 v2.7.20260513
 =============
 
