@@ -14,11 +14,19 @@ Bugfixes
   ``REQUESTS_CA_BUNDLE``, proxy settings) not being forwarded to the manager
   subprocess when using ``connection: ansible.platform.http`` in direct or
   persistent mode. Previously forwarding only worked for ``connection: local``.
-- All modules - Map ``SSL_CERT_FILE`` - ``REQUESTS_CA_BUNDLE`` automatically in
+- All modules - Map ``SSL_CERT_FILE`` → ``REQUESTS_CA_BUNDLE`` automatically in
   the manager subprocess environment. The manager uses the ``requests`` library
   which reads ``REQUESTS_CA_BUNDLE``, not ``SSL_CERT_FILE``; without this shim
   the containerized AAP installer's SSL environment was silently ignored.
-  ``SSL_CERT_FILE`` support is deprecated and will be removed in a future release.
+  ``SSL_CERT_FILE`` support is deprecated and will be removed in a future release
+  (AAP-75386).
+- All modules - Fix ``SSL_CERT_FILE`` → ``REQUESTS_CA_BUNDLE`` mapping to skip
+  paths that do not exist on the Ansible controller. Previously the mapping was
+  unconditional, causing ``requests`` to raise "Could not find a suitable TLS CA
+  certificate bundle" when the installer set ``SSL_CERT_FILE`` to a path that
+  only exists on the managed node (e.g. ``/home/ec2-user/aap/tls/extracted/pem/tls-ca-bundle.pem``
+  on the remote host but not on the controller). The mapping is now skipped
+  silently when the file is absent (AAP-75386).
 
 v2.7.20260513
 =============

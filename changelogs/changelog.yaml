@@ -36,5 +36,10 @@ releases:
         manager subprocess environment. The manager uses the requests library which
         reads REQUESTS_CA_BUNDLE not SSL_CERT_FILE; without this shim the containerized
         AAP installer SSL environment was silently ignored. SSL_CERT_FILE support is
-        deprecated and will be removed in a future release.
+        deprecated and will be removed in a future release (AAP-75386).
+      - All modules - Fix SSL_CERT_FILE to REQUESTS_CA_BUNDLE mapping to skip paths
+        that do not exist on the Ansible controller. Previously unconditional mapping
+        caused requests to raise "Could not find a suitable TLS CA certificate bundle"
+        when the installer set SSL_CERT_FILE to a path only present on the managed node
+        and not on the controller (AAP-75386).
     release_date: '2026-05-15'
