@@ -58,6 +58,15 @@ jobs:
             -e gateway_vars=$(readlink -f container-startup.yml)
         working-directory: aap-gateway
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install integration controller requirements
+        run: pip install -r tests/integration/requirements.txt ansible-core
+        working-directory: ansible-platform
+      
       - name: Cleanup services
         run: make cleanup-services
         working-directory: aap-gateway
@@ -67,15 +76,6 @@ jobs:
           ADMIN_PW=$(awk '/gateway_admin_password/{print $2}' container-startup.yml | xargs echo) &&
             echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
         working-directory: aap-gateway
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install integration controller requirements
-        run: pip install -r tests/integration/requirements.txt ansible-core
-        working-directory: ansible-platform
 
       - name: Perform integration tests (${{ matrix.connection_mode }})
         env:
