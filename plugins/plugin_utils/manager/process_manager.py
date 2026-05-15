@@ -244,8 +244,7 @@ class ProcessManager:
                 )
             else:
                 logger.debug(
-                    "SSL_CERT_FILE is set to '%s' but the file does not exist on the controller; "
-                    "skipping SSL_CERT_FILE -> REQUESTS_CA_BUNDLE mapping.",
+                    "SSL_CERT_FILE is set to '%s' but the file does not exist on the controller; skipping SSL_CERT_FILE -> REQUESTS_CA_BUNDLE mapping.",
                     ssl_cert_file,
                 )
 
@@ -257,8 +256,7 @@ class ProcessManager:
         requests_ca_bundle = env.get("REQUESTS_CA_BUNDLE")
         if requests_ca_bundle and not os.path.isfile(requests_ca_bundle):
             logger.warning(
-                "REQUESTS_CA_BUNDLE is set to '%s' but the file does not exist on the controller; "
-                "removing it so requests falls back to the system CA store.",
+                "REQUESTS_CA_BUNDLE is set to '%s' but the file does not exist on the controller; removing it so requests falls back to the system CA store.",
                 requests_ca_bundle,
             )
             del env["REQUESTS_CA_BUNDLE"]
