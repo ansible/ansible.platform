@@ -232,14 +232,22 @@ class ProcessManager:
             env.update({k: str(v) for k, v in task_env.items() if v is not None})
             logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
 
-        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
-            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
-            logger.warning(
-                "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "
-                "The manager subprocess uses the requests library which reads REQUESTS_CA_BUNDLE, not SSL_CERT_FILE. "
-                "Please set REQUESTS_CA_BUNDLE directly in your environment block. "
-                "SSL_CERT_FILE support will be removed in a future release."
-            )
+        ssl_cert_file = env.get("SSL_CERT_FILE")
+        if ssl_cert_file and not env.get("REQUESTS_CA_BUNDLE"):
+            if os.path.isfile(ssl_cert_file):
+                env["REQUESTS_CA_BUNDLE"] = ssl_cert_file
+                logger.warning(
+                    "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "
+                    "The manager subprocess uses the requests library which reads REQUESTS_CA_BUNDLE, not SSL_CERT_FILE. "
+                    "Please set REQUESTS_CA_BUNDLE directly in your environment block. "
+                    "SSL_CERT_FILE support will be removed in a future release."
+                )
+            else:
+                logger.debug(
+                    "SSL_CERT_FILE is set to '%s' but the file does not exist on the controller; "
+                    "skipping SSL_CERT_FILE -> REQUESTS_CA_BUNDLE mapping.",
+                    ssl_cert_file,
+                )
 
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
