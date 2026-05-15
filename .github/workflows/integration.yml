@@ -127,7 +127,7 @@ jobs:
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
-     
+
       - name: Perform completeness tests
         run: make collection-test-integration-check
         working-directory: ansible-platform
@@ -156,10 +156,6 @@ jobs:
       - name: Expose collection checkout to aap-gateway build
         run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
 
-      - name: Start the dev environment
-        run: COMPOSE_UP_OPTS='-d' make docker-compose
-        working-directory: aap-gateway
-
       - name: Install make
         run: sudo apt install make
 
@@ -167,6 +163,14 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
+
+      - name: Install requirements
+        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
+        working-directory: ansible-platform
+
+      - name: Start the dev environment
+        run: COMPOSE_UP_OPTS='-d' make docker-compose
+        working-directory: aap-gateway
 
       - name: Extract gateway password and set it as an environment variable
         run: |
@@ -178,10 +182,6 @@ jobs:
         run: |
           cp container-startup.yml $GITHUB_WORKSPACE
         working-directory: aap-gateway
-
-      - name: Install requirements
-        run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
-        working-directory: ansible-platform
 
       - name: Perform completeness tests
         run: make collection-test-completeness
