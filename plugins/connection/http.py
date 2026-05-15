@@ -95,7 +95,7 @@ class Connection(ConnectionBase):
         self._connected = True
         return self
 
-    def get_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
+    def get_client(self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get the appropriate client based on connection configuration.
 
@@ -150,12 +150,16 @@ class Connection(ConnectionBase):
         # Route to appropriate client implementation
         if persistent:
             logger.debug("Connection plugin dispatcher: Routing to persistent client (ManagerRPCClient)")
+            # task_env is intentionally NOT forwarded to persistent mode: the manager
+            # process is spawned once at connection setup time (before any task
+            # environment: block is evaluated) and is reused across tasks.
+            # Task-level env vars cannot retroactively affect an already-running manager.
             return self._get_persistent_client(task_vars, gateway_config)
         else:
             logger.debug("Connection plugin dispatcher: Routing to direct client (DirectHTTPClient)")
-            return self._get_direct_client(task_vars, gateway_config)
+            return self._get_direct_client(task_vars, gateway_config, task_env=task_env)
 
-    def _get_direct_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
+    def _get_direct_client(self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get ManagerRPCClient for direct mode (non-persistent).
 
@@ -167,6 +171,10 @@ class Connection(ConnectionBase):
         Args:
             task_vars: Task variables from Ansible
             gateway_config: Gateway configuration
+            task_env: Optional dict of resolved task-level environment variables
+                (from Ansible task ``environment:`` block). These are overlaid on top
+                of the control-node shell environment so that playbook-level cert and
+                proxy settings reach the manager subprocess.
 
         Returns:
             Tuple of (ManagerRPCClient, facts_dict)
@@ -236,6 +244,8 @@ class Connection(ConnectionBase):
 
             # Spawn ephemeral manager process
             logger.debug("Spawning ephemeral manager process...")
+            if task_env:
+                logger.debug("Forwarding %d task-level env var(s) to direct manager: %s", len(task_env), list(task_env.keys()))
             process = ProcessManager.spawn_manager_process(
                 script_path=script_path,
                 socket_path=socket_path,
@@ -245,6 +255,7 @@ class Connection(ConnectionBase):
                 authkey_b64=authkey_b64,
                 sys_path=list(sys.path),
                 owner_pid=os.getppid(),
+                task_env=task_env,
             )
             logger.debug("Manager process spawned with PID: %s", process.pid)
 
