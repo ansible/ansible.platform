@@ -85,10 +85,15 @@ ANSIBLE_TEST_INTEGRATION_VENV :=
 endif
 CONNECTION_MODE ?= local
 
+## Set GATEWAY_SSL_PRIVATE_CA=true to enable SSL env forwarding assertions (Tests 1 & 2)
+## in ssl_env_forwarding_test.  Only effective when the gateway cert is signed by a
+## private CA not present in the system trust store.  Leave unset in standard CI.
+GATEWAY_SSL_PRIVATE_CA ?=
+
 _write_integration_config:
 	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
-	@printf 'gateway_password: %s\nconnection_mode: %s\n' \
-		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
+	@printf 'gateway_password: %s\nconnection_mode: %s\ngateway_tls_ca_bundle_path: %s\ngateway_ssl_private_ca: %s\n' \
+		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' '$(GATEWAY_TLS_CA_BUNDLE_PATH)' '$(GATEWAY_SSL_PRIVATE_CA)' \
 		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
