@@ -125,10 +125,15 @@ def main():
         pass  # Continue without redirecting
 
     try:
-        log_marker("Restoring sys.path...")
-        # Restore parent's sys.path in child process
-        sys.path = sys_path_list
-        log_marker(f"sys.path restored with entries: {sys_path_list}")
+        log_marker("Augmenting sys.path with parent entries...")
+        # Extend sys.path with parent entries rather than replacing it.
+        # Replacing strips the subprocess's own site-packages (which contain
+        # packages like 'requests') because ansible-playbook's sys.path is a
+        # restricted subset that does not include all installed site-packages.
+        for _p in sys_path_list:
+            if _p and _p not in sys.path:
+                sys.path.append(_p)
+        log_marker(f"sys.path augmented; total entries: {len(sys.path)}")
 
         # Ensure collections directory is on sys.path
         # The script is in: ansible_collections/ansible/platform/plugins/plugin_utils/manager/

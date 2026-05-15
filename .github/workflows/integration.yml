@@ -109,6 +109,9 @@ jobs:
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
 
+      - name: Expose collection checkout to aap-gateway build
+        run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
+
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
         working-directory: aap-gateway
@@ -149,6 +152,9 @@ jobs:
           GH_WORKSPACE: ${{ github.workspace }}
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
+
+      - name: Expose collection checkout to aap-gateway build
+        run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
 
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
