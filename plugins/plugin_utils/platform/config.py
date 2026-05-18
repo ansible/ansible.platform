@@ -130,18 +130,8 @@ def extract_gateway_config(
 
     # Get auth parameters from task args first, then host_vars.
     # Aliases: aap_username/aap_password/aap_token (primary), gateway_* (legacy).
-    gateway_username = (
-        task_args.get("aap_username")
-        or task_args.get("gateway_username")
-        or host_vars.get("aap_username")
-        or host_vars.get("gateway_username")
-    )
-    gateway_password = (
-        task_args.get("aap_password")
-        or task_args.get("gateway_password")
-        or host_vars.get("aap_password")
-        or host_vars.get("gateway_password")
-    )
+    gateway_username = task_args.get("aap_username") or task_args.get("gateway_username") or host_vars.get("aap_username") or host_vars.get("gateway_username")
+    gateway_password = task_args.get("aap_password") or task_args.get("gateway_password") or host_vars.get("aap_password") or host_vars.get("gateway_password")
     gateway_token_raw = (
         task_args.get("aap_token")
         or task_args.get("gateway_token")
