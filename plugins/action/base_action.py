@@ -379,13 +379,28 @@ class BaseResourceActionPlugin(ActionBase):
         # Extract gateway configuration
         gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, required=True)
 
+        # Collect task-level environment vars (e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, proxy
+        # settings) BEFORE dispatching so they can be forwarded to the manager subprocess
+        # regardless of which connection mode is in use (local, http-direct, http-persistent).
+        task_env: dict = {}
+        for _env_block in self._task.environment or []:
+            if isinstance(_env_block, dict):
+                try:
+                    _resolved = self._templar.template(_env_block)
+                    if isinstance(_resolved, dict):
+                        task_env.update(_resolved)
+                except Exception as _env_err:
+                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
+        if task_env:
+            self._display.vvvv(f"Forwarding {len(task_env)} task-level env var(s) to manager: {list(task_env.keys())}")
+
         # DISPATCHER: Delegate to connection plugin's get_client() when available;
         # otherwise support connection: local by spawning an ephemeral manager.
         try:
             if hasattr(self._connection, "get_client"):
                 self._display.vvvv(f"Dispatching to connection plugin get_client() (type={type(self._connection).__name__})")
 
-                client, facts_to_set = self._connection.get_client(task_vars, gateway_config)
+                client, facts_to_set = self._connection.get_client(task_vars, gateway_config, task_env=task_env or None)
                 self._display.vvvv(f"Got client from connection plugin: {type(client).__name__}")
                 return client, facts_to_set
             else:
@@ -396,7 +411,7 @@ class BaseResourceActionPlugin(ActionBase):
                 )
                 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import spawn_ephemeral_client
 
-                client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config)
+                client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config, task_env=task_env or None)
                 return client, facts_to_set
         except Exception as e:
             import traceback
@@ -513,6 +528,17 @@ class BaseResourceActionPlugin(ActionBase):
         # watchdog thread watches that PID and self-terminates when it exits.
         import os as _os_spawn
 
+        # Resolve and forward task-level env vars to the persistent manager subprocess.
+        _persistent_task_env: dict = {}
+        for _env_block in self._task.environment or []:
+            if isinstance(_env_block, dict):
+                try:
+                    _resolved = self._templar.template(_env_block)
+                    if isinstance(_resolved, dict):
+                        _persistent_task_env.update(_resolved)
+                except Exception as _env_err:
+                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
+
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -522,6 +548,7 @@ class BaseResourceActionPlugin(ActionBase):
             authkey_b64=authkey_b64,
             sys_path=parent_sys_path,
             owner_pid=_os_spawn.getppid(),
+            task_env=_persistent_task_env or None,
         )
 
         self._display.vv(f"Manager process spawned (pid={process.pid}, socket={socket_path})")
@@ -952,12 +979,6 @@ class BaseResourceActionPlugin(ActionBase):
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
-            # FK stored as digit string by from_api() (e.g. role_definition='3100'):
-            # when the task supplies a name like 'my-role', skip the comparison so
-            # we don't trigger a spurious update for an unchanged FK.
-            # Exception: fields in _MUTABLE_FK_FIELDS (e.g. service_cluster on
-            # service_node) CAN change to a different resource, so let those through
-            # — _update_resource() will resolve both sides to integers and decide.
             if (
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)
@@ -1076,9 +1097,7 @@ class BaseResourceActionPlugin(ActionBase):
                     )
                     if find_result and find_result.get("id"):
                         if not self._should_update(resource_data, find_result):
-                            # Nothing changed — return current state without touching API.
-                            # Include top-level "id" for backward compat with playbooks
-                            # written against <=2.6 that reference result.id directly.
+                            # Nothing changed — return current state without touching API
                             result.update(
                                 {
                                     "changed": False,

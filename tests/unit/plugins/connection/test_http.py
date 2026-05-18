@@ -64,7 +64,7 @@ def test_get_client_default_uses_direct_mode():
             with patch.object(conn, "_get_persistent_client", mock_persistent):
                 client, facts = conn.get_client(task_vars, gateway_config)
 
-    mock_direct.assert_called_once_with(task_vars, gateway_config)
+    mock_direct.assert_called_once_with(task_vars, gateway_config, task_env=None)
     mock_persistent.assert_not_called()
     assert facts is None
 
@@ -103,7 +103,7 @@ def test_get_client_persistent_option_false_routes_to_direct():
             with patch.object(conn, "_get_persistent_client", mock_persistent):
                 client, facts = conn.get_client(task_vars, gateway_config)
 
-    mock_direct.assert_called_once_with(task_vars, gateway_config)
+    mock_direct.assert_called_once_with(task_vars, gateway_config, task_env=None)
     mock_persistent.assert_not_called()
     assert facts is None
 
