@@ -116,15 +116,25 @@ def extract_gateway_config(
         list(host_vars.keys()),
     )
 
-    # Get gateway URL from task args first, then host_vars
-    gateway_url = task_args.get("gateway_url") or task_args.get("gateway_hostname") or host_vars.get("gateway_url") or host_vars.get("gateway_hostname")
+    # Get gateway URL from task args first, then host_vars.
+    # Aliases: aap_hostname (primary), gateway_hostname, gateway_url (legacy).
+    gateway_url = (
+        task_args.get("aap_hostname")
+        or task_args.get("gateway_hostname")
+        or task_args.get("gateway_url")
+        or host_vars.get("aap_hostname")
+        or host_vars.get("gateway_hostname")
+        or host_vars.get("gateway_url")
+    )
     logger.debug("Gateway URL extracted: %s", gateway_url)
 
-    # Get auth parameters from task args first, then host_vars
-    gateway_username = task_args.get("gateway_username") or host_vars.get("gateway_username") or host_vars.get("aap_username")
-    gateway_password = task_args.get("gateway_password") or host_vars.get("gateway_password") or host_vars.get("aap_password")
+    # Get auth parameters from task args first, then host_vars.
+    # Aliases: aap_username/aap_password/aap_token (primary), gateway_* (legacy).
+    gateway_username = task_args.get("aap_username") or task_args.get("gateway_username") or host_vars.get("aap_username") or host_vars.get("gateway_username")
+    gateway_password = task_args.get("aap_password") or task_args.get("gateway_password") or host_vars.get("aap_password") or host_vars.get("gateway_password")
     gateway_token_raw = (
-        task_args.get("gateway_token")
+        task_args.get("aap_token")
+        or task_args.get("gateway_token")
         or host_vars.get("gateway_token")
         or
         # Only fall back to the aap_token ansible_fact when no username/password
@@ -140,8 +150,31 @@ def extract_gateway_config(
         gateway_token = gateway_token_raw.get("token")
     else:
         gateway_token = gateway_token_raw
-    gateway_validate_certs = task_args.get("gateway_validate_certs") if "gateway_validate_certs" in task_args else host_vars.get("gateway_validate_certs", True)
-    gateway_request_timeout = task_args.get("gateway_request_timeout") or host_vars.get("gateway_request_timeout") or 10.0
+
+    # Resolve validate_certs aliases using 'in' checks — NOT 'or' chaining —
+    # because False is a valid meaningful value that 'or' would silently skip.
+    # Aliases: aap_validate_certs (primary), gateway_validate_certs, validate_certs (legacy).
+    # Priority: task_args override host_vars; first matching key wins.
+    _validate_certs_keys = ("aap_validate_certs", "gateway_validate_certs", "validate_certs")
+    gateway_validate_certs = next(
+        (task_args[k] for k in _validate_certs_keys if k in task_args),
+        next(
+            (host_vars[k] for k in _validate_certs_keys if k in host_vars),
+            True,  # default: verify SSL
+        ),
+    )
+
+    # Resolve request_timeout aliases: aap_request_timeout (primary), gateway_request_timeout,
+    # request_timeout (legacy).
+    gateway_request_timeout = (
+        task_args.get("aap_request_timeout")
+        or task_args.get("gateway_request_timeout")
+        or task_args.get("request_timeout")
+        or host_vars.get("aap_request_timeout")
+        or host_vars.get("gateway_request_timeout")
+        or host_vars.get("request_timeout")
+        or 10.0
+    )
     # Local persistent manager idle shutdown (not a gateway session timeout).
     # Default: 3600 s. Set to 0 to disable. See _extract_persistent_manager_idle_timeout.
     pm_idle_timeout = _extract_persistent_manager_idle_timeout(task_args, host_vars)
