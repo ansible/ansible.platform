@@ -95,7 +95,9 @@ class Connection(ConnectionBase):
         self._connected = True
         return self
 
-    def get_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
+    def get_client(
+        self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None
+    ) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get the appropriate client based on connection configuration.
 
@@ -153,9 +155,11 @@ class Connection(ConnectionBase):
             return self._get_persistent_client(task_vars, gateway_config)
         else:
             logger.debug("Connection plugin dispatcher: Routing to direct client (DirectHTTPClient)")
-            return self._get_direct_client(task_vars, gateway_config)
+            return self._get_direct_client(task_vars, gateway_config, task_env=task_env)
 
-    def _get_direct_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
+    def _get_direct_client(
+        self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None
+    ) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get ManagerRPCClient for direct mode (non-persistent).
 
@@ -236,6 +240,8 @@ class Connection(ConnectionBase):
 
             # Spawn ephemeral manager process
             logger.debug("Spawning ephemeral manager process...")
+            if task_env:
+                logger.debug("Forwarding %d task-level env var(s) to direct manager: %s", len(task_env), list(task_env.keys()))
             process = ProcessManager.spawn_manager_process(
                 script_path=script_path,
                 socket_path=socket_path,
@@ -245,6 +251,7 @@ class Connection(ConnectionBase):
                 authkey_b64=authkey_b64,
                 sys_path=list(sys.path),
                 owner_pid=os.getppid(),
+                task_env=task_env,
             )
             logger.debug("Manager process spawned with PID: %s", process.pid)
 

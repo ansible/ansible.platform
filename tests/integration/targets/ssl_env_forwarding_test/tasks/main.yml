@@ -1,0 +1,237 @@
+---
+# Integration test: SSL environment variable forwarding to manager subprocess
+#
+# Regression test for AAP-75386:
+#   The manager subprocess (spawned by ansible.platform action plugins) uses the
+#   requests library for HTTP calls. requests reads REQUESTS_CA_BUNDLE, not
+#   SSL_CERT_FILE. This test verifies:
+#
+#   1. Task-level environment: vars ARE forwarded to the manager subprocess.
+#   2. REQUESTS_CA_BUNDLE is read by requests inside the subprocess.
+#   3. SSL_CERT_FILE is mapped → REQUESTS_CA_BUNDLE (backward compat / deprecation shim).
+#   4. A valid CA bundle passed via REQUESTS_CA_BUNDLE allows SSL verification to succeed.
+#
+# Connection mode coverage:
+#   - local / http-direct: each task spawns a fresh ephemeral manager → env forwarding
+#     is exercised per-task. These modes are the primary test targets.
+#   - http-persistent: manager is spawned once at connection setup time; task-level
+#     environment vars do not affect an already-running manager. This test skips
+#     the forwarding assertions for that mode but still runs the baseline smoke test.
+
+- name: SSL env forwarding — connection mode
+  ansible.builtin.debug:
+    msg: "Running ssl_env_forwarding_test in connection_mode={{ connection_mode | default('local') }}"
+
+# ── Skip conditions ────────────────────────────────────────────────────────────
+# Tests 1 and 2 rely on REQUESTS_CA_BUNDLE=/dev/null causing an SSL error.
+# This only works when the gateway's TLS certificate is NOT trusted by the
+# system CA store on the controller.  In standard CI the cert IS system-trusted
+# (added during cluster setup), so /dev/null still lets the connection succeed.
+#
+# Set  gateway_ssl_private_ca: true  in integration_config.yml to opt-in when
+# running against a gateway whose cert is signed by a private (non-system) CA.
+#
+# http-persistent mode is always skipped: the manager is spawned once at
+# connection time, before any task environment: block is evaluated.
+- name: Set skip flags
+  ansible.builtin.set_fact:
+    _skip_forwarding_tests: >-
+      {{ (connection_mode | default('local')) == 'http-persistent'
+         or not (gateway_ssl_private_ca | default(false) | bool) }}
+
+- name: Note about skipped forwarding assertions
+  ansible.builtin.debug:
+    msg: >-
+      Skipping SSL env forwarding assertions (Tests 1 and 2).
+      Reason: {{ 'http-persistent mode — manager spawned before task env is evaluated'
+                 if (connection_mode | default('local')) == 'http-persistent'
+                 else 'gateway_ssl_private_ca not set — system CA may trust the gateway cert,
+                 making REQUESTS_CA_BUNDLE=/dev/null ineffective as a negative test.
+                 Set gateway_ssl_private_ca: true in integration_config.yml when running
+                 against a gateway with a private (non-system-trusted) CA certificate.' }}
+  when: _skip_forwarding_tests | bool
+
+# ── Baseline: module works normally (validate_certs from global config) ───────
+- name: "BASELINE: module call succeeds with default SSL config"
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Baseline — organization exists check (no env block)
+      ansible.platform.organization:
+        name: "ssl-env-test-baseline-sentinel"
+        state: exists
+      register: _baseline_result
+
+    - name: Assert baseline succeeds
+      ansible.builtin.assert:
+        that:
+          - _baseline_result is not failed
+        fail_msg: "Baseline call failed — check gateway connectivity before running SSL env tests."
+        success_msg: "Baseline passed — gateway is reachable and credentials are valid."
+
+# ── Test 1: REQUESTS_CA_BUNDLE=/dev/null forces SSL failure ──────────────────
+# Proves: (a) env var IS forwarded to subprocess, (b) requests reads it.
+# Expected: SSLError — /dev/null contains no CA certs so requests cannot verify
+# any server certificate when gateway_validate_certs=true.
+- name: "TEST 1: REQUESTS_CA_BUNDLE=/dev/null must produce SSL error"
+  when: not _skip_forwarding_tests | bool
+  block:
+    - name: Call module with REQUESTS_CA_BUNDLE=/dev/null
+      ansible.platform.organization:
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: true
+        name: "ssl-env-test-sentinel"
+        state: exists
+      environment:
+        REQUESTS_CA_BUNDLE: '/dev/null'
+      register: _requests_ca_bundle_result
+      ignore_errors: true
+
+    - name: Assert call failed with an SSL error
+      ansible.builtin.assert:
+        that:
+          - _requests_ca_bundle_result is failed
+          - >-
+            'SSL' in (_requests_ca_bundle_result.msg | default(''))
+            or 'certificate' in (_requests_ca_bundle_result.msg | default(''))
+            or 'CERTIFICATE' in (_requests_ca_bundle_result.msg | default(''))
+            or 'ioctl' in (_requests_ca_bundle_result.msg | default(''))
+        fail_msg: >-
+          Expected an SSL error but got: {{ _requests_ca_bundle_result.msg | default('(no message)') }}.
+          This means REQUESTS_CA_BUNDLE=/dev/null was NOT forwarded to the manager subprocess,
+          OR the gateway certificate is trusted by the system CA (try with a private CA cert gateway).
+        success_msg: >-
+          TEST 1 PASSED: REQUESTS_CA_BUNDLE=/dev/null caused SSL error as expected.
+          Env var was forwarded to manager subprocess and requests read it correctly.
+
+# ── Test 2: SSL_CERT_FILE=/dev/null triggers deprecation mapping ──────────────
+# Proves: SSL_CERT_FILE is mapped → REQUESTS_CA_BUNDLE by the backward-compat shim.
+# If the mapping did NOT fire, SSL_CERT_FILE would be silently ignored (as requests
+# does not read it), and the call would succeed or fail with a non-SSL error.
+- name: "TEST 2: SSL_CERT_FILE=/dev/null must produce SSL error via deprecation mapping"
+  when: not _skip_forwarding_tests | bool
+  block:
+    - name: Call module with SSL_CERT_FILE=/dev/null
+      ansible.platform.organization:
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: true
+        name: "ssl-env-test-sentinel"
+        state: exists
+      environment:
+        SSL_CERT_FILE: '/dev/null'
+      register: _ssl_cert_file_result
+      ignore_errors: true
+
+    - name: Assert call failed with an SSL error (not 401/connection error)
+      ansible.builtin.assert:
+        that:
+          - _ssl_cert_file_result is failed
+          - >-
+            'SSL' in (_ssl_cert_file_result.msg | default(''))
+            or 'certificate' in (_ssl_cert_file_result.msg | default(''))
+            or 'CERTIFICATE' in (_ssl_cert_file_result.msg | default(''))
+            or 'ioctl' in (_ssl_cert_file_result.msg | default(''))
+        fail_msg: >-
+          Expected SSL error via SSL_CERT_FILE → REQUESTS_CA_BUNDLE mapping, but got:
+          {{ _ssl_cert_file_result.msg | default('(no message)') }}.
+          If the error is 401/connection: the deprecation mapping did NOT fire —
+          SSL_CERT_FILE was silently ignored by requests (original bug is not fixed).
+          If the call succeeded: same conclusion.
+        success_msg: >-
+          TEST 2 PASSED: SSL_CERT_FILE=/dev/null caused SSL error via deprecation mapping.
+          The SSL_CERT_FILE → REQUESTS_CA_BUNDLE backward-compat shim is working.
+
+# ── Test 3: Valid REQUESTS_CA_BUNDLE allows SSL verification to succeed ────────
+# Proves the full end-to-end fix: when the correct CA bundle is provided via
+# REQUESTS_CA_BUNDLE, SSL verification succeeds and the module call works.
+#
+# This test requires gateway_tls_ca_bundle_path to be set in integration_config.yml
+# pointing to the CA that signed the gateway's certificate.
+# If not set, the test is skipped (most CI environments use validate_certs=false).
+- name: "TEST 3: REQUESTS_CA_BUNDLE=<real CA bundle> allows SSL to succeed"
+  when:
+    - not _skip_forwarding_tests | bool
+    - gateway_tls_ca_bundle_path is defined
+    - gateway_tls_ca_bundle_path | length > 0
+  block:
+    - name: Verify CA bundle file exists
+      ansible.builtin.stat:
+        path: "{{ gateway_tls_ca_bundle_path }}"
+      register: _ca_bundle_stat
+
+    - name: Skip if CA bundle file does not exist on controller
+      ansible.builtin.debug:
+        msg: "Skipping TEST 3 — CA bundle not found at {{ gateway_tls_ca_bundle_path }}"
+      when: not _ca_bundle_stat.stat.exists
+
+    - name: Call module with REQUESTS_CA_BUNDLE pointing to real CA bundle
+      ansible.platform.organization:
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: true
+        name: "ssl-env-test-sentinel"
+        state: exists
+      environment:
+        REQUESTS_CA_BUNDLE: "{{ gateway_tls_ca_bundle_path }}"
+      register: _positive_result
+      when: _ca_bundle_stat.stat.exists
+
+    - name: Assert call succeeded with valid CA bundle
+      ansible.builtin.assert:
+        that:
+          - _positive_result is not failed
+        fail_msg: >-
+          Call failed with REQUESTS_CA_BUNDLE={{ gateway_tls_ca_bundle_path }}.
+          Error: {{ _positive_result.msg | default('(no message)') }}.
+          Verify the CA bundle path is correct for this gateway deployment.
+        success_msg: >-
+          TEST 3 PASSED: REQUESTS_CA_BUNDLE={{ gateway_tls_ca_bundle_path }} allowed
+          SSL verification to succeed. Full end-to-end SSL env forwarding is working.
+      when: _ca_bundle_stat.stat.exists
+
+- name: "TEST 3 SKIPPED"
+  ansible.builtin.debug:
+    msg: >-
+      TEST 3 skipped — gateway_tls_ca_bundle_path not set in integration_config.yml.
+      To enable this test, add: gateway_tls_ca_bundle_path: /path/to/ca-bundle.pem
+      (typically {{ _ca_tls_dir }}/extracted/pem/tls-ca-bundle.pem on RHEL installs).
+  when: >-
+    not _skip_forwarding_tests | bool
+    and (gateway_tls_ca_bundle_path is not defined or gateway_tls_ca_bundle_path | length == 0)
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+- name: Compute SSL env forwarding test result statuses
+  ansible.builtin.set_fact:
+    _ssl_t1_status: >-
+      {{ 'PASS' if (_requests_ca_bundle_result is defined
+      and _requests_ca_bundle_result is failed)
+      else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool
+      else 'FAIL' }}
+    _ssl_t2_status: >-
+      {{ 'PASS' if (_ssl_cert_file_result is defined
+      and _ssl_cert_file_result is failed)
+      else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool
+      else 'FAIL' }}
+    _ssl_t3_status: >-
+      {{ 'PASS' if (_positive_result is defined
+      and _positive_result is not failed)
+      else 'SKIPPED (gateway_tls_ca_bundle_path not set)' }}
+
+- name: SSL env forwarding test summary
+  ansible.builtin.debug:
+    msg:
+      - "connection_mode : {{ connection_mode | default('local') }}"
+      - "BASELINE        : {{ 'PASS' if _baseline_result is not failed else 'FAIL' }}"
+      - "TEST 1 (REQUESTS_CA_BUNDLE=/dev/null → SSL error) : {{ _ssl_t1_status }}"
+      - "TEST 2 (SSL_CERT_FILE=/dev/null → SSL error via shim) : {{ _ssl_t2_status }}"
+      - "TEST 3 (REQUESTS_CA_BUNDLE=<real CA> → success)   : {{ _ssl_t3_status }}"
+...
