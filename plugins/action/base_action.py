@@ -219,6 +219,14 @@ class BaseResourceActionPlugin(ActionBase):
 
     MODULE_NAME = None  # Subclass must override
 
+    # Action plugins in ansible.platform always target localhost (Gateway is
+    # an HTTP API, connection is always local).  Ansible's fork-based async
+    # mechanism writes job-status files on the managed node; because the
+    # managed node IS the controller here, async_status can poll those files
+    # correctly.  Setting this to True restores the async: / poll: 0 behaviour
+    # that infra.aap_configuration gateway roles depend on.
+    _supports_async = True
+
     # -----------------------------------------------------------------
     # Declarative class variables: set these in a subclass to get a
     # fully-working action plugin without overriding run().
