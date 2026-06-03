@@ -22,13 +22,14 @@ description:
       remove those permissions.
     - Not all role assignments are valid. See Limitations below.
 notes:
-  - This module is subject to limitations of the RBAC system in AAP 2.6.
   - Global roles (e.g. Platform Auditor) cannot be assigned to teams.
-  - Team roles cannot be assigned to another team
-    (Team Admin to Team is not supported).
   - Organization Member role cannot be assigned to teams.
-  - Only resource-scoped organization roles such as Organization Inventory Admin
-    and Organization Credential Admin can be meaningfully assigned to teams.
+  - The C(type) field in C(assignment_objects) must match the resource type
+    expected by the role definition's C(content_type). For example, a role
+    with C(content_type=awx.project) requires C(type=projects). Using
+    C(type=organizations) for such a role will result in an error. Use the
+    organization-scoped variant of the role (e.g. "Organization Project Admin")
+    to grant access to all resources of that type within an organization.
   - Attempting unsupported role assignments will result in errors.
 options:
     role_definition:
@@ -65,8 +66,11 @@ options:
                 required: false
             type:
                 description:
-                  - The object type used for name lookup.
-                  - Supported values are C(organizations) and C(teams).
+                  - The resource type endpoint used for name-based lookup.
+                  - Must match the content_type of the role definition.
+                  - Examples - C(organizations), C(teams), C(projects),
+                    C(inventories), C(credentials), C(job_templates),
+                    C(activations), C(event_streams), C(decision_environments).
                 type: str
                 required: false
             object_id:
