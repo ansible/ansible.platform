@@ -106,6 +106,170 @@
         state: present
       register: custom_role
 
+    # --------------------------------------------------------------------------
+    # Resource-level role definitions for type-mismatch tests
+    # --------------------------------------------------------------------------
+    - name: Create project-scoped custom role (content_type awx.project)
+      ansible.platform.role_definition:
+        name: "{{ custom_role_name }}-project"
+        description: "Project-scoped role for content_type mismatch tests"
+        content_type: "awx.project"
+        permissions:
+          - "awx.view_project"
+        state: present
+      register: custom_project_role
+
+    - name: Create activation-scoped custom role (content_type eda.activation)
+      ansible.platform.role_definition:
+        name: "{{ custom_role_name }}-activation"
+        description: "Activation-scoped role for content_type mismatch tests"
+        content_type: "eda.activation"
+        permissions:
+          - "eda.view_activation"
+        state: present
+      register: custom_activation_role
+
+    # --------------------------------------------------------------------------
+    # Root cause: resource-level role + type:organizations caused 400/500.
+    # Fix: module now validates type matches content_type and raises a clear error.
+    # --------------------------------------------------------------------------
+
+    # TEST 1: Type mismatch — project role + type:organizations must give clear error
+    - name: "BUG#165 | project-scoped role with type:organizations must fail with clear error"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}-project"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: mismatch_project_org
+      ignore_errors: true
+
+    - name: "BUG#165 | Assert error message tells user the correct type to use"
+      ansible.builtin.assert:
+        that:
+          - mismatch_project_org is failed
+          - "'projects' in mismatch_project_org.msg"
+          - "'organizations' in mismatch_project_org.msg"
+        success_msg: >
+          BUG FIX CONFIRMED: module rejects project role + type:organizations with
+          a clear error pointing to 'projects' as the expected type.
+        fail_msg: >
+          BUG NOT FIXED: either the assignment was silently accepted (no error)
+          or the error message does not mention the correct type 'projects'.
+          Result: {{ mismatch_project_org | to_nice_json }}
+
+    # TEST 2: Type mismatch — activation role + type:organizations must give clear error
+    - name: "BUG#165 | activation-scoped role with type:organizations must fail with clear error"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}-activation"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: mismatch_activation_org
+      ignore_errors: true
+
+    - name: "BUG#165 | Assert activation mismatch error mentions activations"
+      ansible.builtin.assert:
+        that:
+          - mismatch_activation_org is failed
+          - "'activations' in mismatch_activation_org.msg"
+          - "'organizations' in mismatch_activation_org.msg"
+        success_msg: "BUG FIX CONFIRMED: activation role + type:organizations correctly rejected."
+        fail_msg: "Activation mismatch not caught. Result: {{ mismatch_activation_org | to_nice_json }}"
+
+    # TEST 3: Correct org-level role assignment still works (no regression)
+    - name: "BUG#165 | org-scoped role with type:organizations must still work (regression check)"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: correct_org_assignment
+
+    - name: "BUG#165 | Assert org-level assignment succeeds"
+      ansible.builtin.assert:
+        that:
+          - correct_org_assignment is not failed
+        success_msg: "No regression: org-scoped role + type:organizations still works correctly."
+        fail_msg: "REGRESSION: org-scoped role assignment is broken. {{ correct_org_assignment.msg | default('') }}"
+
+    # TEST 4: Idempotency — re-running org assignment produces no change
+    - name: "BUG#165 | Idempotency — re-run org assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: idempotent_check
+
+    - name: "BUG#165 | Assert idempotency"
+      ansible.builtin.assert:
+        that:
+          - idempotent_check is not failed
+          - idempotent_check is not changed
+        success_msg: "Idempotency confirmed — second run made no changes."
+        fail_msg: "Idempotency broken — second run changed state or failed."
+
+    # TEST 5: object_ansible_id path bypasses type check and still works
+    - name: "BUG#165 | Assignment via object_ansible_id must work regardless of content_type"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_ansible_id: "{{ org2.organization.ansible_id | default(omit) }}"
+        state: present
+      register: ansible_id_assignment
+      when: org2.organization.ansible_id is defined
+      ignore_errors: true
+
+    # TEST 6: state:absent removes assignment correctly
+    - name: "BUG#165 | state:absent removes the assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: absent
+      register: absent_assignment
+
+    - name: "BUG#165 | Assert assignment was removed"
+      ansible.builtin.assert:
+        that:
+          - absent_assignment is not failed
+          - absent_assignment is changed
+        success_msg: "state:absent removed assignment correctly."
+        fail_msg: "state:absent failed or made no change. {{ absent_assignment.msg | default('') }}"
+
+    # TEST 7: Multi-org assignment — single task, multiple objects
+    - name: "BUG#165 | Multi-org assignment in one task"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team3.name }}"
+        assignment_objects:
+          - name: "{{ org3.name }}"
+            type: organizations
+          - name: "{{ org4.name }}"
+            type: organizations
+        state: present
+      register: multi_org_assignment
+
+    - name: "BUG#165 | Assert multi-org assignment succeeded"
+      ansible.builtin.assert:
+        that:
+          - multi_org_assignment is not failed
+          - multi_org_assignment.assignments | length == 2
+        success_msg: "Multi-org assignment: both orgs assigned in one task."
+        fail_msg: "Multi-org assignment failed. {{ multi_org_assignment | to_nice_json }}"
+
     # 1. Assign Org Admin role to Team1 on Org1 (Global role can't be assigned)
     - name: Assign Org Admin to Team1 on Org1
       ansible.platform.role_team_assignment:
@@ -258,7 +422,7 @@
         - "{{ org3.name }}"
         - "{{ org4.name }}"
 
-    - name: Delete custom role
+    - name: Delete custom org-scoped role
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         content_type: "shared.organization"
@@ -270,4 +434,22 @@
         - role_delete.failed
         - "'Not found' not in role_delete.msg"
         - "'does not exist' not in role_delete.msg"
+
+    - name: Delete custom project-scoped role (bug#165 test)
+      ansible.platform.role_definition:
+        name: "{{ custom_role_name }}-project"
+        content_type: "awx.project"
+        permissions:
+          - "awx.view_project"
+        state: absent
+      failed_when: false
+
+    - name: Delete custom activation-scoped role (bug#165 test)
+      ansible.platform.role_definition:
+        name: "{{ custom_role_name }}-activation"
+        content_type: "eda.activation"
+        permissions:
+          - "eda.view_activation"
+        state: absent
+      failed_when: false
 ...
