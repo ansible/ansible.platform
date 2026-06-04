@@ -39,6 +39,46 @@ _CONTENT_TYPE_ENDPOINT_MAP = {
     "containerrepository": "container_repositories",
 }
 
+# Maps the user-facing type name in assignment_objects to the full API path
+# used for name-based resource lookup.
+#
+# Gateway resources use short names (platform_manager._build_url prepends
+# /api/gateway/v1/ automatically).  EDA and Hub resources must use full
+# paths because the Gateway does NOT proxy those endpoints under /gateway/v1/.
+#
+# Confirmed via spike (AAPRFE-2614):
+#   /api/gateway/v1/activations/  → 404
+#   /api/eda/v1/activations/      → 200  ← correct path
+#
+# Controller paths use /api/controller/v2/ — add as verified.
+# Hub paths use /api/hub/v3/ — add as verified.
+_SERVICE_LOOKUP_PATH_MAP = {
+    # Gateway — short names, prefixed automatically by _build_url
+    "organizations": "organizations",
+    "teams": "teams",
+    # Controller (awx) — full path required
+    "projects": "/api/controller/v2/projects/",
+    "inventories": "/api/controller/v2/inventories/",
+    "credentials": "/api/controller/v2/credentials/",
+    "job_templates": "/api/controller/v2/job_templates/",
+    "workflow_job_templates": "/api/controller/v2/workflow_job_templates/",
+    "execution_environments": "/api/controller/v2/execution_environments/",
+    "instance_groups": "/api/controller/v2/instance_groups/",
+    "notification_templates": "/api/controller/v2/notification_templates/",
+    # EDA — full path required (confirmed working)
+    "activations": "/api/eda/v1/activations/",
+    "eda_credentials": "/api/eda/v1/eda-credentials/",
+    "event_streams": "/api/eda/v1/event-streams/",
+    "decision_environments": "/api/eda/v1/decision-environments/",
+    "credential_input_sources": "/api/eda/v1/credential-input-sources/",
+    # Hub (galaxy) — full path required
+    "namespaces": "/api/hub/v3/namespaces/",
+    "collection_remotes": "/api/hub/v3/remotes/",
+    "ansible_repositories": "/api/hub/v3/ansible/repositories/",
+    "container_namespaces": "/api/hub/v3/container-namespaces/",
+    "container_repositories": "/api/hub/v3/container/repositories/",
+}
+
 
 def _get_expected_endpoint(content_type):
     """Derive the expected lookup endpoint from a role definition's content_type."""
@@ -171,8 +211,13 @@ class ActionModule(BaseResourceActionPlugin):
                                 resource=_expected_endpoint.rstrip("s"),
                             )
                         )
+                    # Use the service-specific API path for name resolution.
+                    # EDA and Hub resources are not exposed under /api/gateway/v1/,
+                    # so we must call their own service APIs directly.
+                    # _build_url passes /api/... paths through unchanged.
+                    _lookup_path = _SERVICE_LOOKUP_PATH_MAP.get(obj["type"], obj["type"])
                     try:
-                        oid = manager.lookup_resource_id(obj["type"], "name", obj["name"])
+                        oid = manager.lookup_resource_id(_lookup_path, "name", obj["name"])
                         per_obj["object_id"] = str(oid)  # CRITICAL: Must be string
                     except Exception:
                         per_obj["object_id"] = str(obj["name"])
