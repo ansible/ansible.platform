@@ -22,7 +22,6 @@ description:
       remove those permissions.
     - Not all role assignments are valid. See Limitations below.
 notes:
-  - This module is subject to limitations of the RBAC system in AAP 2.6.
   - Global roles (e.g. Platform Auditor) cannot be assigned to teams.
   - Team roles cannot be assigned to another team
     (Team Admin to Team is not supported).
