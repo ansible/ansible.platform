@@ -1,10 +1,5 @@
 # Ansible Platform Collection
 
-## Changelog for v2.7.20260515
-
-* Fix task-level `environment:` variables (e.g. `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, proxy settings) not forwarded to the manager subprocess for `connection: ansible.platform.http` (direct and persistent modes) — previously only `connection: local` forwarded them
-* Map `SSL_CERT_FILE` - `REQUESTS_CA_BUNDLE` automatically in the manager subprocess; the `requests` library reads `REQUESTS_CA_BUNDLE`, not `SSL_CERT_FILE`, so the containerized AAP installer's SSL environment was silently ignored without this shim (deprecated)
-
 ## Description
 
 This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
@@ -79,21 +74,27 @@ The collection is tested against current version of Ansible Automation Platform.
 
 ## Support
 
-This collection is supported by RedHat Engineering. Support cases can be opened at: https://access.redhat.com/support/
+This collection is supported by Red Hat Engineering.
+
+- Open a support case at [Red Hat Customer Portal](https://access.redhat.com/support/)
+- Report collection bugs or request features using the **Create issue** button on the [Automation Hub collection page](https://console.redhat.com/ansible/automation-hub/repo/published/ansible/platform)
+- For community discussion, see the [Ansible Forum](https://forum.ansible.com)
 
 ## Release Notes and Roadmap
 
-Changelogs can be found in the changelogs directory. 
+Changelogs can be found in the [changelogs directory](https://github.com/ansible/ansible.platform/tree/devel/changelogs).
 
 
 ## Related Information
 
-Please refer to Ansible Automation Platform Documentation for further documentation needs: https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5
+- [Ansible Automation Platform Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform)
+- [Using Ansible Collections](https://docs.ansible.com/ansible/devel/user_guide/collections_using.html)
+- [Ansible Certified Collections README Template](https://access.redhat.com/articles/7068606)
 
 
 ## License Information
 
-[GPLv3](https://github.com/ansible/ansible.platform/COPYING)
+[GPLv3](https://github.com/ansible/ansible.platform/blob/devel/COPYING)
 
 ## Authors
 

@@ -19,7 +19,6 @@ author: Sean Sullivan (@sean-m-sullivan)
 short_description: Manage gateway users
 description:
   - Create, update, or delete users in Ansible Automation Platform Gateway
-  - This module uses the persistent connection manager for improved performance
 version_added: "1.0.0"
 
 options:

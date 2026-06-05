@@ -4,6 +4,60 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
+v2.7.20260604
+=============
+
+.. note::
+   If you are upgrading from ``ansible.platform 2.6.x`` or went directly to
+   ``2.7.20260515`` without seeing the ``2.7.20260513`` release notes, please
+   read the **Action Plugin Architecture** section below. It describes
+   breaking changes that affect all playbooks using this collection.
+
+Action Plugin Architecture — Summary for Users Who Missed v2.7.20260513
+------------------------------------------------------------------------
+
+``ansible.platform`` 2.7 rewrites all modules as **action plugins** running
+on the Ansible controller node. This was first shipped in ``v2.7.20260513``
+but that release was quickly followed by ``v2.7.20260515`` for SSL fixes,
+which means many users upgraded directly to ``2.7.20260515`` without seeing
+these architecture notes.
+
+**What changed:**
+
+- All ``ansible.platform`` tasks now run on the controller (not on managed
+  nodes). Playbooks **must target** ``localhost`` with
+  ``connection: local`` or ``connection: ansible.platform.http``.
+- ``delegate_to`` to a remote host no longer works for
+  ``ansible.platform`` tasks.
+
+**New connection mode** — ``connection: ansible.platform.http`` reuses
+authenticated sessions across tasks, reducing auth overhead for large
+playbooks.
+
+Bugfixes
+--------
+
+- All modules - Restore ``async:`` / ``poll: 0`` parallelism for all
+  ``ansible.platform`` action plugins. ``BaseResourceActionPlugin`` now sets
+  ``_supports_async = True``. All ``ansible.platform`` tasks always target
+  ``localhost``, so Ansible's fork-based async mechanism works correctly.
+  This restores the parallel execution that ``infra.aap_configuration``
+  gateway roles depend on and that was broken in the action plugin rewrite
+  (AAP-76233).
+- All modules - Fix empty-string handling for ``aap_request_timeout`` /
+  ``gateway_request_timeout``. The AAP built-in credential type injects
+  ``aap_request_timeout: '{{request_timeout}}'`` which evaluates to ``''``
+  when the field is not configured. An empty string caused argspec validation
+  to fail with "cannot be converted to a float" before any default could be
+  applied. Empty strings are now stripped before validation and the 10-second
+  default is used instead.
+- All modules - Fix ``aap_validate_certs`` alias resolution. When
+  ``aap_validate_certs: false`` was set via ``module_defaults`` or
+  ``group/ansible.platform.gateway``, it was silently ignored due to
+  incorrect ``or``-chaining in the config extractor. The parameter is now
+  resolved using an explicit ``in``-key check so that ``False`` is honoured
+  correctly (AAP-75645).
+
 v2.7.20260515
 =============
 
