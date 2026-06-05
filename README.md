@@ -1,10 +1,5 @@
 # Ansible Platform Collection
 
-## Changelog for v2.7.20260515
-
-* Fix task-level `environment:` variables (e.g. `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, proxy settings) not forwarded to the manager subprocess for `connection: ansible.platform.http` (direct and persistent modes) — previously only `connection: local` forwarded them
-* Map `SSL_CERT_FILE` - `REQUESTS_CA_BUNDLE` automatically in the manager subprocess; the `requests` library reads `REQUESTS_CA_BUNDLE`, not `SSL_CERT_FILE`, so the containerized AAP installer's SSL environment was silently ignored without this shim (deprecated)
-
 ## Description
 
 This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
