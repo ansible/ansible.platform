@@ -734,6 +734,16 @@ class BaseResourceActionPlugin(ActionBase):
         Raises:
             AnsibleError: If validation fails
         """
+        arg_spec_dict = argspec.get("argument_spec", {})
+        _numeric_types = {"float", "int"}
+        for _param, _spec in arg_spec_dict.items():
+            if _spec.get("type") in _numeric_types:
+                if data.get(_param) == "":
+                    data.pop(_param, None)
+                for _alias in _spec.get("aliases", []):
+                    if data.get(_alias) == "":
+                        data.pop(_alias, None)
+
         self._display.vvvv(f"Creating ArgumentSpecValidator with argspec keys: {list(argspec.keys())}")
 
         # Create validator - pass all parameters as kwargs

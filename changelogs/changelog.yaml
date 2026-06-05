@@ -46,6 +46,12 @@ releases:
         always target localhost so Ansible's fork-based async mechanism works correctly,
         restoring the parallel execution that infra.aap_configuration gateway roles
         depend on and that was broken in the action plugin rewrite (AAP-76233).
+      - All modules - Fix empty-string handling for aap_request_timeout and
+        gateway_request_timeout. The AAP built-in credential type injects
+        aap_request_timeout as {{request_timeout}} which evaluates to empty string
+        when not configured. Empty string caused argspec validation to fail with
+        cannot be converted to float. Empty strings are now stripped before
+        validation and the 10-second default is applied instead.
       - All modules - Fix aap_validate_certs alias resolution. When aap_validate_certs
         false was set via module_defaults or group/ansible.platform.gateway, it was
         silently ignored due to incorrect or-chaining in the config extractor. The

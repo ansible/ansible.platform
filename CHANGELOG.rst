@@ -44,6 +44,13 @@ Bugfixes
   This restores the parallel execution that ``infra.aap_configuration``
   gateway roles depend on and that was broken in the action plugin rewrite
   (AAP-76233).
+- All modules - Fix empty-string handling for ``aap_request_timeout`` /
+  ``gateway_request_timeout``. The AAP built-in credential type injects
+  ``aap_request_timeout: '{{request_timeout}}'`` which evaluates to ``''``
+  when the field is not configured. An empty string caused argspec validation
+  to fail with "cannot be converted to a float" before any default could be
+  applied. Empty strings are now stripped before validation and the 10-second
+  default is used instead.
 - All modules - Fix ``aap_validate_certs`` alias resolution. When
   ``aap_validate_certs: false`` was set via ``module_defaults`` or
   ``group/ansible.platform.gateway``, it was silently ignored due to
