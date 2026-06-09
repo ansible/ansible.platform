@@ -200,7 +200,7 @@ def main():
         module.deprecate(
             msg="The usage of 'object_id' parameter in the 'role_user_assignment' module is not recommended. "
             "For associating a user to team(s)/organization(s), please use the 'object_ids' parameter. ",
-            date="2026-05-20",
+            date="2026-11-30",
             collection_name="ansible.platform",
         )
     if object_ids is not None:
