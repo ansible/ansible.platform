@@ -1,0 +1,13 @@
+---
+breaking_changes:
+  - >-
+    user - removed deprecated parameters ``organizations``, ``is_platform_auditor``,
+    ``authenticators``, and ``authenticator_uid`` (and its alias ``auditor``).
+    These were deprecated in 2.6.20251106 with removal date 2026-01-31.
+    Use ``ansible.platform.role_user_assignment`` to assign organization membership
+    or platform auditor roles, and ``associated_authenticators`` to configure
+    authenticator associations.
+  - >-
+    role_user_assignment - removed deprecated parameter ``object_id`` (singular).
+    It was deprecated in favour of ``object_ids`` (plural list).
+    Replace any use of ``object_id: <n>`` with ``object_ids: ["<n>"]``.

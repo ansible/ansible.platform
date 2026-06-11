@@ -25,20 +25,10 @@ options:
             - The name or id of the role definition to assign to the user.
         required: True
         type: str
-    object_id:
-        description:
-            - B(Deprecated)
-            - This option is deprecated and will be removed in a release after 2026-01-31.
-            - For associating a user to team(s)/organization(s), please use the object_ids param.
-            - HORIZONTALLINE
-            - Primary key/Name of the object this assignment applies to.
-            - This option is mutually exclusive with I(object_ids) and I(object_ansible_id).
-        required: False
-        type: int
     object_ids:
         description:
             - List of object IDs(Primary Key ) or names this assignment applies to.
-            - This option is mutually exclusive with I(object_id) and I(object_ansible_id).
+            - This option is mutually exclusive with I(object_ansible_id).
         required: False
         type: list
         elements: str
@@ -50,8 +40,8 @@ options:
         type: str
     object_ansible_id:
         description:
-            - UUID of the object(team/organization) this role applies to. Alternative to the object_id/object_ids field.
-            - This option is mutually exclusive with I(object_id) and I(object_ids)
+            - UUID of the object(team/organization) this role applies to. Alternative to the object_ids field.
+            - This option is mutually exclusive with I(object_ids).
         required: False
         type: str
     user_ansible_id:
@@ -75,7 +65,8 @@ EXAMPLES = '''
 - name: Give Bob organization admin role for org 1
   ansible.platform.role_user_assignment:
     role_definition: Organization Admin
-    object_id: 1
+    object_ids:
+      - "1"
     user: bob
     state: present
 
@@ -161,7 +152,6 @@ def main():
     # Any additional arguments that are not fields of the item can be added here
     argument_spec = dict(
         user=dict(required=False, type='str'),
-        object_id=dict(required=False, type="int"),
         object_ids=dict(required=False, type='list', elements='str'),
         role_definition=dict(required=True, type='str'),
         object_ansible_id=dict(required=False, type='str'),
@@ -174,13 +164,10 @@ def main():
         mutually_exclusive=[
             ('user', 'user_ansible_id'),
             ('object_ids', 'object_ansible_id'),
-            ('object_ids', 'object_id'),
-            ('object_id', 'object_ansible_id')
         ],
     )
 
     user_param = module.params.get('user')
-    object_id = module.params.get('object_id')
     object_ids = module.params.get('object_ids')
     role_definition_str = module.params.get('role_definition')
     object_ansible_id = module.params.get('object_ansible_id')
@@ -194,15 +181,6 @@ def main():
         'role_definition': role_definition['id'],
     }
 
-    if object_id:
-        object_id = [object_id]
-        kwargs['object_id'] = [object_id]
-        module.deprecate(
-            msg="The usage of 'object_id' parameter in the 'role_user_assignment' module is not recommended. "
-            "For associating a user to team(s)/organization(s), please use the 'object_ids' parameter. ",
-            date="2026-05-20",
-            collection_name="ansible.platform",
-        )
     if object_ids is not None:
         kwargs['object_id'] = object_ids
     if user is not None:
@@ -222,7 +200,7 @@ def main():
     }
     entity_type = endpoint_map.get(content_suffix, f"{content_suffix}s") if content_suffix else None
 
-    object_param = object_ids or object_id
+    object_param = object_ids
 
     role_args = {
         'role_definition_str': role_definition_str,
