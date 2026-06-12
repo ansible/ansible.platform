@@ -1185,7 +1185,7 @@ class PlatformService(BaseAPIClient):
                     max_objects,
                     items_key="data",
                     next_getter=lambda d: (d.get("links") or {}).get("next"),
-                    total=data.get("meta", {}).get("count"),
+                    total=(data.get("meta") or {}).get("count"),
                 )
                 data["links"]["next"] = None
 
@@ -1214,6 +1214,10 @@ class PlatformService(BaseAPIClient):
             next_resp = self._make_request("get", absolute_next_url, operation="search_api_paginate", resource=endpoint)
             next_data = next_resp.json()
             data[items_key].extend(next_data.get(items_key, []))
+            # Guard against a stale/wrong server count or a cyclic 'next' link: bound the
+            # accumulated results independently of the first-page count check above.
+            if len(data[items_key]) > max_objects:
+                raise ValueError("Endpoint '%s' returned more than max_objects=%d objects while paginating" % (endpoint, max_objects))
             next_url = next_getter(next_data)
 
     def shutdown(self) -> dict:
