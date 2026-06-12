@@ -1157,8 +1157,11 @@ class PlatformService(BaseAPIClient):
             max_objects: Safety cap; raises ValueError when return_all would exceed this
 
         Returns:
-            Raw API response dict.  List endpoints look like
-            {'count': N, 'results': [...], 'next': ..., 'previous': ...}.
+            Raw API response dict.  Components behind the gateway use two list shapes:
+            - DRF style (gateway/controller/eda): {'count': N, 'results': [...],
+              'next': <path>, 'previous': ...}
+            - Galaxy/hub style: {'meta': {'count': N}, 'links': {'next': <path>, ...},
+              'data': [...]}.
             Detail endpoints (settings/ui, etc.) are returned as-is.
 
         Raises:
@@ -1169,22 +1172,49 @@ class PlatformService(BaseAPIClient):
         response = self._make_request("get", url, operation="search_api", resource=endpoint, params=query_params or {})
         data = response.json()
 
-        if return_all and "results" in data:
-            total = data.get("count", len(data["results"]))
-            if total > max_objects:
-                raise ValueError("Endpoint '%s' returned %d objects which exceeds max_objects=%d" % (endpoint, total, max_objects))
-            next_url = data.get("next")
-            while next_url:
-                # AAP returns 'next' as a relative path (e.g. '/api/controller/v2/job_templates/?page=2').
-                # Resolve it against base_url so session.get() receives an absolute URL.
-                absolute_next_url = urljoin(self.base_url, next_url)
-                next_resp = self._make_request("get", absolute_next_url, operation="search_api_paginate", resource=endpoint)
-                next_data = next_resp.json()
-                data["results"].extend(next_data.get("results", []))
-                next_url = next_data.get("next")
-            data["next"] = None
+        if return_all:
+            if "results" in data:
+                # DRF pagination: {count, next, previous, results}; 'next' is the top-level key.
+                self._collect_pages(data, endpoint, max_objects, items_key="results", next_getter=lambda d: d.get("next"), total=data.get("count"))
+                data["next"] = None
+            elif "data" in data and isinstance(data.get("links"), dict):
+                # Galaxy/hub pagination: {meta: {count}, links: {next}, data: [...]}.
+                self._collect_pages(
+                    data,
+                    endpoint,
+                    max_objects,
+                    items_key="data",
+                    next_getter=lambda d: (d.get("links") or {}).get("next"),
+                    total=data.get("meta", {}).get("count"),
+                )
+                data["links"]["next"] = None
 
         return data
+
+    def _collect_pages(self, data: dict, endpoint: str, max_objects: int, items_key: str, next_getter, total: Optional[int] = None) -> None:
+        """Follow pagination 'next' links in-place, extending data[items_key] with every page.
+
+        Args:
+            data: First-page response; mutated to accumulate all items.
+            endpoint: Endpoint fragment, used for error context.
+            max_objects: Safety cap; raises ValueError when the total would exceed it.
+            items_key: Key holding the list of objects ('results' for DRF, 'data' for hub).
+            next_getter: Callable returning the relative 'next' link for a page (or None).
+            total: Server-reported total count, if known; falls back to the first page size.
+        """
+        if total is None:
+            total = len(data[items_key])
+        if total > max_objects:
+            raise ValueError("Endpoint '%s' returned %d objects which exceeds max_objects=%d" % (endpoint, total, max_objects))
+        next_url = next_getter(data)
+        while next_url:
+            # AAP components return 'next' as a relative path (e.g. '/api/controller/v2/job_templates/?page=2').
+            # Resolve it against base_url so session.get() receives an absolute URL.
+            absolute_next_url = urljoin(self.base_url, next_url)
+            next_resp = self._make_request("get", absolute_next_url, operation="search_api_paginate", resource=endpoint)
+            next_data = next_resp.json()
+            data[items_key].extend(next_data.get(items_key, []))
+            next_url = next_getter(next_data)
 
     def shutdown(self) -> dict:
         """

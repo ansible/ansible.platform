@@ -72,5 +72,53 @@ class TestSearchApiPagination(unittest.TestCase):
                 self.svc.search_api("job_templates", return_all=True, max_objects=2)
 
 
+class TestSearchApiHubPagination(unittest.TestCase):
+    """Galaxy/hub uses a different envelope: {meta: {count}, links: {next}, data: [...]}."""
+
+    def setUp(self):
+        self.svc = _make_platform_service(base_url="https://gw.example.com")
+
+    def test_hub_links_next_is_followed_and_resolved(self):
+        """Hub paginates via links.next (relative) over a 'data' list, not results/next."""
+        page1 = {
+            "meta": {"count": 2},
+            "links": {"first": "/api/galaxy/v3/namespaces/?limit=1&offset=0", "next": "/api/galaxy/v3/namespaces/?limit=1&offset=1", "previous": None},
+            "data": [{"name": "ns1"}],
+        }
+        page2 = {
+            "meta": {"count": 2},
+            "links": {"first": "/api/galaxy/v3/namespaces/?limit=1&offset=0", "next": None, "previous": "/api/galaxy/v3/namespaces/?limit=1&offset=0"},
+            "data": [{"name": "ns2"}],
+        }
+
+        with patch.object(self.svc, "_make_request", side_effect=[_resp(page1), _resp(page2)]) as mock_req:
+            result = self.svc.search_api("galaxy/v3/namespaces", return_all=True, max_objects=100)
+
+        # Pagination follow-up resolves the relative links.next against base_url.
+        paginated_url = mock_req.call_args_list[1].args[1]
+        self.assertEqual(paginated_url, "https://gw.example.com/api/galaxy/v3/namespaces/?limit=1&offset=1")
+
+        # All pages collected into 'data'; trailing links.next cleared.
+        self.assertEqual(result["data"], [{"name": "ns1"}, {"name": "ns2"}])
+        self.assertIsNone(result["links"]["next"])
+
+    def test_hub_max_objects_exceeded_raises(self):
+        page1 = {
+            "meta": {"count": 5},
+            "links": {"next": "/api/galaxy/v3/namespaces/?limit=1&offset=1"},
+            "data": [{"name": "ns1"}],
+        }
+        with patch.object(self.svc, "_make_request", side_effect=[_resp(page1)]):
+            with self.assertRaises(ValueError):
+                self.svc.search_api("galaxy/v3/namespaces", return_all=True, max_objects=2)
+
+    def test_hub_single_page_no_next(self):
+        page1 = {"meta": {"count": 1}, "links": {"next": None}, "data": [{"name": "ns1"}]}
+        with patch.object(self.svc, "_make_request", side_effect=[_resp(page1)]) as mock_req:
+            result = self.svc.search_api("galaxy/v3/namespaces", return_all=True, max_objects=100)
+        self.assertEqual(mock_req.call_count, 1)
+        self.assertEqual(result["data"], [{"name": "ns1"}])
+
+
 if __name__ == "__main__":
     unittest.main()
