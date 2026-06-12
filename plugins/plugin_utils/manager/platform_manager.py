@@ -14,7 +14,7 @@ from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 
 if TYPE_CHECKING:
     import requests
@@ -1175,7 +1175,10 @@ class PlatformService(BaseAPIClient):
                 raise ValueError("Endpoint '%s' returned %d objects which exceeds max_objects=%d" % (endpoint, total, max_objects))
             next_url = data.get("next")
             while next_url:
-                next_resp = self._make_request("get", next_url, operation="search_api_paginate", resource=endpoint)
+                # AAP returns 'next' as a relative path (e.g. '/api/controller/v2/job_templates/?page=2').
+                # Resolve it against base_url so session.get() receives an absolute URL.
+                absolute_next_url = urljoin(self.base_url, next_url)
+                next_resp = self._make_request("get", absolute_next_url, operation="search_api_paginate", resource=endpoint)
                 next_data = next_resp.json()
                 data["results"].extend(next_data.get("results", []))
                 next_url = next_data.get("next")
