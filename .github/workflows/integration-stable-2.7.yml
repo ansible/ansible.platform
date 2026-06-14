@@ -1,18 +1,16 @@
 ---
-name: integration tests
+name: integration tests (stable-2.7)
 
 on:
   pull_request_target:
     branches:
-      - devel
+      - stable-2.7
     types:
       - opened
       - synchronize
       - reopened
       - labeled
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
 
 permissions:
   contents: read

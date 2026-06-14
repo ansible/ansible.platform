@@ -1,18 +1,16 @@
 ---
-name: integration tests
+name: integration tests (stable-2.6)
 
 on:
   pull_request_target:
     branches:
-      - devel
+      - stable-2.6
     types:
       - opened
       - synchronize
       - reopened
       - labeled
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
 
 permissions:
   contents: read
@@ -22,20 +20,12 @@ env:
   ANSIBLE_FORCE_COLOR: '1'
 jobs:
   integration:
-    name: integration (${{ matrix.connection_mode }})
+    name: collection integration test
     runs-on: ubuntu-latest
     environment: CI
     env:
       HEADLESS: "yes"
     if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        connection_mode:
-          - local
-          - http-direct
-          - http-persistent
 
     steps:
       - uses: actions/checkout@v3
@@ -65,15 +55,6 @@ jobs:
             -e gateway_vars=$(readlink -f container-startup.yml)
         working-directory: aap-gateway
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install integration controller requirements
-        run: pip install -r tests/integration/requirements.txt ansible-core
-        working-directory: ansible-platform
-
       - name: Cleanup services
         run: make cleanup-services
         working-directory: aap-gateway
@@ -84,10 +65,10 @@ jobs:
             echo "GATEWAY_PASSWORD=$ADMIN_PW" >> $GITHUB_ENV
         working-directory: aap-gateway
 
-      - name: Perform integration tests (${{ matrix.connection_mode }})
+      - name: Perform integration tests
         env:
           ANSIBLE_TEST_INTEGRATION_NO_VENV: '1'
-        run: make collection-test CONNECTION_MODE=${{ matrix.connection_mode }}
+        run: make collection-test
         working-directory: ansible-platform
 
       - name: Dump the container logs on failure
@@ -115,9 +96,6 @@ jobs:
           GH_WORKSPACE: ${{ github.workspace }}
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
-
-      - name: Expose collection checkout to aap-gateway build
-        run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
 
       - name: Install make
         run: sudo apt install make
@@ -159,9 +137,6 @@ jobs:
           GH_WORKSPACE: ${{ github.workspace }}
         run: tools/scripts/get_aap_gateway_and_dab.py
         working-directory: ansible-platform
-
-      - name: Expose collection checkout to aap-gateway build
-        run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
 
       - name: Install make
         run: sudo apt install make
