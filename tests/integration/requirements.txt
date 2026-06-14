@@ -1,0 +1,3 @@
+# Python requirements for integration tests
+# Add any test-specific pip packages here
+requests

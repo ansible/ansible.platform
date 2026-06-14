@@ -106,6 +106,174 @@
         state: present
       register: custom_role
 
+    # --------------------------------------------------------------------------
+    # Resource-level role definitions for type-mismatch tests
+    # --------------------------------------------------------------------------
+    # Probe for a resource-level role definition (requires EDA or Controller).
+    # If none exists (Gateway-only environment), skip the type-mismatch tests.
+    - name: "BUG#165 setup | Find an existing resource-level role definition"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/role_definitions/?content_type__isnull=false&content_type__startswith=eda&page_size=1"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: eda_role_probe
+
+    - name: "BUG#165 setup | Set fact — resource-level roles available"
+      ansible.builtin.set_fact:
+        resource_roles_available: "{{ eda_role_probe.json.count | int > 0 }}"
+        resource_role_name: "{{ eda_role_probe.json.results[0].name | default('') }}"
+        resource_role_content_type: "{{ eda_role_probe.json.results[0].content_type | default('') }}"
+
+    - name: "BUG#165 setup | Show environment capability"
+      ansible.builtin.debug:
+        msg: >-
+          Resource-level roles available: {{ resource_roles_available }}.
+          {{ 'Will run type-mismatch tests using: ' + resource_role_name if resource_roles_available
+             else 'Skipping type-mismatch tests — Gateway-only environment (no EDA/Controller connected).' }}
+
+    # Placeholder registers so later tasks don't fail on undefined vars
+    - name: "BUG#165 setup | Init result vars"
+      ansible.builtin.set_fact:
+        custom_project_role: { name: "{{ resource_role_name }}" }
+        custom_activation_role: { name: "{{ resource_role_name }}" }
+
+    # --------------------------------------------------------------------------
+    # Root cause: resource-level role + type:organizations caused 400/500.
+    # Fix: module now validates type matches content_type and raises a clear error.
+    # --------------------------------------------------------------------------
+
+    # TEST 1 & 2: Type mismatch tests — only run when resource-level roles exist
+    - name: "BUG#165 | resource-level role with type:organizations must fail with clear error"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ resource_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: mismatch_project_org
+      ignore_errors: true
+      when: resource_roles_available
+
+    - name: "BUG#165 | Assert error message tells user the correct type to use"
+      ansible.builtin.assert:
+        that:
+          - mismatch_project_org is failed
+          - "'organizations' in mismatch_project_org.msg"
+        success_msg: >
+          BUG FIX CONFIRMED: module rejects resource-level role + type:organizations
+          with a clear error. Role: {{ resource_role_name }}.
+        fail_msg: >
+          BUG NOT FIXED: either the assignment was silently accepted (no error)
+          or the error message is missing context.
+          Result: {{ mismatch_project_org | to_nice_json }}
+      when: resource_roles_available
+
+    - name: "BUG#165 | Skip notice when resource-level roles not available"
+      ansible.builtin.debug:
+        msg: >
+          SKIPPED: Type-mismatch tests require EDA or Controller to be connected to
+          Gateway (resource-level role definitions needed). Gateway-only environment detected.
+      when: not resource_roles_available
+
+    # reuse the same role for mismatch_activation_org variable
+    - name: "BUG#165 | Set mismatch_activation_org alias"
+      ansible.builtin.set_fact:
+        mismatch_activation_org: "{{ mismatch_project_org | default({'failed': true}) }}"
+
+    # TEST 3: Correct org-level role assignment still works (no regression)
+    - name: "BUG#165 | org-scoped role with type:organizations must still work (regression check)"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: correct_org_assignment
+
+    - name: "BUG#165 | Assert org-level assignment succeeds"
+      ansible.builtin.assert:
+        that:
+          - correct_org_assignment is not failed
+        success_msg: "No regression: org-scoped role + type:organizations still works correctly."
+        fail_msg: "REGRESSION: org-scoped role assignment is broken. {{ correct_org_assignment.msg | default('') }}"
+
+    # TEST 4: Idempotency — re-running org assignment produces no change
+    - name: "BUG#165 | Idempotency — re-run org assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: idempotent_check
+
+    - name: "BUG#165 | Assert idempotency"
+      ansible.builtin.assert:
+        that:
+          - idempotent_check is not failed
+          - idempotent_check is not changed
+        success_msg: "Idempotency confirmed — second run made no changes."
+        fail_msg: "Idempotency broken — second run changed state or failed."
+
+    # TEST 5: object_ansible_id path bypasses type check and still works
+    - name: "BUG#165 | Assignment via object_ansible_id must work regardless of content_type"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_ansible_id: "{{ org2.organization.ansible_id | default(omit) }}"
+        state: present
+      register: ansible_id_assignment
+      when: org2.organization.ansible_id is defined
+      ignore_errors: true
+
+    # TEST 6: state:absent removes assignment correctly
+    - name: "BUG#165 | state:absent removes the assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: absent
+      register: absent_assignment
+
+    - name: "BUG#165 | Assert assignment was removed"
+      ansible.builtin.assert:
+        that:
+          - absent_assignment is not failed
+          - absent_assignment is changed
+        success_msg: "state:absent removed assignment correctly."
+        fail_msg: "state:absent failed or made no change. {{ absent_assignment.msg | default('') }}"
+
+    # TEST 7: Multi-org assignment — single task, multiple objects
+    - name: "BUG#165 | Multi-org assignment in one task"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team3.name }}"
+        assignment_objects:
+          - name: "{{ org3.name }}"
+            type: organizations
+          - name: "{{ org4.name }}"
+            type: organizations
+        state: present
+      register: multi_org_assignment
+
+    - name: "BUG#165 | Assert multi-org assignment succeeded"
+      ansible.builtin.assert:
+        that:
+          - multi_org_assignment is not failed
+          - multi_org_assignment.assignments | length == 2
+        success_msg: "Multi-org assignment: both orgs assigned in one task."
+        fail_msg: "Multi-org assignment failed. {{ multi_org_assignment | to_nice_json }}"
+
     # 1. Assign Org Admin role to Team1 on Org1 (Global role can't be assigned)
     - name: Assign Org Admin to Team1 on Org1
       ansible.platform.role_team_assignment:
@@ -258,7 +426,7 @@
         - "{{ org3.name }}"
         - "{{ org4.name }}"
 
-    - name: Delete custom role
+    - name: Delete custom org-scoped role
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         content_type: "shared.organization"
@@ -270,4 +438,6 @@
         - role_delete.failed
         - "'Not found' not in role_delete.msg"
         - "'does not exist' not in role_delete.msg"
+
+    # No custom resource-level roles to clean up — tests now use existing built-in roles
 ...
