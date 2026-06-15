@@ -12,17 +12,21 @@
 * Multiple bug fixes for role assignment, object deletion, and URL handling
 * Deprecated authenticator_uid and authenticators fields
 
+## Upgrading to AAP 2.7?
+
+Ensure you are on `ansible.platform >= 2.7.x` before upgrading. Connection variables have changed — replace `controller_host` with `aap_hostname` pointing to your gateway URL.
+
+See the [AAP 2.7 documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7) for the full upgrade guide.
+
 ## Description
 
 This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
 
-
 ## Requirements
 
-This collection supports python versions >=3.11 and requires an ansible-core version of >=2.16.0. 
+This collection supports python versions >=3.11 and requires an ansible-core version of >=2.16.0.
 
-It also requires an existing install of Ansible Automation Platform as a target. 
-
+It also requires an existing install of Ansible Automation Platform as a target.
 
 ## Installation
 
@@ -34,10 +38,9 @@ ansible-galaxy collection install ansible.platform
 
 You can also include it in a requirements.yml file and install it with ansible-galaxy collection install -r requirements.yml, using the format:
 
-
 ```yaml
 collections:
-  - name: ansible.platform.
+  - name: ansible.platform
 ```
 
 Note that if you install any collections from Ansible Galaxy, they will not be upgraded automatically when you upgrade the Ansible package.
@@ -57,9 +60,9 @@ See [using Ansible collections](https://docs.ansible.com/ansible/devel/user_guid
 
 ## Use Cases
 
-This collection can be used to automate to the creation of resources inside of the Ansible Automation Platform. Things such as users, organizations and teams can be created using this collection. 
+This collection can be used to automate to the creation of resources inside of the Ansible Automation Platform. Things such as users, organizations and teams can be created using this collection.
 
-Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added. 
+Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added.
 
 ## Authenticating to AAP in a playbook
 
@@ -83,24 +86,27 @@ This collection is tested using integration tests which can be called via `ansib
 
 The collection is tested against current version of Ansible Automation Platform.
 
-
 ## Support
 
-This collection is supported by RedHat Engineering. Support cases can be opened at: https://access.redhat.com/support/
+This collection is supported by Red Hat Engineering.
+
+- Open a support case at [Red Hat Customer Portal](https://access.redhat.com/support/)
+- Report collection bugs or request features using the **Create issue** button on the [Automation Hub collection page](https://console.redhat.com/ansible/automation-hub/repo/published/ansible/platform)
+- For community discussion, see the [Ansible Forum](https://forum.ansible.com)
 
 ## Release Notes and Roadmap
 
-Changelogs can be found in the changelogs directory. 
-
+Changelogs can be found in the [changelogs directory](https://github.com/ansible/ansible.platform/tree/devel/changelogs).
 
 ## Related Information
 
-Please refer to Ansible Automation Platform Documentation for further documentation needs: https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5
-
+- [Ansible Automation Platform Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform)
+- [Using Ansible Collections](https://docs.ansible.com/ansible/devel/user_guide/collections_using.html)
+- [Ansible Certified Collections README Template](https://access.redhat.com/articles/7068606)
 
 ## License Information
 
-[GPLv3](https://github.com/ansible/ansible.platform/COPYING)
+[GPLv3](https://github.com/ansible/ansible.platform/blob/devel/COPYING)
 
 ## Authors
 

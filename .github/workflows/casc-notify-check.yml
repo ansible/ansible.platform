@@ -1,0 +1,127 @@
+---
+name: CasC Notification Check
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - 'plugins/modules/**'
+      - 'plugins/action/**'
+      - 'plugins/plugin_utils/**'
+      - 'plugins/doc_fragments/**'
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  casc-notify-check:
+    name: Check CasC notification requirement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Get list of changed files
+        id: changed-files
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Detect CasC trigger areas
+        id: detect-triggers
+        run: |
+          CHANGED="${{ steps.changed-files.outputs.changed_files }}"
+          TRIGGERS=""
+
+          # New or changed modules
+          if echo "$CHANGED" | grep -qE '^plugins/modules/'; then
+            NEW_MODULES=$(echo "$CHANGED" | grep -E '^plugins/modules/' | grep -v '__pycache__')
+            if [ -n "$NEW_MODULES" ]; then
+              TRIGGERS="${TRIGGERS}\n- **Module changes**: \`$(echo "$NEW_MODULES" | tr '\n' ' ')\`"
+            fi
+          fi
+
+          # Action plugin changes
+          if echo "$CHANGED" | grep -qE '^plugins/action/'; then
+            ACTION_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/action/' | grep -v '__pycache__')
+            if [ -n "$ACTION_CHANGES" ]; then
+              TRIGGERS="${TRIGGERS}\n- **Action plugin changes**: \`$(echo "$ACTION_CHANGES" | tr '\n' ' ')\`"
+            fi
+          fi
+
+          # Auth / connection parameters (doc_fragments)
+          if echo "$CHANGED" | grep -qE '^plugins/doc_fragments/'; then
+            FRAG_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/doc_fragments/')
+            if [ -n "$FRAG_CHANGES" ]; then
+              TRIGGERS="${TRIGGERS}\n- **Doc fragment changes (may affect auth/connection params)**: \`$(echo "$FRAG_CHANGES" | tr '\n' ' ')\`"
+            fi
+          fi
+
+          # plugin_utils changes (return structure, error taxonomy, auth)
+          if echo "$CHANGED" | grep -qE '^plugins/plugin_utils/'; then
+            UTILS_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/plugin_utils/' | grep -v '__pycache__')
+            if [ -n "$UTILS_CHANGES" ]; then
+              TRIGGERS="${TRIGGERS}\n- **plugin_utils changes (may affect return structure or auth)**: \`$(echo "$UTILS_CHANGES" | tr '\n' ' ')\`"
+            fi
+          fi
+
+          if [ -n "$TRIGGERS" ]; then
+            echo "triggered=true" >> $GITHUB_OUTPUT
+            echo "trigger_list<<EOF" >> $GITHUB_OUTPUT
+            printf "$TRIGGERS" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "triggered=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post CasC reminder comment
+        if: steps.detect-triggers.outputs.triggered == 'true'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const triggerList = `${{ steps.detect-triggers.outputs.trigger_list }}`;
+            const body = [
+              "## CasC Notification",
+              "",
+              "This PR touches areas that may affect the **CasC collections** (e.g. infra.aap_configuration).",
+              "",
+              "**Detected changes in CasC-monitored areas:**",
+              triggerList,
+              "",
+              "Please tag the CasC collections team in this PR so they are aware of the change.",
+              "",
+              "> This comment is posted automatically and does not block merge.",
+            ].join("\n");
+
+            // Only post once per PR — check if comment already exists
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.data.find(c =>
+              c.body.includes("CasC Notification Required") &&
+              c.user.login === "github-actions[bot]"
+            );
+
+            if (!existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+...

@@ -24,6 +24,8 @@
 - [ ] I have considered performance implications
 - [ ] I have thought about error handling and edge cases
 - [ ] I have tested the changes in my local environment
+- [ ] Existing playbook FQCNs are preserved (no renames without a redirect in `meta/routing.yml`)
+- [ ] Deprecated parameters include a `deprecated:` block in `DOCUMENTATION` with removal version
 
 ## Testing Instructions
 <!-- Optional for test-only changes. Mandatory for all other changes -->
@@ -55,6 +57,14 @@
   <!-- UI team, platform services, infrastructure -->
 - [ ] Blocked by PR/MR: #XXX
   <!-- Reference blocking PRs/MRs with brief context -->
+
+### CasC Notification
+<!-- Required if this PR: adds a new module, changes aap_* auth params, changes RETURN structure, deprecates anything -->
+<!-- See CONTRIBUTING.md §7 for the full trigger list and notification steps -->
+- [ ] Not applicable — this change does not affect the CasC-monitored surface
+- [ ] CasC Jira ticket created: <!-- link here -->
+- [ ] CasC team tagged in this PR
+- [ ] Migration guide provided (required for breaking changes)
 
 ### Screenshots/Logs
 <!-- Add if relevant to demonstrate the changes -->
