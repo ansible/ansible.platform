@@ -4,6 +4,22 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
+v2.7.20260615
+=============
+
+Bugfixes
+--------
+
+- gateway_api lookup / search_api - Fix pagination for relative ``next`` URLs.
+  AAP returns the ``next`` link as a relative path (e.g.
+  ``/api/controller/v2/job_templates/?page=2``); it is now resolved against
+  ``base_url`` with ``urljoin`` so absolute URLs are always requested.
+- gateway_api lookup / search_api - Support Galaxy/Hub pagination envelope.
+  Hub list responses use ``{meta: {count}, links: {next}, data: [...]}``
+  instead of the DRF ``{count, next, results}`` shape. ``return_all`` now
+  handles both envelopes, so ``/api/galaxy/`` endpoints no longer silently
+  return only the first page (backport of #198).
+
 v2.7.20260604
 =============
 
