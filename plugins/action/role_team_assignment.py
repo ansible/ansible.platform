@@ -10,6 +10,88 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
 
+# Maps the suffix of a role definition's content_type to the canonical
+# endpoint key used in _SERVICE_LOOKUP_PATH_MAP for type validation.
+# e.g. "eda.activation" → suffix "activation" → endpoint key "activations"
+_CONTENT_TYPE_ENDPOINT_MAP = {
+    "organization": "organizations",
+    "team": "teams",
+    # Controller (awx)
+    "project": "projects",
+    "inventory": "inventories",
+    "credential": "credentials",
+    "jobtemplate": "job_templates",
+    "workflowjobtemplate": "workflow_job_templates",
+    "executionenvironment": "execution_environments",
+    "instancegroup": "instance_groups",
+    "notificationtemplate": "notification_templates",
+    # EDA
+    "activation": "activations",
+    "edacredential": "eda_credentials",
+    "eventstream": "event_streams",
+    "decisionenvironment": "decision_environments",
+    # Hub (galaxy)
+    "namespace": "namespaces",
+    "collectionremote": "collection_remotes",
+    "ansiblerepository": "ansible_repositories",
+    "containernamespace": "container_namespaces",
+    "containerrepository": "container_repositories",
+}
+
+# Maps user-facing type names in assignment_objects to the full API path
+# used for name-based resource lookup.
+#
+# Gateway resources are short names — _build_url prepends /api/gateway/v1/.
+# EDA and Hub resources require full paths; the Gateway does NOT proxy them
+# under /gateway/v1/.
+#
+# Confirmed via spike (ACA-6324) on AAP 2.7:
+#   EDA: GET /api/eda/v1/activations/       → 200  ✓
+#   Hub: GET /api/galaxy/v3/namespaces/     → 200  ✓  (NOT /api/hub/v3/)
+#
+# Controller paths (/api/controller/v2/) — listed but unverified in CI.
+# Hub paths confirmed to use /api/galaxy/v3/ prefix.
+_SERVICE_LOOKUP_PATH_MAP = {
+    # Gateway — short names, auto-prefixed by _build_url
+    "organizations": "organizations",
+    "teams": "teams",
+    # EDA — full path required, confirmed working
+    "activations": "/api/eda/v1/activations/",
+    "eda_credentials": "/api/eda/v1/eda-credentials/",
+    "event_streams": "/api/eda/v1/event-streams/",
+    "decision_environments": "/api/eda/v1/decision-environments/",
+    # Controller — full path required, add as verified in CI
+    "projects": "/api/controller/v2/projects/",
+    "inventories": "/api/controller/v2/inventories/",
+    "credentials": "/api/controller/v2/credentials/",
+    "job_templates": "/api/controller/v2/job_templates/",
+    "workflow_job_templates": "/api/controller/v2/workflow_job_templates/",
+    "execution_environments": "/api/controller/v2/execution_environments/",
+    "instance_groups": "/api/controller/v2/instance_groups/",
+    "notification_templates": "/api/controller/v2/notification_templates/",
+    # Hub — full path required, confirmed prefix is /api/galaxy/v3/ not /api/hub/v3/
+    "namespaces": "/api/galaxy/v3/namespaces/",
+    "collection_remotes": "/api/galaxy/v3/remotes/",
+    "ansible_repositories": "/api/galaxy/v3/ansible/repositories/",
+    "container_namespaces": "/api/galaxy/v3/container-namespaces/",
+    "container_repositories": "/api/galaxy/v3/container/repositories/",
+}
+
+
+def _get_expected_endpoint(content_type):
+    """Derive the canonical endpoint key from a role definition's content_type.
+
+    Examples:
+        "eda.activation"   → "activations"
+        "awx.project"      → "projects"
+        "shared.organization" → "organizations"
+    """
+    raw = (content_type or "").strip()
+    if not raw:
+        return None
+    suffix = raw.split(".")[-1] if "." in raw else raw
+    return _CONTENT_TYPE_ENDPOINT_MAP.get(suffix, "{0}s".format(suffix))
+
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "role_team_assignment"
@@ -78,6 +160,22 @@ class ActionModule(BaseResourceActionPlugin):
                 # ---- single-object path: standard run logic -------------------
                 return self._run_standard(result, manager, argspec, validated_params, state)
 
+            # ---- resolve role_definition content_type for type validation -----
+            # Fetched once here so we can validate each assignment_object's type
+            # matches what the role expects before making any Gateway API calls.
+            role_def_name = validated_params.get("role_definition", "")
+            _role_def_obj = None
+            try:
+                _role_def_obj = manager.execute(
+                    operation="find",
+                    module_name="role_definition",
+                    ansible_data={"name": role_def_name},
+                )
+            except Exception:
+                pass
+            _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
+            _expected_endpoint = _get_expected_endpoint(_role_content_type)
+
             # ---- multi-object path: iterate over assignment_objects -----------
             # Base data shared across all assignments (role + team, no object_id)
             _skip = self._AUTH_PARAMS | {
@@ -102,8 +200,32 @@ class ActionModule(BaseResourceActionPlugin):
                 elif obj.get("object_ansible_id"):
                     per_obj["object_ansible_id"] = str(obj["object_ansible_id"])
                 elif obj.get("name") and obj.get("type"):
+                    # Validate the user-provided type matches what the role's
+                    # content_type expects. Mismatches cause the Gateway to return
+                    # 400 because the resolved ID points to the wrong resource type.
+                    if _expected_endpoint and obj["type"] != _expected_endpoint:
+                        raise AnsibleError(
+                            "Role '{role}' has content_type '{ct}' which requires "
+                            "type '{expected}' for name-based lookup, but "
+                            "assignment_objects specifies type '{provided}'. "
+                            "To grant access to all {resource}s within an organization, "
+                            "use the organization-scoped variant of this role. "
+                            "To target a specific {resource}, use "
+                            "type '{expected}' with the resource name.".format(
+                                role=role_def_name,
+                                ct=_role_content_type or "unknown",
+                                expected=_expected_endpoint,
+                                provided=obj["type"],
+                                resource=_expected_endpoint.rstrip("s"),
+                            )
+                        )
+                    # Route name lookup to the correct service API.
+                    # EDA/Hub resources are not exposed under /api/gateway/v1/ —
+                    # they require their own service paths. _build_url passes
+                    # absolute paths through unchanged.
+                    _lookup_path = _SERVICE_LOOKUP_PATH_MAP.get(obj["type"], obj["type"])
                     try:
-                        oid = manager.lookup_resource_id(obj["type"], "name", obj["name"])
+                        oid = manager.lookup_resource_id(_lookup_path, "name", obj["name"])
                         per_obj["object_id"] = str(oid)  # CRITICAL: Must be string
                     except Exception:
                         per_obj["object_id"] = str(obj["name"])

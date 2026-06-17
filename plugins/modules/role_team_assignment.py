@@ -22,14 +22,15 @@ description:
       remove those permissions.
     - Not all role assignments are valid. See Limitations below.
 notes:
-  - This module is subject to limitations of the RBAC system in AAP 2.6.
   - Global roles (e.g. Platform Auditor) cannot be assigned to teams.
-  - Team roles cannot be assigned to another team
-    (Team Admin to Team is not supported).
   - Organization Member role cannot be assigned to teams.
-  - Only resource-scoped organization roles such as Organization Inventory Admin
-    and Organization Credential Admin can be meaningfully assigned to teams.
   - Attempting unsupported role assignments will result in errors.
+  - The C(type) field in C(assignment_objects) must match the resource type
+    expected by the role definition's C(content_type). For example, a role
+    with C(content_type=eda.activation) requires C(type=activations). Using
+    C(type=organizations) for such a role will result in a clear error.
+    Use the organization-scoped variant of the role (e.g. "Organization Admin")
+    to grant access to all resources of that type within an organization.
 options:
     role_definition:
         description:
@@ -65,8 +66,11 @@ options:
                 required: false
             type:
                 description:
-                  - The object type used for name lookup.
-                  - Supported values are C(organizations) and C(teams).
+                  - The resource type endpoint used for name-based lookup.
+                  - Must match the content_type of the role definition.
+                  - "Gateway resources: C(organizations), C(teams)."
+                  - "EDA resources: C(activations), C(event_streams), C(decision_environments), C(eda_credentials)."
+                  - "Hub resources: C(namespaces), C(collection_remotes), C(ansible_repositories), C(container_repositories)."
                 type: str
                 required: false
             object_id:
@@ -113,28 +117,72 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
-- name: Assign role to a team against multiple organizations by name
+# ── Organization-level roles ──────────────────────────────────────────────────
+
+- name: Assign org-level role to a team against multiple organizations
   ansible.platform.role_team_assignment:
     role_definition: Organization Inventory Admin
     team: "APAC-BLR"
     assignment_objects:
       - name: "org-emea"
-        type: "organizations"
+        type: organizations
       - name: "org-apac"
-        type: "organizations"
+        type: organizations
     state: present
   register: result
 
-- name: Assign role using object_ansible_id
+# ── EDA resource-level roles ──────────────────────────────────────────────────
+
+- name: Assign Activation Admin to a team on a specific EDA rulebook activation
   ansible.platform.role_team_assignment:
-    role_definition: Organization Inventory Admin
-    team: "APAC-BLR"
+    role_definition: Activation Admin
+    team: "eda-operators"
+    assignment_objects:
+      - name: "prod-alert-activation"
+        type: activations
+    state: present
+
+- name: Assign Event Stream Admin to a team on a specific EDA event stream
+  ansible.platform.role_team_assignment:
+    role_definition: Event Stream Admin
+    team: "eda-team"
+    assignment_objects:
+      - name: "kafka-prod-stream"
+        type: event_streams
+    state: present
+
+- name: Assign Decision Environment Admin to a team on a specific decision environment
+  ansible.platform.role_team_assignment:
+    role_definition: Decision Environment Admin
+    team: "eda-admins"
+    assignment_objects:
+      - name: "de-minimal"
+        type: decision_environments
+    state: present
+
+# ── Hub resource-level roles ──────────────────────────────────────────────────
+
+- name: Assign namespace owner role to a team on a Hub namespace
+  ansible.platform.role_team_assignment:
+    role_definition: galaxy.collection_namespace_owner
+    team: "hub-publishers"
+    assignment_objects:
+      - name: "my_namespace"
+        type: namespaces
+    state: present
+
+# ── Using object IDs directly ─────────────────────────────────────────────────
+
+- name: Assign role using object_ansible_id (UUID — works for any resource type)
+  ansible.platform.role_team_assignment:
+    role_definition: Activation Admin
+    team: "eda-operators"
     assignment_objects:
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     state: present
   register: result
 
-- name: Assign role using direct object_id
+- name: Assign role using direct numeric object_id
   ansible.platform.role_team_assignment:
     role_definition: Organization Inventory Admin
     team: "APAC-BLR"

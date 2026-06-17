@@ -208,6 +208,104 @@
     #     that:
     #       - org_admin_assignment_5 is changed
 
+    # --------------------------------------------------------------------------
+    # EDA resource-level role assignments by name (ACA-6324)
+    # --------------------------------------------------------------------------
+    # EDA resources are created via uri (no ansible.platform EDA modules yet).
+    # The role_team_assignment module resolves names via /api/eda/v1/ paths
+    # instead of /api/gateway/v1/ which does not proxy these endpoints.
+    # --------------------------------------------------------------------------
+
+    - name: "ACA-6324 | Set EDA resource names"
+      ansible.builtin.set_fact:
+        eda_de_name: "GW-Test-DE-{{ test_id }}"
+        eda_event_stream_name: "GW-Test-ES-{{ test_id }}"
+
+    # --- Create EDA Decision Environment via uri ----------------------------
+    - name: "ACA-6324 | Create EDA decision environment via EDA API"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/eda/v1/decision-environments/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_de_name }}"
+          image_url: "quay.io/ansible/de-supported:latest"
+          organization_id: "{{ org1.id }}"
+        status_code: [200, 201]
+      register: eda_de
+      ignore_errors: true
+
+    # --- Assign role to team on decision environment by name ----------------
+    - name: "ACA-6324 | Assign Decision Environment Admin to team by name"
+      ansible.platform.role_team_assignment:
+        role_definition: "Decision Environment Admin"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ eda_de_name }}"
+            type: decision_environments
+        state: present
+      register: eda_de_role
+      when: eda_de is not failed
+      ignore_errors: true
+
+    - name: "ACA-6324 | Assert DE role assignment by name succeeded"
+      ansible.builtin.assert:
+        that:
+          - eda_de_role is not failed
+          - eda_de_role is changed
+        success_msg: >
+          EDA decision environment role assigned by name via /api/eda/v1/decision-environments/.
+          object_id resolved correctly — Gateway accepted the assignment.
+        fail_msg: >
+          EDA decision environment role assignment failed: {{ eda_de_role.msg | default('no msg') }}.
+          Check that /api/eda/v1/decision-environments/ is accessible and the role name is correct.
+      when: eda_de is not failed and eda_de_role is defined
+
+    # --- Idempotency: second run must be no-change -------------------------
+    - name: "ACA-6324 | Idempotency — re-run DE assignment must be no-change"
+      ansible.platform.role_team_assignment:
+        role_definition: "Decision Environment Admin"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ eda_de_name }}"
+            type: decision_environments
+        state: present
+      register: eda_de_role_idempotent
+      when: eda_de is not failed and eda_de_role is not failed
+
+    - name: "ACA-6324 | Assert DE assignment idempotency"
+      ansible.builtin.assert:
+        that:
+          - eda_de_role_idempotent is not changed
+        success_msg: "Idempotency confirmed — second run made no changes."
+        fail_msg: "Idempotency broken — second run changed state or failed."
+      when: eda_de is not failed and eda_de_role is not failed and eda_de_role_idempotent is defined
+
+    # --- state:absent removes DE assignment --------------------------------
+    - name: "ACA-6324 | state:absent removes DE role assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "Decision Environment Admin"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ eda_de_name }}"
+            type: decision_environments
+        state: absent
+      register: eda_de_role_absent
+      when: eda_de is not failed and eda_de_role is not failed
+
+    - name: "ACA-6324 | Assert DE assignment removed"
+      ansible.builtin.assert:
+        that:
+          - eda_de_role_absent is not failed
+          - eda_de_role_absent is changed
+        success_msg: "state:absent removed EDA DE assignment correctly."
+        fail_msg: "state:absent failed or made no change: {{ eda_de_role_absent.msg | default('') }}"
+      when: eda_de is not failed and eda_de_role is not failed and eda_de_role_absent is defined
+
   always:
     # ----------------------------------------------------------------------
     # Explicit Role Cleanup (Uncomment once role_definition implemented)
@@ -267,4 +365,17 @@
         - role_delete.failed
         - "'Not found' not in role_delete.msg"
         - "'does not exist' not in role_delete.msg"
+
+    # --- EDA cleanup -------------------------------------------------------
+    - name: "ACA-6324 | Delete EDA decision environment"
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/eda/v1/decision-environments/{{ eda_de.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_de is defined and eda_de is not failed and eda_de.json.id is defined
+      ignore_errors: true
 ...
