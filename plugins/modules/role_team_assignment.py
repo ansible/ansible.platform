@@ -66,11 +66,9 @@ options:
                 required: false
             type:
                 description:
-                  - The resource type endpoint used for name-based lookup.
+                  - The object type used for name lookup.
                   - Must match the content_type of the role definition.
-                  - Examples - C(organizations), C(teams), C(projects),
-                    C(inventories), C(credentials), C(job_templates),
-                    C(activations), C(event_streams), C(decision_environments).
+                  - Supported values are C(organizations) and C(teams).
                 type: str
                 required: false
             object_id:
@@ -117,9 +115,7 @@ extends_documentation_fragment:
 """
 
 EXAMPLES = """
-# ── Organization-level roles (content_type shared.organization) ───────────────
-
-- name: Assign org-level role to a team against multiple organizations
+- name: Assign role to a team against multiple organizations by name
   ansible.platform.role_team_assignment:
     role_definition: Organization Inventory Admin
     team: "APAC-BLR"
@@ -131,69 +127,16 @@ EXAMPLES = """
     state: present
   register: result
 
-# ── Controller resource-level roles ──────────────────────────────────────────
-
-- name: Assign Project Admin to a team on a specific project (content_type awx.project)
+- name: Assign role using object_ansible_id
   ansible.platform.role_team_assignment:
-    role_definition: Project Admin
-    team: "dev-team"
-    assignment_objects:
-      - name: "Demo Project"
-        type: projects
-    state: present
-
-- name: Assign JobTemplate Execute to a team on a specific job template
-  ansible.platform.role_team_assignment:
-    role_definition: JobTemplate Execute
-    team: "ops-team"
-    assignment_objects:
-      - name: "Deploy to Production"
-        type: job_templates
-    state: present
-
-# ── EDA resource-level roles ──────────────────────────────────────────────────
-
-- name: Assign Activation Admin to a team on a specific EDA activation (content_type eda.activation)
-  ansible.platform.role_team_assignment:
-    role_definition: Activation Admin
-    team: "eda-operators"
-    assignment_objects:
-      - name: "prod-alert-activation"
-        type: activations
-    state: present
-
-- name: Assign Event Stream Admin to a team on a specific event stream
-  ansible.platform.role_team_assignment:
-    role_definition: Event Stream Admin
-    team: "eda-team"
-    assignment_objects:
-      - name: "kafka-prod-stream"
-        type: event_streams
-    state: present
-
-# ── Hub resource-level roles ──────────────────────────────────────────────────
-
-- name: Assign namespace owner role to a team on a Hub namespace (content_type galaxy.namespace)
-  ansible.platform.role_team_assignment:
-    role_definition: galaxy.collection_namespace_owner
-    team: "hub-publishers"
-    assignment_objects:
-      - name: "my_namespace"
-        type: namespaces
-    state: present
-
-# ── Using object IDs directly (works for all resource types) ──────────────────
-
-- name: Assign role using object_ansible_id (UUID — no name lookup needed)
-  ansible.platform.role_team_assignment:
-    role_definition: Activation Admin
-    team: "eda-operators"
+    role_definition: Organization Inventory Admin
+    team: "APAC-BLR"
     assignment_objects:
       - object_ansible_id: "c891b9f7-cc08-4b62-9843-c9ebfda362a8"
     state: present
   register: result
 
-- name: Assign role using direct numeric object_id
+- name: Assign role using direct object_id
   ansible.platform.role_team_assignment:
     role_definition: Organization Inventory Admin
     team: "APAC-BLR"

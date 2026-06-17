@@ -84,25 +84,12 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
             if isinstance(object_id, int) or str(object_id).isdigit():
                 api_data["object_id"] = str(object_id)
             elif manager:
-                # Try all common resource endpoints — no longer limited to
-                # organizations/teams. The action plugin resolves name→id via
-                # the caller-provided type; this fallback is for the single-object
-                # path where no explicit type is given (object_id passed as a name).
-                _fallback_endpoints = (
-                    "organizations",
-                    "teams",
-                    "projects",
-                    "inventories",
-                    "credentials",
-                    "job_templates",
-                    "workflow_job_templates",
-                    "activations",
-                    "event_streams",
-                    "decision_environments",
-                    "eda_credentials",
-                    "namespaces",
-                )
-                for endpoint in _fallback_endpoints:
+                # Fallback name→id lookup for the single-object path where
+                # object_id is passed as a name with no explicit type.
+                # Scoped to Gateway resources only (organizations, teams).
+                # Resource-level name resolution (EDA/Hub/Controller) is
+                # handled in the action plugin via type + assignment_objects.
+                for endpoint in ("organizations", "teams"):
                     resolved = _resolve_fk(manager, endpoint, "name", object_id)
                     if resolved is not None:
                         api_data["object_id"] = str(resolved)
