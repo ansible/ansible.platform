@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import mcp.server.stdio
-import mcp.types as types
+from mcp import types
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
@@ -84,9 +84,7 @@ def create_server(collection_root: Path | None = None) -> tuple[Server, dict[str
         return [tool for tool, _mod in tool_registry.values()]
 
     @server.call_tool()
-    async def handle_call_tool(
-        name: str, arguments: dict[str, Any] | None
-    ) -> list[types.TextContent]:
+    async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[types.TextContent]:
         if name not in tool_registry:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -110,9 +108,7 @@ def create_server(collection_root: Path | None = None) -> tuple[Server, dict[str
                     "Use mode='emit' to generate Ansible task YAML without a Gateway connection."
                 )
             try:
-                result = await asyncio.to_thread(
-                    executor.execute, operation, mod.name, arguments
-                )
+                result = await asyncio.to_thread(executor.execute, operation, mod.name, arguments)
             except Exception as exc:
                 error_result = {
                     "error": str(exc),
@@ -120,15 +116,19 @@ def create_server(collection_root: Path | None = None) -> tuple[Server, dict[str
                     "operation": operation,
                     "resource": mod.name,
                 }
-                return [types.TextContent(
-                    type="text",
-                    text=json.dumps(error_result, indent=2),
-                )]
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=json.dumps(error_result, indent=2),
+                    )
+                ]
 
-            return [types.TextContent(
-                type="text",
-                text=json.dumps(result, indent=2, default=str),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2, default=str),
+                )
+            ]
 
         else:
             raise ValueError(f"Unknown mode: {mode!r}. Must be 'execute' or 'emit'.")
