@@ -60,9 +60,51 @@ packages/
 build-time symlink. The namespace `__init__.py` files use `pkgutil.extend_path`
 so the SDK coexists with galaxy-installed collections.
 
-**`ansible-platform-mcp`** declares `ansible-platform-sdk` as a dependency.
-`pip install ansible-platform-mcp` installs everything needed — SDK, MCP
-framework, and the server itself.
+**`ansible-platform-mcp`** declares `ansible-platform-sdk>=0.1.0` as a pip
+dependency. `pip install ansible-platform-mcp` installs everything needed —
+the full SDK, the MCP framework, and the server itself.
+
+### PyPI Distribution
+
+Both packages are published to PyPI independently:
+
+```
+ansible-platform-sdk   → pip install ansible-platform-sdk
+ansible-platform-mcp   → pip install ansible-platform-mcp  (pulls in sdk automatically)
+```
+
+The SDK is embedded in the MCP server's dependency chain — not vendored or
+copied, but declared as a standard pip dependency. When pip resolves
+`ansible-platform-mcp`, it pulls `ansible-platform-sdk` from PyPI, which
+contains the full `ansible_collections.ansible.platform.plugins` tree built
+from the same repository. The end user runs one command:
+
+```bash
+pip install ansible-platform-mcp
+```
+
+This installs:
+1. `ansible-platform-sdk` — the Gateway SDK (PlatformService, data models,
+   transforms, module DOCUMENTATION metadata)
+2. `mcp` — the MCP Python framework (protocol handling, stdio transport)
+3. `requests` + `pyyaml` — transitive dependencies from the SDK
+4. `ansible-platform-mcp` — the server itself (~800 lines)
+
+No `ansible-galaxy`, no `ansible-core`, no Ansible runtime required.
+The SDK is a pure Python package that happens to also be usable as an
+Ansible collection when installed via Galaxy.
+
+### Development vs. Production Install
+
+| Scenario | Command | What happens |
+|----------|---------|-------------|
+| **Production** (PyPI) | `pip install ansible-platform-mcp` | Pulls SDK + MCP from PyPI |
+| **Development** (monorepo) | `pip install -e packages/sdk -e packages/mcp-server` | Editable install, symlinks to working tree |
+| **Ansible users** | `ansible-galaxy collection install ansible.platform` | Standard Galaxy install (MCP not included) |
+
+The same source code ships through two channels. Ansible users get the
+collection via Galaxy. Python/AI consumers get the SDK + MCP server via pip.
+Both are built from the same `plugins/` directory in the same repository.
 
 ---
 
