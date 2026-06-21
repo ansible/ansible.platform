@@ -18,7 +18,7 @@
       vars:
         ansible_connection: local
 
-- name: Setup prerequisites for role_team_assignment test
+- name: Setup prerequisites
   hosts: localhost
   connection: local
   gather_facts: false
@@ -67,7 +67,7 @@
       vars:
         ansible_connection: local
 
-    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+    - name: Create manager survive flag
       ansible.builtin.file:
         path: /tmp/ap/.survive
         state: touch
@@ -85,13 +85,16 @@
     gateway_password: "testpass"
     gateway_validate_certs: false
   tasks:
-    - name: Create role_team_assignment (org-scoped)
+
+    # -- org-scoped: create, idempotency, exists, absent ----------------------
+
+    - name: Create org-scoped assignment
       ansible.platform.role_team_assignment:
         role_definition: "Organization Admin"
         team: "molecule-mock-team"
         assignment_objects:
           - name: "Default"
-            type: "organizations"
+            type: organizations
         state: present
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -104,17 +107,17 @@
     - name: Assert create changed
       ansible.builtin.assert:
         that: create_result is changed
-        fail_msg: "Create should report changed. create_result={{ create_result }}"
+        fail_msg: "Create should report changed. result={{ create_result }}"
       vars:
         ansible_connection: local
 
-    - name: Run again (idempotency)
+    - name: Idempotency check
       ansible.platform.role_team_assignment:
         role_definition: "Organization Admin"
         team: "molecule-mock-team"
         assignment_objects:
           - name: "Default"
-            type: "organizations"
+            type: organizations
         state: present
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -124,10 +127,126 @@
       vars:
         ansible_connection: local
 
-    - name: Assert idempotent run did not change
+    - name: Assert idempotent
       ansible.builtin.assert:
         that: idem_result is not changed
-        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+        fail_msg: "Second run should not change. result={{ idem_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: state=exists check
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        assignment_objects:
+          - name: "Default"
+            type: organizations
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert exists returned names
+      ansible.builtin.assert:
+        that:
+          - not exists_result.changed
+          - exists_result.role_team_assignment.role_definition == "Organization Admin"
+          - exists_result.role_team_assignment.team == "molecule-mock-team"
+        fail_msg: "state=exists failed or returned wrong data. result={{ exists_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: state=absent remove assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        assignment_objects:
+          - name: "Default"
+            type: organizations
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: absent_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert absent changed
+      ansible.builtin.assert:
+        that: absent_result is changed
+        fail_msg: "state=absent should report changed. result={{ absent_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: state=absent idempotency (already gone)
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        assignment_objects:
+          - name: "Default"
+            type: organizations
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: absent_idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert absent idempotent
+      ansible.builtin.assert:
+        that: absent_idem_result is not changed
+        fail_msg: "Second absent should not change. result={{ absent_idem_result }}"
+      vars:
+        ansible_connection: local
+
+    # -- object_id path: used for resources the mock has no named endpoint for,
+    # including EDA projects (eda_projects type routes to /api/eda/v1/projects/).
+    - name: Assign by object_id (EDA project workaround pattern)
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        object_id: 1
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: oid_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert object_id assignment changed
+      ansible.builtin.assert:
+        that: oid_result is changed
+        fail_msg: "object_id assignment should report changed. result={{ oid_result }}"
+      vars:
+        ansible_connection: local
+
+    - name: object_id assignment idempotency
+      ansible.platform.role_team_assignment:
+        role_definition: "Organization Admin"
+        team: "molecule-mock-team"
+        object_id: 1
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: oid_idem_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert object_id idempotent
+      ansible.builtin.assert:
+        that: oid_idem_result is not changed
+        fail_msg: "object_id second run should not change. result={{ oid_idem_result }}"
       vars:
         ansible_connection: local
 ...

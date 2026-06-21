@@ -9,23 +9,21 @@
 
   block:
 
-    # --------------------------------------------------------------------------
-    # Setup
-    # --------------------------------------------------------------------------
     - name: Generate a unique test ID
       ansible.builtin.set_fact:
         test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
       when: test_id is not defined
 
-    - name: Preset variables for test resource names
+    - name: Set resource name variables
       ansible.builtin.set_fact:
         organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
         team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
         custom_role_name: "GW-Custom-Role-{{ test_id }}"
+        eda_de_name: "GW-Test-DE-{{ test_id }}"
+        eda_project_name: "GW-Test-EDA-Project-{{ test_id }}"
 
-    # --------------------------------------------------------------------------
-    # Organizations
-    # --------------------------------------------------------------------------
+    # -- Organizations --------------------------------------------------------
+
     - name: Create Organization 1
       ansible.platform.organization:
         name: "{{ organization_name }}-1"
@@ -46,7 +44,7 @@
         name: "{{ organization_name }}-4"
       register: org4
 
-    - name: Assert organizations were created
+    - name: Assert organizations created
       ansible.builtin.assert:
         that:
           - org1 is changed
@@ -54,38 +52,33 @@
           - org3 is changed
           - org4 is changed
 
-    # --------------------------------------------------------------------------
-    # Teams
-    # --------------------------------------------------------------------------
-    - name: Create Team 1 in Organization 1
+    # -- Teams ----------------------------------------------------------------
+
+    - name: Create Team 1
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-1"
         organization: "{{ org1.name }}"
-        description: "Test Team 1"
       register: team1
 
-    - name: Create Team 2 in Organization 2
+    - name: Create Team 2
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-2"
         organization: "{{ org2.name }}"
-        description: "Test Team 2"
       register: team2
 
-    - name: Create Team 3 in Organization 3
+    - name: Create Team 3
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-3"
         organization: "{{ org3.name }}"
-        description: "Test Team 3"
       register: team3
 
-    - name: Create Team 4 in Organization 4
+    - name: Create Team 4
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-4"
         organization: "{{ org4.name }}"
-        description: "Test Team 3"
       register: team4
 
-    - name: Assert that teams were created
+    - name: Assert teams created
       ansible.builtin.assert:
         that:
           - team1 is changed
@@ -93,10 +86,9 @@
           - team3 is changed
           - team4 is changed
 
-    # --------------------------------------------------------------------------
-    # Custom Role Setup
-    # --------------------------------------------------------------------------
-    - name: Create Custom Role
+    # -- Custom role ----------------------------------------------------------
+
+    - name: Create custom org-scoped role
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         description: "Custom role for integration test"
@@ -106,123 +98,77 @@
         state: present
       register: custom_role
 
-    # 1. Assign Org Admin role to Team1 on Org1 (Global role can't be assigned)
+    # -- Org-scoped assignments -----------------------------------------------
+
     - name: Assign Org Admin to Team1 on Org1
       ansible.platform.role_team_assignment:
         assignment_objects:
           - name: "{{ org1.name }}"
-            type: "organizations"
+            type: organizations
         role_definition: Organization Admin
         team: "{{ team1.id }}"
       register: org_admin_assignment_1
-      ignore_errors: true  # this may fail depending on AAP limitations
+      ignore_errors: true
 
-    # 2. Assign Platform role to Team3 on Org3 (Global role can't be assigned)
     - name: Assign Platform Auditor to Team1 on Org1
       ansible.platform.role_team_assignment:
         assignment_objects:
           - name: "{{ org1.name }}"
-            type: "organizations"
+            type: organizations
         role_definition: Platform Auditor
         team: "{{ team1.name }}"
       register: org_admin_assignment_2
-      ignore_errors: true  # this may fail depending on AAP limitations
+      ignore_errors: true
 
-    # 3. Assign Custom Role Assignment Test to Team1 on Org1
-    - name: Assign Custom Role to Team1 on Org1
+    - name: Assign custom role to Team1 on Org1
       ansible.platform.role_team_assignment:
         assignment_objects:
           - name: "{{ org1.name }}"
-            type: "organizations"
+            type: organizations
         role_definition: "{{ custom_role_name }}"
         team: "{{ team1.name }}"
         state: present
       register: custom_role_assignment
 
-    # --------------------------------------------------------------------------
-    # VERIFICATION: Query API to confirm assignment persists
-    # --------------------------------------------------------------------------
-    - name: Fetch assignment for Team 1 and Custom Role
-      ansible.builtin.set_fact:
-        assignment_query: "{{ query('ansible.platform.gateway_api', 'role_team_assignments',
-                             query_params={'role_definition': custom_role.id, 'team': team1.id},
-                             host=gateway_hostname, username=gateway_username,
-                             password=gateway_password, verify_ssl=gateway_validate_certs | bool) }}"
-
-    - name: Assert Assignment exists
+    - name: Assert custom role assignment created
       ansible.builtin.assert:
-        that:
-          - assignment_query | length > 0
-        fail_msg: "No role assignment found for Custom Role ID {{ custom_role.id }} and Team ID {{ team1.id }}."
+        that: custom_role_assignment is changed
 
-    # Once we have role_definition , module available we can uncomment these
-    # 3. Assign Org Inventory Admin role to Team2 on Org2
-    # - name: Assign Org Inventory Admin to Team2 on Org2
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org1.name }}"
-    #         type: "organizations"
-    #       - name: "{{ org2.name }}"
-    #         type: "organizations"
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team2.name }}"
-    #     state: present
-    #   register: org_admin_assignment_3
+    - name: Idempotency — re-run custom role assignment
+      ansible.platform.role_team_assignment:
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        state: present
+      register: custom_role_idem
 
-    # - name: Assert Team2 Org Inventory Admin assignment worked
-    #   ansible.builtin.assert:
-    #     that:
-    #       - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
+    - name: Assert custom role idempotent
+      ansible.builtin.assert:
+        that: custom_role_idem is not changed
+        fail_msg: "Re-run of org-scoped assignment should not change."
 
-    # 4. Idempotency check (should not change)
-    # - name: Re-run Org Inventory Admin removal for Team2
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org1.name }}"
-    #         type: "organizations"
-    #       - name: "{{ org2.name }}"
-    #         type: "organizations"
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team2.name }}"
-    #     state: present
-    #   register: org_admin_assignment_3_check
+    # -- Verify via API -------------------------------------------------------
 
-    # - name: Assert no change on idempotent re-run
-    #   ansible.builtin.assert:
-    #     that:
-    #       - org_admin_assignment_3_check is not changed
+    - name: Fetch assignment from API to confirm persistence
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: assignment_query
 
-    # 5. Assign Org Inventory Admin role to Team2 on Org1 (absent to test delete)
-    # - name: Assign Org Credential Admin to Team3 on Org3
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org3.name }}"
-    #         type: "organizations"
-    #     role_definition: Organization Credential Admin
-    #     team: "{{ team3.name }}"
-    #     state: present
-    #   register: org_admin_assignment_5
+    - name: Assert assignment exists in API
+      ansible.builtin.assert:
+        that: "assignment_query.json.count > 0"
+        fail_msg: "No assignment found for role={{ custom_role.id }} team={{ team1.id }}."
 
-    # - name: Assert Org Credential Admin assignment worked
-    #   ansible.builtin.assert:
-    #     that:
-    #       - org_admin_assignment_5 is changed
+    # -- EDA decision environment assignment (ACA-6324) -----------------------
 
-    # --------------------------------------------------------------------------
-    # EDA resource-level role assignments by name (ACA-6324)
-    # --------------------------------------------------------------------------
-    # EDA resources are created via uri (no ansible.platform EDA modules yet).
-    # The role_team_assignment module resolves names via /api/eda/v1/ paths
-    # instead of /api/gateway/v1/ which does not proxy these endpoints.
-    # --------------------------------------------------------------------------
-
-    - name: "ACA-6324 | Set EDA resource names"
-      ansible.builtin.set_fact:
-        eda_de_name: "GW-Test-DE-{{ test_id }}"
-        eda_event_stream_name: "GW-Test-ES-{{ test_id }}"
-
-    # --- Create EDA Decision Environment via uri ----------------------------
-    - name: "ACA-6324 | Create EDA decision environment via EDA API"
+    - name: Create EDA decision environment via EDA API
       ansible.builtin.uri:
         url: "{{ gateway_hostname }}api/eda/v1/decision-environments/"
         method: POST
@@ -239,8 +185,7 @@
       register: eda_de
       ignore_errors: true
 
-    # --- Assign role to team on decision environment by name ----------------
-    - name: "ACA-6324 | Assign Decision Environment Admin to team by name"
+    - name: Assign Decision Environment Admin to team by name
       ansible.platform.role_team_assignment:
         role_definition: "Decision Environment Admin"
         team: "{{ team1.name }}"
@@ -252,21 +197,15 @@
       when: eda_de is not failed
       ignore_errors: true
 
-    - name: "ACA-6324 | Assert DE role assignment by name succeeded"
+    - name: Assert DE role assignment succeeded
       ansible.builtin.assert:
         that:
           - eda_de_role is not failed
           - eda_de_role is changed
-        success_msg: >
-          EDA decision environment role assigned by name via /api/eda/v1/decision-environments/.
-          object_id resolved correctly — Gateway accepted the assignment.
-        fail_msg: >
-          EDA decision environment role assignment failed: {{ eda_de_role.msg | default('no msg') }}.
-          Check that /api/eda/v1/decision-environments/ is accessible and the role name is correct.
+        fail_msg: "EDA DE role assignment failed: {{ eda_de_role.msg | default('') }}"
       when: eda_de is not failed and eda_de_role is defined
 
-    # --- Idempotency: second run must be no-change -------------------------
-    - name: "ACA-6324 | Idempotency — re-run DE assignment must be no-change"
+    - name: Idempotency — re-run DE assignment
       ansible.platform.role_team_assignment:
         role_definition: "Decision Environment Admin"
         team: "{{ team1.name }}"
@@ -274,19 +213,16 @@
           - name: "{{ eda_de_name }}"
             type: decision_environments
         state: present
-      register: eda_de_role_idempotent
+      register: eda_de_role_idem
       when: eda_de is not failed and eda_de_role is not failed
 
-    - name: "ACA-6324 | Assert DE assignment idempotency"
+    - name: Assert DE assignment idempotent
       ansible.builtin.assert:
-        that:
-          - eda_de_role_idempotent is not changed
-        success_msg: "Idempotency confirmed — second run made no changes."
-        fail_msg: "Idempotency broken — second run changed state or failed."
-      when: eda_de is not failed and eda_de_role is not failed and eda_de_role_idempotent is defined
+        that: eda_de_role_idem is not changed
+        fail_msg: "DE assignment re-run should not change."
+      when: eda_de is not failed and eda_de_role is not failed and eda_de_role_idem is defined
 
-    # --- state:absent removes DE assignment --------------------------------
-    - name: "ACA-6324 | state:absent removes DE role assignment"
+    - name: state=absent removes DE assignment
       ansible.platform.role_team_assignment:
         role_definition: "Decision Environment Admin"
         team: "{{ team1.name }}"
@@ -297,51 +233,117 @@
       register: eda_de_role_absent
       when: eda_de is not failed and eda_de_role is not failed
 
-    - name: "ACA-6324 | Assert DE assignment removed"
+    - name: Assert DE assignment removed
       ansible.builtin.assert:
         that:
           - eda_de_role_absent is not failed
           - eda_de_role_absent is changed
-        success_msg: "state:absent removed EDA DE assignment correctly."
-        fail_msg: "state:absent failed or made no change: {{ eda_de_role_absent.msg | default('') }}"
+        fail_msg: "state=absent on DE assignment failed: {{ eda_de_role_absent.msg | default('') }}"
       when: eda_de is not failed and eda_de_role is not failed and eda_de_role_absent is defined
 
-  always:
-    # ----------------------------------------------------------------------
-    # Explicit Role Cleanup (Uncomment once role_definition implemented)
-    # ----------------------------------------------------------------------
-    # - name: Remove Org Inventory Admin assignment from Team2 on Org1,Org2
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org1.name }}"
-    #         type: organizations
-    #       - name: "{{ org2.name }}"
-    #         type: organizations
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team2.name }}"
-    #     state: absent
+    # -- EDA project assignment (ACA-6206) ------------------------------------
+    # Uses type=eda_projects which routes to /api/eda/v1/projects/.
+    # type=projects would incorrectly route to /api/controller/v2/projects/.
 
-    # - name: Remove Org Inventory Admin assignment from Team2 on Org3
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org3.name }}"
-    #         type: organizations
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team3.name }}"
-    #     state: absent
-    # ----------------------------------------------------------------------
-    # Cleanup
-    # ----------------------------------------------------------------------
+    - name: Create EDA project via EDA API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/eda/v1/projects/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_project_name }}"
+          url: "https://github.com/ansible/event-driven-ansible"
+          organization_id: "{{ org1.id }}"
+        status_code: [200, 201]
+      register: eda_project
+      ignore_errors: true
+
+    - name: Create EDA project role definition
+      ansible.platform.role_definition:
+        name: "GW-EDA-Project-Role-{{ test_id }}"
+        content_type: eda.project
+        permissions:
+          - eda.view_project
+          - eda.change_project
+          - eda.delete_project
+          - eda.sync_project
+          - eda.view_rulebook
+        state: present
+      register: eda_project_role_def
+      ignore_errors: true
+
+    - name: Assign EDA project role to team by name (type=eda_projects)
+      ansible.platform.role_team_assignment:
+        role_definition: "GW-EDA-Project-Role-{{ test_id }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ eda_project_name }}"
+            type: eda_projects
+        state: present
+      register: eda_project_role
+      when: eda_project is not failed and eda_project_role_def is not failed
+      ignore_errors: true
+
+    - name: Assert EDA project role assignment succeeded
+      ansible.builtin.assert:
+        that:
+          - eda_project_role is not failed
+          - eda_project_role is changed
+        fail_msg: "EDA project role assignment failed: {{ eda_project_role.msg | default('') }}"
+      when: eda_project is not failed and eda_project_role_def is not failed and eda_project_role is defined
+
+    - name: Idempotency — re-run EDA project assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "GW-EDA-Project-Role-{{ test_id }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ eda_project_name }}"
+            type: eda_projects
+        state: present
+      register: eda_project_role_idem
+      when: eda_project is not failed and eda_project_role is not failed
+
+    - name: Assert EDA project assignment idempotent
+      ansible.builtin.assert:
+        that: eda_project_role_idem is not changed
+        fail_msg: "EDA project assignment re-run should not change."
+      when: eda_project is not failed and eda_project_role is not failed and eda_project_role_idem is defined
+
+    - name: state=absent removes EDA project assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "GW-EDA-Project-Role-{{ test_id }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ eda_project_name }}"
+            type: eda_projects
+        state: absent
+      register: eda_project_role_absent
+      when: eda_project is not failed and eda_project_role is not failed
+
+    - name: Assert EDA project assignment removed
+      ansible.builtin.assert:
+        that:
+          - eda_project_role_absent is not failed
+          - eda_project_role_absent is changed
+        fail_msg: "state=absent on EDA project assignment failed: {{ eda_project_role_absent.msg | default('') }}"
+      when: eda_project is not failed and eda_project_role is not failed and eda_project_role_absent is defined
+
+  always:
+
     - name: Delete test teams
       ansible.platform.team:
         name: "{{ item.name }}"
         organization: "{{ item.organization }}"
         state: absent
       loop:
-        - { name: "{{ team1.name }}", organization: "{{ org1.name }}" }
-        - { name: "{{ team2.name }}", organization: "{{ org2.name }}" }
-        - { name: "{{ team3.name }}", organization: "{{ org3.name }}" }
-        - { name: "{{ team4.name }}", organization: "{{ org4.name }}" }
+        - {name: "{{ team1.name }}", organization: "{{ org1.name }}"}
+        - {name: "{{ team2.name }}", organization: "{{ org2.name }}"}
+        - {name: "{{ team3.name }}", organization: "{{ org3.name }}"}
+        - {name: "{{ team4.name }}", organization: "{{ org4.name }}"}
 
     - name: Delete test organizations
       ansible.platform.organization:
@@ -353,7 +355,7 @@
         - "{{ org3.name }}"
         - "{{ org4.name }}"
 
-    - name: Delete custom role
+    - name: Delete custom role definition
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         content_type: "shared.organization"
@@ -366,8 +368,16 @@
         - "'Not found' not in role_delete.msg"
         - "'does not exist' not in role_delete.msg"
 
-    # --- EDA cleanup -------------------------------------------------------
-    - name: "ACA-6324 | Delete EDA decision environment"
+    - name: Delete EDA project role definition
+      ansible.platform.role_definition:
+        name: "GW-EDA-Project-Role-{{ test_id }}"
+        content_type: eda.project
+        permissions:
+          - eda.view_project
+        state: absent
+      ignore_errors: true
+
+    - name: Delete EDA decision environment
       ansible.builtin.uri:
         url: "{{ gateway_hostname }}api/eda/v1/decision-environments/{{ eda_de.json.id }}/"
         method: DELETE
@@ -377,5 +387,17 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         status_code: [204, 404]
       when: eda_de is defined and eda_de is not failed and eda_de.json.id is defined
+      ignore_errors: true
+
+    - name: Delete EDA project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/eda/v1/projects/{{ eda_project.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_project is defined and eda_project is not failed and eda_project.json.id is defined
       ignore_errors: true
 ...

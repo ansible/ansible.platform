@@ -902,7 +902,7 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.fields:
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
-                    if value is None:
+                    if value is None or value == "":
                         continue
                     request_data[field] = value
 

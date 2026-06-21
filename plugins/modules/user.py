@@ -88,9 +88,8 @@ options:
 
   update_secrets:
     description:
-      - When C(false), secret fields (e.g. I(password)) will not be sent during updates,
-        preventing false C(changed) reports when the current value cannot be read back.
-      - Set to C(true) (default) to always push secrets.
+      - C(true) will always change password if user specifies password, even if API gives C($encrypted$).
+      - C(false) will only set the password if other values change too.
     type: bool
     default: true
 

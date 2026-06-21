@@ -53,6 +53,7 @@ class GenericResource:
         start_id: int = 2000,
         patch_fields: Optional[List[str]] = None,
         post_only_fields: Optional[Dict[str, Callable[[], Any]]] = None,
+        sort_list_fields: Optional[List[str]] = None,
     ):
         self.lock = threading.Lock()
         self.resource_name = resource_name
@@ -61,8 +62,20 @@ class GenericResource:
         # post_only_fields: generated on POST, returned in create response, never stored.
         # Simulates API-generated secrets like client_secret that are only visible once.
         self.post_only_fields: Dict[str, Callable[[], Any]] = post_only_fields or {}
+        # Fields that the real Gateway returns sorted alphabetically.
+        # The mock sorts these on write so that Molecule idempotency tests see
+        # the same ordering the real API would return, catching order-sensitivity
+        # bugs in _should_update() before they reach a real AAP instance.
+        self.sort_list_fields: List[str] = sort_list_fields or []
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
+
+    def _normalize_item(self, item: Dict[str, Any]) -> None:
+        """Sort list fields in-place to match real Gateway alphabetical ordering."""
+        for field_name in self.sort_list_fields:
+            value = item.get(field_name)
+            if isinstance(value, list):
+                item[field_name] = sorted(str(x) for x in value)
 
     def create(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
@@ -78,6 +91,8 @@ class GenericResource:
                 "url": f"/api/gateway/v{version}/{self.resource_name}/{item_id}/",
             }
             item.update({k: v for k, v in payload.items() if v is not None})
+            # Normalise: sort list fields so the mock mirrors real Gateway ordering.
+            self._normalize_item(item)
             self._items[item_id] = item
             # post_only_fields are returned in the POST response but never stored.
             # On GET/PATCH the fields will be absent, matching real Gateway behaviour.
@@ -142,6 +157,8 @@ class GenericResource:
                 if allowed is None or k in allowed:
                     item[k] = v
             item["modified"] = _now_iso()
+            # Normalise: sort list fields so the mock mirrors real Gateway ordering.
+            self._normalize_item(item)
             self._items[item_id] = item
             return item
 
@@ -228,6 +245,10 @@ class Store:
                 required_fields=required,
                 start_id=start_id,
             )
+
+        # Resource-specific normalisation: sort list fields the real Gateway returns
+        # alphabetically so Molecule tests catch order-sensitivity regressions.
+        self._resources["role_definitions"].sort_list_fields = ["permissions"]
 
     def resource(self, name: str) -> Optional[GenericResource]:
         return self._resources.get(name)

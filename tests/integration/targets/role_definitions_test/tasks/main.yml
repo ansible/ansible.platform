@@ -67,6 +67,47 @@
         that:
           - recreate_role is not changed
 
+    # ── Multi-permission idempotency ─────────────────────────────────────
+    # Regression guard for order-sensitive list comparison bug:
+    # The Gateway returns permissions sorted alphabetically regardless of
+    # the order they were submitted. A plain list == check will always see
+    # a difference when the task and the API use different orderings,
+    # causing a spurious PATCH on every run.
+    - name: Create role with multiple permissions
+      ansible.platform.role_definition:
+        name: "{{ test_role_name }}-multi"
+        description: "Multi-permission idempotency test role"
+        content_type: awx.inventory
+        permissions:
+          - awx.change_inventory
+          - awx.view_inventory
+      register: role_multi
+
+    - name: Assert multi-permission create changed the system
+      ansible.builtin.assert:
+        that:
+          - role_multi is changed
+
+    - name: Recreate multi-permission role with permissions in reversed order
+      ansible.platform.role_definition:
+        name: "{{ test_role_name }}-multi"
+        description: "Multi-permission idempotency test role"
+        content_type: awx.inventory
+        permissions:
+          - awx.view_inventory      # reversed vs alphabetical (change < view)
+          - awx.change_inventory
+      register: recreate_role_multi
+
+    - name: Assert multi-permission idempotency — order must not matter
+      ansible.builtin.assert:
+        that:
+          - recreate_role_multi is not changed
+        fail_msg: >
+          Multi-permission idempotency failed.
+          The permissions list comparison must be order-insensitive.
+          The Gateway returns permissions sorted alphabetically; the module
+          must sort both sides before comparing to avoid false-positive updates.
+
     - name: Alter an existing role by ID
       ansible.platform.role_definition:
         name: "{{ role.id }}"
@@ -138,4 +179,14 @@
       when: "item in vars and 'id' in vars[item]"
       loop:
         - "role"
+
+    - name: Delete multi-permission test role
+      ansible.platform.role_definition:
+        name: "{{ test_role_name }}-multi"
+        content_type: awx.inventory
+        permissions:
+          - awx.change_inventory
+          - awx.view_inventory
+        state: absent
+      ignore_errors: true
 ...

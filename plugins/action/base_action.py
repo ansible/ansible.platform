@@ -996,7 +996,15 @@ class BaseResourceActionPlugin(ActionBase):
                 continue
             # Same type: direct equality
             if type(desired_val) is type(current_val):
-                if desired_val != current_val:
+                if isinstance(desired_val, list):
+                    # Lists: compare order-insensitively by sorting both sides.
+                    # The Gateway API returns lists (e.g. permissions) in alphabetical
+                    # order regardless of the order the user specified them, so a
+                    # naive list equality check always sees a difference and triggers
+                    # a spurious update on every subsequent run.
+                    if sorted(str(x) for x in desired_val) != sorted(str(x) for x in current_val):
+                        return True
+                elif desired_val != current_val:
                     return True
             else:
                 # Coerce to string for cross-type scalars (e.g. int vs float)
