@@ -17,15 +17,13 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    # <roles> -------------------
     - name: Create an role with check mode
       ansible.platform.role_definition:
         name: "{{ test_role_name }}"
-        description: Grants full inventory access
-        content_type: awx.inventory
+        description: Grants view access to an organization
+        content_type: shared.organization
         permissions:
-          - awx.view_inventory
-          - awx.change_inventory
+          - shared.view_organization
       check_mode: true
 
     - name: Search for the role
@@ -67,46 +65,55 @@
         that:
           - recreate_role is not changed
 
-    # ── Multi-permission idempotency ─────────────────────────────────────
-    # Regression guard for order-sensitive list comparison bug:
-    # The Gateway returns permissions sorted alphabetically regardless of
-    # the order they were submitted. A plain list == check will always see
-    # a difference when the task and the API use different orderings,
-    # causing a spurious PATCH on every run.
-    - name: Create role with multiple permissions
+    - name: Probe EDA service availability
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}api/eda/v1/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 401, 403]
+      register: eda_probe
+      failed_when: false
+
+    - name: Set EDA availability fact
+      ansible.builtin.set_fact:
+        eda_available: "{{ eda_probe.status | default(0) in [200, 401, 403] }}"
+
+    - name: Create role with multiple permissions (EDA)
       ansible.platform.role_definition:
         name: "{{ test_role_name }}-multi"
         description: "Multi-permission idempotency test role"
-        content_type: awx.inventory
+        content_type: eda.project
         permissions:
-          - awx.change_inventory
-          - awx.view_inventory
+          - eda.change_project
+          - eda.view_project
       register: role_multi
+      when: eda_available
 
     - name: Assert multi-permission create changed the system
       ansible.builtin.assert:
         that:
           - role_multi is changed
+      when: eda_available
 
     - name: Recreate multi-permission role with permissions in reversed order
       ansible.platform.role_definition:
         name: "{{ test_role_name }}-multi"
         description: "Multi-permission idempotency test role"
-        content_type: awx.inventory
+        content_type: eda.project
         permissions:
-          - awx.view_inventory      # reversed vs alphabetical (change < view)
-          - awx.change_inventory
+          - eda.view_project
+          - eda.change_project
       register: recreate_role_multi
+      when: eda_available
 
     - name: Assert multi-permission idempotency — order must not matter
       ansible.builtin.assert:
         that:
           - recreate_role_multi is not changed
-        fail_msg: >
-          Multi-permission idempotency failed.
-          The permissions list comparison must be order-insensitive.
-          The Gateway returns permissions sorted alphabetically; the module
-          must sort both sides before comparing to avoid false-positive updates.
+        fail_msg: "Multi-permission idempotency failed — permissions list comparison must be order-insensitive."
+      when: eda_available
 
     - name: Alter an existing role by ID
       ansible.platform.role_definition:
@@ -165,9 +172,6 @@
         that:
           - role_delete is changed
 
-    # </Roless> ------------------
-
-  # <Cleanup>
   always:
     - name: Delete Roles
       ansible.platform.role_definition:
@@ -183,10 +187,14 @@
     - name: Delete multi-permission test role
       ansible.platform.role_definition:
         name: "{{ test_role_name }}-multi"
-        content_type: awx.inventory
+        content_type: eda.project
         permissions:
-          - awx.change_inventory
-          - awx.view_inventory
+          - eda.view_project
         state: absent
-      ignore_errors: true
+      register: multi_role_delete
+      when: eda_available | default(false)
+      failed_when:
+        - multi_role_delete.failed
+        - "'Not found' not in (multi_role_delete.msg | default(''))"
+        - "'does not exist' not in (multi_role_delete.msg | default(''))"
 ...

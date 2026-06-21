@@ -207,6 +207,7 @@ EXAMPLES = """
       - name: "org-apac"
         type: organizations
     state: absent
+...
 """
 
 RETURN = """

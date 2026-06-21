@@ -200,8 +200,7 @@ class ActionModule(BaseResourceActionPlugin):
                 elif obj.get("name") and obj.get("type"):
                     if _expected_endpoint and obj["type"] != _expected_endpoint:
                         raise AnsibleError(
-                            "Role '{role}' has content_type '{ct}' which requires "
-                            "type '{expected}' in assignment_objects, but got '{provided}'.".format(
+                            "Role '{role}' has content_type '{ct}' which requires type '{expected}' in assignment_objects, but got '{provided}'.".format(
                                 role=role_def_name,
                                 ct=_role_content_type or "unknown",
                                 expected=_expected_endpoint,
@@ -254,12 +253,14 @@ class ActionModule(BaseResourceActionPlugin):
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
 
-            result.update({
-                "changed": all_changed,
-                "failed": False,
-                self.MODULE_NAME: clean,
-                **clean,
-            })
+            result.update(
+                {
+                    "changed": all_changed,
+                    "failed": False,
+                    self.MODULE_NAME: clean,
+                    **clean,
+                }
+            )
             if len(assignments) > 1:
                 result["assignments"] = [{k: v for k, v in a.items() if k not in _strip} for a in assignments]
 
@@ -323,12 +324,14 @@ class ActionModule(BaseResourceActionPlugin):
         manager_result = manager.execute(operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data)
 
         clean = {k: v for k, v in manager_result.items() if k not in _strip}
-        result.update({
-            "changed": manager_result.get("changed", False),
-            "failed": False,
-            self.MODULE_NAME: clean,
-            **(clean if operation != "delete" else {}),
-        })
+        result.update(
+            {
+                "changed": manager_result.get("changed", False),
+                "failed": False,
+                self.MODULE_NAME: clean,
+                **(clean if operation != "delete" else {}),
+            }
+        )
         if operation == "delete":
             result[self.MODULE_NAME]["state"] = "absent"
 

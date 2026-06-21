@@ -134,7 +134,7 @@
       vars:
         ansible_connection: local
 
-    - name: state=exists check
+    - name: State=exists check
       ansible.platform.role_team_assignment:
         role_definition: "Organization Admin"
         team: "molecule-mock-team"
@@ -160,7 +160,7 @@
       vars:
         ansible_connection: local
 
-    - name: state=absent remove assignment
+    - name: State=absent remove assignment
       ansible.platform.role_team_assignment:
         role_definition: "Organization Admin"
         team: "molecule-mock-team"
@@ -183,7 +183,7 @@
       vars:
         ansible_connection: local
 
-    - name: state=absent idempotency (already gone)
+    - name: State=absent idempotency (already gone)
       ansible.platform.role_team_assignment:
         role_definition: "Organization Admin"
         team: "molecule-mock-team"
@@ -229,7 +229,7 @@
       vars:
         ansible_connection: local
 
-    - name: object_id assignment idempotency
+    - name: Object_id assignment idempotency
       ansible.platform.role_team_assignment:
         role_definition: "Organization Admin"
         team: "molecule-mock-team"

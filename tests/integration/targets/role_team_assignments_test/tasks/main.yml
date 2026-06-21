@@ -222,7 +222,7 @@
         fail_msg: "DE assignment re-run should not change."
       when: eda_de is not failed and eda_de_role is not failed and eda_de_role_idem is defined
 
-    - name: state=absent removes DE assignment
+    - name: State=absent removes DE assignment
       ansible.platform.role_team_assignment:
         role_definition: "Decision Environment Admin"
         team: "{{ team1.name }}"
@@ -313,7 +313,7 @@
         fail_msg: "EDA project assignment re-run should not change."
       when: eda_project is not failed and eda_project_role is not failed and eda_project_role_idem is defined
 
-    - name: state=absent removes EDA project assignment
+    - name: State=absent removes EDA project assignment
       ansible.platform.role_team_assignment:
         role_definition: "GW-EDA-Project-Role-{{ test_id }}"
         team: "{{ team1.name }}"
@@ -375,7 +375,11 @@
         permissions:
           - eda.view_project
         state: absent
-      ignore_errors: true
+      register: eda_role_def_delete
+      failed_when:
+        - eda_role_def_delete.failed
+        - "'Not found' not in (eda_role_def_delete.msg | default(''))"
+        - "'does not exist' not in (eda_role_def_delete.msg | default(''))"
 
     - name: Delete EDA decision environment
       ansible.builtin.uri:
@@ -387,7 +391,10 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         status_code: [204, 404]
       when: eda_de is defined and eda_de is not failed and eda_de.json.id is defined
-      ignore_errors: true
+      register: eda_de_delete
+      failed_when:
+        - eda_de_delete.failed is defined and eda_de_delete.failed
+        - eda_de_delete.status | default(0) not in [204, 404]
 
     - name: Delete EDA project
       ansible.builtin.uri:
@@ -399,5 +406,8 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         status_code: [204, 404]
       when: eda_project is defined and eda_project is not failed and eda_project.json.id is defined
-      ignore_errors: true
+      register: eda_project_delete
+      failed_when:
+        - eda_project_delete.failed is defined and eda_project_delete.failed
+        - eda_project_delete.status | default(0) not in [204, 404]
 ...
