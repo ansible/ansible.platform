@@ -377,7 +377,7 @@ def spawn_ephemeral_client(task_vars, gateway_config, task_env=None):
         return (client, None)
 
     inventory_hostname = task_vars.get("inventory_hostname", "localhost")
-    host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
+    host_hash = hashlib.sha256(inventory_hostname.encode()).hexdigest()[:4]
 
     # Use a per-invocation time suffix so each ephemeral manager gets a UNIQUE
     # socket path.  Without this, orphaned managers from prior tasks (which are
