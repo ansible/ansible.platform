@@ -244,6 +244,7 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             created=api_data.get("created"),
             modified=api_data.get("modified"),
             url=api_data.get("url"),
-            # API-generated OAuth credential — surfaced flat only, not in nested dict.
+            # API-generated; client_secret only present in POST response.
             client_id=api_data.get("client_id"),
+            client_secret=api_data.get("client_secret"),
         )
