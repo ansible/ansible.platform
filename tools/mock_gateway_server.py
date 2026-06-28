@@ -25,11 +25,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import threading
 import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 
@@ -45,11 +46,21 @@ def _now_iso() -> str:
 class GenericResource:
     """Thread-safe CRUD store for any named resource."""
 
-    def __init__(self, resource_name: str, required_fields: Optional[List[str]] = None, start_id: int = 2000, patch_fields: Optional[List[str]] = None):
+    def __init__(
+        self,
+        resource_name: str,
+        required_fields: Optional[List[str]] = None,
+        start_id: int = 2000,
+        patch_fields: Optional[List[str]] = None,
+        post_only_fields: Optional[Dict[str, Callable[[], Any]]] = None,
+    ):
         self.lock = threading.Lock()
         self.resource_name = resource_name
         self.required_fields: List[str] = required_fields or []
         self.patch_fields: Optional[List[str]] = patch_fields  # None = allow all
+        # post_only_fields: generated on POST, returned in create response, never stored.
+        # Simulates API-generated secrets like client_secret that are only visible once.
+        self.post_only_fields: Dict[str, Callable[[], Any]] = post_only_fields or {}
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
 
@@ -68,7 +79,12 @@ class GenericResource:
             }
             item.update({k: v for k, v in payload.items() if v is not None})
             self._items[item_id] = item
-            return item
+            # post_only_fields are returned in the POST response but never stored.
+            # On GET/PATCH the fields will be absent, matching real Gateway behaviour.
+            response = dict(item)
+            for field_name, generator in self.post_only_fields.items():
+                response[field_name] = generator()
+            return response
 
     def list_items(self, filters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         with self.lock:
@@ -177,9 +193,18 @@ class Store:
 
     def _init_resources(self) -> None:
         """Create all generic resource stores with appropriate config."""
+        # Applications: client_secret returned on POST only, never on GET/PATCH.
+        self._resources["applications"] = GenericResource(
+            resource_name="applications",
+            required_fields=["name", "organization"],
+            start_id=3000,
+            post_only_fields={
+                "client_id": lambda: secrets.token_hex(16),
+                "client_secret": lambda: secrets.token_hex(32),
+            },
+        )
         defs: List[tuple] = [
             # (endpoint_name, required_fields, start_id)
-            ("applications", ["name", "organization"], 3000),
             ("authenticators", ["name"], 3100),
             ("authenticator_maps", ["name", "authenticator"], 3200),
             ("ca_certificates", ["name"], 3300),

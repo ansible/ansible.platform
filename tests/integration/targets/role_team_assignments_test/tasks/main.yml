@@ -143,19 +143,16 @@
     # VERIFICATION: Query API to confirm assignment persists
     # --------------------------------------------------------------------------
     - name: Fetch assignment for Team 1 and Custom Role
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        return_content: true
-      register: assignment_query
+      ansible.builtin.set_fact:
+        assignment_query: "{{ query('ansible.platform.gateway_api', 'role_team_assignments',
+                             query_params={'role_definition': custom_role.id, 'team': team1.id},
+                             host=gateway_hostname, username=gateway_username,
+                             password=gateway_password, verify_ssl=gateway_validate_certs | bool) }}"
 
     - name: Assert Assignment exists
       ansible.builtin.assert:
         that:
-          - "assignment_query.json.count > 0"
+          - assignment_query | length > 0
         fail_msg: "No role assignment found for Custom Role ID {{ custom_role.id }} and Team ID {{ team1.id }}."
 
     # Once we have role_definition , module available we can uncomment these
