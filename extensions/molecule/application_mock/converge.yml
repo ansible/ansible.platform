@@ -57,7 +57,7 @@
       vars:
         ansible_connection: local
 
-    - name: Assert create changed and client_secret returned (AAP-801336)
+    - name: Assert create changed and client_secret returned (AAP-80136)
       ansible.builtin.assert:
         that:
           - create_result is changed
@@ -83,7 +83,7 @@
       vars:
         ansible_connection: local
 
-    - name: Assert idempotent run did not change and client_secret absent (AAP-801336)
+    - name: Assert idempotent run did not change and client_secret absent (AAP-80136)
       ansible.builtin.assert:
         that:
           - idem_result is not changed
@@ -105,7 +105,7 @@
       vars:
         ansible_connection: local
 
-    - name: Assert update changed and client_secret absent on PATCH (AAP-801336)
+    - name: Assert update changed and client_secret absent on PATCH (AAP-80136)
       ansible.builtin.assert:
         that:
           - update_result is changed
@@ -132,7 +132,7 @@
         description: "Created by Molecule"
       register: create_result
 
-    - name: Assert create changed and client_secret returned (AAP-801336)
+    - name: Assert create changed and client_secret returned (AAP-80136)
       ansible.builtin.assert:
         that:
           - create_result is changed
@@ -148,7 +148,7 @@
         state: present
       register: idem_result
 
-    - name: Assert idempotent run did not change and client_secret absent (AAP-801336)
+    - name: Assert idempotent run did not change and client_secret absent (AAP-80136)
       ansible.builtin.assert:
         that:
           - idem_result is not changed
@@ -162,7 +162,7 @@
         description: "Updated by Molecule"
       register: update_result
 
-    - name: Assert update changed and client_secret absent on PATCH (AAP-801336)
+    - name: Assert update changed and client_secret absent on PATCH (AAP-80136)
       ansible.builtin.assert:
         that:
           - update_result is changed
@@ -187,7 +187,7 @@
         description: "Created by Molecule"
       register: create_result
 
-    - name: Assert create changed and client_secret returned (AAP-801336)
+    - name: Assert create changed and client_secret returned (AAP-80136)
       ansible.builtin.assert:
         that:
           - create_result is changed
@@ -203,7 +203,7 @@
         state: present
       register: idem_result
 
-    - name: Assert idempotent run did not change and client_secret absent (AAP-801336)
+    - name: Assert idempotent run did not change and client_secret absent (AAP-80136)
       ansible.builtin.assert:
         that:
           - idem_result is not changed
@@ -217,7 +217,7 @@
         description: "Updated by Molecule"
       register: update_result
 
-    - name: Assert update changed and client_secret absent on PATCH (AAP-801336)
+    - name: Assert update changed and client_secret absent on PATCH (AAP-80136)
       ansible.builtin.assert:
         that:
           - update_result is changed

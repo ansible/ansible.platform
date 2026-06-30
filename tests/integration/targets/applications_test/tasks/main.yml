@@ -200,7 +200,7 @@
           - app5.client_id | length > 0
         fail_msg: "confidential app create must return client_secret and client_id. app5={{ app5 }}"
 
-    - name: Re-run app5 idempotency — client_secret must be absent on re-run (AAP-801336)
+    - name: Re-run app5 idempotency — client_secret must be absent on re-run (AAP-80136)
       ansible.platform.application:
         name: "{{ name_prefix }}-app5"
         organization: "{{ org1.id }}"
@@ -208,7 +208,7 @@
         client_type: confidential
       register: app5_idem
 
-    - name: Assert app5 idempotent and no stale client_secret (AAP-801336)
+    - name: Assert app5 idempotent and no stale client_secret (AAP-80136)
       ansible.builtin.assert:
         that:
           - app5_idem is not changed
