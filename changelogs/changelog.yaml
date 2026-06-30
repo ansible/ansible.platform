@@ -1,16 +1,5 @@
 ancestor: null
 releases:
-  2.7.20260615:
-    changes:
-      bugfixes:
-      - gateway_api lookup / search_api - Fix pagination for relative next URLs. AAP
-        returns the next link as a relative path; it is now resolved against base_url
-        with urljoin so absolute URLs are always requested.
-      - gateway_api lookup / search_api - Support Galaxy/Hub pagination envelope. Hub
-        list responses use {meta, links, data} instead of the DRF {count, next, results}
-        shape. return_all now handles both envelopes so /api/galaxy/ endpoints no longer
-        silently return only the first page (backport of #198).
-    release_date: '2026-06-15'
   1.0.0:
     release_date: '2024-05-06'
   2.7.20260513:
@@ -52,20 +41,38 @@ releases:
   2.7.20260604:
     changes:
       bugfixes:
-      - All modules - Restore async/poll 0 parallelism for all ansible.platform action
-        plugins. BaseResourceActionPlugin now sets _supports_async = True. All tasks
-        always target localhost so Ansible's fork-based async mechanism works correctly,
-        restoring the parallel execution that infra.aap_configuration gateway roles
-        depend on and that was broken in the action plugin rewrite (AAP-76233).
-      - All modules - Fix empty-string handling for aap_request_timeout and
-        gateway_request_timeout. The AAP built-in credential type injects
-        aap_request_timeout as {{request_timeout}} which evaluates to empty string
-        when not configured. Empty string caused argspec validation to fail with
-        cannot be converted to float. Empty strings are now stripped before
-        validation and the 10-second default is applied instead.
       - All modules - Fix aap_validate_certs alias resolution. When aap_validate_certs
         false was set via module_defaults or group/ansible.platform.gateway, it was
         silently ignored due to incorrect or-chaining in the config extractor. The
         parameter is now resolved using an explicit in-key check so that False is
         honoured correctly (AAP-75645).
+      - All modules - Fix empty-string handling for aap_request_timeout and gateway_request_timeout.
+        The AAP built-in credential type injects aap_request_timeout as {{request_timeout}}
+        which evaluates to empty string when not configured. Empty string caused argspec
+        validation to fail with cannot be converted to float. Empty strings are now
+        stripped before validation and the 10-second default is applied instead.
+      - All modules - Restore async/poll 0 parallelism for all ansible.platform action
+        plugins. BaseResourceActionPlugin now sets _supports_async = True. All tasks
+        always target localhost so Ansible's fork-based async mechanism works correctly,
+        restoring the parallel execution that infra.aap_configuration gateway roles
+        depend on and that was broken in the action plugin rewrite (AAP-76233).
     release_date: '2026-06-04'
+  2.7.20260615:
+    changes:
+      bugfixes:
+      - gateway_api lookup / search_api - Fix pagination for relative next URLs. AAP
+        returns the next link as a relative path; it is now resolved against base_url
+        with urljoin so absolute URLs are always requested.
+      - gateway_api lookup / search_api - Support Galaxy/Hub pagination envelope.
+        Hub list responses use {meta, links, data} instead of the DRF {count, next,
+        results} shape. return_all now handles both envelopes so /api/galaxy/ endpoints
+        no longer silently return only the first page (backport of
+    release_date: '2026-06-15'
+  2.7.20260630:
+    changes:
+      bugfixes:
+      - application - fix ``client_secret`` not returned in module result when creating
+        a confidential OAuth application (https://issues.redhat.com/browse/AAP-80136).
+    fragments:
+    - aap_80136_client_secret.yaml
+    release_date: '2026-06-30'
