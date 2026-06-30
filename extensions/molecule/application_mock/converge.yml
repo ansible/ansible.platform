@@ -57,10 +57,15 @@
       vars:
         ansible_connection: local
 
-    - name: Assert create changed
+    - name: Assert create changed and client_secret returned (AAP-80136)
       ansible.builtin.assert:
-        that: create_result is changed
-        fail_msg: "Create should report changed. create_result={{ create_result }}"
+        that:
+          - create_result is changed
+          - create_result.client_secret is defined
+          - create_result.client_secret | length > 0
+          - create_result.client_id is defined
+          - create_result.client_id | length > 0
+        fail_msg: "Create should report changed and return client_secret. create_result={{ create_result }}"
       vars:
         ansible_connection: local
 
@@ -78,10 +83,12 @@
       vars:
         ansible_connection: local
 
-    - name: Assert idempotent run did not change
+    - name: Assert idempotent run did not change and client_secret absent (AAP-80136)
       ansible.builtin.assert:
-        that: idem_result is not changed
-        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+        that:
+          - idem_result is not changed
+          - idem_result.client_secret is not defined or idem_result.client_secret == None
+        fail_msg: "Idempotent run should not change and must not expose stale client_secret. idem_result={{ idem_result }}"
       vars:
         ansible_connection: local
 
@@ -98,10 +105,12 @@
       vars:
         ansible_connection: local
 
-    - name: Assert update changed
+    - name: Assert update changed and client_secret absent on PATCH (AAP-80136)
       ansible.builtin.assert:
-        that: update_result is changed
-        fail_msg: "Update should report changed. update_result={{ update_result }}"
+        that:
+          - update_result is changed
+          - update_result.client_secret is not defined or update_result.client_secret == None
+        fail_msg: "Update should change but must not expose client_secret on PATCH. update_result={{ update_result }}"
       vars:
         ansible_connection: local
 
@@ -123,10 +132,13 @@
         description: "Created by Molecule"
       register: create_result
 
-    - name: Assert create changed
+    - name: Assert create changed and client_secret returned (AAP-80136)
       ansible.builtin.assert:
-        that: create_result is changed
-        fail_msg: "Create should report changed. create_result={{ create_result }}"
+        that:
+          - create_result is changed
+          - create_result.client_secret is defined
+          - create_result.client_secret | length > 0
+        fail_msg: "Create should return client_secret. create_result={{ create_result }}"
 
     - name: Run again (idempotency)
       ansible.platform.application:
@@ -136,10 +148,12 @@
         state: present
       register: idem_result
 
-    - name: Assert idempotent run did not change
+    - name: Assert idempotent run did not change and client_secret absent (AAP-80136)
       ansible.builtin.assert:
-        that: idem_result is not changed
-        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+        that:
+          - idem_result is not changed
+          - idem_result.client_secret is not defined or idem_result.client_secret == None
+        fail_msg: "Idempotent run must not expose stale client_secret. idem_result={{ idem_result }}"
 
     - name: Update application
       ansible.platform.application:
@@ -148,10 +162,12 @@
         description: "Updated by Molecule"
       register: update_result
 
-    - name: Assert update changed
+    - name: Assert update changed and client_secret absent on PATCH (AAP-80136)
       ansible.builtin.assert:
-        that: update_result is changed
-        fail_msg: "Update should report changed. update_result={{ update_result }}"
+        that:
+          - update_result is changed
+          - update_result.client_secret is not defined or update_result.client_secret == None
+        fail_msg: "Update must not expose client_secret on PATCH. update_result={{ update_result }}"
 
 - name: Converge — application (mock, http persistent)
   hosts: localhost
@@ -171,10 +187,13 @@
         description: "Created by Molecule"
       register: create_result
 
-    - name: Assert create changed
+    - name: Assert create changed and client_secret returned (AAP-80136)
       ansible.builtin.assert:
-        that: create_result is changed
-        fail_msg: "Create should report changed. create_result={{ create_result }}"
+        that:
+          - create_result is changed
+          - create_result.client_secret is defined
+          - create_result.client_secret | length > 0
+        fail_msg: "Create should return client_secret. create_result={{ create_result }}"
 
     - name: Run again (idempotency)
       ansible.platform.application:
@@ -184,10 +203,12 @@
         state: present
       register: idem_result
 
-    - name: Assert idempotent run did not change
+    - name: Assert idempotent run did not change and client_secret absent (AAP-80136)
       ansible.builtin.assert:
-        that: idem_result is not changed
-        fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
+        that:
+          - idem_result is not changed
+          - idem_result.client_secret is not defined or idem_result.client_secret == None
+        fail_msg: "Idempotent run must not expose stale client_secret. idem_result={{ idem_result }}"
 
     - name: Update application
       ansible.platform.application:
@@ -196,8 +217,10 @@
         description: "Updated by Molecule"
       register: update_result
 
-    - name: Assert update changed
+    - name: Assert update changed and client_secret absent on PATCH (AAP-80136)
       ansible.builtin.assert:
-        that: update_result is changed
-        fail_msg: "Update should report changed. update_result={{ update_result }}"
+        that:
+          - update_result is changed
+          - update_result.client_secret is not defined or update_result.client_secret == None
+        fail_msg: "Update must not expose client_secret on PATCH. update_result={{ update_result }}"
 ...
