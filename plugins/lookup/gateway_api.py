@@ -125,6 +125,7 @@ EXAMPLES = """
   set_fact:
     eda_organizations: "{{ lookup('ansible.platform.gateway_api', 'api/eda/v1/organizations', host='gateway.example.com',
                              username='admin', password=my_pass_var, verify_ssl=False) }}"
+...
 """
 
 from ansible.errors import AnsibleError  # noqa
