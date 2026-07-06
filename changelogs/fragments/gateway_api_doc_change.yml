@@ -1,0 +1,4 @@
+---
+doc_changes:
+  - gateway_api - update documentation for the gateway_api lookup plugin to
+    reflect the new functionality and usage. Additionally update the examples as well.
