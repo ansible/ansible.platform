@@ -82,11 +82,11 @@ _raw:
 EXAMPLES = """
 - name: Load notification settings
   set_fact:
-    ui_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification') }}"
+    notification_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification') }}"
 
 - name: Load the notification settings specifying the connection info
   set_fact:
-    ui_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification', host='gateway.example.com',
+    notification_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification', host='gateway.example.com',
                              username='admin', password=my_pass_var, verify_ssl=False) }}"
 
 - name: Report the usernames of all users with admin privs
