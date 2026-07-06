@@ -520,6 +520,76 @@ class DirectHTTPClient(BaseAPIClient):
             self.cache[cache_key] = rid
         return rid
 
+    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+        """
+        Perform a raw GET against any API endpoint and return the JSON response.
+
+        Mirrors PlatformService.search_api() so action plugins can use the
+        same call regardless of connection mode (persistent manager vs direct).
+
+        Accepts full API paths (e.g. ``/api/eda/v1/projects/``) which bypass
+        the Gateway prefix, or short endpoint names (e.g. ``organizations``)
+        which are auto-prefixed with ``/api/gateway/v{version}/``.
+
+        Args:
+            endpoint: API endpoint path or short name
+            query_params: Optional key/value filter parameters
+            return_all: When True, follow 'next' pagination links
+            max_objects: Safety cap when return_all is True
+
+        Returns:
+            Raw API response dict.
+        """
+        # Lazy initialization
+        if not self._authenticated:
+            try:
+                self._authenticate()
+                self._authenticated = True
+            except Exception:
+                raise
+
+        # Detect API version if not done yet
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = "1"
+            self.session.headers.update({"X-API-Version": str(self.api_version)})
+
+        # Build URL: if endpoint starts with /api/ treat as absolute path,
+        # otherwise prefix with /api/gateway/v{version}/
+        if endpoint.startswith("/api/"):
+            api_path = endpoint
+        else:
+            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+
+        url = self._build_url(api_path, query_params)
+        response = self._make_request("GET", url, operation="search", resource=endpoint)
+
+        try:
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
+        except Exception:
+            response_data = {}
+
+        if not return_all:
+            return response_data
+
+        # Pagination: follow 'next' links
+        all_results = list(response_data.get("results", []))
+        while response_data.get("next") and len(all_results) < max_objects:
+            next_url = response_data["next"]
+            response = self._make_request("GET", next_url, operation="search", resource=endpoint)
+            try:
+                response_body = response.read()
+                response_data = json.loads(response_body) if response_body else {}
+            except Exception:
+                break
+            all_results.extend(response_data.get("results", []))
+
+        response_data["results"] = all_results[:max_objects]
+        return response_data
+
     def execute(self, operation: str, module_name: str, ansible_data_dict=None, **kwargs) -> dict:
         """
         Execute a generic operation on any resource.

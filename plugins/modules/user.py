@@ -88,8 +88,12 @@ options:
 
   update_secrets:
     description:
-      - C(true) will always change password if user specifies password, even if API gives C($encrypted$).
-      - C(false) will only set the password if other values change too.
+      - When C(true) (default), always send the password to the API if the
+        user provides one, regardless of whether other fields changed.
+        Use this to force a password reset.
+      - When C(false), the password is excluded from change detection.
+        It is only included in the API request if other fields
+        (username, email, etc.) trigger an update.
     type: bool
     default: true
 

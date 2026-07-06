@@ -14,16 +14,19 @@ from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
 
 
-def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[str]:
+def _resolve_fk(manager, endpoint: str, lookup_field: str, value, display=None) -> Optional[str]:
     """Resolve a name or id string to an integer id via the manager.
 
     Returns the resolved numeric ID as a string on success.
-    Returns the original value as a string on lookup failure — the caller
-    always gets something to send, and the Gateway gives a meaningful error
-    instead of the confusing "exactly one of team/team_ansible_id" message
-    that fires when the field is silently dropped.
+    Returns the original value as a string on lookup failure and emits a
+    warning (if a display object is provided) so operators can diagnose
+    the issue.  The Gateway will typically reject non-integer values with
+    a 400 error, but the warning makes the root cause (failed lookup)
+    immediately visible in playbook output.
     """
     if value is None:
+        return None
+    if value == "":
         return None
     if str(value).isdigit():
         return str(value)
@@ -34,6 +37,13 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[st
         # Return the original value so the caller can still include it in the
         # payload. The Gateway will respond with a useful error if the value
         # is invalid, rather than silently missing the field.
+        if display:
+            display.warning(
+                "Failed to resolve %s '%s' to an ID via '%s'. "
+                "The name will be sent as-is. If the API rejects this, "
+                "verify the %s exists and is accessible with current "
+                "credentials." % (lookup_field, value, endpoint, lookup_field)
+            )
         return str(value)
 
 

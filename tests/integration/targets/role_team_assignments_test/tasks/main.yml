@@ -363,6 +363,9 @@
           - "shared.view_organization"
         state: absent
       register: role_delete
+      # failed_when list items use AND logic: the task fails only when ALL
+      # conditions are true simultaneously (failed AND neither error message
+      # matches).  This is NOT "fail if any condition is true".
       failed_when:
         - role_delete.failed
         - "'Not found' not in role_delete.msg"

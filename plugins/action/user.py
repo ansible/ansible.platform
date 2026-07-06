@@ -97,9 +97,20 @@ class ActionModule(BaseResourceActionPlugin):
     def _pre_execute_hook(self, ansible_data: dict, write_only_data: dict, validated_params: dict, operation: str) -> None:
         """Re-inject the password into ansible_data just before manager.execute().
 
-        password is in _WRITE_ONLY_FIELDS so it never reaches _should_update.
-        _pre_execute_hook is only called when a PATCH/POST is already happening,
-        so including password here is always correct (stable-2.6 behaviour).
+        The ``password`` field flows through the base class as follows:
+          1. ``password`` is in _WRITE_ONLY_FIELDS, so the base class strips
+             it from ansible_data and places it in write_only_data
+          2. This hook is called just before manager.execute()
+          3. We re-inject password from write_only_data into ansible_data
+             for create/update operations so it's included in the API payload
+
+        _pre_execute_hook is only called when a PATCH/POST is already happening
+        (either other fields changed or update_secrets forced it), so including
+        password here is always correct (stable-2.6 behaviour).
+
+        Note: ansible_data.pop("password") below is a no-op because the base
+        class already stripped it into write_only_data. Kept for defensive
+        safety in case the base class flow changes.
         """
         ansible_data.pop("password", None)
 

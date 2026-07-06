@@ -41,6 +41,7 @@ _CONTENT_TYPE_ENDPOINT_MAP = {
 # Full content_type overrides for ambiguous suffixes shared across services.
 _FULL_TYPE_OVERRIDES = {
     "eda.project": "eda_projects",
+    "eda.edacredential": "eda_credentials",
 }
 
 # Maps assignment_objects type → API path for name-based resource lookup.
@@ -79,6 +80,9 @@ def _get_expected_endpoint(content_type):
 
     Checks _FULL_TYPE_OVERRIDES first for types that share a suffix across
     services (e.g. eda.project vs awx.project), then falls back to suffix lookup.
+
+    Raises ValueError for unknown content types instead of guessing with
+    naive pluralisation (e.g. "inventory" → "inventorys" is wrong).
     """
     raw = (content_type or "").strip()
     if not raw:
@@ -86,7 +90,17 @@ def _get_expected_endpoint(content_type):
     if raw in _FULL_TYPE_OVERRIDES:
         return _FULL_TYPE_OVERRIDES[raw]
     suffix = raw.split(".")[-1] if "." in raw else raw
-    return _CONTENT_TYPE_ENDPOINT_MAP.get(suffix, "{0}s".format(suffix))
+    if suffix in _CONTENT_TYPE_ENDPOINT_MAP:
+        return _CONTENT_TYPE_ENDPOINT_MAP[suffix]
+    # Fail-closed: unknown content types are errors, not guesses.
+    known = sorted(set(list(_CONTENT_TYPE_ENDPOINT_MAP.keys()) + list(_FULL_TYPE_OVERRIDES.keys())))
+    raise ValueError(
+        "Unknown content_type '%s' in role definition. "
+        "Known suffixes/types: %s. "
+        "If this is a new resource type, add it to "
+        "_CONTENT_TYPE_ENDPOINT_MAP or _FULL_TYPE_OVERRIDES "
+        "in role_team_assignment.py." % (content_type, ", ".join(known))
+    )
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -178,17 +192,22 @@ class ActionModule(BaseResourceActionPlugin):
             _orig_team_ansible_id = validated_params.get("team_ansible_id")
 
             def _humanise(result, obj_item):
-                """Overlay original user-supplied names onto an API result dict."""
+                """Return a copy of result with original user-supplied names overlaid.
+
+                Creates a shallow copy so the original dict (which may be cached
+                or shared by the manager internals) is not mutated.
+                """
+                humanised = dict(result)  # shallow copy — safe for flat dicts
                 if _orig_role_def:
-                    result["role_definition"] = _orig_role_def
+                    humanised["role_definition"] = _orig_role_def
                 if _orig_team:
-                    result["team"] = _orig_team
+                    humanised["team"] = _orig_team
                 elif _orig_team_ansible_id:
-                    result["team_ansible_id"] = _orig_team_ansible_id
+                    humanised["team_ansible_id"] = _orig_team_ansible_id
                 if obj_item and obj_item.get("name"):
-                    result["object_name"] = obj_item["name"]
-                    result["object_type"] = obj_item.get("type")
-                return result
+                    humanised["object_name"] = obj_item["name"]
+                    humanised["object_type"] = obj_item.get("type")
+                return humanised
 
             for obj in assignment_objects_raw:
                 per_obj = dict(base_data)
@@ -209,9 +228,35 @@ class ActionModule(BaseResourceActionPlugin):
                         )
                     _lookup_path = _SERVICE_LOOKUP_PATH_MAP.get(obj["type"], obj["type"])
                     try:
-                        oid = manager.lookup_resource_id(_lookup_path, "name", obj["name"])
+                        if _lookup_path.startswith("/api/") and not _lookup_path.startswith("/api/gateway/"):
+                            # Service-specific path (EDA/Hub): use search_api
+                            # which accepts full paths, bypassing the Gateway prefix
+                            # that lookup_resource_id would hardcode.
+                            _search = manager.search_api(_lookup_path, query_params={"name": obj["name"]})
+                            _results = _search.get("results", [])
+                            if not _results:
+                                raise ValueError(
+                                    "Resource '%s' with name=%s not found at %s"
+                                    % (obj["type"], obj["name"], _lookup_path)
+                                )
+                            oid = _results[0].get("id")
+                            if oid is None:
+                                raise ValueError(
+                                    "Resource '%s' at %s returned no 'id' field"
+                                    % (obj["name"], _lookup_path)
+                                )
+                        else:
+                            # Gateway-native endpoint: use standard lookup
+                            oid = manager.lookup_resource_id(_lookup_path, "name", obj["name"])
                         per_obj["object_id"] = str(oid)
                     except Exception:
+                        self._display.warning(
+                            "Could not resolve %s '%s' via endpoint '%s'. "
+                            "Passing raw name to the API — the request may fail. "
+                            "Verify the resource exists and is accessible with "
+                            "current credentials."
+                            % (obj["type"], obj["name"], _lookup_path)
+                        )
                         per_obj["object_id"] = str(obj["name"])
 
                 if state == "present":

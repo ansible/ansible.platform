@@ -271,6 +271,13 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this to list mutable FK fields for their resource.
     _MUTABLE_FK_FIELDS: frozenset = frozenset()
 
+    # Fields where list order does not matter for idempotency comparison.
+    # By default, list comparison is order-sensitive (safer).  Subclasses
+    # opt in specific fields where the API may return items in a different
+    # order than the user specified (e.g. permissions lists).
+    # Example:  _ORDER_INSENSITIVE_FIELDS = frozenset({"permissions"})
+    _ORDER_INSENSITIVE_FIELDS: frozenset = frozenset()
+
     _AUTH_PARAMS = frozenset(
         {
             "gateway_hostname",
@@ -994,17 +1001,22 @@ class BaseResourceActionPlugin(ActionBase):
                 and current_val.isdigit()
             ):
                 continue
-            # Same type: direct equality
-            if type(desired_val) is type(current_val):
-                if isinstance(desired_val, list):
-                    # Lists: compare order-insensitively by sorting both sides.
-                    # The Gateway API returns lists (e.g. permissions) in alphabetical
-                    # order regardless of the order the user specified them, so a
-                    # naive list equality check always sees a difference and triggers
-                    # a spurious update on every subsequent run.
+            # List comparison: order-insensitive for opted-in fields only,
+            # order-sensitive (default) for everything else.
+            if isinstance(desired_val, list) and isinstance(current_val, list):
+                if key in self._ORDER_INSENSITIVE_FIELDS:
+                    # Opted-in: the API may return items in a different order
+                    # (e.g. permissions come back alphabetically).
                     if sorted(str(x) for x in desired_val) != sorted(str(x) for x in current_val):
                         return True
-                elif desired_val != current_val:
+                else:
+                    # Default: order-sensitive (safer — preserves ordering
+                    # semantics for fields like notification_addresses).
+                    if desired_val != current_val:
+                        return True
+            # Same type: direct equality
+            elif type(desired_val) is type(current_val):
+                if desired_val != current_val:
                     return True
             else:
                 # Coerce to string for cross-type scalars (e.g. int vs float)
