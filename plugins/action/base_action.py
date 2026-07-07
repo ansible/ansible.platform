@@ -19,17 +19,16 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.plugins.action import ActionBase
 from ansible.utils.display import Display
-
-if TYPE_CHECKING:
-    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 # ---------------------------------------------------------------------------
 # Logging strategy for action plugins
@@ -465,9 +464,6 @@ class BaseResourceActionPlugin(ActionBase):
         """
         import sys
 
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
         self._display.vvvv("Using experimental connection mode (Persistent Manager)")
 
         inventory_hostname = task_vars.get("inventory_hostname", "localhost")
@@ -814,8 +810,6 @@ class BaseResourceActionPlugin(ActionBase):
         if hasattr(self, "_client") and getattr(self._client, "_ephemeral", False):
             self._display.vv("Shutting down ephemeral manager (direct mode)")
             try:
-                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-
                 socket_path = getattr(self._client, "socket_path", None)
                 if socket_path:
                     self._shutdown_manager_process(socket_path, ProcessManager)
@@ -907,8 +901,6 @@ class BaseResourceActionPlugin(ActionBase):
                 if authkey_b64 and Path(socket_path).exists():
                     try:
                         authkey = base64.b64decode(authkey_b64)
-                        from .plugin_utils.manager.rpc_client import ManagerRPCClient
-
                         # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
                         socket_path_str = str(socket_path)
                         client = ManagerRPCClient(process_info.get("gateway_url", ""), socket_path_str, authkey)
