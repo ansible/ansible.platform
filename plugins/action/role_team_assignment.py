@@ -235,16 +235,10 @@ class ActionModule(BaseResourceActionPlugin):
                             _search = manager.search_api(_lookup_path, query_params={"name": obj["name"]})
                             _results = _search.get("results", [])
                             if not _results:
-                                raise ValueError(
-                                    "Resource '%s' with name=%s not found at %s"
-                                    % (obj["type"], obj["name"], _lookup_path)
-                                )
+                                raise ValueError("Resource '%s' with name=%s not found at %s" % (obj["type"], obj["name"], _lookup_path))
                             oid = _results[0].get("id")
                             if oid is None:
-                                raise ValueError(
-                                    "Resource '%s' at %s returned no 'id' field"
-                                    % (obj["name"], _lookup_path)
-                                )
+                                raise ValueError("Resource '%s' at %s returned no 'id' field" % (obj["name"], _lookup_path))
                         else:
                             # Gateway-native endpoint: use standard lookup
                             oid = manager.lookup_resource_id(_lookup_path, "name", obj["name"])
@@ -254,8 +248,7 @@ class ActionModule(BaseResourceActionPlugin):
                             "Could not resolve %s '%s' via endpoint '%s'. "
                             "Passing raw name to the API — the request may fail. "
                             "Verify the resource exists and is accessible with "
-                            "current credentials."
-                            % (obj["type"], obj["name"], _lookup_path)
+                            "current credentials." % (obj["type"], obj["name"], _lookup_path)
                         )
                         per_obj["object_id"] = str(obj["name"])
 
