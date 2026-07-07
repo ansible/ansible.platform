@@ -601,7 +601,7 @@ class BaseResourceActionPlugin(ActionBase):
         """Auto-discover DOCUMENTATION from the sibling modules/ package.
 
         Uses MODULE_NAME to import plugins.modules.<MODULE_NAME> and return
-        its DOCUMENTATION attribute. Same approach as cisco.meraki_rm.
+        its DOCUMENTATION attribute.
         """
         if not self.MODULE_NAME:
             return ""

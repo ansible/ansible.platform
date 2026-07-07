@@ -83,7 +83,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 → **Start**: [09-agent-collaboration.md](09-agent-collaboration.md)  
 → **Foundation Builder path**: Section 3 (Phases 1–4)  
 → **Feature Developer path**: Section 4 (Phases 1–7)  
-→ **Reference**: [08-code-generators.md](08-code-generators.md) (optional, if implementing generators)
+→ **Reference**: [07-adding-resources.md](07-adding-resources.md) (generator workflow and patterns catalog)
 
 **Time**: 15 minutes to load; 2–8 hours for actual implementation
 
@@ -199,6 +199,7 @@ docs/
   08-testing-strategy.md
   09-agent-collaboration.md              ← For AI agents
   10-case-study-aap-platform.md
+  11-persistent-manager-idle-timeout.md  ← Idle timeout deep dive
   README.md                              ← You are here
 ```
 
