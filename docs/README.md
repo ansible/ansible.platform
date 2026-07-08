@@ -43,6 +43,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas (Foundation Builder, Feature Developer), phase-by-phase guidance, coding standards, anti-patterns, troubleshooting |
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map (all 22 modules), identity categories, API quirks, platform-specific challenges, version strategy |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
+| 12 | [12-api-landscape.md](12-api-landscape.md) | Feature devs | **NEW**: Multi-service architecture (Gateway, EDA, Controller), resource overlap, naming conflicts, spec selection guide |
 
 ---
 
@@ -69,6 +70,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 
 ### "I need to add a new platform action plugin"
 
+→ **First**: [12-api-landscape.md](12-api-landscape.md) — Understand which service (Gateway/EDA/Controller) owns your resource, check for naming conflicts  
 → **Primary**: [07-adding-resources.md](07-adding-resources.md) — Step-by-step 7-file workflow  
 → **Reference**: [05-design-principles.md](05-design-principles.md) — Rules to follow  
 → **Reference**: [10-case-study-aap-platform.md](10-case-study-aap-platform.md) — Find your module's identity category and API quirks
