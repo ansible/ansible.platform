@@ -50,6 +50,10 @@ options:
         - Flag whether or not the service is an internal route.
         - Internal routes are only accessible to other services.
       type: bool
+    reject_failed_auth:
+      description:
+        - If true this route will return a 401 instead of allowing unauthenticated requests to the back end.
+      type: bool
     enable_gateway_auth:
       description: If false, the AAP gateway will not insert a gateway token into the proxied request
       type: bool
