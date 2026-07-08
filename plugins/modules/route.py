@@ -59,6 +59,10 @@ options:
         - Flag whether or not the route is an internal route.
         - Internal routes are only accessible to other services.
       type: bool
+    reject_failed_auth:
+      description:
+        - If true this route will return a 401 instead of allowing unauthenticated requests to the back end.
+      type: bool
     service_path:
       description:
       - URL path on the AAP Service cluster to route traffic to
