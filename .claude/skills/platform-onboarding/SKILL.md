@@ -27,12 +27,18 @@ and a hands-on exercise to confirm understanding.
 
 Adapt pacing to the engineer's experience level:
 - **Ansible-experienced, new to this collection** → move quickly through Phase 1,
-  spend time on Phases 2–3
+  spend time on Phases 2–3; do NOT skip to Phase 4 even if they mention adding a
+  module — they need the architecture context first or the seven-file workflow
+  won't make sense
 - **New to Ansible entirely** → spend extra time on Phase 1, provide more context
   on connection plugins and action plugins vs modules
-- **Experienced contributor adding a new module** → skip to Phase 4 directly
+- **Already familiar with this collection's architecture AND adding a specific
+  module** → skip to Phase 4 directly; confirm they know what action plugins,
+  transform mixins, and the Registry are before proceeding
 
-Ask the engineer which profile fits before starting.
+If unsure which profile fits, ask one question: "Have you worked with this
+collection before, or is this your first time in the codebase?" That answer
+determines whether they go through Phases 1–3 or jump to Phase 4.
 
 ---
 
