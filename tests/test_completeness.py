@@ -36,6 +36,8 @@ ignore_api_parameters = {
     'team': ['users', 'admins'],  # TODO: remove when removed from API
     'organization': ['users', 'admins'],  # TODO: remove when removed from API
     'role_team_assignment': ['object_ansible_id', 'object_id'],  # TODO: remove when removed from API
+    'role_user_assignment': ['object_id'],  # deprecated; module uses object_ids (list) instead
+    'user': ['authenticators', 'authenticator_uid', 'organizations', 'is_platform_auditor'],  # removed deprecated params
 }
 
 # Some modules take additional parameters that do not appear in the API

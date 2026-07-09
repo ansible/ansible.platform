@@ -55,13 +55,13 @@
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
         user: "{{ user2.id }}"
-        object_id: "{{ org1.id }}"
+        object_ids: ["{{ org1.id }}"]
 
     - name: Make admin user admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
         user: "{{ admin1.id }}"
-        object_id: "{{ org1.id }}"
+        object_ids: ["{{ org1.id }}"]
 
     - name: Use lookup plugin to query created objects
       ansible.builtin.set_fact:
