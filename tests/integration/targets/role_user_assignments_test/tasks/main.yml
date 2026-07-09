@@ -120,7 +120,7 @@
     # # <Role User Assignments> -------------------
     - name: Assign Admins by Role User Assignments
       ansible.platform.role_user_assignment: &org_assignment
-        object_id: "{{ org.id }}"
+        object_ids: ["{{ org.id }}"]
         role_definition: Organization Admin
         user: "{{ user2.id }}"
       register: org_admin_role_assignment
@@ -448,13 +448,13 @@
 
     - name: Check Existence of Role User Assignments
       ansible.platform.role_user_assignment:
-        object_id: "{{ org.id }}"
+        object_ids: ["{{ org.id }}"]
         role_definition: Organization Admin
         user: "{{ user.id }}"
 
     - name: Check absence of Role User Assignments
       ansible.platform.role_user_assignment:
-        object_id: "{{ org.id }}"
+        object_ids: ["{{ org.id }}"]
         role_definition: Organization Member
         user: "{{ user.id }}"
         state: absent
