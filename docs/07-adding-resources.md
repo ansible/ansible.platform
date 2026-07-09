@@ -39,6 +39,42 @@ A **complex resource** has ref fields (name → ID resolution), secondary endpoi
 
 Before starting, verify these foundations exist:
 
+- [ ] **Check naming across ALL available API specs** (CRITICAL):
+  The collection supports multiple AAP services: **Gateway, EDA, Controller** (and potentially others).
+  Resources with the same name across services MUST use service prefixes.
+  
+  **Action**: Run this to check for naming conflicts:
+  ```bash
+  python << 'EOF'
+  import json
+  import os
+  
+  specs_dir = "../aap-openapi-specs"
+  resource_name = "YOUR_RESOURCE_NAME"
+  
+  for spec_file in ["gateway.json", "eda.json", "controller.json"]:
+      spec_path = os.path.join(specs_dir, spec_file)
+      if not os.path.exists(spec_path):
+          continue
+      
+      with open(spec_path) as f:
+          spec = json.load(f)
+      
+      paths = spec.get('paths', {})
+      for path in paths:
+          if resource_name.lower() in path.lower() and '{' not in path:
+              print(f"✓ {spec_file}: {path}")
+  EOF
+  ```
+  
+  **Naming Rule**:
+  - **No conflict across specs**: Use singular, unprefixed name (e.g., `project`)
+  - **Conflict found** (resource in multiple services): Use service prefix (e.g., `eda_project`, `controller_project`)
+  
+  **Known conflicts**:
+  - `projects` appears in both EDA and Controller → use `eda_project`, `controller_project`
+  - `organizations`, `users`, `teams` appear across Gateway, EDA, Controller (already prefixed)
+
 - [ ] **Registry discovers your module**: After adding `plugins/modules/<resource>.py`, run
   ```bash
   python -c "from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry; r = APIVersionRegistry(); modules = r.discover_modules(); print([m for m in modules if '<resource>' in m])"

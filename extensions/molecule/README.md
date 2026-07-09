@@ -6,11 +6,11 @@ This directory holds Molecule scenarios for the ansible.platform collection.
 
 **Important:** For tox integration to run these tests, (1) track in git: `extensions/molecule/` and `tests/integration/test_integration.py`. (2) Our tox integration runs pytest with `--rootdir={toxinidir}` so pytest-ansible's scenario discovery (which runs `git ls-files` from `config.rootpath`) uses the repo; otherwise rootpath can be wrong and no scenarios are found. Tox copies only `git ls-files` into the collection build; if this directory is untracked, no scenarios are found and you get "got empty parameter set for (molecule_scenario)". Run `git add extensions/molecule/` (and commit) so the **users** scenario runs in `tox -e integration-*`. Our `tox-ansible.ini` overrides integration envs to run pytest from the **collection_build** directory (which has `galaxy.yml` and `extensions/molecule`); the installed collection tarball does not include `galaxy.yml`, so discovery would otherwise find no scenarios. Tests run against an AAP Gateway; connection is configured via environment variables or inventory.
 
-## Layout (meraki_rm–inspired)
+## Layout
 
 - **config.yml** – Base config: `shared_state: true`, `prerun: false`, so the **default** scenario runs create first and destroy last when using `molecule test --all`. Other scenarios share the mock server.
 - **inventory.yml** – Shared inventory: `localhost` with `gateway_*` vars.
-- **default/** – Lifecycle scenario: **create** (start mock Gateway server) and **destroy** (stop it). No converge. With `molecule test --all`, default runs create first, then other scenarios, then default destroy. See [docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md](../docs/testing/REFERENCE-MERAKI_RM-MOLECULE-AND-MOCK.md).
+- **default/** – Lifecycle scenario: **create** (start mock Gateway server) and **destroy** (stop it). No converge. With `molecule test --all`, default runs create first, then other scenarios, then default destroy.
 - **users/** – Scenario for `ansible.platform.user` against a **real AAP Gateway**: create, update, idempotency, verify, cleanup. Requires a running Gateway (or skip in CI when none).
 - **users_mock/** – Scenario for `ansible.platform.user` against the **mock** server (`http://127.0.0.1:8000`). No real AAP required. Use with `molecule test --all` (mock started by default) or start `python3 tools/mock_gateway_server.py` manually.
 - **organization_mock/** – Scenario for `ansible.platform.organization` against the **mock** server. Create, idempotency, update, verify, cleanup. No real AAP required.

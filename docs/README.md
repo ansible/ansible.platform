@@ -43,6 +43,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas (Foundation Builder, Feature Developer), phase-by-phase guidance, coding standards, anti-patterns, troubleshooting |
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map (all 22 modules), identity categories, API quirks, platform-specific challenges, version strategy |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
+| 12 | [12-api-landscape.md](12-api-landscape.md) | Feature devs | **NEW**: Multi-service architecture (Gateway, EDA, Controller), resource overlap, naming conflicts, spec selection guide |
 
 ---
 
@@ -69,6 +70,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 
 ### "I need to add a new platform action plugin"
 
+→ **First**: [12-api-landscape.md](12-api-landscape.md) — Understand which service (Gateway/EDA/Controller) owns your resource, check for naming conflicts  
 → **Primary**: [07-adding-resources.md](07-adding-resources.md) — Step-by-step 7-file workflow  
 → **Reference**: [05-design-principles.md](05-design-principles.md) — Rules to follow  
 → **Reference**: [10-case-study-aap-platform.md](10-case-study-aap-platform.md) — Find your module's identity category and API quirks
@@ -83,7 +85,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 → **Start**: [09-agent-collaboration.md](09-agent-collaboration.md)  
 → **Foundation Builder path**: Section 3 (Phases 1–4)  
 → **Feature Developer path**: Section 4 (Phases 1–7)  
-→ **Reference**: [08-code-generators.md](08-code-generators.md) (optional, if implementing generators)
+→ **Reference**: [07-adding-resources.md](07-adding-resources.md) (generator workflow and patterns catalog)
 
 **Time**: 15 minutes to load; 2–8 hours for actual implementation
 
@@ -199,6 +201,7 @@ docs/
   08-testing-strategy.md
   09-agent-collaboration.md              ← For AI agents
   10-case-study-aap-platform.md
+  11-persistent-manager-idle-timeout.md  ← Idle timeout deep dive
   README.md                              ← You are here
 ```
 

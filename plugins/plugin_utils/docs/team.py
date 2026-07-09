@@ -1,8 +1,8 @@
 """
 Legacy: DOCUMENTATION for the team module now lives in plugins/modules/team.py.
 
-The action plugin discovers it via _get_documentation() from the sibling module
-(meraki_rm-style). This file is kept for reference only; do not import from here.
+The action plugin discovers it via _get_documentation() from the sibling module.
+This file is kept for reference only; do not import from here.
 """
 
 DOCUMENTATION = """
