@@ -52,7 +52,8 @@ options:
       type: bool
     reject_failed_auth:
       description:
-        - if true, requests with invalid basic credentials will receive a 401 instead of being passed to the back end as anonymous.
+        - If true, requests with invalid Basic credentials will receive a 401 instead of being passed to the back end as anonymous.
+        - Requests without credentials continue to be passed through anonymously.
       type: bool
     enable_gateway_auth:
       description: If false, the AAP gateway will not insert a gateway token into the proxied request
