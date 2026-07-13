@@ -61,7 +61,7 @@ options:
       type: bool
     reject_failed_auth:
       description:
-        - If true this route will return a 401 instead of allowing unauthenticated requests to the back end.
+        - if true, requests with invalid basic credentials will receive a 401 instead of being passed to the back end as anonymous.
       type: bool
     service_path:
       description:
