@@ -974,8 +974,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "--service",
         default=None,
-        help="Service label for docs (e.g. 'eda', 'hub', 'controller'). "
-             "Auto-detected from API path prefix if omitted.",
+        help="Service label for docs (e.g. 'eda', 'hub', 'controller'). Auto-detected from API path prefix if omitted.",
     )
     return parser.parse_args(argv)
 
