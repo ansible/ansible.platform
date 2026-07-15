@@ -226,15 +226,59 @@ Also read `references/cheatsheet.md` from this skill for a condensed summary.
 | 6 | `extensions/molecule/<resource>_mock/` | Manual |
 | 7 | `tests/unit/` (optional) | Manual |
 
-### Generator Command
+### Generator Command — Use It First
+
+**IMPORTANT**: Before hand-writing any files, always try the generator. It reads
+the OpenAPI spec and produces correctly structured files that follow existing
+patterns. Hand-writing skips established conventions and introduces bugs
+(wrong paths, missing FK resolution, incorrect read-only field classification).
 
 ```bash
+# Gateway resources (default)
 python tools/generate_resource.py \
     --tag <openapi_tag> \
-    --spec ../aap-openapi-specs/2.6/gateway.json
+    --spec ../aap-openapi-specs/2.6/gateway.json \
+    --dry-run
+
+# EDA resources — service label auto-detected from /api/eda/ path prefix
+python tools/generate_resource.py \
+    --tag projects \
+    --spec ../aap-openapi-specs/eda.json \
+    --dry-run
+
+# Hub resources
+python tools/generate_resource.py \
+    --tag <tag> \
+    --spec ../aap-openapi-specs/hub.json \
+    --dry-run
+
+# List available tags in any spec
+python tools/generate_resource.py --spec <spec.json> --list-tags
 ```
 
-Use `--dry-run` first to preview without writing files.
+Always run with `--dry-run` first to preview output. The generator auto-detects
+the service type (gateway/eda/hub/controller) from the API path prefix and
+adjusts docstrings accordingly. Use `--service <label>` to override if needed.
+
+After generation, review and customize the output — especially the transform
+mixin's `from_ansible_data()` method, which may need manual FK resolution logic
+for reference fields (e.g., `organization` name → `organization_id`).
+
+### Service-Specific Path Prefixes
+
+Different AAP services use different API path prefixes. The generator detects
+these automatically, but when writing or reviewing transform mixins, verify
+the `get_endpoint_operations()` paths match the correct service:
+
+| Service | API Prefix | Example |
+|---------|-----------|---------|
+| Gateway | `/api/gateway/v1/` | `/api/gateway/v1/teams/` |
+| EDA | `/api/eda/v1/` | `/api/eda/v1/projects/` |
+| Hub | `/api/hub/v3/` | `/api/hub/v3/namespaces/` |
+| Controller | `/api/controller/v2/` | `/api/controller/v2/job_templates/` |
+
+Getting this prefix wrong is a common mistake — EDA resources routed to
+`/api/gateway/v1/` will return 404s silently.
 
 ### Key Decisions the Engineer Must Make
 
@@ -344,3 +388,13 @@ For deeper dives beyond onboarding, point the engineer to:
   actual `organization.py` which is only 14 lines)
 - The exercises are not tests — they're comprehension checks. Help the engineer
   arrive at the answer rather than quizzing them
+- **When adding a new module, always use `tools/generate_resource.py` first.**
+  Run with `--dry-run` to preview, then generate, then customize. Do NOT
+  hand-write files from scratch — the generator ensures correct path prefixes,
+  field classification, and adherence to existing patterns. Hand-written files
+  consistently produce bugs: wrong endpoint paths, missing FK resolution,
+  read-only fields misclassified as writable, and `logger.info` where existing
+  code uses `logger.debug`.
+- **Verify endpoint paths match the service type.** EDA uses `/api/eda/v1/`,
+  not `/api/gateway/v1/`. This is the single most common mistake when adding
+  non-Gateway modules. The generator handles this automatically.
