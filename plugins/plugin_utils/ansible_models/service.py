@@ -21,7 +21,7 @@ class AnsibleService:
     service_cluster: Optional[Union[str, int]] = None
     is_service_https: Optional[bool] = False
     is_internal_route: Optional[bool] = None
-    reject_failed_auth: Optional[bool] = None
+    reject_failed_basic_auth: Optional[bool] = None
     enable_gateway_auth: Optional[bool] = True
     enable_mtls: Optional[bool] = False
     service_path: Optional[str] = None
