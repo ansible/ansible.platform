@@ -156,6 +156,7 @@
           - __routes_result.results[0] is changed
           - __routes_result.results[1] is changed
           - __routes_result.results[2] is changed
+          - __routes_result.results[2].reject_failed_basic_auth is true
 
     ### 2nd run for Routes ###
     - name: Check Routes Idempotency
@@ -195,6 +196,7 @@
           - name: "{{ test_id }}Hub Svc Route"
             gateway_path: '/hub-svc-1/'
             http_port: "{{ test_id }}Port 8050"
+            reject_failed_basic_auth: true
             state: exists
           # Check for existence, no changes
           - name: "{{ test_id }}Hub Svc Route"
