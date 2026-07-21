@@ -38,10 +38,12 @@ jobs:
           - http-persistent
 
     steps:
+      # Required for fork PRs under pull_request_target; gated by "safe to test" label.
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true
 
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
@@ -103,10 +105,12 @@ jobs:
       HEADLESS: "yes"
     if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
+      # Required for fork PRs under pull_request_target; gated by "safe to test" label.
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true
 
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
@@ -147,10 +151,12 @@ jobs:
       HEADLESS: "yes"
     if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
+      # Required for fork PRs under pull_request_target; gated by "safe to test" label.
       - uses: actions/checkout@v3
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true
 
       - name: Checkout aap-gateway (use a branch is specified) and optionally DAB
         env:
