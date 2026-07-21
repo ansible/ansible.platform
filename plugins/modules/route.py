@@ -59,6 +59,11 @@ options:
         - Flag whether or not the route is an internal route.
         - Internal routes are only accessible to other services.
       type: bool
+    reject_failed_basic_auth:
+      description:
+        - If true, requests with invalid Basic credentials will receive a 401 instead of being passed to the back end.
+        - Requests without credentials continue to be passed through anonymously.
+      type: bool
     service_path:
       description:
       - URL path on the AAP Service cluster to route traffic to
