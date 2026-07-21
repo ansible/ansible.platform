@@ -25,6 +25,7 @@ class APIRoute_v1(BaseTransformMixin):
     enable_gateway_auth: Optional[bool] = None
     enable_mtls: Optional[bool] = None
     is_internal_route: Optional[bool] = None
+    reject_failed_basic_auth: Optional[bool] = None
     service_path: Optional[str] = None
     service_port: Optional[int] = None
     node_tags: Optional[str] = None
@@ -86,6 +87,7 @@ class RouteTransformMixin_v1(BaseTransformMixin):
             "enable_gateway_auth",
             "enable_mtls",
             "is_internal_route",
+            "reject_failed_basic_auth",
             "service_path",
             "service_port",
             "node_tags",
@@ -130,6 +132,7 @@ class RouteTransformMixin_v1(BaseTransformMixin):
             "enable_gateway_auth",
             "enable_mtls",
             "is_internal_route",
+            "reject_failed_basic_auth",
             "service_path",
             "service_port",
             "node_tags",
@@ -206,6 +209,7 @@ class RouteTransformMixin_v1(BaseTransformMixin):
             enable_gateway_auth=api_data.get("enable_gateway_auth"),
             enable_mtls=api_data.get("enable_mtls"),
             is_internal_route=api_data.get("is_internal_route"),
+            reject_failed_basic_auth=api_data.get("reject_failed_basic_auth"),
             service_path=api_data.get("service_path"),
             service_port=api_data.get("service_port"),
             node_tags=api_data.get("node_tags"),
