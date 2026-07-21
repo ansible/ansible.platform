@@ -77,20 +77,32 @@ class ActionModule(BaseResourceActionPlugin):
 
 ## Seven-File Workflow (New Module)
 
-### Step 1: Generate boilerplate
+### Step 1: Generate boilerplate (ALWAYS use the generator)
 
 ```bash
-# Preview first
+# Gateway resources
 python tools/generate_resource.py \
     --tag <openapi_tag> \
     --spec ../aap-openapi-specs/2.6/gateway.json \
     --dry-run
 
-# Generate for real
+# EDA resources (auto-detects /api/eda/v1/ prefix)
+python tools/generate_resource.py \
+    --tag projects \
+    --spec ../aap-openapi-specs/eda.json \
+    --dry-run
+
+# List available tags in any spec
+python tools/generate_resource.py --spec <spec.json> --list-tags
+
+# Generate for real (remove --dry-run)
 python tools/generate_resource.py \
     --tag <openapi_tag> \
-    --spec ../aap-openapi-specs/2.6/gateway.json
+    --spec <spec.json>
 ```
+
+**Do NOT hand-write files from scratch.** The generator ensures correct
+endpoint paths, service-specific prefixes, and field classification.
 
 ### Step 2: Review generated files
 

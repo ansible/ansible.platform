@@ -1,11 +1,17 @@
 """
-Generate boilerplate files for a new platform collection resource from the
-Gateway OpenAPI specification.
+Generate boilerplate files for a new platform collection resource from an
+OpenAPI specification (Gateway, EDA, Hub, or Controller).
 
 Usage (from the collection root):
     python tools/generate_resource.py \\
         --tag services \\
         --spec ../aap-openapi-specs/2.6/gateway.json \\
+        [--dry-run]
+
+    # EDA resources (service label auto-detected from /api/eda/ path prefix):
+    python tools/generate_resource.py \\
+        --tag projects \\
+        --spec ../aap-openapi-specs/eda.json \\
         [--dry-run]
 
 For each resource tag the generator creates (unless the file already exists):
@@ -41,7 +47,11 @@ _SCALAR_TYPE_MAP = {
     "array": "List[Any]",
 }
 
-_READ_ONLY_NAMES = {"id", "url", "created", "modified", "created_by", "modified_by", "related", "summary_fields"}
+# Fields assumed read-only by name convention (Gateway pattern).
+# Note: "url" is excluded here because some specs (EDA) use it as a writable
+# input field (SCM repository URL). The readOnly flag in the schema is the
+# authoritative source; this set only provides defaults for fields that lack it.
+_READ_ONLY_NAMES = {"id", "created", "modified", "created_by", "modified_by", "related", "summary_fields"}
 
 
 def resolve_ref(spec: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
@@ -119,7 +129,7 @@ def get_paths_for_tag(spec: Dict[str, Any], tag: str) -> List[Tuple[str, str, st
 class ResourceSpec:
     """Encapsulates the spec-derived information for one resource type."""
 
-    def __init__(self, tag: str, spec: Dict[str, Any]):
+    def __init__(self, tag: str, spec: Dict[str, Any], service: Optional[str] = None):
         self.tag = tag
         self.spec = spec
 
@@ -128,26 +138,65 @@ class ResourceSpec:
         # Proper Python class prefix (e.g. "ServiceCluster")
         self.class_prefix = "".join(w.capitalize() for w in self.name.split("_"))
 
+        # Service label for docs/comments (e.g. "gateway", "eda", "hub", "controller")
+        # Auto-detected from the API path prefix if not explicitly provided.
+        self._service_override = service
+
+        # Detect server base path from spec (e.g. "/api/eda/v1" for EDA spec).
+        # Specs that use relative paths in spec["paths"] store the prefix in
+        # spec["servers"][0]["url"]. Gateway specs use full paths and have no
+        # servers block, so base_path is empty.
+        self._base_path = ""
+        servers = spec.get("servers", [])
+        if servers:
+            url = servers[0].get("url", "")
+            # Only use it if it looks like a path prefix (starts with /)
+            if url.startswith("/"):
+                self._base_path = url.rstrip("/")
+
         # Derive paths
         all_ops = get_paths_for_tag(spec, tag)
         self.list_path: Optional[str] = None
         self.detail_path: Optional[str] = None
         self.methods: Dict[str, Set[str]] = {}  # path -> set of methods
-        for path, method, _op_info in all_ops:
-            self.methods.setdefault(path, set()).add(method)
-            if path.endswith("}/") and "{" in path:
-                if self.detail_path is None:
-                    self.detail_path = path
-            else:
-                if self.list_path is None and path.count("/") >= 4:
-                    self.list_path = path
+        # Map full_path → original spec path (for looking up schemas in spec["paths"])
+        self._spec_path_map: Dict[str, str] = {}
 
-        # Derive properties from POST (create) schema or GET (list) schema
+        # Collect candidate paths by type
+        list_candidates: List[str] = []
+        detail_candidates: List[str] = []
+
+        for path, method, _op_info in all_ops:
+            # Build full path by prepending server base (if paths are relative)
+            full_path = self._base_path + path if not path.startswith("/api/") else path
+            self.methods.setdefault(full_path, set()).add(method)
+            self._spec_path_map[full_path] = path
+            # Detail path: ends with {id}/ or {pk}/ — exactly one path param
+            if full_path.endswith("}/") and full_path.count("{") == 1:
+                detail_candidates.append(full_path)
+            # List path: no path parameters at all (handles both
+            # /api/gateway/v1/teams/ and /api/eda/v1/projects/)
+            elif "{" not in full_path:
+                list_candidates.append(full_path)
+
+        # Pick the shortest candidate for each (avoids sub-resource paths
+        # like /teams/{id}/admins/ or /projects/{id}/sync/)
+        if list_candidates:
+            self.list_path = min(list_candidates, key=len)
+        if detail_candidates:
+            self.detail_path = min(detail_candidates, key=len)
+
+        # Derive properties from POST (create) schema or GET (list) schema.
+        # Use the original spec path (from _spec_path_map) to look up schemas
+        # in spec["paths"], since full_path may have a prepended base_path that
+        # doesn't exist as a key in the spec.
         create_schema: Dict[str, Any] = {}
         if self.list_path and "POST" in self.methods.get(self.list_path, set()):
-            create_schema = get_schema_for_operation(spec, self.list_path, "POST")
+            spec_path = self._spec_path_map.get(self.list_path, self.list_path)
+            create_schema = get_schema_for_operation(spec, spec_path, "POST")
         elif self.detail_path and "PATCH" in self.methods.get(self.detail_path, set()):
-            create_schema = get_schema_for_operation(spec, self.detail_path, "PATCH")
+            spec_path = self._spec_path_map.get(self.detail_path, self.detail_path)
+            create_schema = get_schema_for_operation(spec, spec_path, "PATCH")
 
         self.properties = collect_properties_with_meta(spec, create_schema)
 
@@ -178,9 +227,46 @@ class ResourceSpec:
                 self.lookup_field = fname
                 break
 
+        # Derive service label from the API path prefix
+        self.service_label = self._detect_service_label()
+
+    def _detect_service_label(self) -> str:
+        """Detect the service type from the API path prefix or spec servers.
+
+        Detection order:
+        1. Explicit --service CLI override
+        2. Server base path from spec["servers"][0]["url"]
+        3. Endpoint path prefix (/api/gateway/, /api/eda/, etc.)
+        4. Fallback: "platform"
+        """
+        if self._service_override:
+            return self._service_override
+
+        _SERVICE_MAP = {
+            "/api/gateway": "gateway",
+            "/api/eda": "EDA",
+            "/api/hub": "automation hub",
+            "/api/controller": "controller",
+        }
+
+        # Check server base path first (most reliable for specs with relative paths)
+        if self._base_path:
+            for prefix, label in _SERVICE_MAP.items():
+                if self._base_path.startswith(prefix):
+                    return label
+
+        # Check resolved endpoint paths
+        sample_path = self.list_path or self.detail_path or ""
+        for prefix, label in _SERVICE_MAP.items():
+            if prefix in sample_path:
+                return label
+
+        return "platform"
+
     def summary(self) -> str:
         lines = [
             f"Resource: {self.name} (tag={self.tag})",
+            f"  service     : {self.service_label}",
             f"  list_path   : {self.list_path}",
             f"  detail_path : {self.detail_path}",
             f"  CRUD        : create={self.has_create} update={self.has_update} delete={self.has_delete} list={self.has_list}",
@@ -293,7 +379,7 @@ def gen_api_v1(res: ResourceSpec) -> str:
 """
 API v1 {res.class_prefix} dataclass and transform mixin.
 
-Auto-generated by tools/generate_resource.py from the Gateway OpenAPI spec.
+Auto-generated by tools/generate_resource.py from the {res.service_label} OpenAPI spec.
 Review and customise before committing.
 """
 
@@ -308,7 +394,7 @@ from ...platform.types import EndpointOperation, TransformContext
 
 @dataclass
 class API{res.class_prefix}_v1(BaseTransformMixin):
-    """API v1 representation of a gateway {res.name}."""
+    """API v1 representation of a {res.service_label} {res.name}."""
 
 {dc_body}
 
@@ -391,7 +477,7 @@ def gen_ansible_model(res: ResourceSpec) -> str:
 """
 Ansible {res.class_prefix} dataclass — user-facing stable interface.
 
-Auto-generated by tools/generate_resource.py from the Gateway OpenAPI spec.
+Auto-generated by tools/generate_resource.py from the {res.service_label} OpenAPI spec.
 """
 
 from dataclasses import dataclass
@@ -400,7 +486,7 @@ from typing import Optional, Union, Any, Dict, List
 
 @dataclass
 class Ansible{res.class_prefix}:
-    """Ansible representation of a gateway {res.name}."""
+    """Ansible representation of a {res.service_label} {res.name}."""
 
 {dc_body}
 '''
@@ -463,9 +549,9 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: {res.name}
-short_description: Manage a gateway {res.name}.
+short_description: Manage a {res.service_label} {res.name}.
 description:
-    - Create, update, or delete an automation platform gateway {res.name}.
+    - Create, update, or delete an automation platform {res.service_label} {res.name}.
 options:
 {opts_block}
 
@@ -722,7 +808,7 @@ def gen_integration_test(res: ResourceSpec) -> str:
 
 - name: Preset vars
   ansible.builtin.set_fact:
-    name_prefix: "GW-Collection-Test-{res.class_prefix}-{{{{ test_id }}}}"
+    name_prefix: "AAP-Collection-Test-{res.class_prefix}-{{{{ test_id }}}}"
 
 - name: Run Test
   module_defaults:
@@ -885,6 +971,11 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         default=False,
         help="List all available tags in the spec and exit",
     )
+    parser.add_argument(
+        "--service",
+        default=None,
+        help="Service label for docs (e.g. 'eda', 'hub', 'controller'). Auto-detected from API path prefix if omitted.",
+    )
     return parser.parse_args(argv)
 
 
@@ -916,7 +1007,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Run with --list-tags to see available tags.", file=sys.stderr)
         return 2
 
-    res = ResourceSpec(tag, spec)
+    res = ResourceSpec(tag, spec, service=args.service)
     print(res.summary())
     print()
 
