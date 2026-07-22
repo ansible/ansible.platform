@@ -82,6 +82,7 @@
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
+        reject_failed_basic_auth: "{{ item.reject_failed_basic_auth | default(omit) }}"
         state: present
       loop: "{{ gateway_routes }}"
       vars:
@@ -120,6 +121,7 @@
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
+        reject_failed_basic_auth: "{{ item.reject_failed_basic_auth | default(omit) }}"
         state: present
       loop: "{{ gateway_routes }}"
       vars:
@@ -145,6 +147,7 @@
             service_cluster: "{{ test_id }}hub"
             service_path: '/ccc/v1/'
             service_port: 1111
+            reject_failed_basic_auth: true
       register: __routes_result
 
     - name: Assert Create Routes tests passed
@@ -153,6 +156,7 @@
           - __routes_result.results[0] is changed
           - __routes_result.results[1] is changed
           - __routes_result.results[2] is changed
+          - __routes_result.results[2].reject_failed_basic_auth is true
 
     ### 2nd run for Routes ###
     - name: Check Routes Idempotency
@@ -168,6 +172,7 @@
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
+        reject_failed_basic_auth: "{{ item.reject_failed_basic_auth | default(omit) }}"
         state: "{{ item.state | default('present') }}"
       loop: "{{ gateway_routes }}"
       vars:
@@ -191,6 +196,7 @@
           - name: "{{ test_id }}Hub Svc Route"
             gateway_path: '/hub-svc-1/'
             http_port: "{{ test_id }}Port 8050"
+            reject_failed_basic_auth: true
             state: exists
           # Check for existence, no changes
           - name: "{{ test_id }}Hub Svc Route"
@@ -269,6 +275,7 @@
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
+        reject_failed_basic_auth: "{{ item.reject_failed_basic_auth | default(omit) }}"
         state: "{{ item.state | default('present') }}"
       loop: "{{ gateway_routes }}"
       vars:
@@ -352,6 +359,7 @@
         service_path: "{{ item.service_path | default(omit) }}"
         service_port: "{{ item.service_port | default(omit) }}"
         node_tags: "{{ item.node_tags | default(omit) }}"
+        reject_failed_basic_auth: "{{ item.reject_failed_basic_auth | default(omit) }}"
         state: absent
       loop: "{{ gateway_routes }}"
       vars:
