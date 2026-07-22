@@ -207,9 +207,8 @@ in normal operation.
 
 ## Document Guide
 
-This documentation suite mirrors the structure of `cisco/meraki_rm` — a related SDK
-from the same team — so developers familiar with that collection find the same patterns
-and document numbering.
+This documentation suite uses a numbered, progressive-disclosure structure so developers
+can follow reading paths tailored to their role (see `docs/README.md` for guided paths).
 
 ### For Product Managers / Architects
 Start here (`01-overview.md`), then:
