@@ -76,6 +76,10 @@ options:
       default: "present"
       choices: ["present", "absent", "exists", "enforced"]
       type: str
+    pkce_required:
+      description:
+        - When True, clients must use PKCE (send code_challenge) when requesting authorization codes for this application.
+      type: bool
     skip_authorization:
       description:
         - Set True to skip authorization step for completely trusted applications.

@@ -27,6 +27,7 @@ class AnsibleApplication:
     redirect_uris: Optional[Union[str, List[str]]] = None
     post_logout_redirect_uris: Optional[Union[str, List[str]]] = None
 
+    pkce_required: Optional[bool] = None
     skip_authorization: Optional[bool] = None
     app_url: Optional[str] = None
 
