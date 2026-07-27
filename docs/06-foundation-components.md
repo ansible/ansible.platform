@@ -121,19 +121,20 @@ These types are shared across all components. `EndpointOperation` describes a si
 ```python
 @dataclass
 class EndpointOperation:
-    method: str                         # 'GET', 'POST', 'PATCH', 'DELETE'
-    path: str                           # e.g. '/api/gateway/v1/users/'
-    operation_type: str = 'primary'     # 'primary' or 'secondary'
-    depends_on: Optional[str] = None    # run after this operation name
-    order: int = 1                      # execution order for secondary ops
+    method: str  # 'GET', 'POST', 'PATCH', 'DELETE'
+    path: str  # e.g. '/api/gateway/v1/users/'
+    operation_type: str = "primary"  # 'primary' or 'secondary'
+    depends_on: Optional[str] = None  # run after this operation name
+    order: int = 1  # execution order for secondary ops
+
 
 @dataclass
 class TransformContext:
-    manager: Any                        # PlatformService instance
-    session: Any                        # requests.Session
-    cache: Dict[str, Any]              # Lookup cache
-    operation: str                      # 'create', 'update', 'delete', 'find'
-    api_version: str                    # e.g. '1'
+    manager: Any  # PlatformService instance
+    session: Any  # requests.Session
+    cache: Dict[str, Any]  # Lookup cache
+    operation: str  # 'create', 'update', 'delete', 'find'
+    api_version: str  # e.g. '1'
     check_mode: bool = False
     include_nulls_for_update: bool = False  # Include null fields in PATCH (for enforced state)
 ```
@@ -190,10 +191,7 @@ def find_best_version(self, requested_version: str, module_name: str) -> Optiona
     higher = [v for v in available if v > requested_version]
     if higher:
         best = min(higher)
-        logger.warning(
-            "Module '%s' has no version <= '%s'. Using closest higher version '%s'.",
-            module_name, requested_version, best
-        )
+        logger.warning("Module '%s' has no version <= '%s'. Using closest higher version '%s'.", module_name, requested_version, best)
         return best
 
     return None
@@ -204,6 +202,7 @@ def find_best_version(self, requested_version: str, module_name: str) -> Optiona
 ```python
 def get_supported_versions(self) -> List[str]:
     """Return all discovered version numbers."""
+
 
 def get_latest_version(self) -> str:
     """Return the highest discovered version number."""
@@ -223,16 +222,12 @@ class DynamicClassLoader:
         self.registry = registry
         self._cache: Dict[str, tuple] = {}
 
-    def load_classes_for_module(
-        self, module_name: str, api_version: str
-    ) -> Tuple[Type, Type, Type]:
+    def load_classes_for_module(self, module_name: str, api_version: str) -> Tuple[Type, Type, Type]:
         """Return (AnsibleClass, APIClass, MixinClass) for the given module and version."""
 
         best_version = self.registry.find_best_version(api_version, module_name)
         if best_version is None:
-            raise ValueError(
-                f"No compatible API version found for module '{module_name}'"
-            )
+            raise ValueError(f"No compatible API version found for module '{module_name}'")
 
         cache_key = f"{module_name}_{best_version}"
         if cache_key in self._cache:
@@ -241,17 +236,11 @@ class DynamicClassLoader:
         pascal = _to_pascal_case(module_name)
 
         # Load Ansible model: ansible_models/<module_name>.py
-        ansible_mod = importlib.import_module(
-            f"ansible_collections.ansible.platform.plugins.plugin_utils"
-            f".ansible_models.{module_name}"
-        )
+        ansible_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_name}")
         AnsibleClass = getattr(ansible_mod, f"Ansible{pascal}")
 
         # Load API model and mixin: api/v<N>/<module_name>.py
-        api_mod = importlib.import_module(
-            f"ansible_collections.ansible.platform.plugins.plugin_utils"
-            f".api.v{best_version}.{module_name}"
-        )
+        api_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.v{best_version}.{module_name}")
         APIClass = getattr(api_mod, f"API{pascal}_v{best_version}")
         MixinClass = getattr(api_mod, f"{pascal}TransformMixin_v{best_version}")
 
@@ -326,7 +315,7 @@ class GatewayConfig:
     verify_ssl: bool = True
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
-    idle_timeout: float = 3600.0       # Seconds before manager auto-exits (default 1 hour)
+    idle_timeout: float = 3600.0  # Seconds before manager auto-exits (default 1 hour)
 
     def __post_init__(self):
         """Normalize URL after initialization."""
@@ -349,11 +338,7 @@ class GatewayConfig:
 ### `extract_gateway_config()` Function
 
 ```python
-def extract_gateway_config(
-    task_args: Optional[Dict[str, Any]] = None,
-    host_vars: Optional[Dict[str, Any]] = None,
-    required: bool = True
-) -> GatewayConfig:
+def extract_gateway_config(task_args: Optional[Dict[str, Any]] = None, host_vars: Optional[Dict[str, Any]] = None, required: bool = True) -> GatewayConfig:
     """
     Extract gateway configuration from task arguments and host variables.
 
@@ -415,6 +400,7 @@ def api_version(self) -> str:
         self._api_version = self._detect_api_version()
     return self._api_version
 
+
 def _detect_api_version(self) -> str:
     """
     Detect platform API version dynamically.
@@ -434,12 +420,7 @@ def _detect_api_version(self) -> str:
 The main entry point for all operations:
 
 ```python
-def execute(
-    self,
-    operation: str,
-    module_name: str,
-    ansible_data_dict: dict
-) -> dict:
+def execute(self, operation: str, module_name: str, ansible_data_dict: dict) -> dict:
     """
     Execute a resource operation.
 
@@ -451,9 +432,7 @@ def execute(
     Returns:
         dict with operation result, ready to be returned by action plugin
     """
-    AnsibleClass, APIClass, MixinClass = self._loader.load_classes_for_module(
-        module_name, self.api_version
-    )
+    AnsibleClass, APIClass, MixinClass = self._loader.load_classes_for_module(module_name, self.api_version)
     context = TransformContext(
         manager=self,
         session=self.session,
@@ -464,13 +443,13 @@ def execute(
 
     ansible_instance = AnsibleClass(**ansible_data_dict)
 
-    if operation == 'find':
+    if operation == "find":
         return self._find_resource(ansible_instance, MixinClass, context)
-    elif operation == 'create':
+    elif operation == "create":
         return self._create_resource(ansible_instance, MixinClass, context)
-    elif operation == 'update':
+    elif operation == "update":
         return self._update_resource(ansible_instance, MixinClass, context)
-    elif operation == 'delete':
+    elif operation == "delete":
         return self._delete_resource(ansible_instance, MixinClass, context)
     else:
         raise ValueError(f"Unknown operation: {operation}")
@@ -481,12 +460,7 @@ def execute(
 Used by transform mixins to resolve names to IDs without knowing the HTTP internals:
 
 ```python
-def lookup_resource_id(
-    self,
-    resource_type: str,
-    name_or_id: Union[str, int],
-    **kwargs
-) -> Optional[int]:
+def lookup_resource_id(self, resource_type: str, name_or_id: Union[str, int], **kwargs) -> Optional[int]:
     """
     Resolve a resource name to its integer ID.
     If name_or_id is already an integer string, return it directly.
@@ -495,15 +469,13 @@ def lookup_resource_id(
     if str(name_or_id).isdigit():
         return int(name_or_id)
 
-    AnsibleClass, _, MixinClass = self._loader.load_classes_for_module(
-        resource_type, self.api_version
-    )
+    AnsibleClass, _, MixinClass = self._loader.load_classes_for_module(resource_type, self.api_version)
     mixin = MixinClass()
     lookup_field = mixin.get_lookup_field()
     ansible_instance = AnsibleClass(**{lookup_field: name_or_id})
-    context = TransformContext(manager=self, operation='find', api_version=self.api_version)
+    context = TransformContext(manager=self, operation="find", api_version=self.api_version)
     result = self._find_resource(ansible_instance, mixin, context)
-    return result.get('id') if result else None
+    return result.get("id") if result else None
 ```
 
 ### `search_api` Method
@@ -511,13 +483,7 @@ def lookup_resource_id(
 Used by the `gateway_api` lookup plugin to perform API searches without forking HTTP connections:
 
 ```python
-def search_api(
-    self,
-    endpoint: str,
-    query_params: Optional[dict] = None,
-    return_all: bool = False,
-    max_objects: int = 1000
-) -> dict:
+def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
     """
     Execute a raw GET request via the manager subprocess.
 
@@ -535,7 +501,7 @@ def search_api(
         Raw API response dict from the platform.
     """
     url = self._build_url(endpoint, query_params)
-    response = self._make_request('get', url)
+    response = self._make_request("get", url)
     if response.status_code != 200:
         raise RuntimeError(f"API request failed: {response.status_code}")
     return response.json()
@@ -549,10 +515,12 @@ def record_activity(self) -> None:
     with self._activity_lock:
         self._last_activity_monotonic = time.monotonic()
 
+
 def seconds_since_last_activity(self) -> float:
     """Return seconds elapsed since the last recorded activity."""
     with self._activity_lock:
         return time.monotonic() - self._last_activity_monotonic
+
 
 def should_exit_for_idle(self, idle_timeout: float) -> bool:
     """Return True if idle_timeout seconds have passed with no API activity."""
@@ -566,7 +534,7 @@ Before PATCH requests, the service calls `mixin.get_fields_to_null_for_update()`
 ```python
 def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
     # ... get current state ...
-    
+
     # Call mixin to get fields that must be nulled
     fields_to_null: set = set()
     if hasattr(mixin_class, "get_fields_to_null_for_update"):
@@ -576,11 +544,7 @@ def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) 
                 fields_to_null.add(field)
                 setattr(api_data, field, None)
 
-    api_result = self._execute_operations(
-        operations, api_data, context,
-        required_for="update",
-        fields_to_null=fields_to_null
-    )
+    api_result = self._execute_operations(operations, api_data, context, required_for="update", fields_to_null=fields_to_null)
 ```
 
 ---
@@ -594,6 +558,7 @@ A `multiprocessing.managers.BaseManager` subclass that exposes `PlatformService`
 ```python
 class PlatformManager(BaseManager):
     pass
+
 
 # Service registration happens in manager_process.py:
 # PlatformManager.register('get_platform_service', callable=_get_service)
@@ -613,7 +578,7 @@ manager.start()
 manager = PlatformManager(address=socket_path, authkey=authkey)
 manager.connect()
 service = manager.get_platform_service()
-result = service.execute('create', 'user', data_dict)
+result = service.execute("create", "user", data_dict)
 ```
 
 ---
@@ -632,37 +597,22 @@ class ManagerRPCClient:
         self.authkey = authkey
 
         from .platform_manager import PlatformManager
+
         PlatformManager.register("get_platform_service")
 
         self.manager = PlatformManager(address=self.socket_path, authkey=authkey)
         self.manager.connect()
         self.service_proxy = self.manager.get_platform_service()
 
-    def execute(
-        self,
-        operation: str,
-        module_name: str,
-        ansible_data: dict
-    ) -> dict:
+    def execute(self, operation: str, module_name: str, ansible_data: dict) -> dict:
         """Send operation request to manager. Returns result dict."""
         return self.service_proxy.execute(operation, module_name, ansible_data)
 
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str
-    ) -> Optional[int]:
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str) -> Optional[int]:
         """Resolve resource name to integer ID via manager."""
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value)
 
-    def search_api(
-        self,
-        endpoint: str,
-        query_params: Optional[dict] = None,
-        return_all: bool = False,
-        max_objects: int = 1000
-    ) -> dict:
+    def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """Execute raw API GET via manager (avoids fork-safety issues on macOS)."""
         return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects)
 
@@ -692,7 +642,7 @@ The shared base class for all resource action plugins. Provides argument spec ge
 def _build_argspec_from_docs(self, documentation: str) -> dict:
     """Parse YAML DOCUMENTATION string into ArgumentSpecValidator format."""
     doc = yaml.safe_load(documentation)
-    options = doc.get('options', {})
+    options = doc.get("options", {})
     return self._normalize_argspec(options)
 ```
 
@@ -704,7 +654,7 @@ def _get_or_spawn_manager(self, task_vars: dict):
     Get a manager client. Routes to direct or persistent based on connection plugin.
     Falls back to ephemeral direct manager for connection: local.
     """
-    if hasattr(self._connection, 'get_client'):
+    if hasattr(self._connection, "get_client"):
         # ansible.platform.http connection plugin
         gateway_config = self._build_gateway_config(task_vars)
         client, facts = self._connection.get_client(task_vars, gateway_config)
@@ -721,12 +671,12 @@ def _get_or_spawn_manager(self, task_vars: dict):
 ```python
 def _detect_operation(self, args: dict) -> str:
     """Map state parameter to operation name."""
-    state = args.get('state', 'present')
+    state = args.get("state", "present")
     return {
-        'present':  'create_or_update',
-        'absent':   'delete',
-        'exists':   'find',
-        'enforced': 'enforced',
+        "present": "create_or_update",
+        "absent": "delete",
+        "exists": "find",
+        "enforced": "enforced",
     }[state]
 ```
 
@@ -736,11 +686,7 @@ def _detect_operation(self, args: dict) -> str:
 def run(self, tmp=None, task_vars=None):
     ...
     if self._task.check_mode:
-        return dict(
-            changed=would_change,
-            check_mode=True,
-            msg="No changes made (check_mode)"
-        )
+        return dict(changed=would_change, check_mode=True, msg="No changes made (check_mode)")
     ...
 ```
 
@@ -849,11 +795,9 @@ def _idle_monitor(service, idle_timeout):
         idle_timeout: Timeout in seconds
     """
     import time
+
     poll_interval = _compute_poll_interval(idle_timeout)
-    logger.info(
-        "Idle monitor started: timeout=%ss, poll_interval=%ss",
-        idle_timeout, poll_interval
-    )
+    logger.info("Idle monitor started: timeout=%ss, poll_interval=%ss", idle_timeout, poll_interval)
 
     while True:
         time.sleep(poll_interval)
@@ -934,48 +878,36 @@ When reusing a persistent manager, the socket may be stale (manager process died
 
 ```python
 def _get_persistent_client(self, task_vars, gateway_config):
-    socket_path = task_vars.get('hostvars', {}).get(
-        task_vars['inventory_hostname'], {}
-    ).get('platform_manager_socket')
+    socket_path = task_vars.get("hostvars", {}).get(task_vars["inventory_hostname"], {}).get("platform_manager_socket")
 
     if socket_path and Path(socket_path).exists():
         try:
             client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
-            return client, None   # reuse succeeded
+            return client, None  # reuse succeeded
         except (ConnectionError, OSError):
-            pass   # fall through to re-spawn
+            pass  # fall through to re-spawn
 
     # Spawn new manager
     from ..plugin_utils.manager.process_manager import ProcessManager
-    
+
     script_path = Path(__file__).parent.parent / "plugin_utils" / "manager" / "manager_process.py"
-    conn_info = ProcessManager.generate_connection_info(
-        identifier=task_vars['inventory_hostname'],
-        socket_dir=Path(socket_dir),
-        gateway_config=gateway_config
-    )
+    conn_info = ProcessManager.generate_connection_info(identifier=task_vars["inventory_hostname"], socket_dir=Path(socket_dir), gateway_config=gateway_config)
     ProcessManager.spawn_manager_process(
         script_path=script_path,
         socket_path=conn_info.socket_path,
         socket_dir=str(socket_dir),
-        identifier=task_vars['inventory_hostname'],
+        identifier=task_vars["inventory_hostname"],
         gateway_config=gateway_config,
         authkey_b64=conn_info.authkey_b64,
         sys_path=list(sys.path),
-        owner_pid=os.getpid()
+        owner_pid=os.getpid(),
     )
-    ProcessManager.wait_for_process_startup(
-        conn_info.socket_path,
-        Path(socket_dir),
-        task_vars['inventory_hostname'],
-        process,
-        max_wait=50
-    )
-    
+    ProcessManager.wait_for_process_startup(conn_info.socket_path, Path(socket_dir), task_vars["inventory_hostname"], process, max_wait=50)
+
     client = ManagerRPCClient(gateway_config.base_url, conn_info.socket_path, conn_info.authkey)
     facts = {
-        'platform_manager_socket': conn_info.socket_path,
-        'platform_manager_authkey': conn_info.authkey_b64,
+        "platform_manager_socket": conn_info.socket_path,
+        "platform_manager_authkey": conn_info.authkey_b64,
     }
     return client, facts
 ```
@@ -1080,7 +1012,7 @@ service = PlatformService(config)
 service.record_activity()
 
 # Simulate passage of time
-with patch('time.monotonic') as mock_mono:
+with patch("time.monotonic") as mock_mono:
     mock_mono.return_value = original_time + 3700  # 3700 seconds later
     assert service.should_exit_for_idle(3600)  # idle_timeout=3600s
 ```
