@@ -80,6 +80,7 @@ options:
       description:
         - When True, clients must use PKCE (send code_challenge) when requesting authorization codes for this application.
       type: bool
+      default: true
     skip_authorization:
       description:
         - Set True to skip authorization step for completely trusted applications.
