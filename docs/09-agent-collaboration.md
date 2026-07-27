@@ -279,21 +279,21 @@ python tools/generate_resource.py \
 ```python
 class UserTransformMixin_v1(BaseTransformMixin):
     _field_mapping = {
-        'username': 'username',
+        "username": "username",
         # TODO: review reference fields, rename mappings
     }
-    
+
     def get_endpoint_operations(self):
         return {
-            'create': EndpointOperation(method='POST', path='/api/gateway/v1/users/'),
-            'update': EndpointOperation(method='PATCH', path='/api/gateway/v1/users/{id}/'),
-            'delete': EndpointOperation(method='DELETE', path='/api/gateway/v1/users/{id}/'),
-            'get': EndpointOperation(method='GET', path='/api/gateway/v1/users/{id}/'),
-            'list': EndpointOperation(method='GET', path='/api/gateway/v1/users/')
+            "create": EndpointOperation(method="POST", path="/api/gateway/v1/users/"),
+            "update": EndpointOperation(method="PATCH", path="/api/gateway/v1/users/{id}/"),
+            "delete": EndpointOperation(method="DELETE", path="/api/gateway/v1/users/{id}/"),
+            "get": EndpointOperation(method="GET", path="/api/gateway/v1/users/{id}/"),
+            "list": EndpointOperation(method="GET", path="/api/gateway/v1/users/"),
         }
-    
+
     def get_lookup_field(self) -> str:
-        return 'username'  # TODO: verify correct lookup field
+        return "username"  # TODO: verify correct lookup field
 ```
 
 **What the developer (or agent) adds:**
@@ -312,7 +312,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
 
 ```python
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME = 'user'
+    MODULE_NAME = "user"
 ```
 
 This is intentionally minimal — `BaseResourceActionPlugin` handles everything else. The agent verifies `MODULE_NAME` matches the module file name and that no extra logic has been added that belongs in the transform mixin instead.
@@ -516,8 +516,9 @@ Stop the agent immediately if it attempts any of these:
 # plugins/action/user.py
 import requests
 
+
 def run(self):
-    response = requests.post('http://...')  # NO!
+    response = requests.post("http://...")  # NO!
 ```
 
 **Right:** All HTTP lives in PlatformService inside the manager process. Action plugins call `manager.execute()` only.
@@ -528,7 +529,7 @@ def run(self):
 
 **Wrong:**
 ```python
-SUPPORTED_VERSIONS = ['1', '2']
+SUPPORTED_VERSIONS = ["1", "2"]
 ```
 
 **Right:** Use the APIVersionRegistry to auto-discover versions from api/v*/ directories.
@@ -551,12 +552,12 @@ SUPPORTED_VERSIONS = ['1', '2']
 
 **Wrong:**
 ```python
-timeout = int(os.environ.get('IDLE_TIMEOUT'))  # Crashes if unset
+timeout = int(os.environ.get("IDLE_TIMEOUT"))  # Crashes if unset
 ```
 
 **Right:**
 ```python
-timeout = int(float(os.environ.get('IDLE_TIMEOUT', '3600')))
+timeout = int(float(os.environ.get("IDLE_TIMEOUT", "3600")))
 ```
 
 The float intermediary prevents `int()` from choking on scientific notation or edge cases.
@@ -568,15 +569,15 @@ The float intermediary prevents `int()` from choking on scientific notation or e
 **Wrong:**
 ```python
 # In transform mixin
-if ansible_instance.organization == api_response['organizationId']:  # Name vs ID!
+if ansible_instance.organization == api_response["organizationId"]:  # Name vs ID!
     changed = False
 ```
 
 **Right:**
 ```python
 # Resolve name to ID first, then compare IDs
-org_id = context.manager.lookup_resource_id('organization', ansible_instance.organization)
-if org_id == api_response['organizationId']:
+org_id = context.manager.lookup_resource_id("organization", ansible_instance.organization)
+if org_id == api_response["organizationId"]:
     changed = False
 ```
 
@@ -589,7 +590,7 @@ See Design Principle 7.
 **Wrong:**
 ```python
 # password is compare in _is_idempotent
-if ansible_instance.password != api_response.get('password'):
+if ansible_instance.password != api_response.get("password"):
     changed = True
 ```
 
@@ -608,14 +609,14 @@ if ansible_instance.password is not None:
 **Wrong:**
 ```python
 # Setting fields_to_null: ['password'] unconditionally
-context.manager.update(..., fields_to_null=['password'])
+context.manager.update(..., fields_to_null=["password"])
 ```
 
 **Right:**
 ```python
 # Only null fields during specific transitions (e.g., map_type change for authenticator_map)
 if api_instance.map_type != ansible_instance.map_type:
-    context.manager.update(..., fields_to_null=['password'])
+    context.manager.update(..., fields_to_null=["password"])
 ```
 
 See case study for `authenticator_map` example.

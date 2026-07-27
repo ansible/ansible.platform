@@ -35,6 +35,7 @@ Use when: All fields map 1:1 to the API, no special logic needed.
 # plugins/action/organization.py — entire file
 from .base_action import BaseResourceActionPlugin
 
+
 class ActionModule(BaseResourceActionPlugin):
     resource_type = "organization"
 ```
@@ -115,8 +116,8 @@ In `plugins/plugin_utils/api/v1/<resource>.py`:
 
 ```python
 class FooTransformMixin_v1:
-    LOOKUP_FIELD = "name"            # Unique identifier
-    API_ENDPOINT = "foos"            # Gateway API path fragment
+    LOOKUP_FIELD = "name"  # Unique identifier
+    API_ENDPOINT = "foos"  # Gateway API path fragment
 
     # Ref fields: Ansible name → API integer ID
     REF_FIELDS = {
