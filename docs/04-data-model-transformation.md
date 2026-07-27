@@ -94,16 +94,16 @@ contract between the collection and playbook authors.
 ```python
 @dataclass
 class AnsibleUser:
-    username: str                           # required
+    username: str  # required
     email: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    password: Optional[str] = None          # write-only
+    password: Optional[str] = None  # write-only
     is_superuser: Optional[bool] = None
     is_platform_auditor: Optional[bool] = None
-    organizations: Optional[List[str]] = None   # org NAMES, not IDs
+    organizations: Optional[List[str]] = None  # org NAMES, not IDs
     associated_authenticators: Optional[Dict[str, Any]] = None
-    state: str = 'present'
+    state: str = "present"
     # read-only, populated from API response:
     id: Optional[int] = None
     created: Optional[str] = None
@@ -149,7 +149,7 @@ class APIUser_v1:
     password: Optional[str] = None
     is_superuser: Optional[bool] = None
     is_platform_auditor: Optional[bool] = None
-    organization_ids: Optional[List[int]] = None   # INTEGER IDs, not names
+    organization_ids: Optional[List[int]] = None  # INTEGER IDs, not names
     id: Optional[int] = None
     created: Optional[str] = None
     modified: Optional[str] = None
@@ -168,9 +168,9 @@ When Gateway API v2 renames `organization_ids` to `orgs` and adds a new field:
 # api/v2/user.py — only the differences from v1
 @dataclass
 class APIUser_v2(APIUser_v1):
-    orgs: Optional[List[int]] = None      # renamed
-    last_login: Optional[str] = None      # new field
-    organization_ids: None = field(       # deprecated
+    orgs: Optional[List[int]] = None  # renamed
+    last_login: Optional[str] = None  # new field
+    organization_ids: None = field(  # deprecated
         default=None, repr=False
     )
 ```
@@ -215,18 +215,10 @@ Every mixin must implement:
 
 ```python
 class UserTransformMixin_v1:
-    def from_ansible_data(
-        self,
-        ansible_instance: AnsibleUser,
-        context: TransformContext
-    ) -> APIUser_v1:
+    def from_ansible_data(self, ansible_instance: AnsibleUser, context: TransformContext) -> APIUser_v1:
         """Forward: Ansible model → API wire format."""
 
-    def from_api(
-        self,
-        api_data: dict,
-        context: TransformContext
-    ) -> AnsibleUser:
+    def from_api(self, api_data: dict, context: TransformContext) -> AnsibleUser:
         """Reverse: API response dict → Ansible model."""
 
     @classmethod
@@ -242,12 +234,7 @@ class UserTransformMixin_v1:
         """Return query parameters for the list endpoint when searching."""
 
     @classmethod
-    def get_fields_to_null_for_update(
-        cls,
-        old_value: Any,
-        new_value: Any,
-        field_name: str
-    ) -> List[str]:
+    def get_fields_to_null_for_update(cls, old_value: Any, new_value: Any, field_name: str) -> List[str]:
         """Return list of field names to null when a conditional field changes."""
 ```
 
@@ -264,21 +251,18 @@ def from_ansible_data(self, ansible_instance: AnsibleUser, context: TransformCon
     params = {}
 
     # Simple field copy (same name, same type)
-    for field in ['username', 'email', 'first_name', 'last_name',
-                  'is_superuser', 'is_platform_auditor']:
+    for field in ["username", "email", "first_name", "last_name", "is_superuser", "is_platform_auditor"]:
         val = getattr(ansible_instance, field, None)
         if val is not None:
             params[field] = val
 
     # Name-to-ID resolution
     if ansible_instance.organizations is not None:
-        params['organization_ids'] = context.manager.lookup_resource_id(
-            'organization', ansible_instance.organizations
-        )
+        params["organization_ids"] = context.manager.lookup_resource_id("organization", ansible_instance.organizations)
 
     # Conditional: don't send empty password
     if ansible_instance.password:
-        params['password'] = ansible_instance.password
+        params["password"] = ansible_instance.password
 
     return APIUser_v1(**params)
 ```
@@ -294,19 +278,17 @@ Maps an API response dict back to the Ansible model. This is where:
 ```python
 def from_api(self, api_data: dict, context: TransformContext) -> AnsibleUser:
     org_names = []
-    if api_data.get('organization_ids'):
-        org_names = context.manager.lookup_organization_names(
-            api_data['organization_ids']
-        )
+    if api_data.get("organization_ids"):
+        org_names = context.manager.lookup_organization_names(api_data["organization_ids"])
 
     return AnsibleUser(
-        id=api_data.get('id'),
-        username=api_data.get('username'),
-        email=api_data.get('email'),
+        id=api_data.get("id"),
+        username=api_data.get("username"),
+        email=api_data.get("email"),
         organizations=org_names,
-        created=api_data.get('created'),
-        modified=api_data.get('modified'),
-        url=api_data.get('url'),
+        created=api_data.get("created"),
+        modified=api_data.get("modified"),
+        url=api_data.get("url"),
         # NOTE: password is NOT populated — write-only field
     )
 ```
@@ -320,32 +302,32 @@ operation names to `EndpointOperation` objects:
 @classmethod
 def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
     return {
-        'create': EndpointOperation(
-            method='POST',
-            path='/api/gateway/v1/users/',
+        "create": EndpointOperation(
+            method="POST",
+            path="/api/gateway/v1/users/",
         ),
-        'update': EndpointOperation(
-            method='PATCH',
-            path='/api/gateway/v1/users/{id}/',
+        "update": EndpointOperation(
+            method="PATCH",
+            path="/api/gateway/v1/users/{id}/",
         ),
-        'delete': EndpointOperation(
-            method='DELETE',
-            path='/api/gateway/v1/users/{id}/',
+        "delete": EndpointOperation(
+            method="DELETE",
+            path="/api/gateway/v1/users/{id}/",
         ),
-        'get': EndpointOperation(
-            method='GET',
-            path='/api/gateway/v1/users/{id}/',
+        "get": EndpointOperation(
+            method="GET",
+            path="/api/gateway/v1/users/{id}/",
         ),
-        'list': EndpointOperation(
-            method='GET',
-            path='/api/gateway/v1/users/',
+        "list": EndpointOperation(
+            method="GET",
+            path="/api/gateway/v1/users/",
         ),
         # Secondary: runs after create, order=2
-        'associate_orgs': EndpointOperation(
-            method='POST',
-            path='/api/gateway/v1/users/{id}/organizations/',
-            operation_type='secondary',
-            depends_on='create',
+        "associate_orgs": EndpointOperation(
+            method="POST",
+            path="/api/gateway/v1/users/{id}/organizations/",
+            operation_type="secondary",
+            depends_on="create",
             order=2,
         ),
     }
@@ -379,11 +361,12 @@ def from_ansible_data(self, ansible_instance, context):
         description=ansible_instance.description,
     )
 
+
 def from_api(self, api_data, context):
     return AnsibleOrganization(
-        id=api_data['id'],
-        name=api_data['name'],
-        description=api_data.get('description'),
+        id=api_data["id"],
+        name=api_data["name"],
+        description=api_data.get("description"),
     )
 ```
 
@@ -400,15 +383,15 @@ def from_api(self, api_data, context):
 The action plugin finds the organization by name:
 
 ```python
-find_result = manager.execute('find', 'organization', {'name': 'Red Hat'})
+find_result = manager.execute("find", "organization", {"name": "Red Hat"})
 
 if find_result and find_result == desired_state:
     return dict(changed=False)
 
 if find_result:
-    manager.execute('update', 'organization', {**desired, 'id': find_result['id']})
+    manager.execute("update", "organization", {**desired, "id": find_result["id"]})
 else:
-    manager.execute('create', 'organization', desired)
+    manager.execute("create", "organization", desired)
 ```
 
 ---
@@ -434,27 +417,22 @@ service_cluster: str    →   service_cluster: int  ← name→ID resolution!
 def from_ansible_data(self, ansible_instance, context):
     cluster_id = None
     if ansible_instance.service_cluster:
-        cluster_id = context.manager.lookup_resource_id(
-            'service_cluster',
-            ansible_instance.service_cluster
-        )
+        cluster_id = context.manager.lookup_resource_id("service_cluster", ansible_instance.service_cluster)
     return APIServiceNode_v1(
         name=ansible_instance.name,
         address=ansible_instance.address,
         service_cluster=cluster_id,
     )
 
+
 def from_api(self, api_data, context):
     cluster_name = None
-    if api_data.get('service_cluster'):
-        cluster_name = context.manager.lookup_resource_name(
-            'service_cluster',
-            api_data['service_cluster']
-        )
+    if api_data.get("service_cluster"):
+        cluster_name = context.manager.lookup_resource_name("service_cluster", api_data["service_cluster"])
     return AnsibleServiceNode(
-        id=api_data['id'],
-        name=api_data['name'],
-        address=api_data['address'],
+        id=api_data["id"],
+        name=api_data["name"],
+        address=api_data["address"],
         service_cluster=cluster_name,
     )
 ```
@@ -489,15 +467,9 @@ If a name cannot be resolved to an ID:
 
 ```python
 try:
-    cluster_id = context.manager.lookup_resource_id(
-        'service_cluster',
-        ansible_instance.service_cluster
-    )
+    cluster_id = context.manager.lookup_resource_id("service_cluster", ansible_instance.service_cluster)
 except LookupError as e:
-    raise ValueError(
-        f"service_cluster '{ansible_instance.service_cluster}' not found. "
-        f"Available clusters: {e.available}"
-    )
+    raise ValueError(f"service_cluster '{ansible_instance.service_cluster}' not found. Available clusters: {e.available}")
 ```
 
 ---
@@ -528,6 +500,7 @@ def _join_uri_list(uris):
         return " ".join(uris)
     return uris
 
+
 def _split_uri_string(uri_string):
     """Convert space-separated string to list of URIs."""
     if uri_string is None:
@@ -536,6 +509,7 @@ def _split_uri_string(uri_string):
         return uri_string.split()
     return uri_string
 
+
 def from_ansible_data(self, ansible_instance, context):
     return APIApplication_v1(
         name=ansible_instance.name,
@@ -543,12 +517,13 @@ def from_ansible_data(self, ansible_instance, context):
         post_logout_uris=_join_uri_list(ansible_instance.post_logout_uris),
     )
 
+
 def from_api(self, api_data, context):
     return AnsibleApplication(
-        id=api_data['id'],
-        name=api_data['name'],
-        redirect_uris=_split_uri_string(api_data.get('redirect_uris')),
-        post_logout_uris=_split_uri_string(api_data.get('post_logout_uris')),
+        id=api_data["id"],
+        name=api_data["name"],
+        redirect_uris=_split_uri_string(api_data.get("redirect_uris")),
+        post_logout_uris=_split_uri_string(api_data.get("post_logout_uris")),
     )
 ```
 
@@ -602,8 +577,8 @@ AnsibleAuthenticatorMap(
 AnsibleAuthenticatorMap(
     name="corporate-sso",
     map_type="ldap",
-    saml_entity_id=None,           # Must be explicitly nulled
-    saml_metadata_url=None,        # Must be explicitly nulled
+    saml_entity_id=None,  # Must be explicitly nulled
+    saml_metadata_url=None,  # Must be explicitly nulled
     ldap_server="ldap.example.com",
 )
 ```
@@ -625,12 +600,7 @@ field changes:
 
 ```python
 @classmethod
-def get_fields_to_null_for_update(
-    cls,
-    old_value: Any,
-    new_value: Any,
-    field_name: str
-) -> List[str]:
+def get_fields_to_null_for_update(cls, old_value: Any, new_value: Any, field_name: str) -> List[str]:
     """
     When field_name changes from old_value to new_value, return the
     list of field names that must be explicitly nulled in the PATCH.
@@ -643,17 +613,17 @@ def get_fields_to_null_for_update(
     Returns:
         List of field names that should be set to "" (empty string) in PATCH.
     """
-    if field_name == 'map_type':
-        if old_value == 'saml' and new_value == 'ldap':
+    if field_name == "map_type":
+        if old_value == "saml" and new_value == "ldap":
             # When switching FROM saml TO ldap, clear all SAML fields
-            return ['saml_entity_id', 'saml_metadata_url', 'saml_cert']
-        elif old_value == 'ldap' and new_value == 'saml':
+            return ["saml_entity_id", "saml_metadata_url", "saml_cert"]
+        elif old_value == "ldap" and new_value == "saml":
             # When switching FROM ldap TO saml, clear all LDAP fields
-            return ['ldap_server', 'ldap_user_dn', 'ldap_password']
-        elif old_value == 'saml' and new_value == 'radius':
-            return ['saml_entity_id', 'saml_metadata_url', 'saml_cert']
-        elif old_value == 'ldap' and new_value == 'radius':
-            return ['ldap_server', 'ldap_user_dn', 'ldap_password']
+            return ["ldap_server", "ldap_user_dn", "ldap_password"]
+        elif old_value == "saml" and new_value == "radius":
+            return ["saml_entity_id", "saml_metadata_url", "saml_cert"]
+        elif old_value == "ldap" and new_value == "radius":
+            return ["ldap_server", "ldap_user_dn", "ldap_password"]
     return []
 ```
 
@@ -662,37 +632,29 @@ def get_fields_to_null_for_update(
 ```python
 def from_ansible_data(self, ansible_instance, context):
     params = {
-        'name': ansible_instance.name,
-        'map_type': ansible_instance.map_type,
+        "name": ansible_instance.name,
+        "map_type": ansible_instance.map_type,
     }
 
     # Determine which fields to null based on the map_type transition
-    if context.operation == 'update':
+    if context.operation == "update":
         # Fetch existing state to detect transitions
-        existing = context.manager.lookup_resource_id(
-            'authenticator_map', ansible_instance.name
-        )
+        existing = context.manager.lookup_resource_id("authenticator_map", ansible_instance.name)
         if existing:
-            existing_state = context.manager.execute(
-                'get', 'authenticator_map', {'id': existing}
-            )
-            fields_to_null = self.get_fields_to_null_for_update(
-                existing_state.get('map_type'),
-                ansible_instance.map_type,
-                'map_type'
-            )
+            existing_state = context.manager.execute("get", "authenticator_map", {"id": existing})
+            fields_to_null = self.get_fields_to_null_for_update(existing_state.get("map_type"), ansible_instance.map_type, "map_type")
             for field in fields_to_null:
                 params[field] = ""  # Explicit empty string to clear
 
     # Add type-specific fields if present
-    if ansible_instance.map_type == 'saml':
+    if ansible_instance.map_type == "saml":
         if ansible_instance.saml_entity_id:
-            params['saml_entity_id'] = ansible_instance.saml_entity_id
+            params["saml_entity_id"] = ansible_instance.saml_entity_id
         if ansible_instance.saml_metadata_url:
-            params['saml_metadata_url'] = ansible_instance.saml_metadata_url
-    elif ansible_instance.map_type == 'ldap':
+            params["saml_metadata_url"] = ansible_instance.saml_metadata_url
+    elif ansible_instance.map_type == "ldap":
         if ansible_instance.ldap_server:
-            params['ldap_server'] = ansible_instance.ldap_server
+            params["ldap_server"] = ansible_instance.ldap_server
 
     return APIAuthenticatorMap_v1(**params)
 ```
@@ -703,9 +665,9 @@ def from_ansible_data(self, ansible_instance, context):
 def test_map_type_transition_nulls_old_fields():
     """Verify that changing map_type nulls out fields of the old type."""
     old_state = {
-        'map_type': 'saml',
-        'saml_entity_id': 'https://example.com/saml',
-        'saml_metadata_url': 'https://example.com/saml/metadata',
+        "map_type": "saml",
+        "saml_entity_id": "https://example.com/saml",
+        "saml_metadata_url": "https://example.com/saml/metadata",
     }
     new_config = AnsibleAuthenticatorMap(
         name="corporate-sso",
@@ -714,12 +676,12 @@ def test_map_type_transition_nulls_old_fields():
     )
     context = TransformContext(
         manager=manager,
-        operation='update',
-        api_version='1',
+        operation="update",
+        api_version="1",
     )
     mixin = AuthenticatorMapTransformMixin_v1()
     api_data = mixin.from_ansible_data(new_config, context)
-    
+
     # Verify SAML fields are explicitly nulled
     assert api_data.saml_entity_id == ""
     assert api_data.saml_metadata_url == ""
@@ -750,21 +712,20 @@ AnsibleUser (from_api)                  ← password is NOT populated (always No
 def from_ansible_data(self, ansible_instance, context):
     params = {}
 
-    for field in ['username', 'email', 'first_name', 'last_name',
-                  'is_superuser', 'is_platform_auditor']:
+    for field in ["username", "email", "first_name", "last_name", "is_superuser", "is_platform_auditor"]:
         val = getattr(ansible_instance, field, None)
         if val is not None:
             params[field] = val
 
     # CRITICAL: Only send password on create or if explicitly changing
-    if context.operation in ('create', 'password_change'):
+    if context.operation in ("create", "password_change"):
         if ansible_instance.password:
-            params['password'] = ansible_instance.password
+            params["password"] = ansible_instance.password
     # On update/merge, never send password unless we're doing a password change
-    elif context.operation == 'update':
+    elif context.operation == "update":
         # If user provided a password, this is an explicit password change
         if ansible_instance.password:
-            params['password'] = ansible_instance.password
+            params["password"] = ansible_instance.password
         # Otherwise, omit password from PATCH
 
     return APIUser_v1(**params)
@@ -775,13 +736,13 @@ def from_ansible_data(self, ansible_instance, context):
 ```python
 def from_api(self, api_data, context):
     return AnsibleUser(
-        id=api_data.get('id'),
-        username=api_data.get('username'),
-        email=api_data.get('email'),
-        first_name=api_data.get('first_name'),
-        last_name=api_data.get('last_name'),
-        is_superuser=api_data.get('is_superuser'),
-        is_platform_auditor=api_data.get('is_platform_auditor'),
+        id=api_data.get("id"),
+        username=api_data.get("username"),
+        email=api_data.get("email"),
+        first_name=api_data.get("first_name"),
+        last_name=api_data.get("last_name"),
+        is_superuser=api_data.get("is_superuser"),
+        is_platform_auditor=api_data.get("is_platform_auditor"),
         organizations=org_names,
         # NOTE: password is NEVER populated from API response
         # Even if api_data contained it (it won't), we don't expose it
@@ -797,10 +758,7 @@ The idempotency check must exclude write-only fields:
 def is_user_idempotent(desired: AnsibleUser, existing: AnsibleUser) -> bool:
     """Compare users, ignoring write-only fields like password."""
     # Compare all fields EXCEPT password
-    fields_to_compare = [
-        'username', 'email', 'first_name', 'last_name',
-        'is_superuser', 'is_platform_auditor', 'organizations'
-    ]
+    fields_to_compare = ["username", "email", "first_name", "last_name", "is_superuser", "is_platform_auditor", "organizations"]
     for field in fields_to_compare:
         if getattr(desired, field) != getattr(existing, field):
             return False
@@ -867,18 +825,20 @@ class AnsibleUser:
     username: str
     password: Optional[str] = None  # write-only
 
+
 # Reverse transform
 def from_api(self, api_data, context):
     return AnsibleUser(
-        username=api_data['username'],
+        username=api_data["username"],
         # ... other fields ...
         password=None,  # Never populated from API
     )
 
+
 # Idempotency check in action plugin
 def is_idempotent(desired, existing):
     # Compare all fields except password
-    for field in ['username', 'email', 'first_name']:
+    for field in ["username", "email", "first_name"]:
         if getattr(desired, field) != getattr(existing, field):
             return False
     # password is never compared
@@ -947,17 +907,17 @@ otherwise they persist and cause validation errors.
 def test_saml_to_ldap_transition():
     # Given existing SAML config
     existing = {
-        'map_type': 'saml',
-        'saml_entity_id': 'https://example.com/saml',
+        "map_type": "saml",
+        "saml_entity_id": "https://example.com/saml",
     }
-    
+
     # When user changes to LDAP
     desired = AnsibleAuthenticatorMap(
         name="sso",
         map_type="ldap",
         ldap_server="ldap.example.com",
     )
-    
+
     # Then the PATCH payload must null out SAML fields
     api_payload = mixin.from_ansible_data(desired, context)
     assert api_payload.saml_entity_id == ""
@@ -980,17 +940,17 @@ may restructure to nest the user object:
 **Old format (2.x tests expect this):**
 ```python
 result = {
-    'user': {
-        'username': 'alice',
-        'email': 'alice@example.com',
-        'id': 123,
+    "user": {
+        "username": "alice",
+        "email": "alice@example.com",
+        "id": 123,
     }
 }
 ```
 
 **But tests access it as:**
 ```python
-assert result['user']['username'] == 'alice'
+assert result["user"]["username"] == "alice"
 ```
 
 When refactoring to a flatter output, **we must not break those tests**.
@@ -1004,26 +964,26 @@ class ActionModule(BaseResourceActionPlugin):
     def run(self, tmp=None, task_vars=None):
         # ... do work ...
         result = super().run(tmp, task_vars)
-        
+
         # Get the nested user object
-        user_obj = result.get('user')
-        
+        user_obj = result.get("user")
+
         # Flatten for backward compatibility
         if user_obj:
             result.update(user_obj)  # Spreads user.username → username, etc.
-        
+
         return result
 ```
 
 Now the result dict has **both** formats:
 ```python
 result = {
-    'user': {
-        'username': 'alice',
-        'email': 'alice@example.com',
+    "user": {
+        "username": "alice",
+        "email": "alice@example.com",
     },
-    'username': 'alice',         # ← backward compat
-    'email': 'alice@example.com', # ← backward compat
+    "username": "alice",  # ← backward compat
+    "email": "alice@example.com",  # ← backward compat
 }
 ```
 
@@ -1031,12 +991,12 @@ result = {
 
 Old tests written against 2.x can still use flat keys:
 ```python
-assert result['username'] == 'alice'  # Still works
+assert result["username"] == "alice"  # Still works
 ```
 
 New tests can use the nested format:
 ```python
-assert result['user']['username'] == 'alice'  # Also works
+assert result["user"]["username"] == "alice"  # Also works
 ```
 
 ### When to Use This Pattern
@@ -1058,10 +1018,10 @@ name-to-ID lookups), and communicates operational state like check_mode.
 ```python
 @dataclass
 class TransformContext:
-    manager: PlatformService   # the live manager instance
-    operation: str             # 'create', 'update', 'delete', 'find', 'enforced'
-    api_version: str           # e.g. '1'
-    check_mode: bool = False   # if True, no mutations allowed
+    manager: PlatformService  # the live manager instance
+    operation: str  # 'create', 'update', 'delete', 'find', 'enforced'
+    api_version: str  # e.g. '1'
+    check_mode: bool = False  # if True, no mutations allowed
 ```
 
 ### Manager Reference
@@ -1070,21 +1030,13 @@ The manager reference allows the mixin to call methods for secondary operations:
 
 ```python
 # Name-to-ID lookup
-cluster_id = context.manager.lookup_resource_id(
-    'service_cluster',
-    cluster_name
-)
+cluster_id = context.manager.lookup_resource_id("service_cluster", cluster_name)
 
 # ID-to-name lookup
-cluster_name = context.manager.lookup_resource_name(
-    'service_cluster',
-    cluster_id
-)
+cluster_name = context.manager.lookup_resource_name("service_cluster", cluster_id)
 
 # Execute secondary operations
-orgs = context.manager.execute(
-    'list', 'organization', {'filter': 'name=Red Hat'}
-)
+orgs = context.manager.execute("list", "organization", {"filter": "name=Red Hat"})
 ```
 
 ### Operation Field
@@ -1108,22 +1060,20 @@ makes API calls). However, most transformations are safe:
 ```python
 def from_ansible_data(self, ansible_instance, context):
     params = {}
-    
+
     # Safe: just copying fields
-    params['name'] = ansible_instance.name
-    
+    params["name"] = ansible_instance.name
+
     # Potentially unsafe in check_mode if lookup makes API calls
     if context.check_mode:
         # In check_mode, don't resolve names to IDs (may fail if API unavailable)
         # Or cache lookups if possible
-        params['cluster_id'] = ansible_instance.service_cluster  # Use name as proxy
+        params["cluster_id"] = ansible_instance.service_cluster  # Use name as proxy
     else:
         # Normal path: resolve names to IDs
-        cluster_id = context.manager.lookup_resource_id(
-            'service_cluster', ansible_instance.service_cluster
-        )
-        params['cluster_id'] = cluster_id
-    
+        cluster_id = context.manager.lookup_resource_id("service_cluster", ansible_instance.service_cluster)
+        params["cluster_id"] = cluster_id
+
     return APIServiceNode_v1(**params)
 ```
 

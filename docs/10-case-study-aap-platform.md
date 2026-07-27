@@ -313,7 +313,7 @@ if no RPC requests are received for that duration. Set to 0 to disable.
 **Configuration**:
 ```python
 manager = PlatformManager(idle_timeout=3600)  # 1 hour
-manager = PlatformManager(idle_timeout=0)     # Never auto-terminate (debug only)
+manager = PlatformManager(idle_timeout=0)  # Never auto-terminate (debug only)
 ```
 
 **Monitoring**: Playbook logs report manager creation and termination timestamps.
@@ -357,11 +357,7 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
     def update(self, context, api_instance, desired_ansible_instance):
         # If map_type is changing, null out fields specific to the old type
         if desired_ansible_instance.map_type != api_instance.map_type:
-            return context.manager.update(
-                api_url,
-                desired_api_instance,
-                fields_to_null=['field_a', 'field_b']
-            )
+            return context.manager.update(api_url, desired_api_instance, fields_to_null=["field_a", "field_b"])
         else:
             return context.manager.update(api_url, desired_api_instance)
 ```

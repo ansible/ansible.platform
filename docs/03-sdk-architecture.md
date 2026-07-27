@@ -518,11 +518,8 @@ def search_api(self, query, resource_type):
 class LookupModule(LookupBase):
     def run(self, terms, **kwargs):
         rpc_client = get_rpc_client()
-        results = rpc_client.search_api(
-            query=terms[0],
-            resource_type=kwargs.get('resource_type', 'user')
-        )
-        return [r['id'] for r in results]
+        results = rpc_client.search_api(query=terms[0], resource_type=kwargs.get("resource_type", "user"))
+        return [r["id"] for r in results]
 ```
 
 This allows dynamic lookups (e.g., "find all users whose username contains 'admin'")
@@ -649,6 +646,7 @@ triggers OpenSSL's fork-safety checks, which call `abort()`.
 ```python
 # In action plugin (parent process)
 import requests
+
 self.session = requests.Session()  # ← SSL initialized here
 
 # Ansible forks a worker
@@ -668,6 +666,7 @@ socket_path = spawn_manager()  # ← Fork happens before SSL init
 
 # Manager subprocess: safe to use SSL
 import requests
+
 self.session = requests.Session()  # ← SSL init safe here (not forked)
 ```
 

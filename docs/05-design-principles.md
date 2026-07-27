@@ -22,7 +22,7 @@ wrong. Search the entire `plugins/action/` directory for these patterns. They sh
 **Correct pattern**:
 ```python
 # action plugin — correct
-result = manager.execute('create', 'user', ansible_data_dict)
+result = manager.execute("create", "user", ansible_data_dict)
 
 # action plugin — wrong
 response = requests.post(f"{host}/api/gateway/v1/users/", json=data)
@@ -99,8 +99,8 @@ and implement the mixin.
 ```python
 # registry.py — discovers versions by scanning filesystem
 for version_dir in Path(api_base_path).iterdir():
-    if version_dir.is_dir() and version_dir.name.startswith('v'):
-        version_num = version_dir.name[1:]   # 'v1' → '1'
+    if version_dir.is_dir() and version_dir.name.startswith("v"):
+        version_num = version_dir.name[1:]  # 'v1' → '1'
         # Load and register...
 ```
 
@@ -130,10 +130,7 @@ ensures the collection still works — it just uses the best available implement
 # Available: v1 and v3 of a resource
 # Requested: v2
 # Result: Use v1 (closest lower) with a warning
-LOGGER.warning(
-    "Resource 'user' has no v2 implementation. "
-    "Falling back to v1. Upgrade AAP or this collection to use v2."
-)
+LOGGER.warning("Resource 'user' has no v2 implementation. Falling back to v1. Upgrade AAP or this collection to use v2.")
 ```
 
 **Test**: Create a resource with `v1` and `v3` implementations only. Request `v2` and verify
@@ -153,21 +150,21 @@ desired state already matches the current state. Without this check, every run o
 **Pattern**:
 ```python
 # Always: find first
-find_result = manager.execute('find', 'user', {'username': 'alice'})
+find_result = manager.execute("find", "user", {"username": "alice"})
 
-if state == 'absent':
+if state == "absent":
     if not find_result:
-        return dict(changed=False)    # already absent
-    manager.execute('delete', 'user', {'id': find_result['id']})
+        return dict(changed=False)  # already absent
+    manager.execute("delete", "user", {"id": find_result["id"]})
     return dict(changed=True)
 
-if state == 'present':
+if state == "present":
     if find_result and fields_match(desired, find_result):
-        return dict(changed=False)    # already correct
+        return dict(changed=False)  # already correct
     if find_result:
-        manager.execute('update', 'user', {**desired, 'id': find_result['id']})
+        manager.execute("update", "user", {**desired, "id": find_result["id"]})
     else:
-        manager.execute('create', 'user', desired)
+        manager.execute("create", "user", desired)
     return dict(changed=True)
 ```
 
@@ -219,11 +216,7 @@ Ansible's contract.
 **Implementation**:
 ```python
 if self._task.check_mode:
-    return dict(
-        changed=would_have_changed,
-        check_mode=True,
-        msg="check_mode: no changes made"
-    )
+    return dict(changed=would_have_changed, check_mode=True, msg="check_mode: no changes made")
 ```
 
 The framework's `TransformContext.check_mode` flag is passed to the manager so even
@@ -309,17 +302,17 @@ parameters.
 ```python
 # doc_fragments/auth.py
 DOCUMENTATION = {
-    'options': {
-        'gateway_idle_timeout': {
-            'description': 'Idle timeout for Gateway connections in seconds.',
-            'type': 'int',
-            'default': 300,
-            'env': [{'name': 'AAP_GATEWAY_TIMEOUT'}],
+    "options": {
+        "gateway_idle_timeout": {
+            "description": "Idle timeout for Gateway connections in seconds.",
+            "type": "int",
+            "default": 300,
+            "env": [{"name": "AAP_GATEWAY_TIMEOUT"}],
         },
-        'validate_certs': {
-            'description': 'Whether to validate TLS certificates.',
-            'type': 'bool',
-            'default': True,
+        "validate_certs": {
+            "description": "Whether to validate TLS certificates.",
+            "type": "bool",
+            "default": True,
         },
     }
 }
@@ -365,11 +358,12 @@ principle of least surprise.
 # Config field (from ansible_models/auth.py)
 gateway_idle_timeout: Optional[float] = None  # Can be 2.5 or 30
 
+
 # Environment variable parser (config/env.py)
 def parse_gateway_idle_timeout(value: str) -> float:
     # CORRECT: Accept same types as config field (float)
     return float(value)  # "2.5" → 2.5, "30" → 30.0
-    
+
     # WRONG: Only accept integers
     # return int(value)  # "30" → 30, but "2.5" → ValueError
 ```
