@@ -95,37 +95,37 @@ class TestAPIVersionRegistry:
         """Registry discovers all module files from api/ directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create fake api/v1/ and api/v2/ directories
-            os.makedirs(os.path.join(tmpdir, 'api', 'v1'))
-            os.makedirs(os.path.join(tmpdir, 'api', 'v2'))
-            
+            os.makedirs(os.path.join(tmpdir, "api", "v1"))
+            os.makedirs(os.path.join(tmpdir, "api", "v2"))
+
             # Create fake module files
-            open(os.path.join(tmpdir, 'api', 'v1', 'user.py'), 'w').close()
-            open(os.path.join(tmpdir, 'api', 'v2', 'user.py'), 'w').close()
-            
+            open(os.path.join(tmpdir, "api", "v1", "user.py"), "w").close()
+            open(os.path.join(tmpdir, "api", "v2", "user.py"), "w").close()
+
             registry = APIVersionRegistry(api_dir=tmpdir)
             modules = registry.discover_modules()
-            
-            assert 'user' in modules
-            assert set(modules['user']) == {'v1', 'v2'}
+
+            assert "user" in modules
+            assert set(modules["user"]) == {"v1", "v2"}
 
     def test_version_fallback_to_highest(self):
         """Requesting unknown version falls back to highest available."""
         registry = APIVersionRegistry()
         # Request v99 (doesn't exist); should return v1 (highest available)
-        loader = registry.get_loader('user', api_version='99')
+        loader = registry.get_loader("user", api_version="99")
         assert loader is not None
         # Verify it loaded the v1 version
-        assert loader.api_class.__module__.endswith('v1')
+        assert loader.api_class.__module__.endswith("v1")
 
     def test_raises_when_module_has_no_versions(self):
         """ValueError raised for module with zero versions."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            os.makedirs(os.path.join(tmpdir, 'api', 'v1'))
+            os.makedirs(os.path.join(tmpdir, "api", "v1"))
             # Create no modules in the directory
-            
+
             registry = APIVersionRegistry(api_dir=tmpdir)
             with pytest.raises(ValueError, match="no versions available"):
-                registry.get_loader('nonexistent_module', api_version='1')
+                registry.get_loader("nonexistent_module", api_version="1")
 
 
 class TestDynamicClassLoader:
@@ -133,13 +133,13 @@ class TestDynamicClassLoader:
 
     def test_loads_ansible_api_mixin_classes(self):
         """Loader returns (AnsibleClass, APIClass, MixinClass) tuple."""
-        loader = DynamicClassLoader(module_name='user', api_version='1')
+        loader = DynamicClassLoader(module_name="user", api_version="1")
         ansible_class, api_class, mixin_class = loader.load()
-        
-        assert ansible_class.__name__ == 'AnsibleUser'
-        assert api_class.__name__ == 'APIUser_v1'
-        assert hasattr(mixin_class, 'from_ansible_data')
-        assert hasattr(mixin_class, 'from_api')
+
+        assert ansible_class.__name__ == "AnsibleUser"
+        assert api_class.__name__ == "APIUser_v1"
+        assert hasattr(mixin_class, "from_ansible_data")
+        assert hasattr(mixin_class, "from_api")
 ```
 
 ### Running Unit Tests
