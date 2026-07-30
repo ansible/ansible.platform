@@ -26,6 +26,7 @@ class APIApplication_v1(BaseTransformMixin):
     redirect_uris: Optional[str] = None
     post_logout_redirect_uris: Optional[str] = None
 
+    pkce_required: Optional[bool] = None
     skip_authorization: Optional[bool] = None
     app_url: Optional[str] = None
 
@@ -103,6 +104,7 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             "algorithm",
             "authorization_grant_type",
             "client_type",
+            "pkce_required",
             "skip_authorization",
             "app_url",
         ):
@@ -153,6 +155,7 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             "client_type",
             "redirect_uris",
             "post_logout_redirect_uris",
+            "pkce_required",
             "skip_authorization",
             "app_url",
             "user",
@@ -237,6 +240,7 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
             client_type=api_data.get("client_type"),
             redirect_uris=api_data.get("redirect_uris"),
             post_logout_redirect_uris=api_data.get("post_logout_redirect_uris"),
+            pkce_required=api_data.get("pkce_required"),
             skip_authorization=api_data.get("skip_authorization"),
             app_url=api_data.get("app_url"),
             user=api_data.get("user"),

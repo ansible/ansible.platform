@@ -326,10 +326,10 @@ The framework's `EndpointOperation` type supports declaring the dependency:
 
 ```python
 EndpointOperation(
-    method='POST',
-    path='/api/gateway/v1/users/{id}/organizations/',
-    operation_type='secondary',
-    depends_on='create',
+    method="POST",
+    path="/api/gateway/v1/users/{id}/organizations/",
+    operation_type="secondary",
+    depends_on="create",
     order=2,
 )
 ```
