@@ -7,11 +7,13 @@ on:
       - opened
       - synchronize
       - reopened
+      - edited   # re-run when PR description is updated (e.g. author ticks boxes)
     paths:
       - 'plugins/modules/**'
       - 'plugins/action/**'
       - 'plugins/plugin_utils/**'
       - 'plugins/doc_fragments/**'
+      - 'plugins/lookup/**'
 
 permissions:
   pull-requests: write
@@ -19,96 +21,212 @@ permissions:
 
 jobs:
   casc-notify-check:
-    name: Check CasC notification requirement
+    name: CasC notification check
     runs-on: ubuntu-latest
     steps:
-      # Required for fork PRs under pull_request_target (reads PR files only; no secrets execution path).
-      - uses: actions/checkout@v3
+      # Safe read-only checkout of the PR head for diffing only.
+      # No secrets are executed on the PR code — this step only reads file paths and diff.
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          allow-unsafe-pr-checkout: true
 
-      - name: Get list of changed files
-        id: changed-files
+      - name: Fetch base branch and compute diff
+        id: changes
         run: |
           git fetch origin ${{ github.base_ref }}
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          BASE=origin/${{ github.base_ref }}
+
+          CHANGED=$(git diff --name-only ${BASE}...HEAD)
           echo "changed_files<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+          # Full diff of plugin paths for content-level detection
+          git diff ${BASE}...HEAD -- plugins/ > /tmp/plugin_diff.txt || true
+
       - name: Detect CasC trigger areas
-        id: detect-triggers
+        id: detect
         run: |
-          CHANGED="${{ steps.changed-files.outputs.changed_files }}"
-          TRIGGERS=""
+          CHANGED="${{ steps.changes.outputs.changed_files }}"
+          BASE=origin/${{ github.base_ref }}
+          INFORMATIONAL=""
+          BREAKING=""
 
-          # New or changed modules
-          if echo "$CHANGED" | grep -qE '^plugins/modules/'; then
-            NEW_MODULES=$(echo "$CHANGED" | grep -E '^plugins/modules/' | grep -v '__pycache__')
-            if [ -n "$NEW_MODULES" ]; then
-              TRIGGERS="${TRIGGERS}\n- **Module changes**: \`$(echo "$NEW_MODULES" | tr '\n' ' ')\`"
+          # ── DAB RBAC / cross-service modules ─────────────────────────────
+          # These modules affect RBAC inside Controller, EDA, and Hub.
+          # Even small changes can silently break cross-service permissions.
+          DAB_RBAC_MODULES="organization team user role_definition role_team_assignment role_user_assignment"
+          DAB_CHANGED=""
+          for mod in $DAB_RBAC_MODULES; do
+            if echo "$CHANGED" | grep -qE "(plugins/modules/${mod}\.py|plugins/action/${mod}\.py|plugins/plugin_utils/api/v1/${mod}\.py)"; then
+              DAB_CHANGED="${DAB_CHANGED} ${mod}"
             fi
+          done
+          if [ -n "$DAB_CHANGED" ]; then
+            BREAKING="${BREAKING}\n- **Cross-service DAB RBAC modules changed**:$(echo "$DAB_CHANGED" | tr ' ' '\n' | grep -v '^$' | sed 's/^/ \`/' | sed 's/$/ \`/' | tr '\n' ' ') — affects RBAC inside Controller, EDA, and Hub. ALL PDTs must review."
           fi
 
-          # Action plugin changes
-          if echo "$CHANGED" | grep -qE '^plugins/action/'; then
-            ACTION_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/action/' | grep -v '__pycache__')
-            if [ -n "$ACTION_CHANGES" ]; then
-              TRIGGERS="${TRIGGERS}\n- **Action plugin changes**: \`$(echo "$ACTION_CHANGES" | tr '\n' ' ')\`"
-            fi
+          # ── New modules or action plugins ─────────────────────────────────
+          NEW_FILES=$(git diff --name-only --diff-filter=A ${BASE}...HEAD \
+            -- plugins/modules/ plugins/action/ 2>/dev/null \
+            | grep -v '__pycache__' || true)
+          if [ -n "$NEW_FILES" ]; then
+            FILES=$(echo "$NEW_FILES" | tr '\n' ' ')
+            INFORMATIONAL="${INFORMATIONAL}\n- **New module/action plugin**: \`${FILES}\`"
           fi
 
-          # Auth / connection parameters (doc_fragments)
-          if echo "$CHANGED" | grep -qE '^plugins/doc_fragments/'; then
-            FRAG_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/doc_fragments/')
-            if [ -n "$FRAG_CHANGES" ]; then
-              TRIGGERS="${TRIGGERS}\n- **Doc fragment changes (may affect auth/connection params)**: \`$(echo "$FRAG_CHANGES" | tr '\n' ' ')\`"
-            fi
+          # ── Auth / connection parameter changes (doc_fragments) ───────────
+          FRAG_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/doc_fragments/' || true)
+          if [ -n "$FRAG_CHANGES" ]; then
+            FILES=$(echo "$FRAG_CHANGES" | tr '\n' ' ')
+            INFORMATIONAL="${INFORMATIONAL}\n- **Auth/connection param changes** (doc_fragments): \`${FILES}\`"
           fi
 
-          # plugin_utils changes (return structure, error taxonomy, auth)
-          if echo "$CHANGED" | grep -qE '^plugins/plugin_utils/'; then
-            UTILS_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/plugin_utils/' | grep -v '__pycache__')
-            if [ -n "$UTILS_CHANGES" ]; then
-              TRIGGERS="${TRIGGERS}\n- **plugin_utils changes (may affect return structure or auth)**: \`$(echo "$UTILS_CHANGES" | tr '\n' ' ')\`"
-            fi
+          # ── plugin_utils changes (return structure, error taxonomy, auth) ──
+          UTILS_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/plugin_utils/' \
+            | grep -v '__pycache__' || true)
+          if [ -n "$UTILS_CHANGES" ]; then
+            FILES=$(echo "$UTILS_CHANGES" | tr '\n' ' ')
+            INFORMATIONAL="${INFORMATIONAL}\n- **plugin_utils changes** (may affect return structure or shared auth): \`${FILES}\`"
           fi
 
-          if [ -n "$TRIGGERS" ]; then
-            echo "triggered=true" >> $GITHUB_OUTPUT
-            echo "trigger_list<<EOF" >> $GITHUB_OUTPUT
-            printf "$TRIGGERS" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+          # ── Lookup plugin changes ─────────────────────────────────────────
+          LOOKUP_CHANGES=$(echo "$CHANGED" | grep -E '^plugins/lookup/' || true)
+          if [ -n "$LOOKUP_CHANGES" ]; then
+            FILES=$(echo "$LOOKUP_CHANGES" | tr '\n' ' ')
+            INFORMATIONAL="${INFORMATIONAL}\n- **Lookup plugin changes**: \`${FILES}\`"
+          fi
+
+          # ── RETURN documentation changes (content-level) ─────────────────
+          RETURN_CHANGES=$(grep -n '^[+-].*RETURN\s*=' /tmp/plugin_diff.txt \
+            | grep -v '^+++' | grep -v '^---' || true)
+          if [ -n "$RETURN_CHANGES" ]; then
+            INFORMATIONAL="${INFORMATIONAL}\n- **RETURN documentation changed** — verify return value structure is backward compatible"
+          fi
+
+          # ── Deprecations added (content-level: new deprecated: blocks) ────
+          DEPRECATIONS=$(grep -n '^+\s*deprecated:' /tmp/plugin_diff.txt \
+            | grep -v '^+++' || true)
+          if [ -n "$DEPRECATIONS" ]; then
+            BREAKING="${BREAKING}\n- **Deprecations added** — parameters or plugins marked \`deprecated:\`"
+          fi
+
+          # ── Deleted modules or action plugins (removed files) ─────────────
+          DELETED_FILES=$(git diff --name-only --diff-filter=D ${BASE}...HEAD \
+            -- plugins/modules/ plugins/action/ 2>/dev/null \
+            | grep -v '__pycache__' || true)
+          if [ -n "$DELETED_FILES" ]; then
+            FILES=$(echo "$DELETED_FILES" | tr '\n' ' ')
+            BREAKING="${BREAKING}\n- **Module/plugin removed**: \`${FILES}\` — this is a breaking change"
+          fi
+
+          # ── Potential parameter removals (minus lines in DOCUMENTATION) ───
+          # Looks for removed option keys in DOCUMENTATION strings
+          REMOVED_OPTIONS=$(grep -n '^-\s\+[a-z_]\+:\s*$' /tmp/plugin_diff.txt \
+            | grep -v '^---' | head -10 || true)
+          if [ -n "$REMOVED_OPTIONS" ]; then
+            BREAKING="${BREAKING}\n- **Possible parameter removal** — verify no existing parameters were deleted from DOCUMENTATION"
+          fi
+
+          # ── Outputs ───────────────────────────────────────────────────────
+          if [ -n "$BREAKING" ]; then
+            echo "triggered=true"   >> $GITHUB_OUTPUT
+            echo "is_breaking=true" >> $GITHUB_OUTPUT
+          elif [ -n "$INFORMATIONAL" ]; then
+            echo "triggered=true"    >> $GITHUB_OUTPUT
+            echo "is_breaking=false" >> $GITHUB_OUTPUT
           else
-            echo "triggered=false" >> $GITHUB_OUTPUT
+            echo "triggered=false"   >> $GITHUB_OUTPUT
+            echo "is_breaking=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Post CasC reminder comment
-        if: steps.detect-triggers.outputs.triggered == 'true'
-        uses: actions/github-script@v6
+          {
+            echo "informational_list<<EOF"
+            printf "$INFORMATIONAL"
+            echo ""
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo "breaking_list<<EOF"
+            printf "$BREAKING"
+            echo ""
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Check PR description for CasC acknowledgement
+        id: pr-ack
+        if: steps.detect.outputs.triggered == 'true'
         env:
-          TRIGGER_LIST: ${{ steps.detect-triggers.outputs.trigger_list }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Author has checked "Not applicable" — no CasC impact
+          if echo "$PR_BODY" | grep -qF '[x] Not applicable — this change does not affect the CasC-monitored surface'; then
+            echo "acknowledged=true"  >> $GITHUB_OUTPUT
+            echo "ack_reason=not-applicable" >> $GITHUB_OUTPUT
+          # Author has confirmed Jira ticket created
+          elif echo "$PR_BODY" | grep -qF '[x] CasC Jira ticket created'; then
+            echo "acknowledged=true"  >> $GITHUB_OUTPUT
+            echo "ack_reason=jira-created" >> $GITHUB_OUTPUT
+          else
+            echo "acknowledged=false" >> $GITHUB_OUTPUT
+            echo "ack_reason=none"    >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post or update CasC reminder comment
+        if: steps.detect.outputs.triggered == 'true'
+        uses: actions/github-script@v7
+        env:
+          INFORMATIONAL_LIST: ${{ steps.detect.outputs.informational_list }}
+          BREAKING_LIST:      ${{ steps.detect.outputs.breaking_list }}
+          IS_BREAKING:        ${{ steps.detect.outputs.is_breaking }}
+          ACKNOWLEDGED:       ${{ steps.pr-ack.outputs.acknowledged }}
+          ACK_REASON:         ${{ steps.pr-ack.outputs.ack_reason }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const triggerList = process.env.TRIGGER_LIST;
-            const body = [
-              "## CasC Notification",
-              "",
-              "This PR touches areas that may affect the **CasC collections** (e.g. infra.aap_configuration).",
-              "",
-              "**Detected changes in CasC-monitored areas:**",
-              triggerList,
-              "",
-              "Please tag the CasC collections team in this PR so they are aware of the change.",
-              "",
-              "> This comment is posted automatically and does not block merge.",
-            ].join("\n");
+            const isBreaking   = process.env.IS_BREAKING   === 'true';
+            const acknowledged = process.env.ACKNOWLEDGED   === 'true';
+            const ackReason    = process.env.ACK_REASON;
+            const infoList     = process.env.INFORMATIONAL_LIST.trim();
+            const breakingList = process.env.BREAKING_LIST.trim();
 
-            // Only post once per PR — check if comment already exists
+            let statusEmoji, statusLine;
+            if (acknowledged && ackReason === 'not-applicable') {
+              statusEmoji = '✅';
+              statusLine  = 'Marked **not applicable** in PR description — no CasC action needed.';
+            } else if (acknowledged) {
+              statusEmoji = '✅';
+              statusLine  = 'CasC Jira ticket confirmed in PR description.';
+            } else if (isBreaking) {
+              statusEmoji = '🔴';
+              statusLine  = '**Breaking change detected. Complete the CasC section in the PR description — this check will fail until acknowledged.**';
+            } else {
+              statusEmoji = '🟡';
+              statusLine  = 'Complete the CasC section in the PR description before merging.';
+            }
+
+            let body = `## CasC Notification ${statusEmoji}\n\n`;
+
+            if (infoList) {
+              body += `**Changes in CasC-monitored areas:**\n${infoList}\n\n`;
+            }
+            if (breakingList) {
+              body += `**⚠️ Potential breaking changes:**\n${breakingList}\n\n`;
+            }
+
+            body += `${statusLine}\n\n`;
+            if (!acknowledged) {
+              body += `**Required steps** (unless marking "Not applicable"):\n`;
+              body += `1. Create a Jira ticket in the CasC project — label: \`ansible.platform\`\n`;
+              body += `2. Tag the CasC team in this PR\n`;
+              body += `3. For breaking changes: include a migration guide in the PR description\n`;
+              body += `4. Check the boxes in the **CasC Notification** section of the PR description\n\n`;
+            }
+            body += `> See [CONTRIBUTING.md](CONTRIBUTING.md#casc-notification) for the full procedure.`;
+
+            // Update existing comment rather than posting a duplicate
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -116,11 +234,18 @@ jobs:
             });
 
             const existing = comments.data.find(c =>
-              c.body.includes("CasC Notification Required") &&
-              c.user.login === "github-actions[bot]"
+              c.body.startsWith('## CasC Notification') &&
+              c.user.login === 'github-actions[bot]'
             );
 
-            if (!existing) {
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -128,4 +253,35 @@ jobs:
                 body: body,
               });
             }
-...
+
+      - name: Fail for unacknowledged breaking changes
+        if: |
+          steps.detect.outputs.triggered == 'true' &&
+          steps.detect.outputs.is_breaking == 'true' &&
+          steps.pr-ack.outputs.acknowledged != 'true'
+        run: |
+          echo "::error title=CasC Notification Required::Breaking change detected."
+          echo "::error::Complete the CasC Notification section of the PR description:"
+          echo "::error::  1. Create a CasC Jira ticket (label: ansible.platform)"
+          echo "::error::  2. Tag the CasC team in this PR"
+          echo "::error::  3. Check [x] CasC Jira ticket created OR [x] Not applicable"
+          echo "::error::See CONTRIBUTING.md §CasC Notification for the full procedure."
+          exit 1
+
+      - name: CasC check passed
+        if: |
+          steps.detect.outputs.triggered == 'false' ||
+          steps.detect.outputs.is_breaking == 'false' ||
+          steps.pr-ack.outputs.acknowledged == 'true'
+        run: |
+          TRIGGERED="${{ steps.detect.outputs.triggered }}"
+          BREAKING="${{ steps.detect.outputs.is_breaking }}"
+          ACK="${{ steps.pr-ack.outputs.acknowledged }}"
+
+          if [ "$TRIGGERED" = "false" ]; then
+            echo "No CasC-monitored areas touched. Check passed."
+          elif [ "$BREAKING" = "true" ] && [ "$ACK" = "true" ]; then
+            echo "Breaking change — CasC notification acknowledged in PR description. Check passed."
+          else
+            echo "CasC-monitored areas touched (non-breaking). Reminder posted. Check passed."
+          fi
