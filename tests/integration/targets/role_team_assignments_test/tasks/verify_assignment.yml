@@ -11,7 +11,7 @@
 # Internal registers use _rta_ prefix to avoid collisions with parent-scope vars.
 # Sequential include_tasks invocations overwrite them safely.
 
-- name: "Assign {{ res_role_def }} to team ({{ res_type }})"
+- name: "Assign to team — {{ res_type }}"
   ansible.platform.role_team_assignment:
     role_definition: "{{ res_role_def }}"
     team: "{{ team_name }}"
@@ -23,7 +23,7 @@
   when: res_ok | bool
   ignore_errors: true
 
-- name: "Assert {{ res_type }} role assignment succeeded"
+- name: "Assert role assignment succeeded — {{ res_type }}"
   ansible.builtin.assert:
     that:
       - _rta_assign is not failed
@@ -31,7 +31,7 @@
     fail_msg: "{{ res_type }} role assignment failed: {{ _rta_assign.msg | default('') }}"
   when: res_ok | bool and _rta_assign is defined
 
-- name: "Idempotency — re-run {{ res_type }} assignment"
+- name: "Idempotency re-run — {{ res_type }}"
   ansible.platform.role_team_assignment:
     role_definition: "{{ res_role_def }}"
     team: "{{ team_name }}"
@@ -42,13 +42,13 @@
   register: _rta_idem
   when: res_ok | bool and _rta_assign is not failed
 
-- name: "Assert {{ res_type }} assignment idempotent"
+- name: "Assert assignment idempotent — {{ res_type }}"
   ansible.builtin.assert:
     that: _rta_idem is not changed
     fail_msg: "{{ res_type }} re-run should not change."
   when: res_ok | bool and _rta_assign is not failed and _rta_idem is defined
 
-- name: "State=absent removes {{ res_type }} assignment"
+- name: "State=absent removes assignment — {{ res_type }}"
   ansible.platform.role_team_assignment:
     role_definition: "{{ res_role_def }}"
     team: "{{ team_name }}"
@@ -59,10 +59,11 @@
   register: _rta_absent
   when: res_ok | bool and _rta_assign is not failed
 
-- name: "Assert {{ res_type }} assignment removed"
+- name: "Assert assignment removed — {{ res_type }}"
   ansible.builtin.assert:
     that:
       - _rta_absent is not failed
       - _rta_absent is changed
     fail_msg: "state=absent on {{ res_type }} assignment failed: {{ _rta_absent.msg | default('') }}"
   when: res_ok | bool and _rta_assign is not failed and _rta_absent is defined
+...
