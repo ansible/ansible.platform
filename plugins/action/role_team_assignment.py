@@ -35,7 +35,6 @@ _CONTENT_TYPE_ENDPOINT_MAP = {
     "collectionremote": "collection_remotes",
     "ansiblerepository": "ansible_repositories",
     "containernamespace": "container_namespaces",
-    "containerrepository": "container_repositories",
 }
 
 # Full content_type overrides for ambiguous suffixes shared across services.
@@ -68,10 +67,9 @@ _SERVICE_LOOKUP_PATH_MAP = {
     "notification_templates": "/api/controller/v2/notification_templates/",
     # Hub
     "namespaces": "/api/galaxy/v3/namespaces/",
-    "collection_remotes": "/api/galaxy/v3/remotes/",
-    "ansible_repositories": "/api/galaxy/v3/ansible/repositories/",
-    "container_namespaces": "/api/galaxy/v3/container-namespaces/",
-    "container_repositories": "/api/galaxy/v3/container/repositories/",
+    "collection_remotes": "/api/galaxy/pulp/api/v3/remotes/",
+    "ansible_repositories": "/api/galaxy/pulp/api/v3/repositories/",
+    "container_namespaces": "/api/galaxy/pulp/api/v3/pulp_container/namespaces/",
 }
 
 
@@ -114,7 +112,11 @@ class ActionModule(BaseResourceActionPlugin):
             if not str(data_dict["role_definition"]).isdigit():
                 try:
                     data_dict["role_definition"] = str(manager.lookup_resource_id("role_definitions", "name", data_dict["role_definition"]))
-                except Exception:
+                except Exception as _exc:
+                    self._display.warning(
+                        "role_team_assignment: could not resolve role_definition %r to an ID (%s). "
+                        "Pass the numeric ID directly to skip lookup." % (data_dict["role_definition"], _exc)
+                    )
                     data_dict["role_definition"] = str(data_dict["role_definition"])
             else:
                 data_dict["role_definition"] = str(data_dict["role_definition"])
@@ -233,11 +235,15 @@ class ActionModule(BaseResourceActionPlugin):
                             # which accepts full paths, bypassing the Gateway prefix
                             # that lookup_resource_id would hardcode.
                             _search = manager.search_api(_lookup_path, query_params={"name": obj["name"]})
-                            _results = _search.get("results", [])
+                            # Hub endpoints by default have results present in data field instead
+                            _results = _search.get("results", _search.get("data", []))
                             if not _results:
                                 raise ValueError("Resource '%s' with name=%s not found at %s" % (obj["type"], obj["name"], _lookup_path))
-                            oid = _results[0].get("id")
-                            if oid is None:
+                            if "id" in _results[0]:
+                                oid = _results[0].get("id")
+                            elif "prn" in _results[0]:
+                                oid = _results[0].get("prn").split(":")[-1]
+                            else:
                                 raise ValueError("Resource '%s' at %s returned no 'id' field" % (obj["name"], _lookup_path))
                         else:
                             # Gateway-native endpoint: use standard lookup
