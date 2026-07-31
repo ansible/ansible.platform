@@ -235,7 +235,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ eda_de is not failed }}"
+        res_ok: "{{ eda_de is not failed and eda_de is not skipped }}"
         res_name: "{{ eda_de_name }}"
         res_type: decision_environments
         res_role_def: "Decision Environment Admin"
@@ -281,7 +281,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ eda_project is not failed and eda_project_role_def is not failed }}"
+        res_ok: "{{ eda_project is not failed and eda_project is not skipped and eda_project_role_def is not failed }}"
         res_name: "{{ eda_project_name }}"
         res_type: eda_projects
         res_role_def: "GW-EDA-Project-Role-{{ test_id }}"
@@ -560,7 +560,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ ctrl_ee is not failed }}"
+        res_ok: "{{ ctrl_ee is not failed and ctrl_ee is not skipped }}"
         res_name: "{{ ctrl_ee_name }}"
         res_type: execution_environments
         res_role_def: "ExecutionEnvironment Admin"
@@ -587,7 +587,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ ctrl_ig is not failed }}"
+        res_ok: "{{ ctrl_ig is not failed and ctrl_ig is not skipped }}"
         res_name: "{{ ctrl_ig_name }}"
         res_type: instance_groups
         res_role_def: "InstanceGroup Admin"
@@ -790,7 +790,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ hub_ns is not failed }}"
+        res_ok: "{{ hub_ns is not failed and hub_ns is not skipped }}"
         res_name: "{{ hub_ns_name }}"
         res_type: namespaces
         res_role_def: "galaxy.collection_namespace_owner"
@@ -820,7 +820,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ hub_remote is not failed }}"
+        res_ok: "{{ hub_remote is not failed and hub_remote is not skipped }}"
         res_name: "{{ hub_remote_name }}"
         res_type: collection_remotes
         res_role_def: "ansible.collectionremote_owner"
@@ -849,7 +849,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ hub_repo is not failed }}"
+        res_ok: "{{ hub_repo is not failed and hub_repo is not skipped }}"
         res_name: "{{ hub_repo_name }}"
         res_type: ansible_repositories
         res_role_def: "ansible.ansiblerepository_owner"
@@ -878,7 +878,7 @@
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ hub_cns is not failed }}"
+        res_ok: "{{ hub_cns is not failed and hub_cns is not skipped }}"
         res_name: "{{ hub_cns_name }}"
         res_type: container_namespaces
         res_role_def: "container.containernamespace_collaborator"
