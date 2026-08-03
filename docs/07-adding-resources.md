@@ -39,6 +39,42 @@ A **complex resource** has ref fields (name → ID resolution), secondary endpoi
 
 Before starting, verify these foundations exist:
 
+- [ ] **Check naming across ALL available API specs** (CRITICAL):
+  The collection supports multiple AAP services: **Gateway, EDA, Controller** (and potentially others).
+  Resources with the same name across services MUST use service prefixes.
+  
+  **Action**: Run this to check for naming conflicts:
+  ```bash
+  python << 'EOF'
+  import json
+  import os
+  
+  specs_dir = "../aap-openapi-specs"
+  resource_name = "YOUR_RESOURCE_NAME"
+  
+  for spec_file in ["gateway.json", "eda.json", "controller.json"]:
+      spec_path = os.path.join(specs_dir, spec_file)
+      if not os.path.exists(spec_path):
+          continue
+      
+      with open(spec_path) as f:
+          spec = json.load(f)
+      
+      paths = spec.get('paths', {})
+      for path in paths:
+          if resource_name.lower() in path.lower() and '{' not in path:
+              print(f"✓ {spec_file}: {path}")
+  EOF
+  ```
+  
+  **Naming Rule**:
+  - **No conflict across specs**: Use singular, unprefixed name (e.g., `project`)
+  - **Conflict found** (resource in multiple services): Use service prefix (e.g., `eda_project`, `controller_project`)
+  
+  **Known conflicts**:
+  - `projects` appears in both EDA and Controller → use `eda_project`, `controller_project`
+  - `organizations`, `users`, `teams` appear across Gateway, EDA, Controller (already prefixed)
+
 - [ ] **Registry discovers your module**: After adding `plugins/modules/<resource>.py`, run
   ```bash
   python -c "from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry; r = APIVersionRegistry(); modules = r.discover_modules(); print([m for m in modules if '<resource>' in m])"
@@ -167,7 +203,8 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_tra
     BaseTransformMixin,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import (
-    EndpointOperation, TransformContext,
+    EndpointOperation,
+    TransformContext,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.team import (
     AnsibleTeam,
@@ -181,8 +218,9 @@ class APITeam_v1:
     Note: organization is an INTEGER ID in the API wire format.
     The Ansible model uses a name string — the mixin resolves the name to an ID.
     """
+
     name: str
-    organization: int              # INTEGER ID in API, not name
+    organization: int  # INTEGER ID in API, not name
     description: Optional[str] = None
     id: Optional[int] = None
     created: Optional[str] = None
@@ -201,17 +239,15 @@ class TeamTransformMixin_v1(BaseTransformMixin):
     ) -> APITeam_v1:
         """Forward: Ansible model → API wire format."""
         # Reference field: resolve organization name → integer ID
-        org_id = context.manager.lookup_resource_id(
-            'organization', ansible_instance.organization
-        )
+        org_id = context.manager.lookup_resource_id("organization", ansible_instance.organization)
 
         params: Dict[str, Any] = {
-            'name': ansible_instance.name,
-            'organization': org_id,
+            "name": ansible_instance.name,
+            "organization": org_id,
         }
 
         if ansible_instance.description is not None:
-            params['description'] = ansible_instance.description
+            params["description"] = ansible_instance.description
 
         return APITeam_v1(**params)
 
@@ -223,53 +259,51 @@ class TeamTransformMixin_v1(BaseTransformMixin):
         """Reverse: API response → Ansible model."""
         # Resolve organization ID back to name for the return value
         org_name = None
-        if api_data.get('organization'):
-            org_name = context.manager.lookup_resource_name(
-                'organization', api_data['organization']
-            )
+        if api_data.get("organization"):
+            org_name = context.manager.lookup_resource_name("organization", api_data["organization"])
 
         return AnsibleTeam(
-            id=api_data.get('id'),
-            name=api_data.get('name'),
+            id=api_data.get("id"),
+            name=api_data.get("name"),
             organization=org_name,
-            description=api_data.get('description'),
-            created=api_data.get('created'),
-            modified=api_data.get('modified'),
+            description=api_data.get("description"),
+            created=api_data.get("created"),
+            modified=api_data.get("modified"),
         )
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
-            'create': EndpointOperation(
-                method='POST',
-                path='/api/gateway/v1/teams/',
+            "create": EndpointOperation(
+                method="POST",
+                path="/api/gateway/v1/teams/",
             ),
-            'update': EndpointOperation(
-                method='PATCH',
-                path='/api/gateway/v1/teams/{id}/',
+            "update": EndpointOperation(
+                method="PATCH",
+                path="/api/gateway/v1/teams/{id}/",
             ),
-            'delete': EndpointOperation(
-                method='DELETE',
-                path='/api/gateway/v1/teams/{id}/',
+            "delete": EndpointOperation(
+                method="DELETE",
+                path="/api/gateway/v1/teams/{id}/",
             ),
-            'get': EndpointOperation(
-                method='GET',
-                path='/api/gateway/v1/teams/{id}/',
+            "get": EndpointOperation(
+                method="GET",
+                path="/api/gateway/v1/teams/{id}/",
             ),
-            'list': EndpointOperation(
-                method='GET',
-                path='/api/gateway/v1/teams/',
+            "list": EndpointOperation(
+                method="GET",
+                path="/api/gateway/v1/teams/",
             ),
         }
 
     @classmethod
     def get_lookup_field(cls) -> str:
-        return 'name'
+        return "name"
 
     @classmethod
     def get_find_list_query_params(cls, ansible_instance: AnsibleTeam) -> dict:
         # Teams are scoped per organization — include both in the lookup
-        return {'name': ansible_instance.name}
+        return {"name": ansible_instance.name}
 ```
 
 **Quality check**:
@@ -290,6 +324,7 @@ requires no changes — review it and move on. The only things to check:
 # plugins/action/team.py
 # Auto-generated by tools/generate_resource.py — review before committing.
 from __future__ import absolute_import, division, print_function
+
 __metaclass__ = type
 
 from ansible_collections.ansible.platform.plugins.action.base_action import (
@@ -319,6 +354,7 @@ If your resource introduces a new connection-level or authentication option (lik
 ```python
 # plugins/doc_fragments/auth.py
 
+
 class ModuleDocFragment(object):
     DOCUMENTATION = r"""
 options:
@@ -331,7 +367,7 @@ options:
     type: str
     aliases: [ gateway_username ]
   # ... other existing options ...
-  
+
   gateway_idle_timeout:
     description:
       - Idle timeout in seconds for gateway manager process.
@@ -582,8 +618,7 @@ When all Ansible field names match API field names and types, the mixin is trivi
 ```python
 def from_ansible_data(self, ansible_instance, context):
     return APIFoo_v1(
-        **{k: v for k, v in dataclasses.asdict(ansible_instance).items()
-           if v is not None and k not in ('state', 'id', 'created', 'modified', 'url')}
+        **{k: v for k, v in dataclasses.asdict(ansible_instance).items() if v is not None and k not in ("state", "id", "created", "modified", "url")}
     )
 ```
 
@@ -591,10 +626,8 @@ def from_ansible_data(self, ansible_instance, context):
 
 ```python
 if ansible_instance.organization is not None:
-    org_id = context.manager.lookup_resource_id(
-        'organization', ansible_instance.organization
-    )
-    params['organization'] = org_id
+    org_id = context.manager.lookup_resource_id("organization", ansible_instance.organization)
+    params["organization"] = org_id
 ```
 
 ### Pattern 3: Write-only field (password)
@@ -605,12 +638,12 @@ from `from_api`:
 ```python
 # In from_ansible_data:
 if ansible_instance.password:  # only if a new password was set
-    params['password'] = ansible_instance.password
+    params["password"] = ansible_instance.password
 
 # In from_api: simply omit the password field
 return AnsibleUser(
-    id=api_data['id'],
-    username=api_data['username'],
+    id=api_data["id"],
+    username=api_data["username"],
     # password NOT included — never in API response
 )
 ```
@@ -641,8 +674,8 @@ When a resource has no single unique field but is identified by a combination:
 @classmethod
 def get_find_list_query_params(cls, ansible_instance) -> dict:
     return {
-        'role_definition': ansible_instance.role_definition,
-        'user': ansible_instance.user,
+        "role_definition": ansible_instance.role_definition,
+        "user": ansible_instance.user,
     }
 ```
 
@@ -652,12 +685,12 @@ def get_find_list_query_params(cls, ansible_instance) -> dict:
 @classmethod
 def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
     return {
-        'create': EndpointOperation(method='POST', path='/api/gateway/v1/users/'),
-        'associate_orgs': EndpointOperation(
-            method='POST',
-            path='/api/gateway/v1/users/{id}/organizations/',
-            operation_type='secondary',
-            depends_on='create',
+        "create": EndpointOperation(method="POST", path="/api/gateway/v1/users/"),
+        "associate_orgs": EndpointOperation(
+            method="POST",
+            path="/api/gateway/v1/users/{id}/organizations/",
+            operation_type="secondary",
+            depends_on="create",
             order=2,
         ),
     }
@@ -672,24 +705,24 @@ For example, `authenticator_map` with `map_type: saml` has different required fi
 ```python
 class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for AuthenticatorMap API v1."""
-    
+
     @classmethod
     def get_fields_to_null_for_update(cls, ansible_instance, existing_data) -> Dict[str, str]:
         """
         Return fields that must be nulled (set to empty string) on update.
-        
+
         When a key field (like map_type) changes, incompatible fields from the old
         type must be explicitly cleared to avoid "field not allowed for this type" errors.
         """
         # If map_type changed, null out all type-specific fields
-        if ansible_instance.map_type != existing_data.get('map_type'):
+        if ansible_instance.map_type != existing_data.get("map_type"):
             return {
-                'saml_auto_create_users': '',
-                'saml_url': '',
-                'saml_username_path': '',
-                'oidc_client_id': '',
-                'oidc_client_secret': '',
-                'oidc_scope': '',
+                "saml_auto_create_users": "",
+                "saml_url": "",
+                "saml_username_path": "",
+                "oidc_client_id": "",
+                "oidc_client_secret": "",
+                "oidc_scope": "",
             }
         return {}
 ```
@@ -698,10 +731,7 @@ In your action plugin or update operation, check and apply these nulls:
 
 ```python
 # In transform or manager
-fields_to_null = mixin_class.get_fields_to_null_for_update(
-    ansible_instance, 
-    existing_resource
-)
+fields_to_null = mixin_class.get_fields_to_null_for_update(ansible_instance, existing_resource)
 api_data.update(fields_to_null)
 ```
 
@@ -733,7 +763,7 @@ api_data.update(fields_to_null)
 **Implementation in action plugin**:
 
 ```python
-if state == 'enforced':
+if state == "enforced":
     # Fill in defaults for fields not specified by user
     api_data = manager.apply_defaults(self.MODULE_NAME, api_data)
 else:  # present
@@ -757,11 +787,11 @@ else:  # present
 ```python
 def from_api(self, api_data: dict, context: TransformContext) -> AnsibleTeam:
     # WRONG: return api_data  # This is a dict, not a dataclass
-    
+
     # RIGHT: create an instance
     return AnsibleTeam(
-        id=api_data.get('id'),
-        name=api_data.get('name'),
+        id=api_data.get("id"),
+        name=api_data.get("name"),
         # ... other fields
     )
 ```
@@ -780,7 +810,7 @@ def from_api(self, api_data: dict, context: TransformContext) -> AnsibleTeam:
 def _is_idempotent(self, desired: dict, existing: dict) -> bool:
     """Compare desired against existing, ignoring state and id."""
     for key, desired_val in desired.items():
-        if key in ('state', 'id'):
+        if key in ("state", "id"):
             continue
         if desired_val is None:
             continue
@@ -802,7 +832,7 @@ def _is_idempotent(self, desired: dict, existing: dict) -> bool:
 **Fix**: Ensure the manager's result is unpacked into the return:
 
 ```python
-result = manager.execute('create', self.MODULE_NAME, ansible_data)
+result = manager.execute("create", self.MODULE_NAME, ansible_data)
 return dict(changed=True, **result)  # <-- **result unpacks the id, name, etc.
 ```
 
@@ -817,12 +847,12 @@ return dict(changed=True, **result)  # <-- **result unpacks the id, name, etc.
 **Fix**:
 ```python
 # WRONG
-org_id = context.manager.lookup_resource_id('organization', ansible_instance.organization)
+org_id = context.manager.lookup_resource_id("organization", ansible_instance.organization)
 
 # RIGHT
 if ansible_instance.organization is not None:
-    org_id = context.manager.lookup_resource_id('organization', ansible_instance.organization)
-    params['organization'] = org_id
+    org_id = context.manager.lookup_resource_id("organization", ansible_instance.organization)
+    params["organization"] = org_id
 ```
 
 ---

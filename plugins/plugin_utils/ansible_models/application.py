@@ -27,6 +27,7 @@ class AnsibleApplication:
     redirect_uris: Optional[Union[str, List[str]]] = None
     post_logout_redirect_uris: Optional[Union[str, List[str]]] = None
 
+    pkce_required: Optional[bool] = None
     skip_authorization: Optional[bool] = None
     app_url: Optional[str] = None
 
@@ -41,10 +42,8 @@ class AnsibleApplication:
     modified: Optional[str] = None
     url: Optional[str] = None
 
-    # API-generated OAuth credentials — returned by the API on create/update,
-    # never accepted as module input (not in argument_spec).
-    # Surfaced in the flat top-level result only (via _EXTRA_RETURN_FIELDS),
-    # NOT included in the nested 'application' round-trip dict.
-    # client_secret is intentionally omitted — it is only present in the API
-    # response once on initial create and should not be stored or re-emitted.
+    # API-generated OAuth credentials — never accepted as input, not in argspec.
+    # Surfaced flat via _EXTRA_RETURN_FIELDS only, NOT in the nested dict.
     client_id: Optional[str] = None
+    # Returned by the Gateway API on create (POST) only; absent on GET/PATCH.
+    client_secret: Optional[str] = None

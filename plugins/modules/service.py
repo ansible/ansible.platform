@@ -50,6 +50,11 @@ options:
         - Flag whether or not the service is an internal route.
         - Internal routes are only accessible to other services.
       type: bool
+    reject_failed_basic_auth:
+      description:
+        - If true, requests with invalid Basic credentials will receive a 401 instead of being passed to the back end.
+        - Requests without credentials continue to be passed through anonymously.
+      type: bool
     enable_gateway_auth:
       description: If false, the AAP gateway will not insert a gateway token into the proxied request
       type: bool

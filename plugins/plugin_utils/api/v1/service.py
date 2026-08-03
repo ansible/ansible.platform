@@ -26,6 +26,7 @@ class APIService_v1(BaseTransformMixin):
     service_cluster: Optional[int] = None
     is_service_https: Optional[bool] = None
     is_internal_route: Optional[bool] = None
+    reject_failed_basic_auth: Optional[bool] = None
     enable_gateway_auth: Optional[bool] = None
     enable_mtls: Optional[bool] = None
     service_path: Optional[str] = None
@@ -90,6 +91,7 @@ class ServiceTransformMixin_v1(BaseTransformMixin):
             "description",
             "is_service_https",
             "is_internal_route",
+            "reject_failed_basic_auth",
             "enable_gateway_auth",
             "enable_mtls",
             "service_path",
@@ -145,6 +147,7 @@ class ServiceTransformMixin_v1(BaseTransformMixin):
             "service_cluster",
             "is_service_https",
             "is_internal_route",
+            "reject_failed_basic_auth",
             "enable_gateway_auth",
             "enable_mtls",
             "service_path",
@@ -223,6 +226,7 @@ class ServiceTransformMixin_v1(BaseTransformMixin):
             service_cluster=api_data.get("service_cluster"),
             is_service_https=api_data.get("is_service_https"),
             is_internal_route=api_data.get("is_internal_route"),
+            reject_failed_basic_auth=api_data.get("reject_failed_basic_auth"),
             enable_gateway_auth=api_data.get("enable_gateway_auth"),
             enable_mtls=api_data.get("enable_mtls"),
             service_path=api_data.get("service_path"),
