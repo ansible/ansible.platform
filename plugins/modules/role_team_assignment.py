@@ -71,8 +71,7 @@ options:
                   - "EDA: C(eda_projects), C(activations), C(event_streams),
                     C(decision_environments), C(eda_credentials)."
                   - "Hub: C(namespaces), C(collection_remotes),
-                    C(ansible_repositories), C(container_namespaces),
-                    C(container_repositories)."
+                    C(ansible_repositories), C(container_namespaces)"
                   - Use C(eda_projects) for EDA projects — C(projects) routes
                     to Controller.
                 type: str
@@ -157,6 +156,37 @@ EXAMPLES = """
     assignment_objects:
       - name: "prod-alert-activation"
         type: activations
+    state: present
+
+# Assign a Controller inventory role to a team
+- name: Assign inventory admin role to team
+  ansible.platform.role_team_assignment:
+    role_definition: "Inventory Admin"
+    team: "devops-team"
+    assignment_objects:
+      - name: "Target Inventory"
+        type: inventories
+    state: present
+
+
+# Assign a Controller execution environment role to a team
+- name: Assign execution environment admin role to team
+  ansible.platform.role_team_assignment:
+    role_definition: "ExecutionEnvironment Admin"
+    team: "devops-team"
+    assignment_objects:
+      - name: "Cool New EE"
+        type: execution_environments
+    state: present
+
+# Assign an EDA event stream role to a team
+- name: Assign event stream admin role to team
+  ansible.platform.role_team_assignment:
+    role_definition: "Event Stream Admin"
+    team: "eda-team"
+    assignment_objects:
+      - name: "Demo Event Stream"
+        type: event_streams
     state: present
 
 # Assign a Hub namespace role to a team
