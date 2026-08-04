@@ -198,7 +198,7 @@ class Connection(ConnectionBase):
             import hashlib
             import time
 
-            host_hash = hashlib.md5(inventory_hostname.encode()).hexdigest()[:4]
+            host_hash = hashlib.sha256(inventory_hostname.encode()).hexdigest()[:4]
             # Include a per-invocation suffix so loop iterations on the same host
             # each get a unique socket path. Without this, iteration N+1 spawns a
             # new manager at the same path as iteration N, but the action plugin
