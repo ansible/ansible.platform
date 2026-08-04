@@ -11,15 +11,18 @@ short_description: Search the API for objects
 requirements:
   - None
 description:
-  - Returns GET requests from the Automation Platform Gateway API. See
-    U(https://docs.ansible.com/TODO) for API usage.
-  - This plugin is designed to support Gateway API endpoints used to manage resources with ansible.platform modules,
-    such as users, teams, organizations, settings, role_definitions, and related endpoints.
-  - Querying APIs outside of the Gateway API (such as Automation Hub, Galaxy etc.) is not supported and may lead to unexpected errors.
+  - Query Ansible Automation Platform component API endpoints via the Platform Gateway.
+  - Supports pagination (C(return_all)), filtering (C(query_params)), and returning full objects (C(return_objects)) or IDs (C(return_ids)).
+  - Use for read-only lookups of users, teams, organizations, settings, and other resources managed by C(ansible.platform) modules.
+  - By default, endpoints are resolved against the Gateway API. For example, C(users) queries C(/api/gateway/v1/users/).
+  - To query other AAP components through the gateway, provide the full API path, such as C(api/eda/v1/decision-environments/) for Event-Driven Ansible.
+  - The Automation Controller, Platform Gateway, Event-Driven Ansible, and Galaxy APIs can all be queried through the gateway.
 options:
   _terms:
     description:
-      - The endpoint to query, i.e. teams, users, tokens, settings, services, etc.
+      - The API endpoint to query.
+      - For Gateway resources, provide a short path relative to the Gateway API (for example, C(users), C(teams), C(settings/notification)).
+      - For other AAP components, provide the full path through the gateway (for example, C(api/eda/v1/decision-environments/)).
     required: True
   query_params:
     description:
@@ -77,13 +80,13 @@ _raw:
 """
 
 EXAMPLES = """
-- name: Load the UI settings
+- name: Load notification settings
   set_fact:
-    ui_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/ui') }}"
+    notification_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification') }}"
 
-- name: Load the UI settings specifying the connection info
+- name: Load the notification settings specifying the connection info
   set_fact:
-    ui_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/ui', host='gateway.example.com',
+    notification_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification', host='gateway.example.com',
                              username='admin', password=my_pass_var, verify_ssl=False) }}"
 
 - name: Report the usernames of all users with admin privs
@@ -117,6 +120,11 @@ EXAMPLES = """
             query_params={ 'name__startswith' : 'foo', },
         ) | map(attribute='name') | list }}
   register: group_creation
+
+- name: List organziation information in EDA via the gateway
+  set_fact:
+    eda_organizations: "{{ lookup('ansible.platform.gateway_api', 'api/eda/v1/organizations', host='gateway.example.com',
+                             username='admin', password=my_pass_var, verify_ssl=False) }}"
 ...
 """
 
