@@ -27,6 +27,8 @@ sections:
     - Bugfixes
   - - known_issues
     - Known Issues
+  - - doc_changes
+    - Documentation Changes
 title: ansible.platform
 trivial_section_name: trivial
 use_fqcn: true
