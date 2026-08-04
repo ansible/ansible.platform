@@ -349,3 +349,80 @@ def test_persistent_socket_file_missing_spawns_new():
     # Implementation stores manager info in a .meta file rather than ansible_facts.
     assert facts is None
     mock_pm.spawn_manager_process.assert_called_once()
+
+
+# ---- FIPS compliance ----
+
+
+def test_direct_mode_uses_sha256_for_host_hash():
+    """Direct mode uses SHA-256 (FIPS-compliant) instead of MD5 for host hash generation."""
+    import hashlib
+    from unittest.mock import mock_open
+
+    conn = _make_connection()
+    task_vars = {"inventory_hostname": "test-host"}
+    gateway_config = _make_gateway_config()
+
+    # Expected SHA-256 hash (first 4 chars)
+    expected_hash = hashlib.sha256("test-host".encode()).hexdigest()[:4]
+
+    with patch("ansible_collections.ansible.platform.plugins.connection.http.Path") as mock_path_cls:
+        mock_path_cls.return_value.exists.return_value = True
+        mock_path_cls.return_value.parent.parent.__truediv__.return_value.exists.return_value = True
+
+        with patch("ansible_collections.ansible.platform.plugins.connection.http.ProcessManager") as mock_pm:
+            mock_conn_info = MagicMock()
+            mock_conn_info.socket_path = "/tmp/test.sock"
+            mock_conn_info.authkey = b"test"
+            mock_conn_info.authkey_b64 = "dGVzdA=="
+            mock_pm.generate_connection_info.return_value = mock_conn_info
+            mock_pm.spawn_manager_process.return_value = MagicMock(pid=12345)
+            mock_pm.wait_for_process_startup.return_value = None
+
+            with patch("ansible_collections.ansible.platform.plugins.connection.http.ManagerRPCClient") as mock_rpc:
+                mock_rpc.return_value = MagicMock()
+                with patch("builtins.open", mock_open()):
+                    conn._get_direct_client(task_vars, gateway_config)
+
+                # Verify generate_connection_info was called with identifier containing SHA-256 hash
+                call_args = mock_pm.generate_connection_info.call_args
+                identifier = call_args.kwargs.get("identifier") if call_args else None
+                assert identifier is not None
+                assert identifier.startswith(f"e{expected_hash}")
+
+
+def test_spawn_ephemeral_uses_sha256_for_host_hash():
+    """spawn_ephemeral_client uses SHA-256 (FIPS-compliant) instead of MD5 for host hash."""
+    import hashlib
+
+    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import spawn_ephemeral_client
+
+    task_vars = {"inventory_hostname": "test-host"}
+    gateway_config = _make_gateway_config()
+
+    # Expected SHA-256 hash (first 4 chars)
+    expected_hash = hashlib.sha256("test-host".encode()).hexdigest()[:4]
+
+    with patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager._af_unix_available", return_value=True):
+        with patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.mkdir.return_value = None
+
+            with patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager") as mock_pm:
+                mock_conn_info = MagicMock()
+                mock_conn_info.socket_path = "/tmp/test.sock"
+                mock_conn_info.authkey = b"test"
+                mock_conn_info.authkey_b64 = "dGVzdA=="
+                mock_pm.generate_connection_info.return_value = mock_conn_info
+                mock_pm.spawn_manager_process.return_value = MagicMock(pid=12345)
+                mock_pm.wait_for_process_startup.return_value = None
+
+                with patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client.ManagerRPCClient") as mock_rpc:
+                    mock_rpc.return_value = MagicMock()
+                    client, _facts = spawn_ephemeral_client(task_vars, gateway_config)
+
+                    # Verify generate_connection_info was called with identifier containing SHA-256 hash
+                    call_args = mock_pm.generate_connection_info.call_args
+                    identifier = call_args.kwargs.get("identifier") if call_args else None
+                    assert identifier is not None
+                    assert identifier.startswith(f"e{expected_hash}")

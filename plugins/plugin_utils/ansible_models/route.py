@@ -23,6 +23,7 @@ class AnsibleRoute:
     enable_gateway_auth: Optional[bool] = True
     enable_mtls: Optional[bool] = False
     is_internal_route: Optional[bool] = None
+    reject_failed_basic_auth: Optional[bool] = None
     service_path: Optional[str] = None
     service_port: Optional[int] = None
     node_tags: Optional[str] = None
