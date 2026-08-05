@@ -4,6 +4,21 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
+v2.7.20260805
+=============
+
+Documentation Changes
+---------------------
+
+- gateway_api - update documentation for the gateway_api lookup plugin to reflect the new functionality and usage. Additionally add and update examples.
+
+Bugfixes
+--------
+
+- Change plugin hashing algorithm from md5 to sha256 for FIPS compliance
+- Add reject_failed_basic_auth route to prevent AuthenticationFailed exception during podman/docker login
+- Add pkce_required parameter to application module as django-ansible-base added a pkce_required boolean field
+
 v2.7.20260630
 =============
 
