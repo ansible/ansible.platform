@@ -22,7 +22,6 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_m
 
 
 class TestTerminateManagerProcess(unittest.TestCase):
-
     def test_noop_when_process_is_none(self):
         """None process must not raise."""
         ProcessManager.terminate_manager_process(None)
@@ -41,7 +40,7 @@ class TestTerminateManagerProcess(unittest.TestCase):
         """Running process that exits within timeout: only SIGTERM, no SIGKILL."""
         proc = MagicMock()
         proc.poll.return_value = None  # still running
-        proc.wait.return_value = 0     # exits cleanly within timeout
+        proc.wait.return_value = 0  # exits cleanly within timeout
 
         ProcessManager.terminate_manager_process(proc, timeout=5)
 
@@ -89,7 +88,6 @@ class TestTerminateManagerProcess(unittest.TestCase):
 
 
 class TestSpawnEphemeralClientStoresProcess(unittest.TestCase):
-
     def _make_gateway_config(self):
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
 
@@ -102,21 +100,24 @@ class TestSpawnEphemeralClientStoresProcess(unittest.TestCase):
         fake_client = MagicMock()
         fake_client._ephemeral = True
 
-        with patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager._af_unix_available",
-            return_value=True,
-        ), patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.generate_connection_info"
-        ) as mock_conn_info, patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.cleanup_old_socket"
-        ), patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.spawn_manager_process",
-            return_value=fake_process,
-        ), patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.wait_for_process_startup"
-        ), patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client.ManagerRPCClient",
-            return_value=fake_client,
+        with (
+            patch(
+                "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager._af_unix_available",
+                return_value=True,
+            ),
+            patch(
+                "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.generate_connection_info"
+            ) as mock_conn_info,
+            patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.cleanup_old_socket"),
+            patch(
+                "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.spawn_manager_process",
+                return_value=fake_process,
+            ),
+            patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.ProcessManager.wait_for_process_startup"),
+            patch(
+                "ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client.ManagerRPCClient",
+                return_value=fake_client,
+            ),
         ):
             mock_conn_info.return_value = MagicMock(socket_path="/tmp/ap/test.sock", authkey=b"x" * 32, authkey_b64="abc")
 
@@ -130,12 +131,13 @@ class TestSpawnEphemeralClientStoresProcess(unittest.TestCase):
 
     def test_no_process_attribute_on_direct_http_fallback(self):
         """When AF_UNIX is unavailable, DirectHTTPClient is returned with no _process."""
-        with patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager._af_unix_available",
-            return_value=False,
-        ), patch(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client.DirectHTTPClient"
-        ) as MockDirect:
+        with (
+            patch(
+                "ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager._af_unix_available",
+                return_value=False,
+            ),
+            patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client.DirectHTTPClient") as MockDirect,
+        ):
             fake_direct = MagicMock(spec=[])  # no attributes pre-defined
             MockDirect.return_value = fake_direct
 
