@@ -12,7 +12,7 @@ from __future__ import absolute_import, division, print_function
 
 import subprocess
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 
