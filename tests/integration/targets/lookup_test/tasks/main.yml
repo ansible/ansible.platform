@@ -134,7 +134,7 @@
     # finally block rather than lingering until the playbook exits.
     - name: Count lingering manager_process.py subprocesses
       ansible.builtin.shell: |
-        pgrep -c -f manager_process.py || echo 0
+        pgrep -c -f manager_process[.]py || echo 0
       register: manager_proc_count
       changed_when: false
 

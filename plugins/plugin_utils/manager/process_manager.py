@@ -172,13 +172,13 @@ class ProcessManager:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait()
+            process.wait(timeout=timeout)
         except Exception as e:
             logger.debug("Error terminating manager process: %s", e)
             try:
                 if process.poll() is None:
                     process.kill()
-                    process.wait()
+                    process.wait(timeout=timeout)
             except Exception:
                 pass
 
