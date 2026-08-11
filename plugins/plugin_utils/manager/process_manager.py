@@ -156,6 +156,33 @@ class ProcessManager:
             return False
 
     @staticmethod
+    def terminate_manager_process(process, timeout: int = 5) -> None:
+        """
+        Terminate a manager subprocess: SIGTERM first, escalate to SIGKILL if needed.
+
+        Args:
+            process: subprocess.Popen object (or any object with poll/terminate/kill/wait).
+                     No-op if None or already exited.
+            timeout: Seconds to wait for graceful exit before sending SIGKILL.
+        """
+        if process is None or process.poll() is not None:
+            return
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        except Exception as e:
+            logger.debug("Error terminating manager process: %s", e)
+            try:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+            except Exception:
+                pass
+
+    @staticmethod
     def cleanup_old_socket(socket_path: str) -> None:
         """
         Clean up an old socket file and its companion .meta file if they exist.
@@ -420,5 +447,6 @@ def spawn_ephemeral_client(task_vars, gateway_config, task_env=None):
     client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
     client._ephemeral = True
     client.socket_path = socket_path
+    client._process = process
     logger.info("Ephemeral manager spawned for connection: local at %s", gateway_config.base_url)
     return (client, None)

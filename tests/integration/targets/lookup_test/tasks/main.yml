@@ -128,6 +128,26 @@
           - expect_one is failed
           - "'Expected one object from endpoint users, but obtained 3 from API' in expect_one.msg"
 
+    # Verify that gateway_api lookup processes are cleaned up after each call.
+    # Each lookup spawns an ephemeral manager subprocess; the fix in
+    # process_manager.py + gateway_api.py ensures they are killed in the
+    # finally block rather than lingering until the playbook exits.
+    - name: Count lingering manager_process.py subprocesses
+      ansible.builtin.shell: |
+        pgrep -c -f manager_process.py || echo 0
+      register: manager_proc_count
+      changed_when: false
+
+    - name: Assert no manager processes are still running after lookups
+      ansible.builtin.assert:
+        that:
+          - manager_proc_count.stdout | trim | int == 0
+        fail_msg: >-
+          {{ manager_proc_count.stdout | trim }} manager_process.py subprocess(es)
+          still running after all lookup tasks completed — ephemeral manager
+          cleanup is broken.
+        success_msg: "All ephemeral manager processes cleaned up successfully."
+
   always:
     # <Cleanup>
     - name: Delete Organizations
