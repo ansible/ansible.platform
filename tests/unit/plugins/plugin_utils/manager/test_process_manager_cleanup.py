@@ -9,12 +9,11 @@ Run with pytest from collection root:
 """
 
 from __future__ import absolute_import, division, print_function
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 
 import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
-
-from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 
 
 # ---------------------------------------------------------------------------
