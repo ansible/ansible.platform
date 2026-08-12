@@ -63,6 +63,15 @@
         user: "{{ admin1.id }}"
         object_id: "{{ org1.id }}"
 
+    # Baseline: count manager processes already running (persistent managers from
+    # the action module tasks above stay alive until play_end and must not skew
+    # the assertion below).
+    - name: Count manager_process.py subprocesses before lookups (baseline)
+      ansible.builtin.shell: |
+        pgrep -c -f manager_process[.]py || echo 0
+      register: manager_proc_baseline
+      changed_when: false
+
     - name: Use lookup plugin to query created objects
       ansible.builtin.set_fact:
         _org2: >-
@@ -127,6 +136,31 @@
         that:
           - expect_one is failed
           - "'Expected one object from endpoint users, but obtained 3 from API' in expect_one.msg"
+
+    # Verify ephemeral manager processes spawned by gateway_api lookups are
+    # cleaned up immediately after each call (not left running until play end).
+    # Compared against the baseline taken before the lookups so that persistent
+    # managers from the action module tasks above don't produce false positives.
+    - name: Count manager_process.py subprocesses after lookups
+      ansible.builtin.shell: |
+        pgrep -c -f manager_process[.]py || echo 0
+      register: manager_proc_count
+      changed_when: false
+
+    - name: Assert no new manager processes are lingering after lookups
+      ansible.builtin.assert:
+        that:
+          - manager_proc_count.stdout | trim | int <= manager_proc_baseline.stdout | trim | int
+        fail_msg: >-
+          {{ manager_proc_count.stdout | trim | int - manager_proc_baseline.stdout | trim | int }}
+          new manager_process.py subprocess(es) still running after all lookup
+          tasks completed (baseline={{ manager_proc_baseline.stdout | trim }},
+          after={{ manager_proc_count.stdout | trim }}) — ephemeral manager
+          cleanup is broken.
+        success_msg: >-
+          Ephemeral manager processes cleaned up successfully
+          (baseline={{ manager_proc_baseline.stdout | trim }},
+          after={{ manager_proc_count.stdout | trim }}).
 
   always:
     # <Cleanup>
