@@ -70,6 +70,7 @@
       ansible.builtin.shell: |
         pgrep -c -f manager_process[.]py || echo 0
       register: manager_proc_baseline
+      delegate_to: localhost
       changed_when: false
 
     - name: Use lookup plugin to query created objects
@@ -145,6 +146,7 @@
       ansible.builtin.shell: |
         pgrep -c -f manager_process[.]py || echo 0
       register: manager_proc_count
+      delegate_to: localhost
       changed_when: false
 
     - name: Assert no new manager processes are lingering after lookups
