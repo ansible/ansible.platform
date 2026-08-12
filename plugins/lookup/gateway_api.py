@@ -231,9 +231,22 @@ class LookupModule(LookupBase):
             raise AnsibleError("gateway_api lookup: API request failed for '{0}': {1}".format(endpoint, to_native(e)))
         finally:
             try:
-                client.shutdown_manager()
-            except Exception:
-                pass
+                result = client.shutdown_manager()
+                self._display.vvvv("gateway_api: shutdown signal sent to manager: %s" % result)
+            except Exception as e:
+                self._display.vvvv("gateway_api: shutdown RPC failed (manager may have already exited): %s" % e)
+            try:
+                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+
+                ProcessManager.terminate_manager_process(getattr(client, "_process", None))
+                self._display.vvvv("gateway_api: manager process terminated")
+            except Exception as e:
+                self._display.warning("gateway_api: failed to terminate manager process: %s" % e)
+            try:
+                client.close()
+                self._display.vvvv("gateway_api: client connection closed")
+            except Exception as e:
+                self._display.vvvv("gateway_api: error closing client connection: %s" % e)
 
         # --- response validation ---
         if self.get_option("expect_objects") or self.get_option("expect_one"):
