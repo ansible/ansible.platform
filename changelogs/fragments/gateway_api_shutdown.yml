@@ -1,5 +1,0 @@
----
-bugfixes:
-  - gateway_api - Update the lookup plugin to ensure the ephemeral
-    manager processes getting spawned are terminated/killed.
-...
