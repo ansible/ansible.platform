@@ -14,7 +14,10 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   routes, service_clusters, service_keys, service_nodes,
   service_types, services, tokens, ui_plugin_routes,
   settings (singleton), settings/all (flat dict read),
-  inventories, credentials, execution_environments, ad_hoc_commands
+  inventories, credentials, execution_environments
+
+Controller endpoints (under /api/controller/v2/):
+  ad_hoc_commands
 
 Notes
 -----
@@ -677,7 +680,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         parts = [p for p in path.split("/") if p]
 
-        if len(parts) < 3 or parts[0] != "api" or parts[1] != "gateway":
+        if len(parts) < 3 or parts[0] != "api" or parts[1] not in ("gateway", "controller"):
             self._send_json(404, {"detail": "Not Found"})
             return
 

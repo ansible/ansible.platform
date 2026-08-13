@@ -17,7 +17,7 @@ module: ad_hoc_command
 author: Red Hat (@RedHatOfficial)
 short_description: Launch an ad hoc command
 description:
-  - Launch an ad hoc command on the Ansible Automation Platform gateway.
+  - Launch an ad hoc command on the Ansible Automation Platform controller.
   - This module always creates a new ad hoc command execution; it is not idempotent.
 version_added: "3.0.0"
 
@@ -95,7 +95,7 @@ options:
 
   interval:
     description:
-      - The interval in seconds to request an update from the gateway.
+      - The interval in seconds to request an update from the controller.
     default: 2
     type: float
 
