@@ -257,7 +257,7 @@ class TestDynamicClassLoaderDiscovery(unittest.TestCase):
         registry = APIVersionRegistry()
         loader = DynamicClassLoader(registry)
 
-        AnsibleClass, _, _ = loader.load_classes_for_module("ad_hoc_command", "1")
+        AnsibleClass, _api, _mixin = loader.load_classes_for_module("ad_hoc_command", "1")
         obj = AnsibleClass(inventory="inv", credential="cred", module_name="ping")
         self.assertEqual(obj.inventory, "inv")
         self.assertIsNone(obj.extra_vars)

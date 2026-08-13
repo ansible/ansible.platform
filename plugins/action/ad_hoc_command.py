@@ -108,7 +108,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _wait_for_completion(self, manager: object, command_id: int, interval: float = 2.0, timeout: float = None) -> str:
+    def _wait_for_completion(self, manager, command_id: int, interval: float = 2.0, timeout: float = None) -> str:
         """Poll the controller API until the ad hoc command finishes.
 
         Args:
