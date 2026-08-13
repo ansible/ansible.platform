@@ -6,7 +6,7 @@
 
 """Action plugin for ansible.platform.ad_hoc_command module.
 
-Launches an ad hoc command via Gateway. This is not a CRUD resource —
+Launches an ad hoc command via Controller. This is not a CRUD resource —
 every invocation creates a new command execution.
 """
 
@@ -109,7 +109,7 @@ class ActionModule(BaseResourceActionPlugin):
         return result
 
     def _wait_for_completion(self, manager: object, command_id: int, interval: float = 2.0, timeout: float = None) -> str:
-        """Poll the gateway API until the ad hoc command finishes.
+        """Poll the controller API until the ad hoc command finishes.
 
         Args:
             manager: The RPC client / manager instance.

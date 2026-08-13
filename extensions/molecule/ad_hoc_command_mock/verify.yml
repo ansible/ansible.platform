@@ -7,9 +7,9 @@
     gateway_hostname: "http://127.0.0.1:8000"
     mock_auth: "Basic bW9jazptb2Nr"
   tasks:
-    - name: List ad hoc commands from mock Gateway API
+    - name: List ad hoc commands from mock Controller API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/ad_hoc_commands/"
+        url: "{{ gateway_hostname }}/api/controller/v2/ad_hoc_commands/"
         method: GET
         headers:
           Authorization: "{{ mock_auth }}"

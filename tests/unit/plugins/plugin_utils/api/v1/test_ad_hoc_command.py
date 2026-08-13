@@ -218,7 +218,7 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
         self.assertIn("create", ops)
         create_op = ops["create"]
         self.assertEqual(create_op.method, "POST")
-        self.assertEqual(create_op.path, "/api/gateway/v1/ad_hoc_commands/")
+        self.assertEqual(create_op.path, "/api/controller/v2/ad_hoc_commands/")
         self.assertIn("module_name", create_op.fields)
         self.assertIn("inventory", create_op.fields)
         self.assertIn("credential", create_op.fields)
@@ -228,7 +228,7 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
         self.assertIn("get", ops)
         get_op = ops["get"]
         self.assertEqual(get_op.method, "GET")
-        self.assertEqual(get_op.path, "/api/gateway/v1/ad_hoc_commands/{id}/")
+        self.assertEqual(get_op.path, "/api/controller/v2/ad_hoc_commands/{id}/")
         self.assertEqual(get_op.path_params, ["id"])
 
     def test_lookup_field(self):

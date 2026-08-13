@@ -1,7 +1,7 @@
 """
 API v1 AdHocCommand dataclass and transform mixin.
 
-Handles transformations between Ansible format and the Gateway API format
+Handles transformations between Ansible format and the Controller API format
 for ad hoc command resources.
 """
 
@@ -112,14 +112,14 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
 
         return {
             "create": EndpointOperation(
-                path="/api/gateway/v1/ad_hoc_commands/",
+                path="/api/controller/v2/ad_hoc_commands/",
                 method="POST",
                 fields=fields,
                 required_for="create",
                 order=1,
             ),
             "get": EndpointOperation(
-                path="/api/gateway/v1/ad_hoc_commands/{id}/",
+                path="/api/controller/v2/ad_hoc_commands/{id}/",
                 method="GET",
                 fields=[],
                 path_params=["id"],
