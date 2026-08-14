@@ -12,6 +12,8 @@ It also requires an existing install of Ansible Automation Platform as a target.
 
 ## Installation
 
+Ensure your ansible.cfg is configured to use Automation Hub as the primary server. See the [Automation Hub documentation](https://access.redhat.com/documentation/en-us/red_hat_ansible_automation_platform) for configuration instructions.
+
 Before using this collection, you need to install it with the Ansible Galaxy command-line tool:
 
 ```
