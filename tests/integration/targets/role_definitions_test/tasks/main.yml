@@ -67,7 +67,7 @@
 
     - name: Probe EDA service availability
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -75,6 +75,7 @@
         status_code: [200, 401, 403]
       register: eda_probe
       failed_when: false
+      delegate_to: localhost
 
     - name: Set EDA availability fact
       ansible.builtin.set_fact:

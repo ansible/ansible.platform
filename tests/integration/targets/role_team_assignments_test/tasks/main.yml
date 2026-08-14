@@ -168,13 +168,14 @@
 
     - name: Fetch assignment from API to confirm persistence
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | bool }}"
         return_content: true
       register: assignment_query
+      delegate_to: localhost
 
     - name: Assert assignment exists in API
       ansible.builtin.assert:
@@ -199,7 +200,7 @@
 
     - name: Look up test organization in EDA
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/organizations/?name={{ org1.name | urlencode }}"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/organizations/?name={{ org1.name | urlencode }}"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -207,6 +208,7 @@
         return_content: true
       register: eda_org
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Set EDA org ID fact
       ansible.builtin.set_fact:
@@ -215,7 +217,7 @@
 
     - name: Create EDA decision environment via EDA API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/decision-environments/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/decision-environments/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -230,6 +232,7 @@
       register: eda_de
       when: eda_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify EDA decision environment role assignment
       ansible.builtin.include_tasks:
@@ -247,7 +250,7 @@
 
     - name: Create EDA project via EDA API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/projects/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/projects/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -262,6 +265,7 @@
       register: eda_project
       when: eda_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Create EDA project role definition
       ansible.platform.role_definition:
@@ -291,7 +295,7 @@
 
     - name: Look up EDA credential type
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/credential-types/?name=Source+Control"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/credential-types/?name=Source+Control"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -299,6 +303,7 @@
         return_content: true
       register: eda_cred_types
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Set EDA credential type fact
       ansible.builtin.set_fact:
@@ -307,7 +312,7 @@
 
     - name: Create EDA credential
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/eda-credentials/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -323,6 +328,7 @@
       register: eda_cred
       when: eda_cred_type_id is defined and eda_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify EDA credential role assignment
       ansible.builtin.include_tasks:
@@ -340,7 +346,7 @@
 
     - name: Look up Token Event Stream credential type
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/credential-types/?name=Token+Event+Stream"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/credential-types/?name=Token+Event+Stream"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -348,6 +354,7 @@
         return_content: true
       register: eda_stream_cred_types
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Set EDA stream credential type fact
       ansible.builtin.set_fact:
@@ -356,7 +363,7 @@
 
     - name: Create EDA event stream credential
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/eda-credentials/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -373,10 +380,11 @@
       register: eda_stream_cred
       when: eda_stream_cred_type_id is defined and eda_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Create EDA event stream
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/event-streams/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/event-streams/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -391,6 +399,7 @@
       register: eda_stream
       when: eda_org_id is defined and eda_stream_cred is defined and eda_stream_cred is not failed and eda_stream_cred is not skipped
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify EDA event stream role assignment
       ansible.builtin.include_tasks:
@@ -408,7 +417,7 @@
 
     - name: Look up existing EDA rulebook for activation test
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/rulebooks/?page_size=1"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/rulebooks/?page_size=1"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -416,10 +425,11 @@
         return_content: true
       register: eda_rulebooks
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Look up existing EDA decision environment for activation test
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/decision-environments/?page_size=1"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/decision-environments/?page_size=1"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -427,10 +437,11 @@
         return_content: true
       register: eda_des_list
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Create EDA activation (disabled)
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/activations/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/activations/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -450,6 +461,7 @@
         and eda_des_list is not failed and eda_des_list.json.count > 0
         and eda_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify EDA activation role assignment
       ansible.builtin.include_tasks:
@@ -465,7 +477,7 @@
 
     - name: Look up Default organization in Controller
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/organizations/?name=Default"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -473,6 +485,7 @@
         return_content: true
       register: ctrl_default_org
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Set Controller org ID fact
       ansible.builtin.set_fact:
@@ -483,7 +496,7 @@
 
     - name: Create Controller inventory
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/inventories/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -497,6 +510,7 @@
       register: ctrl_inventory
       when: ctrl_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify inventory role assignment
       ansible.builtin.include_tasks:
@@ -512,7 +526,7 @@
 
     - name: Create Controller project (manual SCM)
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/projects/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -527,6 +541,7 @@
       register: ctrl_project
       when: ctrl_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify project role assignment
       ansible.builtin.include_tasks:
@@ -542,7 +557,7 @@
 
     - name: Create Controller execution environment
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/execution_environments/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/execution_environments/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -555,6 +570,7 @@
         status_code: [200, 201]
       register: ctrl_ee
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify execution environment role assignment
       ansible.builtin.include_tasks:
@@ -570,7 +586,7 @@
 
     - name: Create Controller instance group
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/instance_groups/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -582,6 +598,7 @@
         status_code: [200, 201]
       register: ctrl_ig
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify instance group role assignment
       ansible.builtin.include_tasks:
@@ -597,7 +614,7 @@
 
     - name: Look up Machine credential type in Controller
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/credential_types/?namespace=ssh"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -605,6 +622,7 @@
         return_content: true
       register: ctrl_cred_types
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Set Controller credential type fact
       ansible.builtin.set_fact:
@@ -613,7 +631,7 @@
 
     - name: Create Controller credential
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/credentials/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -629,6 +647,7 @@
       register: ctrl_cred
       when: ctrl_cred_type_id is defined and ctrl_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify credential role assignment
       ansible.builtin.include_tasks:
@@ -647,7 +666,7 @@
     # Look up an existing synced project and its first available playbook.
     - name: Look up Controller project with playbooks for job template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/projects/?status=successful&page_size=10"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/?status=successful&page_size=10"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -655,10 +674,11 @@
         return_content: true
       register: ctrl_synced_projects
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Look up playbooks from synced project
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}{{ ctrl_synced_projects.json.results[0].related.playbooks | regex_replace('^/', '') }}"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}{{ ctrl_synced_projects.json.results[0].related.playbooks }}"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
@@ -667,6 +687,7 @@
       register: ctrl_playbooks
       when: ctrl_synced_projects is not failed and ctrl_synced_projects.json.count > 0
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Set job template project and playbook facts
       ansible.builtin.set_fact:
@@ -679,7 +700,7 @@
 
     - name: Create Controller job template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/job_templates/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -695,6 +716,7 @@
       register: ctrl_jt
       when: ctrl_jt_project_id is defined and ctrl_jt_playbook is defined and ctrl_inventory is not failed and ctrl_inventory is not skipped
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify job template role assignment
       ansible.builtin.include_tasks:
@@ -710,7 +732,7 @@
 
     - name: Create Controller workflow job template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/workflow_job_templates/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -724,6 +746,7 @@
       register: ctrl_wfjt
       when: ctrl_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify workflow job template role assignment
       ansible.builtin.include_tasks:
@@ -739,7 +762,7 @@
 
     - name: Create Controller notification template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/notification_templates/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/notification_templates/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -758,6 +781,7 @@
       register: ctrl_nt
       when: ctrl_org_id is defined
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify notification template role assignment
       ansible.builtin.include_tasks:
@@ -773,7 +797,7 @@
 
     - name: Create Hub collection namespace via Galaxy API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/galaxy/v3/namespaces/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/v3/namespaces/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -785,6 +809,7 @@
         status_code: [200, 201]
       register: hub_ns
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify collection namespace role assignment
       ansible.builtin.include_tasks:
@@ -802,7 +827,7 @@
 
     - name: Create Hub collection remote via Pulp API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/galaxy/pulp/api/v3/remotes/ansible/collection/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/pulp/api/v3/remotes/ansible/collection/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -815,6 +840,7 @@
         status_code: [200, 201]
       register: hub_remote
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify collection remote role assignment
       ansible.builtin.include_tasks:
@@ -832,7 +858,7 @@
 
     - name: Create Hub ansible repository via Pulp API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/galaxy/pulp/api/v3/repositories/ansible/ansible/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/pulp/api/v3/repositories/ansible/ansible/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -844,6 +870,7 @@
         status_code: [200, 201]
       register: hub_repo
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify ansible repository role assignment
       ansible.builtin.include_tasks:
@@ -861,7 +888,7 @@
 
     - name: Create Hub container namespace via Pulp API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/galaxy/pulp/api/v3/pulp_container/namespaces/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/pulp/api/v3/pulp_container/namespaces/"
         method: POST
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -873,6 +900,7 @@
         status_code: [200, 201]
       register: hub_cns
       ignore_errors: true
+      delegate_to: localhost
 
     - name: Verify container namespace role assignment
       ansible.builtin.include_tasks:
@@ -938,7 +966,7 @@
 
     - name: Delete EDA decision environment
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/decision-environments/{{ eda_de.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/decision-environments/{{ eda_de.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -950,10 +978,11 @@
       failed_when:
         - eda_de_delete.failed is defined and eda_de_delete.failed
         - eda_de_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete EDA project
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/projects/{{ eda_project.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/projects/{{ eda_project.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -965,10 +994,11 @@
       failed_when:
         - eda_project_delete.failed is defined and eda_project_delete.failed
         - eda_project_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete EDA activation
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/activations/{{ eda_activation.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/activations/{{ eda_activation.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -980,10 +1010,11 @@
       failed_when:
         - eda_activation_delete.failed is defined and eda_activation_delete.failed
         - eda_activation_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete EDA event stream
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/event-streams/{{ eda_stream.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/event-streams/{{ eda_stream.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -995,10 +1026,11 @@
       failed_when:
         - eda_stream_delete.failed is defined and eda_stream_delete.failed
         - eda_stream_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete EDA credential
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/eda-credentials/{{ eda_cred.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/{{ eda_cred.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1010,10 +1042,11 @@
       failed_when:
         - eda_cred_delete.failed is defined and eda_cred_delete.failed
         - eda_cred_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete EDA event stream credential
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/eda/v1/eda-credentials/{{ eda_stream_cred.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/{{ eda_stream_cred.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1025,10 +1058,11 @@
       failed_when:
         - eda_stream_cred_delete.failed is defined and eda_stream_cred_delete.failed
         - eda_stream_cred_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller notification template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/notification_templates/{{ ctrl_nt.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/notification_templates/{{ ctrl_nt.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1040,10 +1074,11 @@
       failed_when:
         - ctrl_nt_delete.failed is defined and ctrl_nt_delete.failed
         - ctrl_nt_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller workflow job template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/workflow_job_templates/{{ ctrl_wfjt.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ ctrl_wfjt.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1055,10 +1090,11 @@
       failed_when:
         - ctrl_wfjt_delete.failed is defined and ctrl_wfjt_delete.failed
         - ctrl_wfjt_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller job template
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/job_templates/{{ ctrl_jt.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ ctrl_jt.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1070,10 +1106,11 @@
       failed_when:
         - ctrl_jt_delete.failed is defined and ctrl_jt_delete.failed
         - ctrl_jt_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller credential
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/credentials/{{ ctrl_cred.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/{{ ctrl_cred.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1085,10 +1122,11 @@
       failed_when:
         - ctrl_cred_delete.failed is defined and ctrl_cred_delete.failed
         - ctrl_cred_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller inventory
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/inventories/{{ ctrl_inventory.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ ctrl_inventory.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1100,10 +1138,11 @@
       failed_when:
         - ctrl_inventory_delete.failed is defined and ctrl_inventory_delete.failed
         - ctrl_inventory_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller project
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/projects/{{ ctrl_project.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ ctrl_project.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1115,10 +1154,11 @@
       failed_when:
         - ctrl_project_delete.failed is defined and ctrl_project_delete.failed
         - ctrl_project_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller execution environment
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/execution_environments/{{ ctrl_ee.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/execution_environments/{{ ctrl_ee.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1130,10 +1170,11 @@
       failed_when:
         - ctrl_ee_delete.failed is defined and ctrl_ee_delete.failed
         - ctrl_ee_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Controller instance group
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/controller/v2/instance_groups/{{ ctrl_ig.json.id }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/{{ ctrl_ig.json.id }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1145,10 +1186,11 @@
       failed_when:
         - ctrl_ig_delete.failed is defined and ctrl_ig_delete.failed
         - ctrl_ig_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
 
     - name: Delete Hub collection namespace via Galaxy API
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/galaxy/v3/namespaces/{{ hub_ns_name }}/"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/v3/namespaces/{{ hub_ns_name }}/"
         method: DELETE
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
@@ -1160,6 +1202,7 @@
       failed_when:
         - hub_ns_delete.failed is defined and hub_ns_delete.failed
         - hub_ns_delete.status | default(0) not in [204, 404]
+      delegate_to: localhost
 
     - name: Delete Hub collection remote via Pulp API
       ansible.builtin.uri:
@@ -1175,6 +1218,7 @@
       failed_when:
         - hub_remote_delete.failed is defined and hub_remote_delete.failed
         - hub_remote_delete.status | default(0) not in [202, 404]
+      delegate_to: localhost
 
     - name: Delete Hub ansible repository via Pulp API
       ansible.builtin.uri:
@@ -1190,6 +1234,7 @@
       failed_when:
         - hub_repo_delete.failed is defined and hub_repo_delete.failed
         - hub_repo_delete.status | default(0) not in [202, 404]
+      delegate_to: localhost
 
     - name: Delete Hub container namespace via Pulp API
       ansible.builtin.uri:
@@ -1205,4 +1250,5 @@
       failed_when:
         - hub_cns_delete.failed is defined and hub_cns_delete.failed
         - hub_cns_delete.status | default(0) not in [202, 404]
+      delegate_to: localhost
 ...

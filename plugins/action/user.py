@@ -90,7 +90,9 @@ class ActionModule(BaseResourceActionPlugin):
         """
         if super()._should_update(desired_data, current_data):
             return True
-        if self._task.args.get("update_secrets", True) and self._task.args.get("password"):
+        raw = self._task.args.get("update_secrets", True)
+        update_secrets = raw if isinstance(raw, bool) else str(raw).lower() not in ("false", "no", "0")
+        if update_secrets and self._task.args.get("password"):
             return True
         return False
 
