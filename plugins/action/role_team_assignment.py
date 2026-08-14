@@ -10,13 +10,9 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
 
-# Maps content_type suffix → endpoint key (used by _get_expected_endpoint).
-# "eda.project" is handled separately via _FULL_TYPE_OVERRIDES to avoid
-# collision with "awx.project" which shares the same suffix.
 _CONTENT_TYPE_ENDPOINT_MAP = {
     "organization": "organizations",
     "team": "teams",
-    # Controller
     "project": "projects",
     "inventory": "inventories",
     "credential": "credentials",
@@ -25,38 +21,29 @@ _CONTENT_TYPE_ENDPOINT_MAP = {
     "executionenvironment": "execution_environments",
     "instancegroup": "instance_groups",
     "notificationtemplate": "notification_templates",
-    # EDA
     "activation": "activations",
     "edacredential": "eda_credentials",
     "eventstream": "event_streams",
     "decisionenvironment": "decision_environments",
-    # Hub
     "namespace": "namespaces",
     "collectionremote": "collection_remotes",
     "ansiblerepository": "ansible_repositories",
     "containernamespace": "container_namespaces",
 }
 
-# Full content_type overrides for ambiguous suffixes shared across services.
 _FULL_TYPE_OVERRIDES = {
     "eda.project": "eda_projects",
     "eda.edacredential": "eda_credentials",
 }
 
-# Maps assignment_objects type → API path for name-based resource lookup.
-# Gateway resources use short names (auto-prefixed with /api/gateway/v1/).
-# All other services require full absolute paths.
 _SERVICE_LOOKUP_PATH_MAP = {
-    # Gateway
     "organizations": "organizations",
     "teams": "teams",
-    # EDA
     "activations": "/api/eda/v1/activations/",
     "eda_credentials": "/api/eda/v1/eda-credentials/",
     "event_streams": "/api/eda/v1/event-streams/",
     "decision_environments": "/api/eda/v1/decision-environments/",
     "eda_projects": "/api/eda/v1/projects/",
-    # Controller
     "projects": "/api/controller/v2/projects/",
     "inventories": "/api/controller/v2/inventories/",
     "credentials": "/api/controller/v2/credentials/",
@@ -65,23 +52,35 @@ _SERVICE_LOOKUP_PATH_MAP = {
     "execution_environments": "/api/controller/v2/execution_environments/",
     "instance_groups": "/api/controller/v2/instance_groups/",
     "notification_templates": "/api/controller/v2/notification_templates/",
-    # Hub
     "namespaces": "/api/galaxy/v3/namespaces/",
     "collection_remotes": "/api/galaxy/pulp/api/v3/remotes/",
     "ansible_repositories": "/api/galaxy/pulp/api/v3/repositories/",
     "container_namespaces": "/api/galaxy/pulp/api/v3/pulp_container/namespaces/",
 }
 
+_CONTROLLER_ORG_TYPES = frozenset(
+    {
+        "projects",
+        "inventories",
+        "credentials",
+        "job_templates",
+        "workflow_job_templates",
+        "notification_templates",
+    }
+)
+_EDA_ORG_TYPES = frozenset(
+    {
+        "activations",
+        "eda_credentials",
+        "event_streams",
+        "decision_environments",
+        "eda_projects",
+    }
+)
+_GATEWAY_ORG_TYPES = frozenset({"teams"})
+
 
 def _get_expected_endpoint(content_type):
-    """Return the endpoint key for a role definition's content_type.
-
-    Checks _FULL_TYPE_OVERRIDES first for types that share a suffix across
-    services (e.g. eda.project vs awx.project), then falls back to suffix lookup.
-
-    Raises ValueError for unknown content types instead of guessing with
-    naive pluralisation (e.g. "inventory" → "inventorys" is wrong).
-    """
     raw = (content_type or "").strip()
     if not raw:
         return None
@@ -90,15 +89,47 @@ def _get_expected_endpoint(content_type):
     suffix = raw.split(".")[-1] if "." in raw else raw
     if suffix in _CONTENT_TYPE_ENDPOINT_MAP:
         return _CONTENT_TYPE_ENDPOINT_MAP[suffix]
-    # Fail-closed: unknown content types are errors, not guesses.
     known = sorted(set(list(_CONTENT_TYPE_ENDPOINT_MAP.keys()) + list(_FULL_TYPE_OVERRIDES.keys())))
     raise ValueError(
-        "Unknown content_type '%s' in role definition. "
-        "Known suffixes/types: %s. "
-        "If this is a new resource type, add it to "
-        "_CONTENT_TYPE_ENDPOINT_MAP or _FULL_TYPE_OVERRIDES "
-        "in role_team_assignment.py." % (content_type, ", ".join(known))
+        "Unknown content_type '%s' in role definition. Known suffixes/types: %s. "
+        "If this is a new resource type, add it to _CONTENT_TYPE_ENDPOINT_MAP or "
+        "_FULL_TYPE_OVERRIDES in role_team_assignment.py." % (content_type, ", ".join(known))
     )
+
+
+def _service_kind(obj_type):
+    path = _SERVICE_LOOKUP_PATH_MAP.get(obj_type, obj_type)
+    if isinstance(path, str) and path.startswith("/api/controller/"):
+        return "controller"
+    if isinstance(path, str) and path.startswith("/api/eda/"):
+        return "eda"
+    if isinstance(path, str) and path.startswith("/api/galaxy/"):
+        return "hub"
+    return "gateway"
+
+
+def _result_id(item, name, lookup_path):
+    if "id" in item:
+        return item["id"]
+    if "prn" in item:
+        return str(item["prn"]).split(":")[-1]
+    raise ValueError("Resource '%s' at %s returned no 'id' field" % (name, lookup_path))
+
+
+def _search_results(payload):
+    return payload.get("results", payload.get("data", [])) or []
+
+
+def _matches_org(item, org_id):
+    for key in ("organization_id", "organization"):
+        val = item.get(key)
+        if val is None:
+            continue
+        if isinstance(val, dict):
+            val = val.get("id")
+        if str(val) == str(org_id):
+            return True
+    return False
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -107,7 +138,6 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "id"
 
     def _resolve_fks_to_strings(self, manager, data_dict):
-        """Resolve role_definition and team names to string IDs in-place."""
         if "role_definition" in data_dict:
             if not str(data_dict["role_definition"]).isdigit():
                 try:
@@ -136,13 +166,89 @@ class ActionModule(BaseResourceActionPlugin):
 
         return data_dict
 
-    def run(self, tmp=None, task_vars=None):
-        """Run role_team_assignment.
+    def _resolve_organization_id(self, manager, organization, service):
+        if service == "controller":
+            payload = manager.search_api("/api/controller/v2/organizations/", query_params={"name": organization})
+        elif service == "eda":
+            payload = manager.search_api("/api/eda/v1/organizations/", query_params={"name": organization})
+        else:
+            return manager.lookup_resource_id("organizations", "name", organization)
 
-        Single-object path (object_id / object_ansible_id): delegates to
-        _run_standard(). Multi-object path (assignment_objects): iterates,
-        resolves name+type to object_id, and manages assignments idempotently.
-        """
+        results = _search_results(payload)
+        if len(results) != 1:
+            raise AnsibleError(
+                "Expected exactly one organization named '%s' on %s, got %s"
+                % (organization, service, len(results))
+            )
+        return _result_id(results[0], organization, "organizations")
+
+    def _resolve_named_object_id(self, manager, obj):
+        obj_type = obj["type"]
+        name = obj["name"]
+        organization = obj.get("organization")
+        lookup_path = _SERVICE_LOOKUP_PATH_MAP.get(obj_type, obj_type)
+        service = _service_kind(obj_type)
+
+        if organization:
+            if service == "hub":
+                raise AnsibleError("organization is not supported for Hub types such as '%s'" % obj_type)
+            if service == "controller" and obj_type not in _CONTROLLER_ORG_TYPES:
+                raise AnsibleError(
+                    "organization is not supported for Controller type '%s'; supported: %s"
+                    % (obj_type, ", ".join(sorted(_CONTROLLER_ORG_TYPES)))
+                )
+            if service == "eda" and obj_type not in _EDA_ORG_TYPES:
+                raise AnsibleError(
+                    "organization is not supported for EDA type '%s'; supported: %s"
+                    % (obj_type, ", ".join(sorted(_EDA_ORG_TYPES)))
+                )
+            if service == "gateway" and obj_type not in _GATEWAY_ORG_TYPES:
+                raise AnsibleError(
+                    "organization is only supported for Gateway type 'teams' (got '%s')" % obj_type
+                )
+
+        org_id = None
+        if organization:
+            org_id = self._resolve_organization_id(manager, organization, service)
+
+        query = {"name": name}
+        if org_id is not None and service == "controller":
+            query["organization"] = org_id
+        if org_id is not None and service == "gateway" and obj_type == "teams":
+            query["organization"] = org_id
+
+        if isinstance(lookup_path, str) and lookup_path.startswith("/api/") and not lookup_path.startswith("/api/gateway/"):
+            payload = manager.search_api(lookup_path, query_params=query)
+            results = _search_results(payload)
+            if service == "eda" and org_id is not None:
+                results = [r for r in results if _matches_org(r, org_id)]
+            if len(results) != 1:
+                raise ValueError(
+                    "Expected exactly one %s named '%s'%s at %s, got %s"
+                    % (
+                        obj_type,
+                        name,
+                        (" in organization '%s'" % organization) if organization else "",
+                        lookup_path,
+                        len(results),
+                    )
+                )
+            return str(_result_id(results[0], name, lookup_path))
+
+        if org_id is not None and obj_type == "teams":
+            payload = manager.search_api("teams", query_params=query)
+            results = _search_results(payload)
+            results = [r for r in results if _matches_org(r, org_id)]
+            if len(results) != 1:
+                raise ValueError(
+                    "Expected exactly one team named '%s' in organization '%s', got %s"
+                    % (name, organization, len(results))
+                )
+            return str(_result_id(results[0], name, "teams"))
+
+        return str(manager.lookup_resource_id(lookup_path, "name", name))
+
+    def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
         self._task_vars = task_vars
@@ -168,7 +274,6 @@ class ActionModule(BaseResourceActionPlugin):
             if not assignment_objects_raw:
                 return self._run_standard(result, manager, argspec, validated_params, state)
 
-            # Resolve the role definition's content_type once for type validation.
             role_def_name = validated_params.get("role_definition", "")
             _role_def_obj = None
             try:
@@ -182,7 +287,7 @@ class ActionModule(BaseResourceActionPlugin):
             _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
             _expected_endpoint = _get_expected_endpoint(_role_content_type)
 
-            _skip = self._AUTH_PARAMS | {"assignment_objects", "state", "object_id", "object_ids", "object_ansible_id"}
+            _skip = self._AUTH_PARAMS | {"assignment_objects", "state", "object_id", "object_ansible_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in _skip}
             base_data = self._resolve_fks_to_strings(manager, base_data)
 
@@ -193,13 +298,8 @@ class ActionModule(BaseResourceActionPlugin):
             _orig_team = validated_params.get("team")
             _orig_team_ansible_id = validated_params.get("team_ansible_id")
 
-            def _humanise(result, obj_item):
-                """Return a copy of result with original user-supplied names overlaid.
-
-                Creates a shallow copy so the original dict (which may be cached
-                or shared by the manager internals) is not mutated.
-                """
-                humanised = dict(result)  # shallow copy — safe for flat dicts
+            def _humanise(api_result, obj_item):
+                humanised = dict(api_result)
                 if _orig_role_def:
                     humanised["role_definition"] = _orig_role_def
                 if _orig_team:
@@ -228,35 +328,20 @@ class ActionModule(BaseResourceActionPlugin):
                                 provided=obj["type"],
                             )
                         )
-                    _lookup_path = _SERVICE_LOOKUP_PATH_MAP.get(obj["type"], obj["type"])
                     try:
-                        if _lookup_path.startswith("/api/") and not _lookup_path.startswith("/api/gateway/"):
-                            # Service-specific path (EDA/Hub): use search_api
-                            # which accepts full paths, bypassing the Gateway prefix
-                            # that lookup_resource_id would hardcode.
-                            _search = manager.search_api(_lookup_path, query_params={"name": obj["name"]})
-                            # Hub endpoints by default have results present in data field instead
-                            _results = _search.get("results", _search.get("data", []))
-                            if not _results:
-                                raise ValueError("Resource '%s' with name=%s not found at %s" % (obj["type"], obj["name"], _lookup_path))
-                            if "id" in _results[0]:
-                                oid = _results[0].get("id")
-                            elif "prn" in _results[0]:
-                                oid = _results[0].get("prn").split(":")[-1]
-                            else:
-                                raise ValueError("Resource '%s' at %s returned no 'id' field" % (obj["name"], _lookup_path))
-                        else:
-                            # Gateway-native endpoint: use standard lookup
-                            oid = manager.lookup_resource_id(_lookup_path, "name", obj["name"])
-                        per_obj["object_id"] = str(oid)
-                    except Exception:
-                        self._display.warning(
-                            "Could not resolve %s '%s' via endpoint '%s'. "
-                            "Passing raw name to the API — the request may fail. "
-                            "Verify the resource exists and is accessible with "
-                            "current credentials." % (obj["type"], obj["name"], _lookup_path)
-                        )
-                        per_obj["object_id"] = str(obj["name"])
+                        per_obj["object_id"] = self._resolve_named_object_id(manager, obj)
+                    except AnsibleError:
+                        raise
+                    except Exception as exc:
+                        raise AnsibleError(
+                            "Could not resolve %s '%s'%s: %s"
+                            % (
+                                obj["type"],
+                                obj["name"],
+                                (" (organization=%s)" % obj["organization"]) if obj.get("organization") else "",
+                                exc,
+                            )
+                        ) from exc
 
                 if state == "present":
                     try:
@@ -320,10 +405,13 @@ class ActionModule(BaseResourceActionPlugin):
         return result
 
     def _run_standard(self, result, manager, argspec, validated_params, state):
-        """Single-object path: mirrors the standard BaseResourceActionPlugin logic."""
         from dataclasses import asdict
 
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"}
+        resource_data = {
+            k: v
+            for k, v in validated_params.items()
+            if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"
+        }
         resource_data = self._resolve_fks_to_strings(manager, resource_data)
 
         if "object_id" in resource_data and resource_data["object_id"] is not None:

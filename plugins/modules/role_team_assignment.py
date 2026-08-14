@@ -29,6 +29,8 @@ notes:
     a descriptive error before any API call is made.
   - EDA projects must use C(type=eda_projects). Using C(type=projects) routes
     to Controller and will fail or resolve the wrong resource.
+  - For Controller/EDA resources whose names are not globally unique, set
+    C(organization) on each C(assignment_objects) item to scope the name lookup.
 options:
     role_definition:
         description:
@@ -76,6 +78,13 @@ options:
                     to Controller.
                 type: str
                 required: false
+            organization:
+                description:
+                  - Organization name used to disambiguate name-based lookup.
+                  - Supported for Controller types that are org-scoped, EDA
+                    resource types, and Gateway C(teams).
+                type: str
+                required: false
             object_id:
                 description:
                   - Numeric primary key of the target object.
@@ -91,12 +100,6 @@ options:
           - Numeric primary key of a single target object.
           - Use I(assignment_objects) to assign against multiple objects.
         type: int
-        required: false
-    object_ids:
-        description:
-          - List of numeric primary keys to assign against.
-        type: list
-        elements: int
         required: false
     object_ansible_id:
         description:
@@ -136,6 +139,17 @@ EXAMPLES = """
     assignment_objects:
       - name: "Demo Project"
         type: projects
+    state: present
+
+# Scope name lookup when the same resource name exists in multiple orgs
+- name: Assign job template admin in Preprod only
+  ansible.platform.role_team_assignment:
+    role_definition: "Job Template Admin"
+    team: "Ops Team"
+    assignment_objects:
+      - name: "mco - preprod"
+        type: job_templates
+        organization: "Preprod"
     state: present
 
 # Assign an EDA project role to a team (use eda_projects, not projects)

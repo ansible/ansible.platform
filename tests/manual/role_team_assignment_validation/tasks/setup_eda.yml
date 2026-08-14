@@ -1,0 +1,53 @@
+---
+- name: Ensure gateway team exists for EDA tests
+  ansible.builtin.assert:
+    that:
+      - gw_team_name is defined
+
+- name: Resolve EDA organization matching gateway org A
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/eda/v1/organizations/?name={{ gw_org_a | urlencode }}"
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    return_content: true
+  register: eda_org_lookup
+
+- name: Require EDA org
+  ansible.builtin.assert:
+    that:
+      - eda_org_lookup.json.count | int >= 1
+    fail_msg: "EDA org '{{ gw_org_a }}' not found — sync/org mapping may differ on this AAP"
+
+- name: Set EDA org facts
+  ansible.builtin.set_fact:
+    eda_org_name: "{{ eda_org_lookup.json.results[0].name }}"
+    eda_org_id: "{{ eda_org_lookup.json.results[0].id }}"
+    eda_project_name: "{{ prefix }}-eda-project"
+    eda_project_role: "{{ prefix }}-eda-project-role"
+
+- name: Create EDA project
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/eda/v1/projects/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ eda_project_name }}"
+      url: "https://github.com/ansible/event-driven-ansible"
+      organization_id: "{{ eda_org_id | int }}"
+    status_code: [200, 201]
+  register: eda_proj
+
+- name: Create EDA project role definition
+  ansible.platform.role_definition:
+    name: "{{ eda_project_role }}"
+    content_type: eda.project
+    permissions:
+      - eda.view_project
+      - eda.change_project
+    state: present

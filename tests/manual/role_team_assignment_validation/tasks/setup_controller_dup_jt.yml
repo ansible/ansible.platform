@@ -1,0 +1,88 @@
+---
+- name: Ensure gateway team exists for Controller tests
+  ansible.builtin.assert:
+    that:
+      - gw_team_name is defined
+    fail_msg: "Run with --tags gateway,controller (gateway setup creates the team)"
+
+- name: Create Controller org Prod
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/controller/v2/organizations/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ prefix }}-ctrl-prod"
+    status_code: [200, 201]
+  register: ctrl_org_prod_resp
+
+- name: Create Controller org Preprod
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/controller/v2/organizations/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ prefix }}-ctrl-preprod"
+    status_code: [200, 201]
+  register: ctrl_org_preprod_resp
+
+- name: Set Controller org facts
+  ansible.builtin.set_fact:
+    ctrl_org_prod: "{{ ctrl_org_prod_resp.json.name }}"
+    ctrl_org_preprod: "{{ ctrl_org_preprod_resp.json.name }}"
+    ctrl_org_prod_id: "{{ ctrl_org_prod_resp.json.id }}"
+    ctrl_org_preprod_id: "{{ ctrl_org_preprod_resp.json.id }}"
+    shared_inv_name: "{{ shared_jt_name }}"
+
+- name: Create inventory with shared name in Prod
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/controller/v2/inventories/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ shared_inv_name }}"
+      organization: "{{ ctrl_org_prod_id | int }}"
+    status_code: [200, 201]
+  register: inv_prod
+
+- name: Create inventory with shared name in Preprod
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/controller/v2/inventories/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ shared_inv_name }}"
+      organization: "{{ ctrl_org_preprod_id | int }}"
+    status_code: [200, 201]
+  register: inv_preprod
+
+- name: Create Inventory Admin role definition
+  ansible.platform.role_definition:
+    name: "{{ prefix }}-inv-admin"
+    content_type: awx.inventory
+    permissions:
+      - awx.view_inventory
+      - awx.change_inventory
+    state: present
+  register: inv_role
+
+- name: Set Controller inventory facts
+  ansible.builtin.set_fact:
+    ctrl_inv_prod_id: "{{ inv_prod.json.id }}"
+    ctrl_inv_preprod_id: "{{ inv_preprod.json.id }}"
+    ctrl_inv_role: "{{ inv_role.name | default(prefix ~ '-inv-admin') }}"
