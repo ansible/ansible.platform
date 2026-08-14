@@ -17,8 +17,8 @@
 - name: Require EDA org
   ansible.builtin.assert:
     that:
-      - eda_org_lookup.json.count | int >= 1
-    fail_msg: "EDA org '{{ gw_org_a }}' not found — sync/org mapping may differ on this AAP"
+      - eda_org_lookup.json.count | int == 1
+    fail_msg: "EDA org '{{ gw_org_a }}' not found or ambiguous — sync/org mapping may differ on this AAP"
 
 - name: Set EDA org facts
   ansible.builtin.set_fact:
@@ -51,3 +51,4 @@
       - eda.view_project
       - eda.change_project
     state: present
+...

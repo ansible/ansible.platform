@@ -86,3 +86,4 @@
     ctrl_inv_prod_id: "{{ inv_prod.json.id }}"
     ctrl_inv_preprod_id: "{{ inv_preprod.json.id }}"
     ctrl_inv_role: "{{ inv_role.name | default(prefix ~ '-inv-admin') }}"
+...

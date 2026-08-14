@@ -22,7 +22,6 @@
     gateway_validate_certs: "{{ aap_validate_certs | default(false) }}"
     test_id: "{{ lookup('password', '/dev/null chars=ascii_lowercase length=8') }}"
     prefix: "rta-val-{{ test_id }}"
-    # Same JT name in two Controller orgs — core customer scenario
     shared_jt_name: "mco - preprod"
 
   module_defaults:
@@ -49,7 +48,7 @@
       loop_control:
         label: "{{ item.name }}"
       register: probes
-      ignore_errors: true
+      failed_when: false
       tags: [always]
 
     - name: Record available services
@@ -67,9 +66,6 @@
           eda={{ has_eda }} hub={{ has_hub }}
       tags: [always]
 
-    # ------------------------------------------------------------------
-    # Gateway baseline (always run when gateway is up)
-    # ------------------------------------------------------------------
     - name: Gateway baseline
       when: has_gateway | bool
       tags: [gateway]
@@ -108,14 +104,14 @@
             that:
               - gw_idem is not changed
 
-        - name: object_ids must be rejected (removed unimplemented option)
+        - name: Object_ids must be rejected (removed unimplemented option)
           ansible.platform.role_team_assignment:
             role_definition: Organization Inventory Admin
             team: "{{ gw_team_name }}"
             object_ids: [1, 2]
             state: present
           register: gw_object_ids
-          ignore_errors: true
+          failed_when: false
 
         - name: Assert object_ids is not accepted
           ansible.builtin.assert:
@@ -123,9 +119,6 @@
               - gw_object_ids is failed
             fail_msg: "object_ids should be rejected; got success — docs/argspec still expose the ghost param"
 
-    # ------------------------------------------------------------------
-    # Controller — org-scoped duplicate name (customer gap)
-    # ------------------------------------------------------------------
     - name: Controller org-scoped lookup
       when: has_controller | bool
       tags: [controller]
@@ -163,7 +156,7 @@
                 type: inventories
             state: present
           register: ctrl_ambiguous
-          ignore_errors: true
+          failed_when: false
 
         - name: Assert ambiguous lookup failed closed
           ansible.builtin.assert:
@@ -185,9 +178,6 @@
             that:
               - ctrl_by_id is not failed
 
-    # ------------------------------------------------------------------
-    # EDA — name + organization
-    # ------------------------------------------------------------------
     - name: EDA org-scoped lookup
       when: has_eda | bool
       tags: [eda]
@@ -210,11 +200,8 @@
           ansible.builtin.assert:
             that:
               - eda_assign is not failed
-              - eda_assign is changed or eda_assign is not changed
+              - eda_assign.object_id is defined
 
-    # ------------------------------------------------------------------
-    # Hub — name lookup (organization must be rejected)
-    # ------------------------------------------------------------------
     - name: Hub namespace assignment
       when: has_hub | bool
       tags: [hub]
@@ -231,15 +218,14 @@
                 type: namespaces
             state: present
           register: hub_assign
-          ignore_errors: true
 
-        - name: Assert Hub assign path ran
+        - name: Assert Hub assignment succeeded
           ansible.builtin.assert:
             that:
-              - hub_assign is not skipped
-            fail_msg: "Hub assignment task did not run"
+              - hub_assign is not failed
+            fail_msg: "Hub assignment failed: {{ hub_assign.msg | default(hub_assign) }}"
 
-        - name: organization on Hub type must fail
+        - name: Organization on Hub type must fail
           ansible.platform.role_team_assignment:
             role_definition: galaxy.collection_namespace_owner
             team: "{{ gw_team_name }}"
@@ -249,7 +235,7 @@
                 organization: "should-not-work"
             state: present
           register: hub_org
-          ignore_errors: true
+          failed_when: false
 
         - name: Assert Hub rejects organization
           ansible.builtin.assert:
@@ -257,10 +243,8 @@
               - hub_org is failed
             fail_msg: "Hub types must reject organization="
 
-    # ------------------------------------------------------------------
-    # Cleanup
-    # ------------------------------------------------------------------
     - name: Cleanup created resources
       ansible.builtin.include_tasks: tasks/cleanup.yml
       tags: [cleanup, always]
       when: cleanup | default(true) | bool
+...

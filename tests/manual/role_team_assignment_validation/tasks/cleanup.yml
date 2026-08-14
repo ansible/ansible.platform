@@ -7,7 +7,7 @@
     state: absent
   loop: "{{ cleanup_assignments | default([]) }}"
   when: gw_team_name is defined
-  ignore_errors: true
+  failed_when: false
 
 - name: Delete gateway team
   ansible.platform.team:
@@ -15,7 +15,7 @@
     organization: "{{ gw_org_a }}"
     state: absent
   when: gw_team_name is defined and gw_org_a is defined
-  ignore_errors: true
+  failed_when: false
 
 - name: Delete gateway orgs
   ansible.platform.organization:
@@ -25,7 +25,7 @@
     - "{{ gw_org_a | default('') }}"
     - "{{ gw_org_b | default('') }}"
   when: item | length > 0
-  ignore_errors: true
+  failed_when: false
 
 - name: Note remaining Controller/EDA/Hub resources
   ansible.builtin.debug:
@@ -33,3 +33,4 @@
       Best-effort gateway cleanup done. Controller orgs/JTs, EDA projects, and Hub
       namespaces with prefix {{ prefix | default('n/a') }} may remain — delete in UI
       or re-run with service-specific cleanup if needed.
+...

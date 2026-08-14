@@ -21,10 +21,5 @@
       name: "{{ hub_ns_name }}"
     status_code: [200, 201, 409]
   register: hub_ns
-  ignore_errors: true
-
-- name: Require Hub namespace create or already exists
-  ansible.builtin.assert:
-    that:
-      - hub_ns is not failed or (hub_ns.status | default(0) | int == 409)
-    fail_msg: "Could not create Hub namespace {{ hub_ns_name }}: {{ hub_ns.msg | default(hub_ns) }}"
+  failed_when: hub_ns.status | default(0) | int not in [200, 201, 409]
+...

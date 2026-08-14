@@ -1,5 +1,6 @@
+---
 aap_hostname: "https://aap.example.com/"
 aap_username: admin
 aap_password: "CHANGE_ME"
 aap_validate_certs: false
-# cleanup: false   # set false to inspect resources after a run
+...

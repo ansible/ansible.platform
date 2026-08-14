@@ -6,7 +6,6 @@ __metaclass__ = type
 from unittest.mock import MagicMock
 
 import pytest
-
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.role_team_assignment import (
     ActionModule,
@@ -35,7 +34,6 @@ def test_matches_org_accepts_id_or_nested():
 
 
 def _action():
-    # Bypass Ansible ActionBase init; only exercise lookup helpers.
     return ActionModule.__new__(ActionModule)
 
 

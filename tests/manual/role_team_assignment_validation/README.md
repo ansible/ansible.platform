@@ -4,7 +4,7 @@
 
 | Layer | Confidence | Why |
 |---|---|---|
-| Unit tests (mocked `search_api`) | **High (~90%)** | Org resolve, Controller query param, EDA filter, ambiguous fail-closed, Hub reject org — 7 tests green |
+| Unit tests (mocked `search_api`) | **High (~90%)** | Org resolve, Controller query param, EDA filter, ambiguous fail-closed, Hub reject org |
 | Gateway CI / integration | **Medium-high** | Existing `role_team_assignments_test` exercises gateway; soft-skips Controller/EDA/Hub when absent |
 | Live Controller org-disambiguation | **Medium until you run this** | New code path; not in gateway-only CI |
 | Live EDA / Hub | **Medium until you run this** | Same — logic is there; environment-dependent |

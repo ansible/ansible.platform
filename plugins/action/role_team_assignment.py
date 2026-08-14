@@ -112,7 +112,7 @@ def _result_id(item, name, lookup_path):
     if "id" in item:
         return item["id"]
     if "prn" in item:
-        return str(item["prn"]).split(":")[-1]
+        return str(item["prn"]).rsplit(":", maxsplit=1)[-1]
     raise ValueError("Resource '%s' at %s returned no 'id' field" % (name, lookup_path))
 
 
