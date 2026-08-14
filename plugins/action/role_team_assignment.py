@@ -176,10 +176,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         results = _search_results(payload)
         if len(results) != 1:
-            raise AnsibleError(
-                "Expected exactly one organization named '%s' on %s, got %s"
-                % (organization, service, len(results))
-            )
+            raise AnsibleError("Expected exactly one organization named '%s' on %s, got %s" % (organization, service, len(results)))
         return _result_id(results[0], organization, "organizations")
 
     def _resolve_named_object_id(self, manager, obj):
@@ -194,18 +191,12 @@ class ActionModule(BaseResourceActionPlugin):
                 raise AnsibleError("organization is not supported for Hub types such as '%s'" % obj_type)
             if service == "controller" and obj_type not in _CONTROLLER_ORG_TYPES:
                 raise AnsibleError(
-                    "organization is not supported for Controller type '%s'; supported: %s"
-                    % (obj_type, ", ".join(sorted(_CONTROLLER_ORG_TYPES)))
+                    "organization is not supported for Controller type '%s'; supported: %s" % (obj_type, ", ".join(sorted(_CONTROLLER_ORG_TYPES)))
                 )
             if service == "eda" and obj_type not in _EDA_ORG_TYPES:
-                raise AnsibleError(
-                    "organization is not supported for EDA type '%s'; supported: %s"
-                    % (obj_type, ", ".join(sorted(_EDA_ORG_TYPES)))
-                )
+                raise AnsibleError("organization is not supported for EDA type '%s'; supported: %s" % (obj_type, ", ".join(sorted(_EDA_ORG_TYPES))))
             if service == "gateway" and obj_type not in _GATEWAY_ORG_TYPES:
-                raise AnsibleError(
-                    "organization is only supported for Gateway type 'teams' (got '%s')" % obj_type
-                )
+                raise AnsibleError("organization is only supported for Gateway type 'teams' (got '%s')" % obj_type)
 
         org_id = None
         if organization:
@@ -240,10 +231,7 @@ class ActionModule(BaseResourceActionPlugin):
             results = _search_results(payload)
             results = [r for r in results if _matches_org(r, org_id)]
             if len(results) != 1:
-                raise ValueError(
-                    "Expected exactly one team named '%s' in organization '%s', got %s"
-                    % (name, organization, len(results))
-                )
+                raise ValueError("Expected exactly one team named '%s' in organization '%s', got %s" % (name, organization, len(results)))
             return str(_result_id(results[0], name, "teams"))
 
         return str(manager.lookup_resource_id(lookup_path, "name", name))
@@ -407,11 +395,7 @@ class ActionModule(BaseResourceActionPlugin):
     def _run_standard(self, result, manager, argspec, validated_params, state):
         from dataclasses import asdict
 
-        resource_data = {
-            k: v
-            for k, v in validated_params.items()
-            if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"
-        }
+        resource_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"}
         resource_data = self._resolve_fks_to_strings(manager, resource_data)
 
         if "object_id" in resource_data and resource_data["object_id"] is not None:
