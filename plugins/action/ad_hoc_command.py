@@ -14,7 +14,9 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import dataclasses
 import time
+from typing import Any, Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -55,7 +57,8 @@ class ActionModule(BaseResourceActionPlugin):
             timeout = validated_params.get("timeout")
 
             resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
-            resource = self.MODEL_CLASS(**{k: v for k, v in resource_data.items() if hasattr(self.MODEL_CLASS, k)})
+            model_fields = {f.name for f in dataclasses.fields(self.MODEL_CLASS)}
+            resource = self.MODEL_CLASS(**{k: v for k, v in resource_data.items() if k in model_fields})
             ansible_data = self._build_ansible_data(resource, validated_params, "create")
 
             launch_result = manager.execute(
@@ -108,7 +111,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _wait_for_completion(self, manager, command_id: int, interval: float = 2.0, timeout: float = None) -> str:
+    def _wait_for_completion(self, manager: Any, command_id: int, interval: float = 2.0, timeout: Optional[float] = None) -> str:
         """Poll the controller API until the ad hoc command finishes.
 
         Args:

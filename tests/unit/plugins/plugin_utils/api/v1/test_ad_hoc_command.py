@@ -202,6 +202,7 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
             "verbosity": 2,
             "become_enabled": True,
             "diff_mode": False,
+            "execution_environment": 30,
         }
 
         result = AdHocCommandTransformMixin_v1.from_api(api_response, context)
@@ -212,6 +213,7 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
         self.assertEqual(result.inventory, "10")
         self.assertEqual(result.credential, "20")
         self.assertTrue(result.become_enabled)
+        self.assertEqual(result.execution_environment, "30")
 
     def test_endpoint_operations(self):
         ops = AdHocCommandTransformMixin_v1.get_endpoint_operations()
