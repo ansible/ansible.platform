@@ -84,6 +84,7 @@ class ActionModule(BaseResourceActionPlugin):
             status = self._wait_for_completion(
                 manager,
                 command_id,
+                ansible_data=ansible_data,
                 interval=interval,
                 timeout=timeout,
             )
@@ -111,12 +112,15 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _wait_for_completion(self, manager: Any, command_id: int, interval: float = 2.0, timeout: Optional[float] = None) -> str:
+    def _wait_for_completion(
+        self, manager: Any, command_id: int, ansible_data: dict, interval: float = 2.0, timeout: Optional[float] = None
+    ) -> str:
         """Poll the controller API until the ad hoc command finishes.
 
         Args:
             manager: The RPC client / manager instance.
             command_id: The ad hoc command ID to poll.
+            ansible_data: Full resource dict (must include all required model fields).
             interval: Seconds between polls.
             timeout: Maximum seconds to wait (None = no limit).
 
@@ -126,13 +130,14 @@ class ActionModule(BaseResourceActionPlugin):
         Raises:
             AnsibleError: If the timeout is exceeded.
         """
+        find_data = dict(ansible_data, id=command_id)
         start = time.monotonic()
 
         while True:
             response = manager.execute(
                 operation="find",
                 module_name=self.MODULE_NAME,
-                ansible_data={"id": command_id},
+                ansible_data=find_data,
             )
             finished = response.get("finished") or response.get("event_processing_finished")
             if finished:
