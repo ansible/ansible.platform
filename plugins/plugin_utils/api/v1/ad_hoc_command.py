@@ -76,6 +76,7 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: TransformContext) -> AnsibleAdHocCommand:
         """Reverse: API response -> Ansible model."""
+        ee = api_data.get("execution_environment")
         return AnsibleAdHocCommand(
             id=api_data.get("id"),
             inventory=str(api_data.get("inventory", "")),
@@ -89,6 +90,7 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
             verbosity=api_data.get("verbosity"),
             become_enabled=api_data.get("become_enabled"),
             diff_mode=api_data.get("diff_mode"),
+            execution_environment=str(ee) if ee is not None else None,
             finished=api_data.get("finished"),
             event_processing_finished=api_data.get("event_processing_finished"),
         )
