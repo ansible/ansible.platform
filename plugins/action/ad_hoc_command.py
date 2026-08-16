@@ -112,9 +112,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _wait_for_completion(
-        self, manager: Any, command_id: int, ansible_data: dict, interval: float = 2.0, timeout: Optional[float] = None
-    ) -> str:
+    def _wait_for_completion(self, manager: Any, command_id: int, ansible_data: dict, interval: float = 2.0, timeout: Optional[float] = None) -> str:
         """Poll the controller API until the ad hoc command finishes.
 
         Args:
