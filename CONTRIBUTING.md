@@ -27,5 +27,14 @@ See [`docs/`](docs/) for architecture, coding standards, testing strategy, and t
 
 Before changing `plugins/action/` or adding controller/awx migrations, read
 [`docs/09-agent-collaboration.md`](docs/09-agent-collaboration.md) §10 (SDK execution
-invariants). Run `make check_action_plugin_invariants` before opening a PR. Resource
-logic belongs in transform mixins so playbooks, MCP, and other SDK consumers share one path.
+invariants) and [`docs/07-adding-resources.md`](docs/07-adding-resources.md) §4c (launch/job
+wait). Run `make check_action_plugin_invariants` before opening a PR. Resource logic belongs
+in transform mixins and `PlatformService.execute()` so playbooks, MCP, and other SDK
+consumers share one path.
+
+**Checklist for controller migrations and launch modules:**
+
+- [ ] No `manager.session` or `requests` in action plugins (`make check_action_plugin_invariants`)
+- [ ] No wait/poll loops (`time.sleep`, `_wait_for_*`) in action plugins — use PlatformService
+- [ ] Every option in module `DOCUMENTATION` (including `wait`, `interval`, `timeout`) works via
+      `PlatformService.execute()`, not only through the action plugin

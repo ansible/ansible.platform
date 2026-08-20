@@ -404,3 +404,5 @@ For deeper dives beyond onboarding, point the engineer to:
   Associations, surveys, and copy workflows go in the transform mixin so MCP (#206)
   and other SDK consumers stay in parity. Run `make check_action_plugin_invariants`.
   Read `docs/09-agent-collaboration.md` §10 before customizing `plugins/action/`.
+- **Never poll job status in action plugins.** `wait` / `interval` / `timeout` belong in
+  `PlatformService.execute()` (see `docs/07-adding-resources.md` §4c and PR #227).

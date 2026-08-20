@@ -171,7 +171,7 @@ molecule test -s <resource>_mock
 # Run linting
 ansible-test sanity --docker -v
 
-# Verify action plugins do not call HTTP directly
+# Verify action plugins do not call HTTP directly or poll job status
 make check_action_plugin_invariants
 
 # Check registry discovers your module

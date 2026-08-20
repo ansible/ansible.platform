@@ -2,6 +2,7 @@
 doc_changes:
   - docs - Document SDK execution invariants so resource logic stays in transform
     mixins and PlatformService.execute(), preserving parity for MCP and other
-    non-Ansible SDK consumers. Update agent onboarding skill and add CI check for
-    HTTP in action plugins.
+    non-Ansible SDK consumers. Add invariant 7 (wait/poll in PlatformService),
+    launch-module guidance (§4c, cross-ref PR 227), and CI checks for HTTP and
+    Ansible-only poll loops in action plugins.
 ...

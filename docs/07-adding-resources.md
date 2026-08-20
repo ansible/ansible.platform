@@ -379,6 +379,37 @@ CLI tools share one implementation.
 
 ---
 
+## SECTION 4c: Launch and Job Modules (Wait / Poll)
+
+Controller launch modules (`ad_hoc_command`, future `job_launch`, `project_update`, etc.)
+POST a job-like resource and optionally block until completion. These are **not** CRUD
+resources — every invocation creates a new execution — but they still must obey SDK
+consumer parity ([#206](https://github.com/ansible/ansible.platform/pull/206)).
+
+**Do**:
+
+- Document `wait`, `interval`, and `timeout` in module `DOCUMENTATION` when parity with
+  `awx.awx` / `ansible.controller` requires them.
+- Implement wait semantics in **`PlatformService.execute()`**: pop action-only params
+  before instantiating the Ansible dataclass, call create via the mixin, then poll with a
+  **shared** SDK helper (mixin hooks supply `is_finished()` / failure status rules).
+- Keep the action plugin thin — Pattern A is enough when the SDK handles launch + wait.
+
+**Do not**:
+
+- Add `_wait_for_completion()` or `time.sleep()` poll loops in `plugins/action/`. MCP and
+  other SDK consumers never import action plugins; wait logic there is Ansible-only.
+- Treat a correct `manager.execute()` launch as sufficient when `wait` is documented but
+  unimplemented in the SDK — that breaks MCP `execute` mode while playbooks appear to work.
+
+**Reference**: [#227](https://github.com/ansible/ansible.platform/pull/227) ports
+`ad_hoc_command` with solid mixin/transform coverage but places wait/poll in the action
+plugin — a documentation and placement miss, not a direct-HTTP violation like
+[#228](https://github.com/ansible/ansible.platform/pull/228). Guidance and CI checks are
+added in [#239](https://github.com/ansible/ansible.platform/pull/239).
+
+---
+
 ## SECTION 4b: Document Fragment Registration (`plugins/doc_fragments/`)
 
 If your resource introduces a new connection-level or authentication option (like `gateway_idle_timeout`), it must be registered in the documentation fragment so it appears in `ansible-doc` output.

@@ -42,7 +42,7 @@ check_mypy:
 check_pydoclint:
 	tox -e pydoclint
 
-## Fail if action plugins contain direct HTTP (manager.session, requests, etc.)
+## Fail if action plugins contain direct HTTP or Ansible-only wait/poll logic
 check_action_plugin_invariants:
 	@bash tools/check_action_plugin_invariants.sh
 

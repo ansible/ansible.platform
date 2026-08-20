@@ -103,11 +103,14 @@ Logic trapped in a custom action plugin (especially direct `manager.session` HTT
 |------|----------------|---------------|
 | Field mapping, FK resolution | Transform mixin | Pattern A (default) |
 | Associations, surveys, copy, secondary endpoints | Mixin `get_endpoint_operations()` / hooks | Pattern B hooks only |
+| Launch/job wait (`wait`, `interval`, `timeout`) | `PlatformService.execute()` + shared poller | Pattern A (pass-through) |
 | Multi-step Ansible orchestration | Thin custom `run()` calling `manager.execute()` | Pattern C |
 
 **Test**: If MCP `execute` mode (or a standalone SDK script) cannot perform the same
 operation as a playbook task, the implementation belongs in the SDK layer, not the
-action plugin.
+action plugin. A launch module that documents `wait: true` but only polls in the action
+plugin fails this test — see
+[#227](https://github.com/ansible/ansible.platform/pull/227).
 
 See [09-agent-collaboration.md](09-agent-collaboration.md) §10 for agent invariants and
 `make check_action_plugin_invariants` for CI enforcement.

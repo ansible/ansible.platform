@@ -524,10 +524,18 @@ them produces Ansible-only modules that break MCP and other SDK consumers
    **not** new HTTP in the action plugin.
 5. **SDK consumer parity** — If a playbook task accepts a module option, MCP `execute`
    mode must be able to apply it without importing action plugins.
-6. **Review gate** — If an action plugin exceeds ~50 lines or references `manager.session`,
+6. **Review gate** — If an action plugin exceeds ~50 lines, references `manager.session`,
+   implements a poll loop, or fully overrides `run()` without delegating to the base class,
    stop and move logic into the transform mixin / `PlatformService`.
+7. **Wait and poll in PlatformService** — Module options such as `wait`, `interval`, and
+   `timeout` (common on launch/job controller modules) must be handled inside
+   `PlatformService.execute()` — pop them before building the Ansible dataclass, launch via
+   the mixin, then poll with a **shared** SDK helper. Action plugins must not define
+   `_wait_for_completion()` or use `time.sleep()` to poll job status. MCP and other SDK
+   consumers call `execute()` only; wait logic trapped in an action plugin is Ansible-only
+   (see [#227](https://github.com/ansible/ansible.platform/pull/227) for a concrete example).
 
-CI enforces invariant 2 locally and in PR checks:
+CI enforces invariants 2 and 7 locally and in PR checks:
 
 ```bash
 make check_action_plugin_invariants
@@ -561,7 +569,30 @@ survey, and copy logic in the transform mixin.
 
 ---
 
-### 2. Do not hardcode version lists
+### 2. Do not implement wait/poll loops in action plugins
+
+**Wrong:**
+```python
+# plugins/action/ad_hoc_command.py — Ansible-only; MCP cannot wait (#227)
+def _wait_for_completion(self, manager, command_id, ...):
+    while True:
+        response = manager.execute(operation="find", ...)
+        if response.get("finished"):
+            return response.get("status")
+        time.sleep(interval)
+```
+
+**Right:** Pop `wait` / `interval` / `timeout` in `PlatformService.execute()`, launch via
+the transform mixin, then call a shared `wait_for_completion()` helper in the SDK. The
+action plugin stays thin (Pattern A or B) or passes params through without polling.
+See [07-adding-resources.md](07-adding-resources.md) §4c.
+
+This is a **documentation and placement** issue, not a ban on `manager.execute()` — #227
+uses the SDK path correctly for HTTP but places wait semantics where MCP cannot see them.
+
+---
+
+### 3. Do not hardcode version lists
 
 **Wrong:**
 ```python
@@ -572,7 +603,7 @@ SUPPORTED_VERSIONS = ["1", "2"]
 
 ---
 
-### 3. Do not skip doc_fragments for new options
+### 4. Do not skip doc_fragments for new options
 
 **Wrong:**
 ```python
@@ -584,7 +615,7 @@ SUPPORTED_VERSIONS = ["1", "2"]
 
 ---
 
-### 4. Do not use `int()` directly on environment variables
+### 5. Do not use `int()` directly on environment variables
 
 **Wrong:**
 ```python
@@ -600,7 +631,7 @@ The float intermediary prevents `int()` from choking on scientific notation or e
 
 ---
 
-### 5. Do not compare names to IDs for reference fields
+### 6. Do not compare names to IDs for reference fields
 
 **Wrong:**
 ```python
@@ -621,7 +652,7 @@ See Design Principle 7.
 
 ---
 
-### 6. Do not forget write-only fields in idempotency
+### 7. Do not forget write-only fields in idempotency
 
 **Wrong:**
 ```python
@@ -640,7 +671,7 @@ if ansible_instance.password is not None:
 
 ---
 
-### 7. Do not use `fields_to_null` without understanding AAP semantics
+### 8. Do not use `fields_to_null` without understanding AAP semantics
 
 **Wrong:**
 ```python
