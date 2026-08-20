@@ -212,6 +212,12 @@
 
 # ── Test 4: inventory aap_ca_bundle=/dev/null forces SSL failure ───────────────
 # Proves inventory-native CA bundle forwarding without per-task environment:.
+- name: Capture pre-test inventory CA bundle fact
+  ansible.builtin.set_fact:
+    _ssl_test_orig_aap_ca_bundle_defined: "{{ aap_ca_bundle is defined }}"
+    _ssl_test_orig_aap_ca_bundle: "{{ aap_ca_bundle | default('') }}"
+  when: not _skip_forwarding_tests | bool
+
 - name: "TEST 4: aap_ca_bundle=/dev/null must produce SSL error"
   when: not _skip_forwarding_tests | bool
   block:
@@ -245,9 +251,16 @@
         success_msg: >-
           TEST 4 PASSED: inventory aap_ca_bundle=/dev/null caused SSL error as expected.
 
-    - name: Clear inventory CA bundle fact
+  always:
+    - name: Restore inventory CA bundle fact after test 4
       ansible.builtin.set_fact:
-        aap_ca_bundle: null
+        aap_ca_bundle: "{{ _ssl_test_orig_aap_ca_bundle }}"
+      when: _ssl_test_orig_aap_ca_bundle_defined | bool
+
+    - name: Remove inventory CA bundle fact after test 4
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ omit }}"
+      when: not (_ssl_test_orig_aap_ca_bundle_defined | bool)
 
 # ── Test 5: inventory aap_ca_bundle with real CA bundle succeeds ───────────────
 - name: "TEST 5: aap_ca_bundle=<real CA bundle> allows SSL to succeed"
@@ -288,10 +301,16 @@
           TEST 5 PASSED: inventory aap_ca_bundle allowed SSL verification to succeed.
       when: _inventory_ca_bundle_stat.stat.exists
 
-    - name: Clear inventory CA bundle fact
+  always:
+    - name: Restore inventory CA bundle fact after test 5
       ansible.builtin.set_fact:
-        aap_ca_bundle: null
-      when: _inventory_ca_bundle_stat.stat.exists
+        aap_ca_bundle: "{{ _ssl_test_orig_aap_ca_bundle }}"
+      when: _ssl_test_orig_aap_ca_bundle_defined | bool
+
+    - name: Remove inventory CA bundle fact after test 5
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ omit }}"
+      when: not (_ssl_test_orig_aap_ca_bundle_defined | bool)
 
 - name: "TEST 5 SKIPPED"
   ansible.builtin.debug:

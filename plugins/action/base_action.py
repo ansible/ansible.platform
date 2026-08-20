@@ -285,6 +285,9 @@ class BaseResourceActionPlugin(ActionBase):
             "aap_token",
             "aap_validate_certs",
             "aap_request_timeout",
+            "aap_ca_bundle",
+            "gateway_ca_bundle",
+            "ansible_platform_ca_bundle",
         }
     )
     _ANSIBLE_DIRECTIVES = frozenset({"state", "new_name"})

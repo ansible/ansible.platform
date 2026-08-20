@@ -69,6 +69,14 @@ class BaseAPIClient(ABC):
             return ca_bundle
         return True
 
+    def _ansible_tls_kwargs(self, verify=None):
+        """Map TLS verify setting to Ansible Request validate_certs/ca_path kwargs."""
+        if verify is None:
+            verify = self.requests_verify
+        if isinstance(verify, str):
+            return {"validate_certs": True, "ca_path": verify}
+        return {"validate_certs": bool(verify), "ca_path": None}
+
     @abstractmethod
     def _detect_api_version(self) -> str:
         """

@@ -310,15 +310,20 @@ class ProcessManager:
         4. Deprecated ``SSL_CERT_FILE`` → ``REQUESTS_CA_BUNDLE`` shim
         """
         env = os.environ.copy()
+        shell_had_requests_ca = "REQUESTS_CA_BUNDLE" in os.environ
+
         if task_env:
-            env.update({k: str(v) for k, v in task_env.items() if v is not None})
+            filtered_task_env = {k: str(v) for k, v in task_env.items() if v is not None}
+            if shell_had_requests_ca and "REQUESTS_CA_BUNDLE" in filtered_task_env:
+                filtered_task_env = {k: v for k, v in filtered_task_env.items() if k != "REQUESTS_CA_BUNDLE"}
+            env.update(filtered_task_env)
             logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
 
-        if gateway_config.verify_ssl and gateway_config.ca_bundle and not env.get("REQUESTS_CA_BUNDLE"):
+        if gateway_config.verify_ssl and gateway_config.ca_bundle and "REQUESTS_CA_BUNDLE" not in env:
             env["REQUESTS_CA_BUNDLE"] = gateway_config.ca_bundle
             logger.debug("Applied inventory CA bundle to manager subprocess REQUESTS_CA_BUNDLE")
 
-        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
+        if env.get("SSL_CERT_FILE") and "REQUESTS_CA_BUNDLE" not in env:
             env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
             logger.warning(
                 "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "

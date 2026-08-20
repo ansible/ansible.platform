@@ -50,6 +50,14 @@ class TestMergeManagerEnvironment(unittest.TestCase):
         )
         self.assertEqual(env["REQUESTS_CA_BUNDLE"], "/tmp/shell-ca.pem")
 
+    @patch.dict("os.environ", {"REQUESTS_CA_BUNDLE": "/tmp/shell-ca.pem"}, clear=True)
+    def test_existing_shell_env_overrides_task_env_for_requests_ca_bundle(self):
+        env = ProcessManager.merge_manager_environment(
+            self._config(ca_bundle="/tmp/inventory-ca.pem"),
+            task_env={"REQUESTS_CA_BUNDLE": "/tmp/task-ca.pem"},
+        )
+        self.assertEqual(env["REQUESTS_CA_BUNDLE"], "/tmp/shell-ca.pem")
+
     @patch.dict("os.environ", {}, clear=True)
     def test_ca_bundle_not_applied_when_verify_disabled(self):
         env = ProcessManager.merge_manager_environment(
