@@ -59,7 +59,15 @@ class BaseAPIClient(ABC):
     @property
     def requests_verify(self):
         """TLS verify parameter for HTTP clients (bool or CA bundle path)."""
-        return self.config.requests_verify
+        config = getattr(self, "config", None)
+        if config is not None:
+            return config.requests_verify
+        if not getattr(self, "verify_ssl", True):
+            return False
+        ca_bundle = getattr(self, "ca_bundle", None)
+        if ca_bundle:
+            return ca_bundle
+        return True
 
     @abstractmethod
     def _detect_api_version(self) -> str:
