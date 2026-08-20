@@ -154,7 +154,7 @@ plugins/
   action/              # Action plugins (one per resource entity)
     base_action.py     # Base class — ALL action plugins inherit from this
     organization.py    # Pattern A: 3 lines (simplest)
-    user.py            # Pattern C: fully custom (most complex)
+    user.py            # Pattern C: thin run() orchestration (still uses manager.execute())
   modules/             # Module doc stubs (DOCUMENTATION + EXAMPLES only)
   connection/
     http.py            # Connection plugin — persistent vs direct mode routing
@@ -189,9 +189,10 @@ Read `docs/07-adding-resources.md` briefly and explain:
   `organization.py`. Used when fields map 1:1 to API.
 - **Pattern B** (hook-based): Overrides specific hooks (`_pre_create`,
   `_post_update`). Used when you need side effects or extra validation.
-- **Pattern C** (fully custom): Overrides `execute()` entirely. Example:
-  `user.py`. Used for complex resources with write-only fields, multiple
-  endpoints, or non-standard workflows.
+- **Pattern C** (orchestration): Overrides `run()` for multi-step workflows that still
+  call `manager.execute()` only. Example: `user.py`. **Not** for HTTP, associations,
+  or secondary endpoints — those belong in the transform mixin (see
+  `docs/09-agent-collaboration.md` §10 and `docs/07-adding-resources.md` §4a).
 
 ### Exercise 3
 
@@ -356,6 +357,7 @@ After all five phases, the engineer should be able to answer:
 - [ ] How does the persistent manager subprocess work?
 - [ ] Where do action plugins, ansible models, and API models live in the tree?
 - [ ] What are the three plugin patterns (A, B, C) and when to use each?
+- [ ] What are the SDK execution invariants (no HTTP in action plugins; MCP parity)?
 - [ ] What are the seven files needed for a new resource module?
 - [ ] How to run unit tests, Molecule tests, and integration tests?
 - [ ] What's the PR workflow (Jira reference, labels, approvals, CasC)?
@@ -398,3 +400,7 @@ For deeper dives beyond onboarding, point the engineer to:
 - **Verify endpoint paths match the service type.** EDA uses `/api/eda/v1/`,
   not `/api/gateway/v1/`. This is the single most common mistake when adding
   non-Gateway modules. The generator handles this automatically.
+- **Never add HTTP to action plugins.** No `manager.session`, no `import requests`.
+  Associations, surveys, and copy workflows go in the transform mixin so MCP (#206)
+  and other SDK consumers stay in parity. Run `make check_action_plugin_invariants`.
+  Read `docs/09-agent-collaboration.md` §10 before customizing `plugins/action/`.

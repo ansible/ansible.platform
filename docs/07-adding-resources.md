@@ -345,6 +345,40 @@ class ActionModule(BaseResourceActionPlugin):
 
 ---
 
+## SECTION 4a: Secondary Endpoints, Associations, and Controller Resources
+
+When a resource needs behavior beyond a single CRUD endpoint — association sub-resources
+(`credentials`, `labels`, `instance_groups`), secondary endpoints (`survey_spec`),
+copy workflows (`copy_from`), or controller-service paths (`/api/controller/v2/`) —
+implement that logic in the **transform mixin** and `PlatformService`, not in the action
+plugin.
+
+**Do**:
+
+- Declare secondary operations in `get_endpoint_operations()` (see [Common Patterns
+  Catalog — Pattern 6](#pattern-6-secondary-endpoint-post-create-operation)).
+- Resolve association names to IDs in `from_ansible_data()` using
+  `context.manager.lookup_resource_id()`.
+- Keep write-only / side-effect parameters in `_WRITE_ONLY_FIELDS` on the action plugin
+  so they are stripped before model instantiation.
+- Use Pattern B hooks (`_pre_execute_hook`, `_post_create`) only to orchestrate
+  **additional `manager.execute()` calls** when the SDK requires multiple steps.
+
+**Do not**:
+
+- Call `manager.session.get/post/delete` from `plugins/action/` (forbidden — see
+  [05-design-principles.md](05-design-principles.md) §1 and §3a).
+- Hardcode API paths in the action plugin; paths belong in the mixin / registry layer.
+- Add a large custom `run()` to implement HTTP that MCP and other SDK consumers cannot
+  reach (see [09-agent-collaboration.md](09-agent-collaboration.md) §10).
+
+Controller migrations from `awx.awx` / `ansible.controller` often need this section:
+awx modules historically bundled association and survey logic in the module/action layer.
+In `ansible.platform`, that parity work belongs in the SDK so playbooks, MCP, and future
+CLI tools share one implementation.
+
+---
+
 ## SECTION 4b: Document Fragment Registration (`plugins/doc_fragments/`)
 
 If your resource introduces a new connection-level or authentication option (like `gateway_idle_timeout`), it must be registered in the documentation fragment so it appears in `ansible-doc` output.

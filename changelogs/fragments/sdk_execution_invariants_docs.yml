@@ -1,0 +1,7 @@
+---
+doc_changes:
+  - docs - Document SDK execution invariants so resource logic stays in transform
+    mixins and PlatformService.execute(), preserving parity for MCP and other
+    non-Ansible SDK consumers. Update agent onboarding skill and add CI check for
+    HTTP in action plugins.
+...

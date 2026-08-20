@@ -505,6 +505,36 @@ Which documents to read for which task:
 
 ---
 
+## SECTION 10: SDK Execution Invariants (Agents and Contributors)
+
+These invariants complement [05-design-principles.md](05-design-principles.md). Violating
+them produces Ansible-only modules that break MCP and other SDK consumers
+(see [#206](https://github.com/ansible/ansible.platform/pull/206)).
+
+1. **Single execution path** — All API behavior must be reachable via
+   `PlatformService.execute(operation, module_name, params)`.
+2. **No network I/O in action plugins** — Forbidden in `plugins/action/`:
+   `import requests`, `manager.session`, `session.get/post/delete/patch`, and hardcoded
+   API URL strings used for HTTP.
+3. **Secondary endpoints live in the mixin** — Associations, surveys, copy workflows, and
+   sub-resources belong in `get_endpoint_operations()`, mixin hooks, and
+   `TransformContext.manager` — not in the action plugin.
+4. **Pattern selection** — Default to Pattern A. Use Pattern B hooks for orchestration.
+   Pattern C means a thin custom `run()` that calls `manager.execute()` multiple times —
+   **not** new HTTP in the action plugin.
+5. **SDK consumer parity** — If a playbook task accepts a module option, MCP `execute`
+   mode must be able to apply it without importing action plugins.
+6. **Review gate** — If an action plugin exceeds ~50 lines or references `manager.session`,
+   stop and move logic into the transform mixin / `PlatformService`.
+
+CI enforces invariant 2 locally and in PR checks:
+
+```bash
+make check_action_plugin_invariants
+```
+
+---
+
 ## SECTION 11: Do Not — Anti-Patterns to Avoid
 
 Stop the agent immediately if it attempts any of these:
@@ -513,15 +543,21 @@ Stop the agent immediately if it attempts any of these:
 
 **Wrong:**
 ```python
-# plugins/action/user.py
+# plugins/action/job_template.py
 import requests
-
 
 def run(self):
     response = requests.post("http://...")  # NO!
+
+# Also wrong — bypasses PlatformService.execute() and breaks MCP (#206)
+def _handle_associations(self, manager, jt_id, ...):
+    manager.session.get(manager._build_url("/api/controller/v2/..."))
+    manager.session.post(...)
 ```
 
-**Right:** All HTTP lives in PlatformService inside the manager process. Action plugins call `manager.execute()` only.
+**Right:** All HTTP lives in PlatformService inside the manager process. Action plugins
+call `manager.execute()` and `manager.lookup_resource_id()` only. Put association,
+survey, and copy logic in the transform mixin.
 
 ---
 

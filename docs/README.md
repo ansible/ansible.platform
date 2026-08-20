@@ -24,7 +24,8 @@ Start with [07-adding-resources.md](07-adding-resources.md) to add a new platfor
 
 ### For AI Agents
 
-Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand personas, phases, and quality gates.
+Load [09-agent-collaboration.md](09-agent-collaboration.md) first — especially **§10 SDK
+execution invariants** — to understand personas, phases, and quality gates.
 
 ---
 
@@ -36,7 +37,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | 02 | [02-action-plugin-pattern.md](02-action-plugin-pattern.md) | All | States (present/absent/exists/enforced), entities vs endpoints, convergence contract |
 | 03 | [03-sdk-architecture.md](03-sdk-architecture.md) | Architects / Senior devs | Persistent connection manager, two connection modes, RPC interface, directory structure |
 | 04 | [04-data-model-transformation.md](04-data-model-transformation.md) | Framework devs | Three-tier data flow, Ansible model, API model, transform mixin, ref fields, case studies |
-| 05 | [05-design-principles.md](05-design-principles.md) | All devs | 10 rules governing every decision, quality checklist, human-in-the-loop triggers |
+| 05 | [05-design-principles.md](05-design-principles.md) | All devs | Design rules, SDK consumer parity, quality checklist, human-in-the-loop triggers |
 | 06 | [06-foundation-components.md](06-foundation-components.md) | Framework devs | Full spec: Registry, Loader, BaseTransformMixin, GatewayConfig, PlatformService, PlatformManager, ManagerRPCClient, BaseResourceActionPlugin |
 | 07 | [07-adding-resources.md](07-adding-resources.md) | Feature devs | Step-by-step 7-file workflow, complete example, common patterns catalog, PR checklist |
 | 08 | [08-testing-strategy.md](08-testing-strategy.md) | All devs / QE | Three-layer strategy: unit (pytest), Molecule mock, integration; CI workflows; linting |

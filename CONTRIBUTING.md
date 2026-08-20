@@ -22,3 +22,10 @@ If your change adds a module, alters auth or return values, or deprecates anythi
 ---
 
 See [`docs/`](docs/) for architecture, coding standards, testing strategy, and the full module workflow.
+
+### AI agents and automated contributors
+
+Before changing `plugins/action/` or adding controller/awx migrations, read
+[`docs/09-agent-collaboration.md`](docs/09-agent-collaboration.md) §10 (SDK execution
+invariants). Run `make check_action_plugin_invariants` before opening a PR. Resource
+logic belongs in transform mixins so playbooks, MCP, and other SDK consumers share one path.
