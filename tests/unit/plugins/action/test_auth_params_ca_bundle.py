@@ -36,11 +36,7 @@ class TestAuthParamsCaBundle(unittest.TestCase):
             "ansible_platform_ca_bundle": "/tmp/platform-ca.pem",
             "gateway_hostname": "https://gateway.example",
         }
-        resource_data = {
-            k: v
-            for k, v in validated_params.items()
-            if v is not None and k not in BaseResourceActionPlugin._AUTH_PARAMS
-        }
+        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in BaseResourceActionPlugin._AUTH_PARAMS}
 
         self.assertEqual(resource_data, {"name": "ssl-env-test-org"})
         for key in self._CA_BUNDLE_KEYS:

@@ -55,8 +55,10 @@ options:
     - When set with C(aap_validate_certs=true), the collection forwards this path to the
       manager subprocess as E(REQUESTS_CA_BUNDLE) so private or enterprise CA chains work
       without installing trust material in the system CA store.
-    - Task parameters override inventory variables. Task or play C(environment) values for
-      E(REQUESTS_CA_BUNDLE) override this inventory variable.
+    - This parameter is authentication-only and is stripped before the resource API model
+      is instantiated (see C(BaseResourceActionPlugin._AUTH_PARAMS)).
+    - Precedence for E(REQUESTS_CA_BUNDLE) is control-node shell environment, then task
+      or play C(environment), then this inventory variable.
     type: path
     aliases: [ gateway_ca_bundle, ansible_platform_ca_bundle ]
   aap_request_timeout:
