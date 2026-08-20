@@ -109,6 +109,12 @@ jobs:
         run: ansible-doc --version
         if: failure()
 
+  changelog:
+    uses: ansible/ansible-content-actions/.github/workflows/changelog.yaml@main
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+
   ansible-lint:
     name: Run ansible-lint
     runs-on: ubuntu-latest
