@@ -253,20 +253,8 @@ class ProcessManager:
         sys_path_json = json.dumps(sys_path)
         sys_path_b64 = base64.b64encode(sys_path_json.encode("utf-8")).decode("utf-8")
 
-        # Build subprocess environment: shell env + task-level overrides.
-        env = os.environ.copy()
-        if task_env:
-            env.update({k: str(v) for k, v in task_env.items() if v is not None})
-            logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
-
-        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
-            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
-            logger.warning(
-                "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "
-                "The manager subprocess uses the requests library which reads REQUESTS_CA_BUNDLE, not SSL_CERT_FILE. "
-                "Please set REQUESTS_CA_BUNDLE directly in your environment block. "
-                "SSL_CERT_FILE support will be removed in a future release."
-            )
+        # Build subprocess environment: shell env + task-level overrides + inventory CA bundle.
+        env = ProcessManager.merge_manager_environment(gateway_config, task_env=task_env)
 
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
@@ -310,6 +298,36 @@ class ProcessManager:
 
             logger.error(traceback.format_exc())
             raise RuntimeError(f"Failed to start manager process: {e}") from e
+
+    @staticmethod
+    def merge_manager_environment(gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> dict:
+        """Build the manager subprocess environment for TLS and proxy settings.
+
+        Precedence for ``REQUESTS_CA_BUNDLE``:
+        1. Existing control-node shell environment
+        2. Task/play ``environment:`` block (``task_env``)
+        3. Inventory ``aap_ca_bundle`` / aliases when ``verify_ssl`` is enabled
+        4. Deprecated ``SSL_CERT_FILE`` → ``REQUESTS_CA_BUNDLE`` shim
+        """
+        env = os.environ.copy()
+        if task_env:
+            env.update({k: str(v) for k, v in task_env.items() if v is not None})
+            logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
+
+        if gateway_config.verify_ssl and gateway_config.ca_bundle and not env.get("REQUESTS_CA_BUNDLE"):
+            env["REQUESTS_CA_BUNDLE"] = gateway_config.ca_bundle
+            logger.debug("Applied inventory CA bundle to manager subprocess REQUESTS_CA_BUNDLE")
+
+        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
+            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
+            logger.warning(
+                "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "
+                "The manager subprocess uses the requests library which reads REQUESTS_CA_BUNDLE, not SSL_CERT_FILE. "
+                "Please set REQUESTS_CA_BUNDLE directly in your environment block. "
+                "SSL_CERT_FILE support will be removed in a future release."
+            )
+
+        return env
 
     @staticmethod
     def wait_for_process_startup(socket_path: str, socket_dir: Path, identifier: str, process: subprocess.Popen, max_wait: int = 50) -> None:

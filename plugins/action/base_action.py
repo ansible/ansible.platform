@@ -387,8 +387,8 @@ class BaseResourceActionPlugin(ActionBase):
         gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, required=True)
 
         # Collect task-level environment vars (e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, proxy
-        # settings) BEFORE dispatching so they can be forwarded to the manager subprocess
-        # regardless of which connection mode is in use (local, http-direct, http-persistent).
+        # settings) and inventory aap_ca_bundle BEFORE dispatching so they reach the manager
+        # subprocess regardless of which connection mode is in use (local, http-direct, http-persistent).
         task_env: dict = {}
         for _env_block in self._task.environment or []:
             if isinstance(_env_block, dict):

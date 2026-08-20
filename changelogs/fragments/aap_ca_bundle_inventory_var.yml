@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - auth - Add inventory variable ``aap_ca_bundle`` (aliases ``gateway_ca_bundle``,
+    ``ansible_platform_ca_bundle``) to supply a control-node CA bundle path for Gateway
+    TLS verification without per-task ``environment:`` blocks. The path is forwarded to
+    manager subprocesses as ``REQUESTS_CA_BUNDLE`` when ``aap_validate_certs`` is enabled.

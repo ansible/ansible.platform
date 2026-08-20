@@ -41,6 +41,7 @@ class BaseAPIClient(ABC):
         self.config = config
         self.base_url = config.base_url.rstrip("/")
         self.verify_ssl = config.verify_ssl
+        self.ca_bundle = config.ca_bundle
         self.request_timeout = config.request_timeout
 
         # Shared: Version detection infrastructure
@@ -54,6 +55,11 @@ class BaseAPIClient(ABC):
         self.cache: Dict[str, Any] = {}
 
         logger.info("BaseAPIClient initialized: base_url=%s, mode=%s", self.base_url, config.connection_mode)
+
+    @property
+    def requests_verify(self):
+        """TLS verify parameter for HTTP clients (bool or CA bundle path)."""
+        return self.config.requests_verify
 
     @abstractmethod
     def _detect_api_version(self) -> str:

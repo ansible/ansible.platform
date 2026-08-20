@@ -164,7 +164,7 @@ class PlatformService(BaseAPIClient):
             if "timeout" not in request_kwargs:
                 request_kwargs["timeout"] = self.request_timeout
             if "verify" not in request_kwargs:
-                request_kwargs["verify"] = self.verify_ssl
+                request_kwargs["verify"] = self.requests_verify
 
             session_method = getattr(self.session, method.lower())
 
@@ -214,7 +214,7 @@ class PlatformService(BaseAPIClient):
                 header = {"Authorization": f"Bearer {oauth_token}"}
                 self.session.headers.update(header)
                 try:
-                    response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+                    response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
                     response.raise_for_status()
                     self._last_auth_error = None
                 except requests.RequestException as e:
@@ -225,7 +225,7 @@ class PlatformService(BaseAPIClient):
                 header = {"Authorization": f"Basic {basic_str.decode('ascii')}"}
                 self.session.headers.update(header)
                 try:
-                    response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+                    response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
                     response.raise_for_status()
                     self._last_auth_error = None
                 except requests.RequestException as e:
@@ -269,7 +269,7 @@ class PlatformService(BaseAPIClient):
             try:
                 refresh_url = f"{self.base_url}/api/gateway/v1/auth/token/refresh/"
                 response = self.session.post(
-                    refresh_url, json={"refresh_token": token_info.refresh_token}, timeout=self.request_timeout, verify=self.verify_ssl
+                    refresh_url, json={"refresh_token": token_info.refresh_token}, timeout=self.request_timeout, verify=self.requests_verify
                 )
 
                 if response.status_code == 200:
@@ -386,7 +386,7 @@ class PlatformService(BaseAPIClient):
             ping_url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
             logger.debug("PlatformService: version detection tier-1 %s", ping_url)
 
-            response = self.session.get(ping_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(ping_url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
 
             # Only trust the X-API-Version header from the ping endpoint.
@@ -415,7 +415,7 @@ class PlatformService(BaseAPIClient):
             root_url = f"{self.base_url.rstrip('/')}/api/gateway/"
             logger.debug("PlatformService: version detection tier-2 %s", root_url)
 
-            response = self.session.get(root_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(root_url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
 
             v = _hdr_version(response)
@@ -798,7 +798,7 @@ class PlatformService(BaseAPIClient):
 
         url = self._build_url(path)
         logger.debug("Calling DELETE %s", url)
-        response = self.session.delete(url, timeout=self.request_timeout, verify=self.verify_ssl)
+        response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         return {"changed": True, "id": resource_id}
 
@@ -828,7 +828,7 @@ class PlatformService(BaseAPIClient):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
             url = self._build_url(get_op.path)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
@@ -863,7 +863,7 @@ class PlatformService(BaseAPIClient):
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
             url = self._build_url(get_op.path.replace("{id}", str(resolved_id)))
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
 
@@ -896,7 +896,7 @@ class PlatformService(BaseAPIClient):
                 query_params.update(composite_params)
             url = self._build_url(list_op.path, query_params=query_params)
             logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             list_result = response.json()
 
@@ -913,7 +913,7 @@ class PlatformService(BaseAPIClient):
             if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
                 full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])))
                 logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
-                full_response = self.session.get(full_url, timeout=self.request_timeout, verify=self.verify_ssl)
+                full_response = self.session.get(full_url, timeout=self.request_timeout, verify=self.requests_verify)
                 if full_response.ok:
                     api_result = full_response.json()
 
@@ -990,7 +990,7 @@ class PlatformService(BaseAPIClient):
                 with self._lock:
                     self._http_request_count += 1
 
-                response = self.session.request(endpoint_op.method, url, json=request_data, timeout=self.request_timeout, verify=self.verify_ssl)
+                response = self.session.request(endpoint_op.method, url, json=request_data, timeout=self.request_timeout, verify=self.requests_verify)
                 response.raise_for_status()
 
             except Exception as e:
@@ -1067,7 +1067,7 @@ class PlatformService(BaseAPIClient):
                 continue
 
             url = self._build_url("organizations", query_params={"name": name})
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             results = response.json().get("results", [])
 
@@ -1098,7 +1098,7 @@ class PlatformService(BaseAPIClient):
                 continue
 
             url = self._build_url(f"organizations/{org_id}/")
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             org = response.json()
 
@@ -1132,7 +1132,7 @@ class PlatformService(BaseAPIClient):
         if cache_key in self.cache:
             return self.cache[cache_key]
         url = self._build_url(endpoint, query_params={lookup_field: lookup_value})
-        response = self.session.get(url, timeout=self.request_timeout, verify=self.verify_ssl)
+        response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         results = response.json().get("results", [])
         if not results:
