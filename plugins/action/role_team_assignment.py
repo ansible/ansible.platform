@@ -177,9 +177,7 @@ class ActionModule(BaseResourceActionPlugin):
             if service == "hub":
                 raise AnsibleError("organization is not supported for Hub types such as '%s'" % obj_type)
             if service == "controller" and obj_type in _CONTROLLER_NON_ORG_TYPES:
-                raise AnsibleError(
-                    "organization is not supported for Controller type such as '%s'" % obj_type
-                )
+                raise AnsibleError("organization is not supported for Controller type such as '%s'" % obj_type)
             if service == "gateway" and obj_type not in _GATEWAY_ORG_TYPES:
                 raise AnsibleError("organization is only supported for Gateway type 'teams' (got '%s')" % obj_type)
 
