@@ -111,7 +111,7 @@
             object_ids: [1, 2]
             state: present
           register: gw_object_ids
-          failed_when: false
+          ignore_errors: true
 
         - name: Assert object_ids is not accepted
           ansible.builtin.assert:
@@ -156,7 +156,7 @@
                 type: inventories
             state: present
           register: ctrl_ambiguous
-          failed_when: false
+          ignore_errors: true
 
         - name: Assert ambiguous lookup failed closed
           ansible.builtin.assert:
@@ -235,7 +235,7 @@
                 organization: "should-not-work"
             state: present
           register: hub_org
-          failed_when: false
+          ignore_errors: true
 
         - name: Assert Hub rejects organization
           ansible.builtin.assert:
