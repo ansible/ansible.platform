@@ -58,23 +58,10 @@ _SERVICE_LOOKUP_PATH_MAP = {
     "container_namespaces": "/api/galaxy/pulp/api/v3/pulp_container/namespaces/",
 }
 
-_CONTROLLER_ORG_TYPES = frozenset(
+_CONTROLLER_NON_ORG_TYPES = frozenset(
     {
-        "projects",
-        "inventories",
-        "credentials",
-        "job_templates",
-        "workflow_job_templates",
-        "notification_templates",
-    }
-)
-_EDA_ORG_TYPES = frozenset(
-    {
-        "activations",
-        "eda_credentials",
-        "event_streams",
-        "decision_environments",
-        "eda_projects",
+        "execution_environments",
+        "instance_groups",
     }
 )
 _GATEWAY_ORG_TYPES = frozenset({"teams"})
@@ -189,12 +176,10 @@ class ActionModule(BaseResourceActionPlugin):
         if organization:
             if service == "hub":
                 raise AnsibleError("organization is not supported for Hub types such as '%s'" % obj_type)
-            if service == "controller" and obj_type not in _CONTROLLER_ORG_TYPES:
+            if service == "controller" and obj_type in _CONTROLLER_NON_ORG_TYPES:
                 raise AnsibleError(
-                    "organization is not supported for Controller type '%s'; supported: %s" % (obj_type, ", ".join(sorted(_CONTROLLER_ORG_TYPES)))
+                    "organization is not supported for Controller type such as '%s'" % obj_type
                 )
-            if service == "eda" and obj_type not in _EDA_ORG_TYPES:
-                raise AnsibleError("organization is not supported for EDA type '%s'; supported: %s" % (obj_type, ", ".join(sorted(_EDA_ORG_TYPES))))
             if service == "gateway" and obj_type not in _GATEWAY_ORG_TYPES:
                 raise AnsibleError("organization is only supported for Gateway type 'teams' (got '%s')" % obj_type)
 

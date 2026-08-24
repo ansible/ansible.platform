@@ -53,6 +53,8 @@ options:
             - List of objects to assign the role against.
             - Each item must specify exactly one of C(name)+C(type),
               C(object_id), or C(object_ansible_id).
+            - Accepts a list where one API call is issued per item, and
+              items are processed serially, not in a single request.
         type: list
         elements: dict
         suboptions:
