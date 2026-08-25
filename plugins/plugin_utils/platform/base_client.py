@@ -15,6 +15,11 @@ from ..platform.registry import APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
+# Default ceiling (seconds) for launch-command wait/poll loops (e.g. ad_hoc_command)
+# when the caller sets wait=True but does not supply an explicit timeout. Prevents
+# indefinite polling in PlatformService/DirectHTTPClient._wait_for_resource_completion().
+DEFAULT_WAIT_TIMEOUT = 3600.0
+
 
 class BaseAPIClient(ABC):
     """
