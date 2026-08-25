@@ -13,9 +13,11 @@ class AnsibleAdHocCommand:
     """
     Ansible representation of an ad hoc command launch request.
 
-    Fields match the DOCUMENTATION options that are sent to the API.
-    The wait/interval/timeout parameters are handled by the action plugin
-    and are not included here.
+    Fields match the DOCUMENTATION options that are sent to the API. The
+    wait/interval/timeout parameters control polling in
+    PlatformService/DirectHTTPClient.execute() (platform_manager.py,
+    direct_client.py) — they are popped from the ansible_data dict before
+    this dataclass is constructed, so they are not fields here.
     """
 
     inventory: str

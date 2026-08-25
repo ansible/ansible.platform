@@ -7,7 +7,10 @@
 """Action plugin for ansible.platform.ad_hoc_command module.
 
 Launches an ad hoc command via Controller. This is not a CRUD resource —
-every invocation creates a new command execution.
+every invocation creates a new command execution. Waiting for completion is
+handled by PlatformService/DirectHTTPClient.execute() (see platform_manager.py
+and direct_client.py) so that non-Ansible SDK consumers get the same wait
+semantics — this action plugin only launches and forwards the result.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -15,8 +18,6 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import dataclasses
-import time
-from typing import Any, Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -28,6 +29,18 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "ad_hoc_command"
     MODEL_CLASS = AnsibleAdHocCommand
+
+    def _build_ansible_data(self, resource, validated_params, operation):
+        """Forward wait/interval/timeout so manager.execute() can poll for us.
+
+        These are not AnsibleAdHocCommand fields — PlatformService/DirectHTTPClient
+        pop them off the dict before constructing the dataclass.
+        """
+        ansible_data = super()._build_ansible_data(resource, validated_params, operation)
+        ansible_data["wait"] = validated_params.get("wait", False)
+        ansible_data["interval"] = validated_params.get("interval", 2.0)
+        ansible_data["timeout"] = validated_params.get("timeout")
+        return ansible_data
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -52,54 +65,32 @@ class ActionModule(BaseResourceActionPlugin):
 
             validated_params = validated_input.validated_parameters
 
-            wait = validated_params.get("wait", False)
-            interval = validated_params.get("interval", 2.0)
-            timeout = validated_params.get("timeout")
-
             resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
             model_fields = {f.name for f in dataclasses.fields(self.MODEL_CLASS)}
             resource = self.MODEL_CLASS(**{k: v for k, v in resource_data.items() if k in model_fields})
             ansible_data = self._build_ansible_data(resource, validated_params, "create")
 
+            # manager.execute() launches the command and, when wait=True, polls
+            # for completion itself (PlatformService/DirectHTTPClient) — this
+            # action plugin never polls or sleeps.
             launch_result = manager.execute(
                 operation="create",
                 module_name=self.MODULE_NAME,
                 ansible_data=ansible_data,
             )
 
-            command_id = launch_result.get("id")
             status = launch_result.get("status", "pending")
-
-            if not wait:
-                result.update(
-                    {
-                        "changed": True,
-                        "id": command_id,
-                        "status": status,
-                    }
-                )
-                return result
-
-            # Poll for completion
-            status = self._wait_for_completion(
-                manager,
-                command_id,
-                ansible_data=ansible_data,
-                interval=interval,
-                timeout=timeout,
-            )
-
             result.update(
                 {
                     "changed": True,
-                    "id": command_id,
+                    "id": launch_result.get("id"),
                     "status": status,
                 }
             )
 
             if status in ("error", "failed", "canceled"):
                 result["failed"] = True
-                result["msg"] = "Ad hoc command %s finished with status: %s" % (command_id, status)
+                result["msg"] = "Ad hoc command %s finished with status: %s" % (launch_result.get("id"), status)
 
         except Exception as exc:
             import traceback as _tb
@@ -111,41 +102,3 @@ class ActionModule(BaseResourceActionPlugin):
                 result["exception"] = _tb.format_exc()
 
         return result
-
-    def _wait_for_completion(self, manager: Any, command_id: int, ansible_data: dict, interval: float = 2.0, timeout: Optional[float] = None) -> str:
-        """Poll the controller API until the ad hoc command finishes.
-
-        Args:
-            manager: The RPC client / manager instance.
-            command_id: The ad hoc command ID to poll.
-            ansible_data: Full resource dict (must include all required model fields).
-            interval: Seconds between polls.
-            timeout: Maximum seconds to wait (None = no limit).
-
-        Returns:
-            str: Final status string of the command.
-
-        Raises:
-            AnsibleError: If the timeout is exceeded.
-        """
-        find_data = dict(ansible_data, id=command_id)
-        start = time.monotonic()
-
-        while True:
-            response = manager.execute(
-                operation="find",
-                module_name=self.MODULE_NAME,
-                ansible_data=find_data,
-            )
-            finished = response.get("finished") or response.get("event_processing_finished")
-            if finished:
-                return response.get("status", "unknown")
-
-            elapsed = time.monotonic() - start
-            if timeout is not None and elapsed >= timeout:
-                raise AnsibleError(
-                    "Timed out waiting for ad hoc command %s after %d seconds (status: %s)" % (command_id, timeout, response.get("status", "unknown"))
-                )
-
-            self._display.vvvv("Waiting for ad hoc command %s (status: %s, elapsed: %.0fs)" % (command_id, response.get("status", "unknown"), elapsed))
-            time.sleep(interval)
