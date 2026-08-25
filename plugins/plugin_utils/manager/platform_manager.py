@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import BaseAPIClient
+from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -510,6 +510,8 @@ class PlatformService(BaseAPIClient):
         wait = ansible_data_dict.pop("wait", False)
         wait_interval = ansible_data_dict.pop("interval", 2.0)
         wait_timeout = ansible_data_dict.pop("timeout", None)
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
 
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -521,9 +523,7 @@ class PlatformService(BaseAPIClient):
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
                 if wait:
-                    result = self._wait_for_resource_completion(
-                        result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout
-                    )
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":

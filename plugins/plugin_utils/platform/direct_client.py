@@ -22,7 +22,7 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 # Use Ansible's HTTP client instead of requests library for better worker process compatibility
 from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
-from .base_client import BaseAPIClient
+from .base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
@@ -584,6 +584,8 @@ class DirectHTTPClient(BaseAPIClient):
         wait = ansible_data_dict.pop("wait", False)
         wait_interval = ansible_data_dict.pop("interval", 2.0)
         wait_timeout = ansible_data_dict.pop("timeout", None)
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -598,9 +600,7 @@ class DirectHTTPClient(BaseAPIClient):
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
                 if wait:
-                    result = self._wait_for_resource_completion(
-                        result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout
-                    )
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
