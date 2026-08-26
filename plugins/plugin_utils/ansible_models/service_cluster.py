@@ -22,6 +22,8 @@ class AnsibleServiceCluster:
     outlier_detection_interval_seconds: Optional[int] = None
     outlier_detection_base_ejection_time_seconds: Optional[int] = None
     outlier_detection_max_ejection_percent: Optional[int] = None
+    outlier_detection_split_external_local_origin_errors: Optional[bool] = None
+    outlier_detection_consecutive_local_origin_failure: Optional[int] = None
     health_checks_enabled: Optional[bool] = None
     health_check_timeout_seconds: Optional[int] = None
     health_check_interval_seconds: Optional[int] = None
