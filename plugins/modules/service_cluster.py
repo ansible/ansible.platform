@@ -69,18 +69,18 @@ options:
       description: The maximum percent of nodes that can be ejected from the cluster.
     outlier_detection_split_external_local_origin_errors:
       type: bool
-      default: true
       description:
         - If true, locally originated errors such as upstream connection resets from WebSocket teardowns
           are tracked separately from externally originated 5xx responses via
           C(outlier_detection_consecutive_local_origin_failure) instead of C(outlier_detection_consecutive_5xx).
+        - The gateway default is C(true).
     outlier_detection_consecutive_local_origin_failure:
       type: int
-      default: 0
       description:
         - Number of consecutive locally originated failures (connect timeout, TCP reset/UC) before Envoy ejects the host.
         - Set to 0 to disable.
         - Takes effect only when C(outlier_detection_split_external_local_origin_errors) is true.
+        - The gateway default is C(0).
     health_checks_enabled:
       type: bool
       description: If true, health checks will be used to determine if a node is healthy.
