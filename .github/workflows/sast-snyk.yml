@@ -1,0 +1,189 @@
+---
+name: SAST Snyk Code
+
+on:
+  pull_request_target:
+    # `labeled` re-triggers the run when a maintainer applies `safe to test`
+    # to a fork PR after review (see the snyk-sast job `if:` below).
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [devel]
+  schedule:
+    - cron: '23 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  preflight:
+    name: Snyk SAST (Preflight)
+    runs-on: ubuntu-latest
+    outputs:
+      has_snyk_token: ${{ steps.token.outputs.has_snyk_token }}
+    steps:
+      - name: Check for Snyk token
+        id: token
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [[ -n "$SNYK_TOKEN" ]]; then
+            echo "has_snyk_token=true" >> "$GITHUB_OUTPUT"
+          else
+            # pull_request_target always has access to secrets (it runs in the
+            # base repo's context), so a missing token here just means
+            # SNYK_TOKEN hasn't been configured as a repository secret yet.
+            echo "::warning::SNYK_TOKEN not available - skipping Snyk SAST scan."
+            echo "has_snyk_token=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  snyk-sast:
+    name: Snyk SAST (Code Analysis)
+    runs-on: ubuntu-latest
+    needs: preflight
+    # pull_request_target exposes secrets even for fork PRs, so gate untrusted
+    # (fork) PRs behind a maintainer-applied `safe to test` label — same
+    # pattern as dvcs_check.yml. Same-repo PRs run automatically since the
+    # author already has push access to this repository.
+    if: >
+      needs.preflight.outputs.has_snyk_token == 'true' &&
+      (github.event_name != 'pull_request_target' ||
+       github.event.pull_request.head.repo.full_name == github.repository ||
+       contains(github.event.pull_request.labels.*.name, 'safe to test'))
+    steps:
+      # Checkout code to scan
+      # For pull_request_target: explicitly check out the PR head (fork or
+      # same-repo) — checkout's own pull_request_target default is the base
+      # branch, which would silently scan the wrong code. allow-unsafe-pr-checkout
+      # is checkout's required opt-in for checking out untrusted fork code in a
+      # secret-bearing context; safe here because `snyk code test` only performs
+      # static analysis — nothing from the checked-out tree is executed,
+      # installed, or run as part of this job.
+      # For push/schedule/manual: checks out the triggered/default branch
+      - name: Checkout code to scan
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || '' }}
+          allow-unsafe-pr-checkout: true
+          path: scan
+
+      - uses: snyk/actions/setup@9adf32b1121593767fc3c057af55b55db032dc04 # v1
+
+      - name: Scan code
+        # Only needed to feed the PR-vs-base diff below; non-PR events use the
+        # dedicated "Block on any HIGH/CRITICAL" scan instead, so skip this one
+        # for them to avoid running snyk code test twice against the same code.
+        if: github.event_name == 'pull_request_target'
+        working-directory: scan
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          rc=0
+          snyk code test \
+            --json-file-output=../snyk-scan-code.json \
+            --project-name="${{ github.repository }}/code" \
+            . || rc=$?
+          # Exit 0=clean, 1=vulnerabilities found (both valid). Exit 2+=scan failure — abort.
+          if [[ $rc -gt 1 ]]; then echo "Snyk scan failed (exit $rc)"; exit 1; fi
+
+      - name: Checkout base branch
+        # ==========================================
+        # ==========================================
+        # Differential scanning (pull_request_target only)
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: base
+
+      - name: Scan base branch code
+        if: github.event_name == 'pull_request_target'
+        working-directory: base
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          rc=0
+          snyk code test \
+            --json-file-output=../snyk-base-code.json \
+            --project-name="${{ github.repository }}/code" \
+            . || rc=$?
+          if [[ $rc -gt 1 ]]; then echo "Snyk scan failed (exit $rc)"; exit 1; fi
+
+      - name: Compare and filter vulnerabilities
+        # Compare results and fail only on NEW HIGH/CRITICAL vulnerabilities
+        if: github.event_name == 'pull_request_target'
+        run: |
+          # Compare Snyk Code (SAST) results between base and PR branches
+          # Fail only on NEW HIGH/CRITICAL vulnerabilities introduced by the PR
+          # NOTE: Inlined to prevent malicious PRs from modifying comparison logic
+          set -euo pipefail
+
+          BASE_JSON="snyk-base-code.json"
+          SCAN_JSON="snyk-scan-code.json"
+
+          # Extract vulnerability IDs from base branch
+          if [[ -f "$BASE_JSON" ]]; then
+            BASE_VULNS=$(jq -r '.runs[0].results[]?.ruleId // empty' "$BASE_JSON" 2>/dev/null | sort -u || echo "")
+          else
+            BASE_VULNS=""
+          fi
+
+          # Extract HIGH/CRITICAL vulnerability IDs from scan branch (level == "error")
+          if [[ -f "$SCAN_JSON" ]]; then
+            SCAN_HIGH_CRIT=$(jq -r '.runs[0].results[]? | select(.level == "error") | .ruleId' "$SCAN_JSON" 2>/dev/null | sort -u || echo "")
+          else
+            SCAN_HIGH_CRIT=""
+          fi
+
+          # Find NEW vulnerabilities (in scan but not in base)
+          NEW_VULNS=$(comm -13 <(echo "$BASE_VULNS") <(echo "$SCAN_HIGH_CRIT"))
+
+          if [[ -n "$NEW_VULNS" ]]; then
+            echo "❌ NEW HIGH/CRITICAL code vulnerabilities introduced by this PR:"
+            echo ""
+            for vuln_id in $NEW_VULNS; do
+              jq -r --arg id "$vuln_id" \
+                '.runs[0].results[] | select(.ruleId == $id) |
+                "  - \(.ruleId): \(.message.text)\n    File: \(.locations[0].physicalLocation.artifactLocation.uri)\n    Line: \(.locations[0].physicalLocation.region.startLine)\n"' \
+                "$SCAN_JSON" 2>/dev/null | head -1
+            done
+            echo ""
+            echo "These code vulnerabilities were introduced by changes in this PR."
+            exit 1
+          else
+            echo "✅ No new HIGH/CRITICAL code vulnerabilities introduced by this PR"
+            if [[ -n "$BASE_VULNS" ]]; then
+              echo ""
+              echo "ℹ️  Note: Base branch has existing code vulnerabilities (not blocking this PR)"
+            fi
+          fi
+
+      - name: Block on any HIGH/CRITICAL (non-PR events)
+        # ========================================
+        # ========================================
+        # Traditional blocking (push/schedule/manual)
+        if: github.event_name != 'pull_request_target'
+        working-directory: scan
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk code test \
+            --severity-threshold=high \
+            --project-name="${{ github.repository }}/code" \
+            --sarif-file-output=snyk-code.sarif \
+            --json-file-output=snyk-code.json \
+            --report \
+            .
+
+      - name: Upload SAST results to GitHub Security
+        uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
+        if: always() && hashFiles('scan/snyk-code.sarif') != ''
+        # continue-on-error: GitHub Advanced Security (required for SARIF upload)
+        # is only available for public repos or paid Enterprise plan.
+        # This allows the workflow to succeed even when Advanced Security is unavailable,
+        # while still uploading SARIF if the feature becomes available later.
+        continue-on-error: true
+        with:
+          sarif_file: scan/snyk-code.sarif
+          category: snyk-sast-code
