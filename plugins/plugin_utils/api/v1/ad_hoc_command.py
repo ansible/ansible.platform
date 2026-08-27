@@ -51,13 +51,19 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
             params["module_args"] = ansible_instance.module_args
 
         if ansible_instance.inventory is not None:
-            params["inventory"] = context.manager.lookup_resource_id("inventories", "name", ansible_instance.inventory)
+            params["inventory"] = context.manager.lookup_resource_id(
+                "/api/controller/v2/inventories/", "name", ansible_instance.inventory
+            )
 
         if ansible_instance.credential is not None:
-            params["credential"] = context.manager.lookup_resource_id("credentials", "name", ansible_instance.credential)
+            params["credential"] = context.manager.lookup_resource_id(
+                "/api/controller/v2/credentials/", "name", ansible_instance.credential
+            )
 
         if ansible_instance.execution_environment is not None:
-            params["execution_environment"] = context.manager.lookup_resource_id("execution_environments", "name", ansible_instance.execution_environment)
+            params["execution_environment"] = context.manager.lookup_resource_id(
+                "/api/controller/v2/execution_environments/", "name", ansible_instance.execution_environment
+            )
 
         for field in ("job_type", "limit", "forks", "verbosity", "become_enabled", "diff_mode"):
             value = getattr(ansible_instance, field, None)
@@ -77,6 +83,17 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
     def from_api(cls, api_data: Dict[str, Any], context: TransformContext) -> AnsibleAdHocCommand:
         """Reverse: API response -> Ansible model."""
         ee = api_data.get("execution_environment")
+
+        raw_extra = api_data.get("extra_vars")
+        extra_vars: Optional[dict] = None
+        if isinstance(raw_extra, dict):
+            extra_vars = raw_extra
+        elif isinstance(raw_extra, str) and raw_extra.strip():
+            try:
+                extra_vars = json.loads(raw_extra)
+            except ValueError:
+                extra_vars = None
+
         return AnsibleAdHocCommand(
             id=api_data.get("id"),
             inventory=str(api_data.get("inventory", "")),
@@ -88,6 +105,7 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
             limit=api_data.get("limit"),
             forks=api_data.get("forks"),
             verbosity=api_data.get("verbosity"),
+            extra_vars=extra_vars,
             become_enabled=api_data.get("become_enabled"),
             diff_mode=api_data.get("diff_mode"),
             execution_environment=str(ee) if ee is not None else None,
@@ -125,6 +143,13 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
                 method="GET",
                 fields=[],
                 path_params=["id"],
+                required_for="find",
+                order=1,
+            ),
+            "list": EndpointOperation(
+                path="/api/controller/v2/ad_hoc_commands/",
+                method="GET",
+                fields=[],
                 required_for="find",
                 order=1,
             ),

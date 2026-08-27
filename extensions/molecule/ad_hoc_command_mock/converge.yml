@@ -154,4 +154,88 @@
         fail_msg: "Repeat should create a new command with a different id. Got: {{ repeat_result }}"
       vars:
         ansible_connection: local
+
+    # PHASE 5: Waited command that resolves to a failed status on Controller
+    - name: Launch ad hoc command that resolves to failed (with wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: "__fail__"
+        wait: true
+        interval: 1
+        timeout: 30
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: failed_result
+      ignore_errors: true
+      vars:
+        ansible_connection: local
+
+    - name: Assert failed command still reports id and status
+      ansible.builtin.assert:
+        that:
+          - failed_result is failed
+          - failed_result.id is defined
+          - failed_result.id is not none
+          - failed_result.status == "failed"
+        fail_msg: "Failed command should report failed with id/status set. Got: {{ failed_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 6: Wait-timeout must still return the launched command's id
+    - name: Launch ad hoc command that never finishes (wait times out)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: "__hang__"
+        wait: true
+        interval: 1
+        timeout: 3
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: timeout_result
+      ignore_errors: true
+      vars:
+        ansible_connection: local
+
+    - name: Assert wait-timeout still reports the launched id
+      ansible.builtin.assert:
+        that:
+          - timeout_result is failed
+          - timeout_result.id is defined
+          - timeout_result.id is not none
+        fail_msg: "Wait-timeout should still report the launched command's id. Got: {{ timeout_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 7: check_mode must not launch a real command
+    - name: Launch ad hoc command in check mode (must not call Controller)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: ping
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      check_mode: true
+      register: check_mode_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert check_mode reports changed without launching
+      ansible.builtin.assert:
+        that:
+          - check_mode_result is changed
+          - check_mode_result is not failed
+          - check_mode_result.id is none
+        fail_msg: "check_mode should report changed without an id (nothing launched). Got: {{ check_mode_result }}"
+      vars:
+        ansible_connection: local
 ...
