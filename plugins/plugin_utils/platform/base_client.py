@@ -21,6 +21,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_WAIT_TIMEOUT = 3600.0
 
 
+class WaitTimeoutError(ValueError):
+    """Raised when a launch-command wait/poll loop exceeds its timeout.
+
+    Carries the last poll result so callers (e.g. action plugins) can still
+    report the launched resource's id/status instead of losing it — the
+    resource keeps running on the server even though waiting for it gave up.
+    """
+
+    def __init__(self, message: str, last_result: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.last_result = last_result or {}
+
+
 class BaseAPIClient(ABC):
     """
     Abstract base class for platform API clients.

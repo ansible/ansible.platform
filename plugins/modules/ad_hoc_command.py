@@ -103,6 +103,8 @@ options:
     description:
       - If waiting for the command to complete this will abort after this
         amount of seconds.
+      - When C(wait=true) and this option is omitted, polling is capped at
+        3600 seconds (1 hour). Set explicitly to use a different limit.
     type: int
 
 extends_documentation_fragment:
@@ -117,6 +119,7 @@ EXAMPLES = """
     module_name: command
     module_args: echo I <3 Ansible
     wait: true
+    # timeout omitted: polling is capped at 3600 seconds (1 hour) by default.
 
 - name: Launch a ping command
   ansible.platform.ad_hoc_command:
@@ -152,7 +155,16 @@ id:
   type: int
   sample: 86
 status:
-  description: Status of the newly launched command.
+  description:
+    - Status of the launched command.
+    - With C(wait=false) this is always C(pending) — the command has only just
+      been launched. With C(wait=true) this is the terminal status reported by
+      Controller once the command finishes; the task fails (C(failed=true)) if
+      that terminal status is C(error), C(failed), or C(canceled).
+    - If a C(wait=true) task fails because the timeout was reached before the
+      command finished, C(status) reflects the last status seen while polling
+      (commonly C(pending) or C(running)) — the command itself may still be
+      running on Controller after the task gives up waiting.
   returned: success
   type: str
   sample: pending

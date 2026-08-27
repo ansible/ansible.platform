@@ -22,6 +22,7 @@ import dataclasses
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ad_hoc_command import AnsibleAdHocCommand
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -70,6 +71,20 @@ class ActionModule(BaseResourceActionPlugin):
             resource = self.MODEL_CLASS(**{k: v for k, v in resource_data.items() if k in model_fields})
             ansible_data = self._build_ansible_data(resource, validated_params, "create")
 
+            # Ad hoc commands are never idempotent — every real run launches a new
+            # command — so check mode must not call manager.execute() at all.
+            if self._task.check_mode:
+                result.update(
+                    {
+                        "changed": True,
+                        "failed": False,
+                        "id": None,
+                        "status": "pending",
+                        "msg": "Check mode: ad hoc command would be launched.",
+                    }
+                )
+                return result
+
             # manager.execute() launches the command and, when wait=True, polls
             # for completion itself (PlatformService/DirectHTTPClient) — this
             # action plugin never polls or sleeps.
@@ -91,6 +106,21 @@ class ActionModule(BaseResourceActionPlugin):
             if status in ("error", "failed", "canceled"):
                 result["failed"] = True
                 result["msg"] = "Ad hoc command %s finished with status: %s" % (launch_result.get("id"), status)
+
+        except WaitTimeoutError as exc:
+            # The command was created and is still running on Controller even
+            # though waiting for it gave up — preserve id/status so operators can
+            # still register/poll/cancel it from the task result.
+            last = exc.last_result
+            result.update(
+                {
+                    "changed": True,
+                    "failed": True,
+                    "id": last.get("id"),
+                    "status": last.get("status", "unknown"),
+                    "msg": str(exc),
+                }
+            )
 
         except Exception as exc:
             import traceback as _tb

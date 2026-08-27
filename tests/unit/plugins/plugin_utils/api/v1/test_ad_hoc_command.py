@@ -87,8 +87,8 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
     def test_from_ansible_data_basic(self):
         context = self._make_context()
         context.manager.lookup_resource_id.side_effect = lambda ep, field, val: {
-            ("inventories", "name", "Demo Inventory"): 1,
-            ("credentials", "name", "Demo Credential"): 5,
+            ("/api/controller/v2/inventories/", "name", "Demo Inventory"): 1,
+            ("/api/controller/v2/credentials/", "name", "Demo Credential"): 5,
         }[(ep, field, val)]
 
         ansible_cmd = AnsibleAdHocCommand(
@@ -107,9 +107,9 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
     def test_from_ansible_data_with_all_fields(self):
         context = self._make_context()
         context.manager.lookup_resource_id.side_effect = lambda ep, field, val: {
-            ("inventories", "name", "My Inv"): 10,
-            ("credentials", "name", "My Cred"): 20,
-            ("execution_environments", "name", "Custom EE"): 30,
+            ("/api/controller/v2/inventories/", "name", "My Inv"): 10,
+            ("/api/controller/v2/credentials/", "name", "My Cred"): 20,
+            ("/api/controller/v2/execution_environments/", "name", "Custom EE"): 30,
         }[(ep, field, val)]
 
         ansible_cmd = AnsibleAdHocCommand(
@@ -183,9 +183,9 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
 
         calls = context.manager.lookup_resource_id.call_args_list
         self.assertEqual(len(calls), 3)
-        self.assertEqual(calls[0][0], ("inventories", "name", "My Inv"))
-        self.assertEqual(calls[1][0], ("credentials", "name", "My Cred"))
-        self.assertEqual(calls[2][0], ("execution_environments", "name", "My EE"))
+        self.assertEqual(calls[0][0], ("/api/controller/v2/inventories/", "name", "My Inv"))
+        self.assertEqual(calls[1][0], ("/api/controller/v2/credentials/", "name", "My Cred"))
+        self.assertEqual(calls[2][0], ("/api/controller/v2/execution_environments/", "name", "My EE"))
 
     def test_from_api(self):
         context = self._make_context()
@@ -203,6 +203,8 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
             "become_enabled": True,
             "diff_mode": False,
             "execution_environment": 30,
+            "finished": "2026-01-01T00:00:00Z",
+            "event_processing_finished": True,
         }
 
         result = AdHocCommandTransformMixin_v1.from_api(api_response, context)
@@ -214,6 +216,31 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
         self.assertEqual(result.credential, "20")
         self.assertTrue(result.become_enabled)
         self.assertEqual(result.execution_environment, "30")
+        self.assertEqual(result.finished, "2026-01-01T00:00:00Z")
+        self.assertTrue(result.event_processing_finished)
+
+    def test_from_api_extra_vars_json_string(self):
+        """#12: extra_vars sent as a JSON string by the API must round-trip to a dict."""
+        context = self._make_context()
+        api_response = {"id": 1, "module_name": "shell", "extra_vars": '{"foo": "bar"}'}
+
+        result = AdHocCommandTransformMixin_v1.from_api(api_response, context)
+        self.assertEqual(result.extra_vars, {"foo": "bar"})
+
+    def test_from_api_extra_vars_dict(self):
+        """#12: extra_vars already a dict (e.g. some API responses) must pass through unchanged."""
+        context = self._make_context()
+        api_response = {"id": 1, "module_name": "shell", "extra_vars": {"foo": "bar"}}
+
+        result = AdHocCommandTransformMixin_v1.from_api(api_response, context)
+        self.assertEqual(result.extra_vars, {"foo": "bar"})
+
+    def test_from_api_extra_vars_absent(self):
+        context = self._make_context()
+        api_response = {"id": 1, "module_name": "ping"}
+
+        result = AdHocCommandTransformMixin_v1.from_api(api_response, context)
+        self.assertIsNone(result.extra_vars)
 
     def test_endpoint_operations(self):
         ops = AdHocCommandTransformMixin_v1.get_endpoint_operations()
@@ -232,6 +259,11 @@ class TestAdHocCommandTransformMixin(unittest.TestCase):
         self.assertEqual(get_op.method, "GET")
         self.assertEqual(get_op.path, "/api/controller/v2/ad_hoc_commands/{id}/")
         self.assertEqual(get_op.path_params, ["id"])
+
+        self.assertIn("list", ops)
+        list_op = ops["list"]
+        self.assertEqual(list_op.method, "GET")
+        self.assertEqual(list_op.path, "/api/controller/v2/ad_hoc_commands/")
 
     def test_lookup_field(self):
         self.assertEqual(AdHocCommandTransformMixin_v1.get_lookup_field(), "id")
@@ -281,6 +313,14 @@ class TestModuleDocumentation(unittest.TestCase):
         self.assertIn("wait", doc["options"])
         self.assertIn("interval", doc["options"])
         self.assertIn("timeout", doc["options"])
+
+    def test_timeout_documents_default_wait_ceiling(self):
+        import yaml
+        from ansible_collections.ansible.platform.plugins.modules import ad_hoc_command
+
+        doc = yaml.safe_load(ad_hoc_command.DOCUMENTATION)
+        description = " ".join(doc["options"]["timeout"]["description"])
+        self.assertIn("3600", description)
 
     def test_required_fields(self):
         import yaml

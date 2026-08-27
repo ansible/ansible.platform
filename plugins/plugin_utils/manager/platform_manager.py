@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient
+from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient, WaitTimeoutError
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -594,7 +594,8 @@ class PlatformService(BaseAPIClient):
         same regardless of connection mode — action plugins never poll themselves.
 
         Raises:
-            ValueError: If timeout is exceeded before the resource finishes.
+            WaitTimeoutError: If timeout is exceeded before the resource finishes.
+                Carries the last poll result so callers can still report id/status.
         """
         if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
             return result
@@ -609,9 +610,10 @@ class PlatformService(BaseAPIClient):
 
             elapsed = time.monotonic() - start
             if timeout is not None and elapsed >= timeout:
-                raise ValueError(
+                raise WaitTimeoutError(
                     "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
-                    % (module_name, result.get("id"), timeout, result.get("status", "unknown"))
+                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
+                    last_result=result,
                 )
 
             time.sleep(interval)
