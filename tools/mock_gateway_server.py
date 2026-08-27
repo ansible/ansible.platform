@@ -573,6 +573,38 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
+    def _advance_ad_hoc_command_poll(self, store: "GenericResource", item_id: int) -> Dict[str, Any]:
+        """Advance an ad hoc command's pending -> terminal lifecycle on each GET-by-id poll.
+
+        Simulates a real Controller command staying pending across the first two
+        polls before resolving, so wait/poll loops in tests actually poll more
+        than once instead of the mock resolving synchronously on create.
+
+        module_args markers (opt-in, do not affect normal launches):
+          - "__fail__": resolves to status=failed instead of successful
+          - "__hang__": never resolves (for wait-timeout tests)
+        """
+        with store.lock:
+            if item_id not in store._items:
+                raise KeyError("not found")
+            item = store._items[item_id]
+
+            if item.get("finished"):
+                return dict(item)
+
+            module_args = item.get("module_args") or ""
+            if "__hang__" in module_args:
+                return dict(item)
+
+            item["_polls"] = item.get("_polls", 0) + 1
+            if item["_polls"] >= 2:
+                item["status"] = "failed" if "__fail__" in module_args else "successful"
+                item["finished"] = _now_iso()
+                item["event_processing_finished"] = True
+                item["modified"] = _now_iso()
+
+            return dict(item)
+
     # ------------------------------------------------------------------
     # Generic CRUD helper
     # ------------------------------------------------------------------
@@ -595,19 +627,17 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             if self.command == "POST":
                 try:
                     payload = self._parse_json_body()
-                    # ad_hoc_commands: inject status lifecycle fields
+                    # ad_hoc_commands: inject status lifecycle fields. The command
+                    # stays pending across the first two GET-by-id polls (see the
+                    # GET handler below) so wait/poll loops actually poll more than
+                    # once, instead of the mock resolving synchronously on create —
+                    # a real Controller ad hoc command is always async.
                     if resource_name == "ad_hoc_commands":
                         payload["status"] = "pending"
                         payload["finished"] = None
                         payload["event_processing_finished"] = False
+                        payload["_polls"] = 0
                     created = store.create(version, payload)
-                    if resource_name == "ad_hoc_commands":
-                        with store.lock:
-                            item = store._items.get(created["id"])
-                            if item:
-                                item["status"] = "successful"
-                                item["finished"] = _now_iso()
-                                item["event_processing_finished"] = True
                     self._send_json(201, created)
                 except ValueError as e:
                     self._send_json(400, {"detail": str(e)})
@@ -622,7 +652,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
             if self.command == "GET":
                 try:
-                    self._send_json(200, store.get(item_id))
+                    if resource_name == "ad_hoc_commands":
+                        self._send_json(200, self._advance_ad_hoc_command_poll(store, item_id))
+                    else:
+                        self._send_json(200, store.get(item_id))
                 except KeyError:
                     self._send_json(404, {"detail": "Not Found"})
                 return True
