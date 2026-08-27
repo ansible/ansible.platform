@@ -82,6 +82,7 @@ jobs:
           rc=0
           snyk code test \
             --json-file-output=../snyk-scan-code.json \
+            --sarif-file-output=snyk-code.sarif \
             --project-name="${{ github.repository }}/code" \
             . || rc=$?
           # Exit 0=clean, 1=vulnerabilities found (both valid). Exit 2+=scan failure — abort.
@@ -122,16 +123,25 @@ jobs:
           BASE_JSON="snyk-base-code.json"
           SCAN_JSON="snyk-scan-code.json"
 
-          # Extract vulnerability IDs from base branch
+          # Extract vulnerability identities (ruleId + stable per-finding fingerprint,
+          # not ruleId alone) from base branch. ruleId only identifies the vulnerability
+          # *type*; without the fingerprint, a new instance of a rule that already has
+          # any occurrence in base would be missed as "not new".
+          FINGERPRINT_KEY='snyk/asset/finding/v1'
+
           if [[ -f "$BASE_JSON" ]]; then
-            BASE_VULNS=$(jq -r '.runs[0].results[]?.ruleId // empty' "$BASE_JSON" 2>/dev/null | sort -u || echo "")
+            BASE_VULNS=$(jq -r --arg fk "$FINGERPRINT_KEY" \
+              '.runs[0].results[]? | [.ruleId, (.fingerprints[$fk] // "")] | join("|")' \
+              "$BASE_JSON" 2>/dev/null | sort -u || echo "")
           else
             BASE_VULNS=""
           fi
 
-          # Extract HIGH/CRITICAL vulnerability IDs from scan branch (level == "error")
+          # Extract HIGH/CRITICAL vulnerability identities from scan branch (level == "error")
           if [[ -f "$SCAN_JSON" ]]; then
-            SCAN_HIGH_CRIT=$(jq -r '.runs[0].results[]? | select(.level == "error") | .ruleId' "$SCAN_JSON" 2>/dev/null | sort -u || echo "")
+            SCAN_HIGH_CRIT=$(jq -r --arg fk "$FINGERPRINT_KEY" \
+              '.runs[0].results[]? | select(.level == "error") | [.ruleId, (.fingerprints[$fk] // "")] | join("|")' \
+              "$SCAN_JSON" 2>/dev/null | sort -u || echo "")
           else
             SCAN_HIGH_CRIT=""
           fi
@@ -143,9 +153,13 @@ jobs:
             echo "❌ NEW HIGH/CRITICAL code vulnerabilities introduced by this PR:"
             echo ""
             for vuln_id in $NEW_VULNS; do
-              jq -r --arg id "$vuln_id" \
-                '.runs[0].results[] | select(.ruleId == $id) |
-                "  - \(.ruleId): \(.message.text)\n    File: \(.locations[0].physicalLocation.artifactLocation.uri)\n    Line: \(.locations[0].physicalLocation.region.startLine)\n"' \
+              rule_id="${vuln_id%%|*}"
+              fingerprint="${vuln_id#*|}"
+              jq -r --arg id "$rule_id" --arg fp "$fingerprint" --arg fk "$FINGERPRINT_KEY" \
+                '.runs[0].results[] | select(.ruleId == $id and ((.fingerprints[$fk] // "") == $fp)) |
+                "  - \(.ruleId): \(.message.text)\n" +
+                "    File: \(.locations[0].physicalLocation.artifactLocation.uri)\n" +
+                "    Line: \(.locations[0].physicalLocation.region.startLine)\n"' \
                 "$SCAN_JSON" 2>/dev/null | head -1
             done
             echo ""
@@ -187,3 +201,4 @@ jobs:
         with:
           sarif_file: scan/snyk-code.sarif
           category: snyk-sast-code
+...
