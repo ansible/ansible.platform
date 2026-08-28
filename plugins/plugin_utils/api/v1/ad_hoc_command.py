@@ -51,14 +51,10 @@ class AdHocCommandTransformMixin_v1(BaseTransformMixin):
             params["module_args"] = ansible_instance.module_args
 
         if ansible_instance.inventory is not None:
-            params["inventory"] = context.manager.lookup_resource_id(
-                "/api/controller/v2/inventories/", "name", ansible_instance.inventory
-            )
+            params["inventory"] = context.manager.lookup_resource_id("/api/controller/v2/inventories/", "name", ansible_instance.inventory)
 
         if ansible_instance.credential is not None:
-            params["credential"] = context.manager.lookup_resource_id(
-                "/api/controller/v2/credentials/", "name", ansible_instance.credential
-            )
+            params["credential"] = context.manager.lookup_resource_id("/api/controller/v2/credentials/", "name", ansible_instance.credential)
 
         if ansible_instance.execution_environment is not None:
             params["execution_environment"] = context.manager.lookup_resource_id(
