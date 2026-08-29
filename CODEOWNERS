@@ -1,5 +1,183 @@
-@jillr
-@sean-m-sullivan
-@dafmendo
-@chuckbrant
-@djdanielsson
+# =============================================================================
+# CODEOWNERS — ansible.platform
+# Governance: ANSTRAT-1640 P2 §1.6 (domain-based ownership)
+# =============================================================================
+#
+# Three-tier model:
+#   Tier 1 — TSC:      @ansible/tsc-platform-collections
+#   Tier 2 — Stewards: @ansible/platform-collection-stewards
+#   Tier 3 — PDTs:     @ansible/gateway-pdt  @ansible/controller-pdt
+#                      @ansible/eda-pdt       @ansible/hub-pdt
+#
+# One-time GitHub team setup (ansible org):
+#   platform-collection-stewards → jillr, sean-m-sullivan, dafmendo, chuckbrant, djdanielsson
+#   gateway-pdt                  → Gateway component PDT members
+#   controller-pdt               → Controller (AWX) PDT members
+#   eda-pdt                      → EDA PDT members
+#   hub-pdt                      → Hub/Galaxy PDT members
+#   tsc-platform-collections     → TSC members (overlap with Stewards is fine)
+#
+# Rules:
+#   - At least ONE owner per domain must approve before merge.
+#   - Cross-domain PRs need approval from ALL domains touched.
+#   - Stewards may not self-approve on behalf of a PDT; PDTs may not self-approve
+#     shared-infra changes — the path rules enforce separation.
+#   - For DAB RBAC modules: ALL affected PDTs must approve (see below).
+#
+# See ANSTRAT-1640 P2 §1.5–1.6 and CONTRIBUTING.md §Cross-domain modules.
+# =============================================================================
+
+# ── Blanket fallback: Stewards own everything not explicitly matched ──────────
+*  @ansible/platform-collection-stewards
+
+# ── Shared infrastructure (Stewards) ─────────────────────────────────────────
+# Collection-wide; changes affect all PDTs.
+/plugins/plugin_utils/               @ansible/platform-collection-stewards
+/plugins/connection/                 @ansible/platform-collection-stewards
+/plugins/doc_fragments/              @ansible/platform-collection-stewards
+/plugins/lookup/                     @ansible/platform-collection-stewards
+/.github/                            @ansible/platform-collection-stewards
+/docs/                               @ansible/platform-collection-stewards
+/changelogs/                         @ansible/platform-collection-stewards
+CHANGELOG.rst                        @ansible/platform-collection-stewards
+galaxy.yml                           @ansible/platform-collection-stewards
+pyproject.toml                       @ansible/platform-collection-stewards
+tox.ini                              @ansible/platform-collection-stewards
+tox-ansible.ini                      @ansible/platform-collection-stewards
+Makefile                             @ansible/platform-collection-stewards
+conftest.py                          @ansible/platform-collection-stewards
+/requirements/                       @ansible/platform-collection-stewards
+
+# ── Collection routing — FQCN stability (Stewards + TSC) ─────────────────────
+# Renames/redirects here can silently break existing playbooks.
+/meta/                               @ansible/platform-collection-stewards @ansible/tsc-platform-collections
+
+# ── Tests (Stewards triage; PDT owns domain failures) ────────────────────────
+/tests/unit/                         @ansible/platform-collection-stewards
+/tests/integration/                  @ansible/platform-collection-stewards
+/extensions/molecule/                @ansible/platform-collection-stewards
+/tests/e2e/                          @ansible/platform-collection-stewards
+
+# =============================================================================
+# MODULE OWNERSHIP
+#
+# Two categories:
+#   A. Gateway-only modules   — API contract owned by Gateway PDT
+#   B. DAB RBAC modules       — API contract owned by django-ansible-base (shared);
+#                               behavior affects ALL services (Controller/EDA/Hub)
+#
+# Per ANSTRAT-1640 P2 §1.5: "Ownership follows the source of the API."
+# DAB RBAC endpoints are proxied through Gateway but sourced from DAB —
+# their behavior defines RBAC across Controller, EDA, and Hub.
+# Changes to DAB RBAC modules MUST be reviewed by all affected PDTs.
+# =============================================================================
+
+# ── A. Gateway-only modules (Gateway PDT + Stewards) ─────────────────────────
+# These modules operate against Gateway-native endpoints with no cross-service
+# RBAC implications.
+/plugins/modules/application.py          @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/application.py           @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/authenticator.py        @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/authenticator.py         @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/authenticator_map.py    @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/authenticator_map.py     @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/authenticator_user.py   @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/authenticator_user.py    @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/ca_certificate.py       @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/ca_certificate.py        @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/http_port.py            @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/http_port.py             @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/route.py                @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/route.py                 @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/service.py              @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/service.py               @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/service_cluster.py      @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/service_cluster.py       @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/service_key.py          @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/service_key.py           @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/service_node.py         @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/service_node.py          @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/service_type.py         @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/service_type.py          @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/token.py                @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/token.py                 @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/modules/ui_plugin_route.py      @ansible/gateway-pdt @ansible/platform-collection-stewards
+/plugins/action/ui_plugin_route.py       @ansible/gateway-pdt @ansible/platform-collection-stewards
+
+# ── B. DAB RBAC modules (ALL PDTs — cross-service impact) ────────────────────
+#
+# These modules manage organizations, teams, users, and role assignments via
+# django-ansible-base (DAB) RBAC endpoints exposed through Gateway.
+# Their behavior defines access control INSIDE Controller, EDA, and Hub:
+#
+#   organization     — orgs scope resources in Controller, EDA, Hub
+#   team             — teams govern RBAC in Controller, EDA, Hub
+#   user             — users span all services
+#   role_definition  — content_type values are service-specific (awx.*, eda.*, galaxy.*)
+#   role_team_assignment — assigns team roles that take effect inside Controller/EDA/Hub
+#   role_user_assignment — assigns user roles that take effect inside Controller/EDA/Hub
+#
+# A change that looks like a Gateway-side API tweak can silently break
+# Controller inventory permissions, EDA rulebook RBAC, or Hub namespace access.
+# ALL affected PDTs must review before merge.
+#
+/plugins/modules/organization.py             @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/action/organization.py              @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/plugin_utils/api/v1/organization.py @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+
+/plugins/modules/team.py                     @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/action/team.py                      @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/plugin_utils/api/v1/team.py         @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+
+/plugins/modules/user.py                     @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/action/user.py                      @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/plugin_utils/api/v1/user.py         @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+
+# role_definition: content_type field references service-specific permission
+# namespaces (awx.*, eda.*, galaxy.*). Permissions changes affect which
+# actions users/teams can perform inside each service.
+/plugins/modules/role_definition.py             @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/action/role_definition.py              @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/plugin_utils/api/v1/role_definition.py @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+
+# role_team_assignment / role_user_assignment: assigns team/user roles (including
+# Controller-scoped ones like "Organization Inventory Admin") across services.
+# A logic error here can grant or silently drop RBAC in Controller/EDA/Hub.
+/plugins/modules/role_team_assignment.py             @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/action/role_team_assignment.py              @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/plugin_utils/api/v1/role_team_assignment.py @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+
+/plugins/modules/role_user_assignment.py             @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/action/role_user_assignment.py              @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+/plugins/plugin_utils/api/v1/role_user_assignment.py @ansible/platform-collection-stewards @ansible/gateway-pdt @ansible/controller-pdt @ansible/eda-pdt @ansible/hub-pdt
+
+# ── Platform-wide modules (Gateway PDT + Stewards + TSC) ─────────────────────
+# feature_flag and settings affect platform-wide behaviour across all services.
+# TSC oversight required on top of Gateway PDT + Stewards.
+/plugins/modules/feature_flag.py         @ansible/gateway-pdt @ansible/platform-collection-stewards @ansible/tsc-platform-collections
+/plugins/action/feature_flag.py          @ansible/gateway-pdt @ansible/platform-collection-stewards @ansible/tsc-platform-collections
+/plugins/modules/settings.py             @ansible/gateway-pdt @ansible/platform-collection-stewards @ansible/tsc-platform-collections
+/plugins/action/settings.py              @ansible/gateway-pdt @ansible/platform-collection-stewards @ansible/tsc-platform-collections
+
+# ── Gateway integration test targets ─────────────────────────────────────────
+/tests/integration/targets/              @ansible/gateway-pdt @ansible/platform-collection-stewards
+
+# ── Examples ─────────────────────────────────────────────────────────────────
+/examples/                               @ansible/platform-collection-stewards
+
+# =============================================================================
+# Future PDT lines — uncomment when Controller/EDA/Hub modules land
+# (these would be Gateway-only in their own namespace, NOT DAB RBAC)
+# =============================================================================
+
+# Controller-native modules (AWX API, not DAB RBAC)
+# /plugins/modules/controller_*.py    @ansible/controller-pdt @ansible/platform-collection-stewards
+# /plugins/action/controller_*.py     @ansible/controller-pdt @ansible/platform-collection-stewards
+
+# EDA-native modules
+# /plugins/modules/eda_*.py           @ansible/eda-pdt @ansible/platform-collection-stewards
+# /plugins/action/eda_*.py            @ansible/eda-pdt @ansible/platform-collection-stewards
+
+# Hub-native modules
+# /plugins/modules/hub_*.py           @ansible/hub-pdt @ansible/platform-collection-stewards
+# /plugins/action/hub_*.py            @ansible/hub-pdt @ansible/platform-collection-stewards
