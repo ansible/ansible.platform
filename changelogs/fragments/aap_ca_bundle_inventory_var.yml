@@ -4,4 +4,8 @@ minor_changes:
     ``ansible_platform_ca_bundle``) to supply a control-node CA bundle path for Gateway
     TLS verification without per-task ``environment:`` blocks. The path is forwarded to
     manager subprocesses as ``REQUESTS_CA_BUNDLE`` when ``aap_validate_certs`` is enabled.
+bugfixes:
+  - auth - Include ``ca_bundle`` and ``verify_ssl`` in the persistent manager socket
+    identity so a later task that changes ``aap_ca_bundle`` or ``aap_validate_certs``
+    spawns a distinct manager instead of reusing one with a stale trust policy.
 ...
