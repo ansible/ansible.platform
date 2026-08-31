@@ -45,7 +45,12 @@ class ProcessManager:
     """
 
     @staticmethod
-    def generate_connection_info(identifier: str, socket_dir: Optional[Path] = None, gateway_config: Optional["GatewayConfig"] = None) -> ProcessConnectionInfo:
+    def generate_connection_info(
+        identifier: str,
+        socket_dir: Optional[Path] = None,
+        gateway_config: Optional["GatewayConfig"] = None,
+        task_env: Optional[dict] = None,
+    ) -> ProcessConnectionInfo:
         """
         Generate connection information for a new manager process.
 
@@ -53,6 +58,7 @@ class ProcessManager:
             identifier: Unique identifier (e.g., inventory_hostname)
             socket_dir: Directory for socket files (default: tempdir)
             gateway_config: Gateway configuration (optional, for credential- and TLS-aware socket path)
+            task_env: Task/play ``environment:`` vars used to resolve the effective CA bundle
 
         Returns:
             ProcessConnectionInfo with socket_path and authkey
@@ -82,7 +88,7 @@ class ProcessManager:
         user_id = os.getuid()
 
         if gateway_config:
-            identity_hash = ProcessManager.manager_identity_hash(gateway_config)
+            identity_hash = ProcessManager.manager_identity_hash(gateway_config, task_env=task_env)
             socket_path = str(socket_dir / f"manager_{user_id}_{identifier}_{identity_hash}.sock")
             logger.debug("Including user ID (%s) and identity hash in socket path (hash: %s...)", user_id, identity_hash[:4])
         else:
@@ -98,22 +104,25 @@ class ProcessManager:
         return ProcessConnectionInfo(socket_path=socket_path, authkey=authkey, authkey_b64=authkey_b64)
 
     @staticmethod
-    def manager_identity_hash(gateway_config: "GatewayConfig") -> str:
+    def manager_identity_hash(gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> str:
         """Return the short hash that identifies a persistent manager instance.
 
         Credentials and TLS trust policy are baked into the manager subprocess
         at spawn time and never re-evaluated, so both must participate in the
-        socket-path identity. A later task that changes username/password/token,
-        ``ca_bundle``, or ``verify_ssl`` must not reuse a manager started with a
-        different identity.
+        socket-path identity. The CA bundle hashed here is the effective
+        ``REQUESTS_CA_BUNDLE`` after ``merge_manager_environment`` precedence
+        (shell env, task ``environment:``, inventory ``aap_ca_bundle``, then the
+        ``SSL_CERT_FILE`` shim), not inventory ``ca_bundle`` alone.
         """
         import hashlib
 
+        env = ProcessManager.merge_manager_environment(gateway_config, task_env=task_env)
+        effective_ca_bundle = env.get("REQUESTS_CA_BUNDLE") or ""
         identity = (
             f"{gateway_config.username or ''}:"
             f"{gateway_config.password or ''}:"
             f"{gateway_config.oauth_token or ''}:"
-            f"{gateway_config.ca_bundle or ''}:"
+            f"{effective_ca_bundle}:"
             f"{1 if gateway_config.verify_ssl else 0}"
         )
         return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
@@ -458,7 +467,7 @@ def spawn_ephemeral_client(task_vars, gateway_config, task_env=None):
     socket_dir = Path("/tmp") / "ap"
     socket_dir.mkdir(exist_ok=True, parents=True)
 
-    conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config)
+    conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config, task_env=task_env)
     socket_path = conn_info.socket_path
     authkey = conn_info.authkey
     ProcessManager.cleanup_old_socket(socket_path)

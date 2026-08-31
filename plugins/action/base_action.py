@@ -470,13 +470,31 @@ class BaseResourceActionPlugin(ActionBase):
 
         self._display.vvvv(f"Checking for existing persistent manager for host: {inventory_hostname}")
 
-        # Determine the expected socket path for the current credentials.
-        # The socket filename encodes a credential hash, so a credential
+        # Resolve task-level env before computing the socket identity. REQUESTS_CA_BUNDLE
+        # from environment: has higher precedence than inventory aap_ca_bundle and is
+        # baked into the manager at spawn, so it must participate in reuse.
+        _persistent_task_env: dict = {}
+        for _env_block in self._task.environment or []:
+            if isinstance(_env_block, dict):
+                try:
+                    _resolved = self._templar.template(_env_block)
+                    if isinstance(_resolved, dict):
+                        _persistent_task_env.update(_resolved)
+                except Exception as _env_err:
+                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
+
+        # Determine the expected socket path for the current credentials and TLS policy.
+        # The socket filename encodes an identity hash, so a credential or trust-policy
         # change automatically causes a new manager to be spawned.
         import tempfile
 
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
-        expected_conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
+        expected_conn_info = ProcessManager.generate_connection_info(
+            identifier=inventory_hostname,
+            socket_dir=socket_dir,
+            gateway_config=gateway_config,
+            task_env=_persistent_task_env or None,
+        )
         expected_socket_path = expected_conn_info.socket_path
         meta_path = expected_socket_path + ".meta"
 
@@ -537,17 +555,6 @@ class BaseResourceActionPlugin(ActionBase):
         # so os.getppid() is the main ansible-playbook process PID.  The manager's
         # watchdog thread watches that PID and self-terminates when it exits.
         import os as _os_spawn
-
-        # Resolve and forward task-level env vars to the persistent manager subprocess.
-        _persistent_task_env: dict = {}
-        for _env_block in self._task.environment or []:
-            if isinstance(_env_block, dict):
-                try:
-                    _resolved = self._templar.template(_env_block)
-                    if isinstance(_resolved, dict):
-                        _persistent_task_env.update(_resolved)
-                except Exception as _env_err:
-                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
 
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
