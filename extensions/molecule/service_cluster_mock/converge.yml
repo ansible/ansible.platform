@@ -47,6 +47,8 @@
     - name: Create service_cluster (connection local)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local"
+        outlier_detection_split_external_local_origin_errors: true
+        outlier_detection_consecutive_local_origin_failure: 0
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -57,14 +59,19 @@
 
     - name: Assert create changed (connection local)
       ansible.builtin.assert:
-        that: create_result_local is changed
-        fail_msg: "Create (local) should report changed."
+        that:
+          - create_result_local is changed
+          - create_result_local.service_cluster.outlier_detection_split_external_local_origin_errors == true
+          - create_result_local.service_cluster.outlier_detection_consecutive_local_origin_failure == 0
+        fail_msg: "Create (local) should report changed with split=true and consecutive=0. create_result_local={{ create_result_local }}"
       vars:
         ansible_connection: local
 
     - name: Run again idempotency (connection local)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local"
+        outlier_detection_split_external_local_origin_errors: true
+        outlier_detection_consecutive_local_origin_failure: 0
         state: present
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -77,7 +84,7 @@
     - name: Assert idempotent run did not change (connection local)
       ansible.builtin.assert:
         that: idem_result_local is not changed
-        fail_msg: "Idempotent run (local) should not report changed."
+        fail_msg: "Idempotent run (local) should not report changed when consecutive=0 is restated. idem_result_local={{ idem_result_local }}"
       vars:
         ansible_connection: local
 
@@ -85,6 +92,8 @@
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local"
         upstream_hostname: "192.168.1.102"
+        outlier_detection_split_external_local_origin_errors: false
+        outlier_detection_consecutive_local_origin_failure: 50
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -95,8 +104,12 @@
 
     - name: Assert update changed (connection local)
       ansible.builtin.assert:
-        that: update_result_local is changed
-        fail_msg: "Update (local) should report changed."
+        that:
+          - update_result_local is changed
+          - update_result_local.service_cluster.upstream_hostname == "192.168.1.102"
+          - update_result_local.service_cluster.outlier_detection_split_external_local_origin_errors == false
+          - update_result_local.service_cluster.outlier_detection_consecutive_local_origin_failure == 50
+        fail_msg: "Update (local) should report changed with new outlier options. update_result_local={{ update_result_local }}"
       vars:
         ansible_connection: local
 
@@ -114,34 +127,47 @@
     - name: Create service_cluster (http direct)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local-hd"
+        outlier_detection_split_external_local_origin_errors: true
+        outlier_detection_consecutive_local_origin_failure: 0
       register: create_result_http_direct
 
     - name: Assert create changed (http direct)
       ansible.builtin.assert:
-        that: create_result_http_direct is changed
-        fail_msg: "Create (http direct) should report changed."
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.service_cluster.outlier_detection_split_external_local_origin_errors == true
+          - create_result_http_direct.service_cluster.outlier_detection_consecutive_local_origin_failure == 0
+        fail_msg: "Create (http direct) should report changed with split=true and consecutive=0. create_result_http_direct={{ create_result_http_direct }}"
 
     - name: Run again idempotency (http direct)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local-hd"
+        outlier_detection_split_external_local_origin_errors: true
+        outlier_detection_consecutive_local_origin_failure: 0
         state: present
       register: idem_result_http_direct
 
     - name: Assert idempotent run did not change (http direct)
       ansible.builtin.assert:
         that: idem_result_http_direct is not changed
-        fail_msg: "Idempotent run (http direct) should not report changed."
+        fail_msg: "Idempotent run (http direct) should not report changed when consecutive=0 is restated. idem_result_http_direct={{ idem_result_http_direct }}"
 
     - name: Update service_cluster (http direct)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local-hd"
         upstream_hostname: "192.168.1.102"
+        outlier_detection_split_external_local_origin_errors: false
+        outlier_detection_consecutive_local_origin_failure: 50
       register: update_result_http_direct
 
     - name: Assert update changed (http direct)
       ansible.builtin.assert:
-        that: update_result_http_direct is changed
-        fail_msg: "Update (http direct) should report changed."
+        that:
+          - update_result_http_direct is changed
+          - update_result_http_direct.service_cluster.upstream_hostname == "192.168.1.102"
+          - update_result_http_direct.service_cluster.outlier_detection_split_external_local_origin_errors == false
+          - update_result_http_direct.service_cluster.outlier_detection_consecutive_local_origin_failure == 50
+        fail_msg: "Update (http direct) should report changed with new outlier options. update_result_http_direct={{ update_result_http_direct }}"
 
 - name: Converge — service_cluster (mock, http persistent)
   hosts: localhost
@@ -157,32 +183,44 @@
     - name: Create service_cluster (http persistent)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local-hp"
+        outlier_detection_split_external_local_origin_errors: true
+        outlier_detection_consecutive_local_origin_failure: 0
       register: create_result_http_persistent
 
     - name: Assert create changed (http persistent)
       ansible.builtin.assert:
-        that: create_result_http_persistent is changed
-        fail_msg: "Create (http persistent) should report changed."
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.service_cluster.outlier_detection_split_external_local_origin_errors == true
+          - create_result_http_persistent.service_cluster.outlier_detection_consecutive_local_origin_failure == 0
+        fail_msg: "Create (http persistent) should report changed with split=true and consecutive=0. create_result_http_persistent={{ create_result_http_persistent }}"
 
     - name: Run again idempotency (http persistent)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local-hp"
+        outlier_detection_split_external_local_origin_errors: true
+        outlier_detection_consecutive_local_origin_failure: 0
         state: present
       register: idem_result_http_persistent
 
     - name: Assert idempotent run did not change (http persistent)
       ansible.builtin.assert:
         that: idem_result_http_persistent is not changed
-        fail_msg: "Idempotent run (http persistent) should not report changed."
+        fail_msg: "Idempotent run (http persistent) should not report changed when consecutive=0 is restated. idem_result_http_persistent={{ idem_result_http_persistent }}"
 
     - name: Update service_cluster (http persistent)
       ansible.platform.service_cluster:
         name: "molecule-mock-cluster-local-hp"
         upstream_hostname: "192.168.1.102"
+        outlier_detection_split_external_local_origin_errors: false
+        outlier_detection_consecutive_local_origin_failure: 50
       register: update_result_http_persistent
 
     - name: Assert update changed (http persistent)
       ansible.builtin.assert:
-        that: update_result_http_persistent is changed
-        fail_msg: "Update (http persistent) should report changed."
-...
+        that:
+          - update_result_http_persistent is changed
+          - update_result_http_persistent.service_cluster.upstream_hostname == "192.168.1.102"
+          - update_result_http_persistent.service_cluster.outlier_detection_split_external_local_origin_errors == false
+          - update_result_http_persistent.service_cluster.outlier_detection_consecutive_local_origin_failure == 50
+        fail_msg: "Update (http persistent) should report changed with new outlier options. update_result_http_persistent={{ update_result_http_persistent }}"
