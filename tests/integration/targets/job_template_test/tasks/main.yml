@@ -1,0 +1,173 @@
+---
+# Integration tests for ansible.platform.job_template
+# Covers: CRUD, idempotency, associations, survey_spec, copy_from
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-JobTemplate-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # ---- Basic CRUD ----------------------------------------------------------
+
+    - name: Delete any pre-existing test job template (cleanup)
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+
+    - name: Create a job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        job_type: "run"
+        project: "Demo Project"
+        playbook: "hello_world.yml"
+        state: present
+      register: created_jt
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_jt is changed
+          - created_jt.job_template.name is defined
+          - created_jt.job_template.id is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        job_type: "run"
+        project: "Demo Project"
+        playbook: "hello_world.yml"
+        state: present
+      register: idempotent_jt
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_jt is not changed
+
+    # ---- Update --------------------------------------------------------------
+
+    - name: Update job template description
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated description"
+        state: present
+      register: updated_jt
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_jt is changed
+
+    # ---- Exists check --------------------------------------------------------
+
+    - name: Check exists returns true
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+    - name: Check exists returns false for non-existent
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-NonExistent"
+        state: exists
+      register: not_exists_check
+
+    - name: Assert exists is false
+      ansible.builtin.assert:
+        that:
+          - not not_exists_check.exists
+
+    # ---- Survey spec ---------------------------------------------------------
+
+    - name: Add survey to job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        survey_enabled: true
+        survey_spec:
+          name: "Test Survey"
+          description: "A test survey"
+          spec:
+            - question_name: "Test Question"
+              question_description: "A test question"
+              required: true
+              type: "text"
+              variable: "test_var"
+              default: "default_value"
+        state: present
+      register: survey_jt
+
+    - name: Assert survey was applied
+      ansible.builtin.assert:
+        that:
+          - survey_jt is changed
+
+    # ---- Copy ----------------------------------------------------------------
+
+    - name: Copy a job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Copy"
+        copy_from: "{{ name_prefix }}-Test"
+        state: present
+      register: copied_jt
+
+    - name: Assert copy changed
+      ansible.builtin.assert:
+        that:
+          - copied_jt is changed
+
+    # ---- Delete --------------------------------------------------------------
+
+    - name: Delete the job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      register: delete_jt
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - delete_jt is changed
+
+    - name: Delete again (idempotency)
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      register: delete_idem
+
+    - name: Assert double-delete is a no-op
+      ansible.builtin.assert:
+        that:
+          - delete_idem is not changed
+
+  always:
+    - name: Cleanup test job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup copied job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Copy"
+        state: absent
+      failed_when: false
+...

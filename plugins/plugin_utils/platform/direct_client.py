@@ -965,6 +965,160 @@ class DirectHTTPClient(BaseAPIClient):
         # This should use the cache to avoid repeated lookups
         pass
 
+    def manage_associations(
+        self,
+        base_path,
+        resource_id,
+        association_field,
+        desired_items,
+        lookup_endpoint,
+        lookup_field,
+    ):
+        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate."""
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = "1"
+
+        resolved_ids = []
+        for item in desired_items:
+            if str(item).isdigit():
+                resolved_ids.append(int(item))
+            else:
+                rid = self.lookup_resource_id(lookup_endpoint, lookup_field, str(item))
+                if rid is None:
+                    raise ValueError("Could not find %s entry with %s='%s'" % (lookup_endpoint, lookup_field, item))
+                resolved_ids.append(rid)
+
+        assoc_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, association_field))
+        try:
+            response = self._make_request("get", assoc_url, operation="manage_associations", resource=association_field)
+            response_body = response.read()
+            current_data = json.loads(response_body) if response_body else {}
+            current_ids = [item["id"] for item in current_data.get("results", [])]
+        except Exception:
+            current_ids = []
+
+        changed = False
+
+        for item_id in resolved_ids:
+            if item_id not in current_ids:
+                try:
+                    self._make_request(
+                        "post",
+                        assoc_url,
+                        operation="associate",
+                        resource=association_field,
+                        json={"id": item_id, "associate": True},
+                    )
+                    changed = True
+                except Exception as exc:
+                    logger.debug("Failed to associate %s %s: %s", association_field, item_id, exc)
+
+        for item_id in current_ids:
+            if item_id not in resolved_ids:
+                try:
+                    self._make_request(
+                        "post",
+                        assoc_url,
+                        operation="disassociate",
+                        resource=association_field,
+                        json={"id": item_id, "disassociate": True},
+                    )
+                    changed = True
+                except Exception as exc:
+                    logger.debug("Failed to disassociate %s %s: %s", association_field, item_id, exc)
+
+        return changed
+
+    def manage_sub_resource(self, base_path, resource_id, sub_path, data=None):
+        """Manage a secondary sub-endpoint (GET/compare/POST or DELETE)."""
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = "1"
+
+        if data is None:
+            return False
+
+        spec_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, sub_path))
+
+        if data == {}:
+            self._make_request("delete", spec_url, operation="delete_sub_resource", resource=sub_path)
+            return True
+
+        try:
+            current_response = self._make_request("get", spec_url, operation="get_sub_resource", resource=sub_path)
+            current_body = current_response.read()
+            current_data = json.loads(current_body) if current_body else None
+        except Exception:
+            current_data = None
+
+        if data != current_data:
+            response = self._make_request(
+                "post",
+                spec_url,
+                operation="update_sub_resource",
+                resource=sub_path,
+                json=data,
+            )
+            status = getattr(response, "status", getattr(response, "code", 0))
+            if status not in (200, 201):
+                response_body = response.read() if hasattr(response, "read") else ""
+                raise ValueError("Failed to update %s: %s" % (sub_path, response_body or "Unknown error"))
+            return True
+
+        return False
+
+    def copy_resource(self, module_name, source_name_or_id, new_name, copy_endpoint_path):
+        """Copy a resource via its /copy/ sub-endpoint."""
+
+        source = None
+        try:
+            source = self.execute(
+                operation="find",
+                module_name=module_name,
+                ansible_data_dict={"name": source_name_or_id},
+            )
+        except Exception:
+            pass
+
+        if not source or not source.get("id"):
+            if str(source_name_or_id).isdigit():
+                try:
+                    source = self.execute(
+                        operation="find",
+                        module_name=module_name,
+                        ansible_data_dict={"id": int(source_name_or_id), "name": str(source_name_or_id)},
+                    )
+                except Exception:
+                    pass
+
+        if not source or not source.get("id"):
+            raise ValueError("Could not find %s '%s' to copy from" % (module_name, source_name_or_id))
+
+        copy_url = self._build_url("%s/%s/copy/" % (copy_endpoint_path, source["id"]))
+        response = self._make_request(
+            "post",
+            copy_url,
+            operation="copy_resource",
+            resource=module_name,
+            json={"name": new_name},
+        )
+        response_body = response.read()
+        result = json.loads(response_body) if response_body else {}
+        return result
+
     def direct_request(self, method: str, path: str, data=None) -> dict:
         """
         Make a raw authenticated HTTP request and return parsed JSON.

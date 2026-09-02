@@ -104,6 +104,79 @@ class BaseAPIClient(ABC):
         """
         pass
 
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+    ) -> bool:
+        """
+        Sync an association sub-endpoint for a resource.
+
+        Compares the desired list of associated items against the current
+        associations and performs associate/disassociate operations as needed.
+
+        Args:
+            base_path: API base path for the resource (e.g. '/api/controller/v2/job_templates')
+            resource_id: ID of the parent resource
+            association_field: Sub-endpoint name (e.g. 'credentials', 'labels')
+            desired_items: List of names or IDs to associate
+            lookup_endpoint: API endpoint for resolving names (e.g. 'credentials')
+            lookup_field: Field to filter by when resolving (e.g. 'name')
+
+        Returns:
+            True if any associations were changed, False otherwise
+        """
+        raise NotImplementedError("%s must implement manage_associations()" % type(self).__name__)
+
+    def manage_sub_resource(
+        self,
+        base_path: str,
+        resource_id: int,
+        sub_path: str,
+        data: Optional[dict] = None,
+    ) -> bool:
+        """
+        Manage a secondary sub-endpoint resource (e.g. survey_spec).
+
+        Compares the desired data against the current state and updates if
+        different.  An empty dict signals deletion of the sub-resource.
+
+        Args:
+            base_path: API base path for the parent resource
+            resource_id: ID of the parent resource
+            sub_path: Sub-endpoint path (e.g. 'survey_spec')
+            data: Desired state.  Empty dict {} means delete.
+
+        Returns:
+            True if the sub-resource was changed, False otherwise
+        """
+        raise NotImplementedError("%s must implement manage_sub_resource()" % type(self).__name__)
+
+    def copy_resource(
+        self,
+        module_name: str,
+        source_name_or_id: str,
+        new_name: str,
+        copy_endpoint_path: str,
+    ) -> dict:
+        """
+        Copy a resource via its /copy/ sub-endpoint.
+
+        Args:
+            module_name: Module name for find lookup (e.g. 'job_template')
+            source_name_or_id: Name or ID of the source resource to copy
+            new_name: Name for the new (copied) resource
+            copy_endpoint_path: API base path (e.g. '/api/controller/v2/job_templates')
+
+        Returns:
+            dict: The copied resource data from the API response
+        """
+        raise NotImplementedError("%s must implement copy_resource()" % type(self).__name__)
+
     def lookup_organization_ids(self, names: list) -> list:
         """
         Lookup organization IDs from names (shared helper).

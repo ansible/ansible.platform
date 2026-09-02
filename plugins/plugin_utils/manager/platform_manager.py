@@ -1049,6 +1049,144 @@ class PlatformService(BaseAPIClient):
 
         return sorted_ops
 
+    def manage_associations(
+        self,
+        base_path,
+        resource_id,
+        association_field,
+        desired_items,
+        lookup_endpoint,
+        lookup_field,
+    ):
+        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate."""
+        self.record_activity()
+
+        resolved_ids = []
+        for item in desired_items:
+            if str(item).isdigit():
+                resolved_ids.append(int(item))
+            else:
+                rid = self.lookup_resource_id(lookup_endpoint, lookup_field, str(item))
+                if rid is None:
+                    raise ValueError("Could not find %s entry with %s='%s'" % (lookup_endpoint, lookup_field, item))
+                resolved_ids.append(rid)
+
+        assoc_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, association_field))
+        try:
+            response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            current_data = response.json() if response.status_code == 200 else {}
+            current_ids = [item["id"] for item in current_data.get("results", [])]
+        except Exception:
+            current_ids = []
+
+        changed = False
+
+        for item_id in resolved_ids:
+            if item_id not in current_ids:
+                try:
+                    self.session.post(
+                        assoc_url,
+                        json={"id": item_id, "associate": True},
+                        timeout=self.request_timeout,
+                        verify=self.verify_ssl,
+                    )
+                    changed = True
+                except Exception as exc:
+                    logger.debug("Failed to associate %s %s: %s", association_field, item_id, exc)
+
+        for item_id in current_ids:
+            if item_id not in resolved_ids:
+                try:
+                    self.session.post(
+                        assoc_url,
+                        json={"id": item_id, "disassociate": True},
+                        timeout=self.request_timeout,
+                        verify=self.verify_ssl,
+                    )
+                    changed = True
+                except Exception as exc:
+                    logger.debug("Failed to disassociate %s %s: %s", association_field, item_id, exc)
+
+        return changed
+
+    def manage_sub_resource(self, base_path, resource_id, sub_path, data=None):
+        """Manage a secondary sub-endpoint (GET/compare/POST or DELETE)."""
+        self.record_activity()
+
+        if data is None:
+            return False
+
+        spec_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, sub_path))
+
+        if data == {}:
+            response = self.session.delete(spec_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            return response.status_code in (200, 204)
+
+        try:
+            current_response = self.session.get(spec_url, timeout=self.request_timeout, verify=self.verify_ssl)
+            current_data = current_response.json() if current_response.status_code == 200 else None
+        except Exception:
+            current_data = None
+
+        if data != current_data:
+            response = self.session.post(
+                spec_url,
+                json=data,
+                timeout=self.request_timeout,
+                verify=self.verify_ssl,
+            )
+            if response.status_code not in (200, 201):
+                error_msg = "Unknown error"
+                if response.text:
+                    try:
+                        error_msg = response.json().get("error", response.text)
+                    except Exception:
+                        error_msg = response.text
+                raise ValueError("Failed to update %s: %s" % (sub_path, error_msg))
+            return True
+
+        return False
+
+    def copy_resource(self, module_name, source_name_or_id, new_name, copy_endpoint_path):
+        """Copy a resource via its /copy/ sub-endpoint."""
+        self.record_activity()
+
+        source = None
+        try:
+            source = self.execute(
+                operation="find",
+                module_name=module_name,
+                ansible_data_dict={"name": source_name_or_id},
+            )
+        except Exception:
+            pass
+
+        if not source or not source.get("id"):
+            if str(source_name_or_id).isdigit():
+                try:
+                    source = self.execute(
+                        operation="find",
+                        module_name=module_name,
+                        ansible_data_dict={"id": int(source_name_or_id), "name": str(source_name_or_id)},
+                    )
+                except Exception:
+                    pass
+
+        if not source or not source.get("id"):
+            raise ValueError("Could not find %s '%s' to copy from" % (module_name, source_name_or_id))
+
+        copy_url = self._build_url("%s/%s/copy/" % (copy_endpoint_path, source["id"]))
+        response = self.session.post(
+            copy_url,
+            json={"name": new_name},
+            timeout=self.request_timeout,
+            verify=self.verify_ssl,
+        )
+        if response.status_code in (200, 201):
+            return response.json()
+        else:
+            raise ValueError("Failed to copy %s: %s" % (module_name, response.text or "Unknown error"))
+
     def lookup_org_ids(self, org_names: list) -> list:
         """
         Convert organization names to IDs.
