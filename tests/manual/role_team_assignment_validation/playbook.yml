@@ -1,0 +1,250 @@
+# Manual validation — role_team_assignment (PR #205 gaps)
+#
+# CI gateway jobs soft-skip Controller/EDA/Hub when those services are absent.
+# Unit tests cover org-scoped lookup with mocks only.
+# Run this against a full AAP (Gateway + Controller + EDA + Hub) before merge.
+#
+# Usage:
+#   ansible-playbook playbook.yml -e @vars.yml -vv
+#
+# Optional tags:
+#   --tags gateway,controller,eda,hub,negative,cleanup
+---
+- name: Role team assignment — manual cross-service validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    gateway_hostname: "{{ aap_hostname | mandatory }}"
+    gateway_username: "{{ aap_username | default('admin') }}"
+    gateway_password: "{{ aap_password | mandatory }}"
+    gateway_validate_certs: "{{ aap_validate_certs | default(false) }}"
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_lowercase length=8') }}"
+    prefix: "rta-val-{{ test_id }}"
+    shared_jt_name: "mco - preprod"
+
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  tasks:
+    - name: Probe which component APIs are reachable
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}{{ item.path }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 401, 403]
+      loop:
+        - { name: gateway, path: "api/gateway/v1/organizations/" }
+        - { name: controller, path: "api/controller/v2/organizations/" }
+        - { name: eda, path: "api/eda/v1/organizations/" }
+        - { name: hub, path: "api/galaxy/v3/namespaces/" }
+      loop_control:
+        label: "{{ item.name }}"
+      register: probes
+      failed_when: false
+      tags: [always]
+
+    - name: Record available services
+      ansible.builtin.set_fact:
+        has_gateway: "{{ probes.results[0] is not failed }}"
+        has_controller: "{{ probes.results[1] is not failed }}"
+        has_eda: "{{ probes.results[2] is not failed }}"
+        has_hub: "{{ probes.results[3] is not failed }}"
+      tags: [always]
+
+    - name: Show environment matrix
+      ansible.builtin.debug:
+        msg: >-
+          gateway={{ has_gateway }} controller={{ has_controller }}
+          eda={{ has_eda }} hub={{ has_hub }}
+      tags: [always]
+
+    - name: Gateway baseline
+      when: has_gateway | bool
+      tags: [gateway]
+      block:
+        - name: Create gateway orgs and team
+          ansible.builtin.include_tasks: tasks/setup_gateway.yml
+
+        - name: Assign Organization Inventory Admin by name
+          ansible.platform.role_team_assignment:
+            role_definition: Organization Inventory Admin
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ gw_org_a }}"
+                type: organizations
+            state: present
+          register: gw_assign
+
+        - name: Assert gateway assignment changed
+          ansible.builtin.assert:
+            that:
+              - gw_assign is changed
+              - gw_assign is not failed
+
+        - name: Idempotent re-run
+          ansible.platform.role_team_assignment:
+            role_definition: Organization Inventory Admin
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ gw_org_a }}"
+                type: organizations
+            state: present
+          register: gw_idem
+
+        - name: Assert gateway assignment idempotent
+          ansible.builtin.assert:
+            that:
+              - gw_idem is not changed
+
+        - name: Object_ids must be rejected (removed unimplemented option)
+          ansible.platform.role_team_assignment:
+            role_definition: Organization Inventory Admin
+            team: "{{ gw_team_name }}"
+            object_ids: [1, 2]
+            state: present
+          register: gw_object_ids
+          ignore_errors: true
+
+        - name: Assert object_ids is not accepted
+          ansible.builtin.assert:
+            that:
+              - gw_object_ids is failed
+            fail_msg: "object_ids should be rejected; got success — docs/argspec still expose the ghost param"
+
+    - name: Controller org-scoped lookup
+      when: has_controller | bool
+      tags: [controller]
+      block:
+        - name: Create two Controller orgs with same inventory name
+          ansible.builtin.include_tasks: tasks/setup_controller_dup_jt.yml
+
+        - name: Assign against Preprod inventory only (organization filter)
+          ansible.platform.role_team_assignment:
+            role_definition: "{{ ctrl_inv_role }}"
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ shared_inv_name }}"
+                type: inventories
+                organization: "{{ ctrl_org_preprod }}"
+            state: present
+          register: ctrl_scoped
+
+        - name: Assert Preprod assignment succeeded
+          ansible.builtin.assert:
+            that:
+              - ctrl_scoped is changed
+              - ctrl_scoped is not failed
+              - (ctrl_scoped.object_id | string) == (ctrl_inv_preprod_id | string)
+            fail_msg: >-
+              Expected object_id={{ ctrl_inv_preprod_id }} (Preprod),
+              got {{ ctrl_scoped.object_id | default('missing') }}
+
+        - name: Ambiguous name without organization must fail
+          ansible.platform.role_team_assignment:
+            role_definition: "{{ ctrl_inv_role }}"
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ shared_inv_name }}"
+                type: inventories
+            state: present
+          register: ctrl_ambiguous
+          ignore_errors: true
+
+        - name: Assert ambiguous lookup failed closed
+          ansible.builtin.assert:
+            that:
+              - ctrl_ambiguous is failed
+            fail_msg: "Duplicate inventory name without organization should fail, not pick results[0]"
+
+        - name: Assign via object_id still works
+          ansible.platform.role_team_assignment:
+            role_definition: "{{ ctrl_inv_role }}"
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - object_id: "{{ ctrl_inv_prod_id | int }}"
+            state: present
+          register: ctrl_by_id
+
+        - name: Assert object_id path works
+          ansible.builtin.assert:
+            that:
+              - ctrl_by_id is not failed
+
+    - name: EDA org-scoped lookup
+      when: has_eda | bool
+      tags: [eda]
+      block:
+        - name: Create EDA project under org
+          ansible.builtin.include_tasks: tasks/setup_eda.yml
+
+        - name: Assign EDA project role with organization
+          ansible.platform.role_team_assignment:
+            role_definition: "{{ eda_project_role }}"
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ eda_project_name }}"
+                type: eda_projects
+                organization: "{{ eda_org_name }}"
+            state: present
+          register: eda_assign
+
+        - name: Assert EDA assignment
+          ansible.builtin.assert:
+            that:
+              - eda_assign is not failed
+              - eda_assign.object_id is defined
+
+    - name: Hub namespace assignment
+      when: has_hub | bool
+      tags: [hub]
+      block:
+        - name: Create Hub namespace
+          ansible.builtin.include_tasks: tasks/setup_hub.yml
+
+        - name: Assign Hub namespace role by name
+          ansible.platform.role_team_assignment:
+            role_definition: galaxy.collection_namespace_owner
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ hub_ns_name }}"
+                type: namespaces
+            state: present
+          register: hub_assign
+
+        - name: Assert Hub assignment succeeded
+          ansible.builtin.assert:
+            that:
+              - hub_assign is not failed
+            fail_msg: "Hub assignment failed: {{ hub_assign.msg | default(hub_assign) }}"
+
+        - name: Organization on Hub type must fail
+          ansible.platform.role_team_assignment:
+            role_definition: galaxy.collection_namespace_owner
+            team: "{{ gw_team_name }}"
+            assignment_objects:
+              - name: "{{ hub_ns_name }}"
+                type: namespaces
+                organization: "should-not-work"
+            state: present
+          register: hub_org
+          ignore_errors: true
+
+        - name: Assert Hub rejects organization
+          ansible.builtin.assert:
+            that:
+              - hub_org is failed
+            fail_msg: "Hub types must reject organization="
+
+    - name: Cleanup created resources
+      ansible.builtin.include_tasks: tasks/cleanup.yml
+      tags: [cleanup, always]
+      when: cleanup | default(true) | bool
+...

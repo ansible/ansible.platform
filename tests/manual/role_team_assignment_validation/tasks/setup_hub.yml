@@ -1,0 +1,25 @@
+---
+- name: Ensure gateway team exists for Hub tests
+  ansible.builtin.assert:
+    that:
+      - gw_team_name is defined
+
+- name: Set Hub namespace name
+  ansible.builtin.set_fact:
+    hub_ns_name: "rta{{ test_id }}"
+
+- name: Create Hub namespace
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}api/galaxy/v3/namespaces/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ hub_ns_name }}"
+    status_code: [200, 201, 409]
+  register: hub_ns
+  failed_when: hub_ns.status | default(0) | int not in [200, 201, 409]
+...

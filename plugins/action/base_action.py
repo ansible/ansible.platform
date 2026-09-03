@@ -19,17 +19,16 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.plugins.action import ActionBase
 from ansible.utils.display import Display
-
-if TYPE_CHECKING:
-    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 # ---------------------------------------------------------------------------
 # Logging strategy for action plugins
@@ -271,6 +270,13 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this to list mutable FK fields for their resource.
     _MUTABLE_FK_FIELDS: frozenset = frozenset()
 
+    # Fields where list order does not matter for idempotency comparison.
+    # By default, list comparison is order-sensitive (safer).  Subclasses
+    # opt in specific fields where the API may return items in a different
+    # order than the user specified (e.g. permissions lists).
+    # Example:  _ORDER_INSENSITIVE_FIELDS = frozenset({"permissions"})
+    _ORDER_INSENSITIVE_FIELDS: frozenset = frozenset()
+
     _AUTH_PARAMS = frozenset(
         {
             "gateway_hostname",
@@ -457,9 +463,6 @@ class BaseResourceActionPlugin(ActionBase):
             was spawned, or None if reusing an existing manager.
         """
         import sys
-
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 
         self._display.vvvv("Using experimental connection mode (Persistent Manager)")
 
@@ -807,8 +810,6 @@ class BaseResourceActionPlugin(ActionBase):
         if hasattr(self, "_client") and getattr(self._client, "_ephemeral", False):
             self._display.vv("Shutting down ephemeral manager (direct mode)")
             try:
-                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-
                 socket_path = getattr(self._client, "socket_path", None)
                 if socket_path:
                     self._shutdown_manager_process(socket_path, ProcessManager)
@@ -900,8 +901,6 @@ class BaseResourceActionPlugin(ActionBase):
                 if authkey_b64 and Path(socket_path).exists():
                     try:
                         authkey = base64.b64decode(authkey_b64)
-                        from .plugin_utils.manager.rpc_client import ManagerRPCClient
-
                         # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
                         socket_path_str = str(socket_path)
                         client = ManagerRPCClient(process_info.get("gateway_url", ""), socket_path_str, authkey)
@@ -994,8 +993,21 @@ class BaseResourceActionPlugin(ActionBase):
                 and current_val.isdigit()
             ):
                 continue
+            # List comparison: order-insensitive for opted-in fields only,
+            # order-sensitive (default) for everything else.
+            if isinstance(desired_val, list) and isinstance(current_val, list):
+                if key in self._ORDER_INSENSITIVE_FIELDS:
+                    # Opted-in: the API may return items in a different order
+                    # (e.g. permissions come back alphabetically).
+                    if sorted(str(x) for x in desired_val) != sorted(str(x) for x in current_val):
+                        return True
+                else:
+                    # Default: order-sensitive (safer — preserves ordering
+                    # semantics for fields like notification_addresses).
+                    if desired_val != current_val:
+                        return True
             # Same type: direct equality
-            if type(desired_val) is type(current_val):
+            elif type(desired_val) is type(current_val):
                 if desired_val != current_val:
                     return True
             else:

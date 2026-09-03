@@ -1,0 +1,23 @@
+---
+- name: Create gateway org A
+  ansible.platform.organization:
+    name: "{{ prefix }}-org-a"
+  register: _org_a
+
+- name: Create gateway org B
+  ansible.platform.organization:
+    name: "{{ prefix }}-org-b"
+  register: _org_b
+
+- name: Create gateway team
+  ansible.platform.team:
+    name: "{{ prefix }}-team"
+    organization: "{{ _org_a.name }}"
+  register: _team
+
+- name: Set gateway facts
+  ansible.builtin.set_fact:
+    gw_org_a: "{{ _org_a.name }}"
+    gw_org_b: "{{ _org_b.name }}"
+    gw_team_name: "{{ _team.name }}"
+...

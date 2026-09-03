@@ -1,0 +1,69 @@
+---
+# Shared 6-task cycle for role_team_assignment validation.
+#
+# Required vars (set via include_tasks vars:):
+#   res_ok       - bool guard (precomputed by caller, e.g. "resource is not failed")
+#   res_name     - resource name for assignment_objects
+#   res_type     - endpoint type for assignment_objects (e.g. inventories, namespaces)
+#   res_role_def - role definition name or ID
+#   team_name    - team name string
+#
+# Internal registers use _rta_ prefix to avoid collisions with parent-scope vars.
+# Sequential include_tasks invocations overwrite them safely.
+
+- name: "Assign to team — {{ res_type }}"
+  ansible.platform.role_team_assignment:
+    role_definition: "{{ res_role_def }}"
+    team: "{{ team_name }}"
+    assignment_objects:
+      - name: "{{ res_name }}"
+        type: "{{ res_type }}"
+    state: present
+  register: _rta_assign
+  when: res_ok | bool
+  ignore_errors: true
+
+- name: "Assert role assignment succeeded — {{ res_type }}"
+  ansible.builtin.assert:
+    that:
+      - _rta_assign is not failed
+      - _rta_assign is changed
+    fail_msg: "{{ res_type }} role assignment failed: {{ _rta_assign.msg | default('') }}"
+  when: res_ok | bool and _rta_assign is defined
+
+- name: "Idempotency re-run — {{ res_type }}"
+  ansible.platform.role_team_assignment:
+    role_definition: "{{ res_role_def }}"
+    team: "{{ team_name }}"
+    assignment_objects:
+      - name: "{{ res_name }}"
+        type: "{{ res_type }}"
+    state: present
+  register: _rta_idem
+  when: res_ok | bool and _rta_assign is not failed
+
+- name: "Assert assignment idempotent — {{ res_type }}"
+  ansible.builtin.assert:
+    that: _rta_idem is not changed
+    fail_msg: "{{ res_type }} re-run should not change."
+  when: res_ok | bool and _rta_assign is not failed and _rta_idem is defined
+
+- name: "State=absent removes assignment — {{ res_type }}"
+  ansible.platform.role_team_assignment:
+    role_definition: "{{ res_role_def }}"
+    team: "{{ team_name }}"
+    assignment_objects:
+      - name: "{{ res_name }}"
+        type: "{{ res_type }}"
+    state: absent
+  register: _rta_absent
+  when: res_ok | bool and _rta_assign is not failed
+
+- name: "Assert assignment removed — {{ res_type }}"
+  ansible.builtin.assert:
+    that:
+      - _rta_absent is not failed
+      - _rta_absent is changed
+    fail_msg: "state=absent on {{ res_type }} assignment failed: {{ _rta_absent.msg | default('') }}"
+  when: res_ok | bool and _rta_assign is not failed and _rta_absent is defined
+...
