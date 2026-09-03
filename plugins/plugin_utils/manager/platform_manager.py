@@ -10,7 +10,7 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass, replace
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import BaseAPIClient
+from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient, WaitTimeoutError
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -505,6 +505,13 @@ class PlatformService(BaseAPIClient):
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        # Pop launch-command wait/poll directives (e.g. ad_hoc_command) — these are
+        # control flags for this method, not fields on the resource dataclass.
+        wait = ansible_data_dict.pop("wait", False)
+        wait_interval = ansible_data_dict.pop("interval", 2.0)
+        wait_timeout = ansible_data_dict.pop("timeout", None)
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
 
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -515,6 +522,8 @@ class PlatformService(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
+                if wait:
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
@@ -565,6 +574,49 @@ class PlatformService(BaseAPIClient):
             return ansible_result
 
         return {"changed": True}
+
+    def _wait_for_resource_completion(
+        self,
+        result: dict,
+        ansible_instance: Any,
+        mixin_class: type,
+        context: "TransformContext",
+        module_name: str,
+        interval: float,
+        timeout: Optional[float],
+    ) -> dict:
+        """Poll a just-launched resource until the API reports it finished.
+
+        For launch-style resources (e.g. ad_hoc_command) the create operation only
+        starts an async job; the mixin's from_api() must populate a truthy
+        "finished" field once the job completes for this to terminate. Shared by
+        PlatformService and DirectHTTPClient so wait/interval/timeout behave the
+        same regardless of connection mode — action plugins never poll themselves.
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded before the resource finishes.
+                Carries the last poll result so callers can still report id/status.
+        """
+        if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
+            return result
+
+        find_instance = replace(ansible_instance, id=result["id"]) if is_dataclass(ansible_instance) else ansible_instance
+        start = time.monotonic()
+
+        while True:
+            result = self._find_resource(find_instance, mixin_class, context)
+            if result.get("finished") or result.get("event_processing_finished"):
+                return result
+
+            elapsed = time.monotonic() - start
+            if timeout is not None and elapsed >= timeout:
+                raise WaitTimeoutError(
+                    "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
+                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
+                    last_result=result,
+                )
+
+            time.sleep(interval)
 
     def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """

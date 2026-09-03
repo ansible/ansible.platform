@@ -1,0 +1,241 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — ad_hoc_command (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    # PHASE 1: Launch ad hoc command without waiting
+    - name: Launch ad hoc command (no wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: ping
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: launch_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert launch succeeded
+      ansible.builtin.assert:
+        that:
+          - launch_result is changed
+          - launch_result.id is defined
+          - launch_result.status is defined
+        fail_msg: "Launch should succeed with id and status. Got: {{ launch_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 2: Launch ad hoc command with wait
+    - name: Launch ad hoc command (with wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: echo hello
+        wait: true
+        interval: 1
+        timeout: 30
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: wait_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert waited launch succeeded
+      ansible.builtin.assert:
+        that:
+          - wait_result is changed
+          - wait_result.id is defined
+          - wait_result.status == "successful"
+        fail_msg: "Wait launch should complete with status successful. Got: {{ wait_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 3: Launch with extra parameters
+    - name: Launch ad hoc command with extra options
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: shell
+        module_args: echo {{ '{{' }} my_var {{ '}}' }}
+        job_type: run
+        forks: 5
+        verbosity: 2
+        extra_vars:
+          my_var: hello
+        become_enabled: true
+        diff_mode: false
+        execution_environment: Default EE
+        wait: true
+        interval: 1
+        timeout: 30
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: full_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert full launch succeeded
+      ansible.builtin.assert:
+        that:
+          - full_result is changed
+          - full_result.id is defined
+          - full_result.status == "successful"
+        fail_msg: "Full launch should succeed. Got: {{ full_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 4: Verify always changed (not idempotent — each call creates new command)
+    - name: Launch same command again (should still be changed)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: ping
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: repeat_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert repeat is also changed (ad hoc commands are never idempotent)
+      ansible.builtin.assert:
+        that:
+          - repeat_result is changed
+          - repeat_result.id != launch_result.id
+        fail_msg: "Repeat should create a new command with a different id. Got: {{ repeat_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 5: Waited command that resolves to a failed status on Controller
+    - name: Launch ad hoc command that resolves to failed (with wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: "__fail__"
+        wait: true
+        interval: 1
+        timeout: 30
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: failed_result
+      ignore_errors: true
+      vars:
+        ansible_connection: local
+
+    - name: Assert failed command still reports id and status
+      ansible.builtin.assert:
+        that:
+          - failed_result is failed
+          - failed_result.id is defined
+          - failed_result.id is not none
+          - failed_result.status == "failed"
+        fail_msg: "Failed command should report failed with id/status set. Got: {{ failed_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 6: Wait-timeout must still return the launched command's id
+    - name: Launch ad hoc command that never finishes (wait times out)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: "__hang__"
+        wait: true
+        interval: 1
+        timeout: 3
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: timeout_result
+      ignore_errors: true
+      vars:
+        ansible_connection: local
+
+    - name: Assert wait-timeout still reports the launched id
+      ansible.builtin.assert:
+        that:
+          - timeout_result is failed
+          - timeout_result.id is defined
+          - timeout_result.id is not none
+        fail_msg: "Wait-timeout should still report the launched command's id. Got: {{ timeout_result }}"
+      vars:
+        ansible_connection: local
+
+    # PHASE 7: check_mode must not launch a real command
+    - name: Launch ad hoc command in check mode (must not call Controller)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: ping
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      check_mode: true
+      register: check_mode_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert check_mode reports changed without launching
+      ansible.builtin.assert:
+        that:
+          - check_mode_result is changed
+          - check_mode_result is not failed
+          - check_mode_result.id is none
+        fail_msg: "check_mode should report changed without an id (nothing launched). Got: {{ check_mode_result }}"
+      vars:
+        ansible_connection: local
+...
