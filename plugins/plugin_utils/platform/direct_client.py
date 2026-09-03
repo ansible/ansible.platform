@@ -73,7 +73,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Initialize session using Ansible's Request (like current collection)
         # This is more compatible with Ansible worker processes
-        self.session = Request(cookies=CookieJar(), validate_certs=self.verify_ssl, timeout=self.request_timeout)
+        tls_kwargs = self._ansible_tls_kwargs()
+        self.session = Request(
+            cookies=CookieJar(),
+            validate_certs=tls_kwargs["validate_certs"],
+            ca_path=tls_kwargs["ca_path"],
+            timeout=self.request_timeout,
+        )
         self.session.headers.update({"User-Agent": "Ansible Platform Collection", "Accept": "application/json", "Content-Type": "application/json"})
 
         # Track authentication state
@@ -132,7 +138,12 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             ping_url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
             logger.debug("DirectHTTPClient: version detection tier-1 %s", ping_url)
-            response = self.session.open("GET", ping_url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
+            response = self.session.open(
+                "GET",
+                ping_url,
+                timeout=self.request_timeout,
+                **self._ansible_tls_kwargs(),
+            )
 
             # Only trust the X-API-Version header from the ping endpoint.
             # The JSON body "version" field is the *product* version
@@ -157,7 +168,12 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             root_url = f"{self.base_url.rstrip('/')}/api/gateway/"
             logger.debug("DirectHTTPClient: version detection tier-2 %s", root_url)
-            response = self.session.open("GET", root_url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
+            response = self.session.open(
+                "GET",
+                root_url,
+                timeout=self.request_timeout,
+                **self._ansible_tls_kwargs(),
+            )
 
             v = _hdr_version(response)
             if v:
@@ -246,7 +262,8 @@ class DirectHTTPClient(BaseAPIClient):
         # Set default timeout and verify_ssl if not provided
         request_kwargs = kwargs.copy()
         timeout = request_kwargs.pop("timeout", self.request_timeout)
-        verify = request_kwargs.pop("verify", self.verify_ssl)
+        verify = request_kwargs.pop("verify", self.requests_verify)
+        tls_kwargs = self._ansible_tls_kwargs(verify)
 
         # Prepare data for JSON requests
         data = None
@@ -288,10 +305,10 @@ class DirectHTTPClient(BaseAPIClient):
                 response = self.session.open(
                     method.upper(),
                     url_str,
-                    validate_certs=verify,
                     timeout=timeout,
                     follow_redirects=True,
                     data=data,
+                    **tls_kwargs,
                 )
                 status = getattr(response, "status", getattr(response, "code", "unknown"))
                 logger.info("DirectHTTPClient: Response received: status=%s", status)
@@ -322,10 +339,10 @@ class DirectHTTPClient(BaseAPIClient):
                         response = self.session.open(
                             method.upper(),
                             parsed_url.geturl() if hasattr(parsed_url, "geturl") else str(url),
-                            validate_certs=verify,
                             timeout=timeout,
                             follow_redirects=True,
                             data=data,
+                            **tls_kwargs,
                         )
                         # Success - return the response
                         return response
