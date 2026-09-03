@@ -26,7 +26,10 @@
         that:
           - exists_result_local is not failed
           - exists_result_local.get('exists') | default(false) | bool
-        fail_msg: "Verify: service_cluster not found (connection local)."
+          - exists_result_local.service_cluster.upstream_hostname == "192.168.1.102"
+          - exists_result_local.service_cluster.outlier_detection_split_external_local_origin_errors == false
+          - exists_result_local.service_cluster.outlier_detection_consecutive_local_origin_failure == 50
+        fail_msg: "Verify: service_cluster not found or outlier options did not round-trip (connection local)."
       vars:
         ansible_connection: local
 
@@ -52,7 +55,10 @@
         that:
           - exists_result_http_direct is not failed
           - exists_result_http_direct.get('exists') | default(false) | bool
-        fail_msg: "Verify: service_cluster not found (http direct)."
+          - exists_result_http_direct.service_cluster.upstream_hostname == "192.168.1.102"
+          - exists_result_http_direct.service_cluster.outlier_detection_split_external_local_origin_errors == false
+          - exists_result_http_direct.service_cluster.outlier_detection_consecutive_local_origin_failure == 50
+        fail_msg: "Verify: service_cluster not found or outlier options did not round-trip (http direct)."
 
 - name: Verify — service_cluster created (http persistent)
   hosts: localhost
@@ -76,5 +82,8 @@
         that:
           - exists_result_http_persistent is not failed
           - exists_result_http_persistent.get('exists') | default(false) | bool
-        fail_msg: "Verify: service_cluster not found (http persistent)."
+          - exists_result_http_persistent.service_cluster.upstream_hostname == "192.168.1.102"
+          - exists_result_http_persistent.service_cluster.outlier_detection_split_external_local_origin_errors == false
+          - exists_result_http_persistent.service_cluster.outlier_detection_consecutive_local_origin_failure == 50
+        fail_msg: "Verify: service_cluster not found or outlier options did not round-trip (http persistent)."
 ...
