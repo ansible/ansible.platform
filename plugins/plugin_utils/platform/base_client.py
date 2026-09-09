@@ -41,6 +41,7 @@ class BaseAPIClient(ABC):
         self.config = config
         self.base_url = config.base_url.rstrip("/")
         self.verify_ssl = config.verify_ssl
+        self.ca_bundle = config.ca_bundle
         self.request_timeout = config.request_timeout
 
         # Shared: Version detection infrastructure
@@ -54,6 +55,27 @@ class BaseAPIClient(ABC):
         self.cache: Dict[str, Any] = {}
 
         logger.info("BaseAPIClient initialized: base_url=%s, mode=%s", self.base_url, config.connection_mode)
+
+    @property
+    def requests_verify(self):
+        """TLS verify parameter for HTTP clients (bool or CA bundle path)."""
+        config = getattr(self, "config", None)
+        if config is not None:
+            return config.requests_verify
+        if not getattr(self, "verify_ssl", True):
+            return False
+        ca_bundle = getattr(self, "ca_bundle", None)
+        if ca_bundle:
+            return ca_bundle
+        return True
+
+    def _ansible_tls_kwargs(self, verify=None):
+        """Map TLS verify setting to Ansible Request validate_certs/ca_path kwargs."""
+        if verify is None:
+            verify = self.requests_verify
+        if isinstance(verify, str):
+            return {"validate_certs": True, "ca_path": verify}
+        return {"validate_certs": bool(verify), "ca_path": None}
 
     @abstractmethod
     def _detect_api_version(self) -> str:
