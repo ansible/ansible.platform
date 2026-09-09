@@ -238,4 +238,96 @@
         fail_msg: "check_mode should report changed without an id (nothing launched). Got: {{ check_mode_result }}"
       vars:
         ansible_connection: local
+
+- name: Converge — ad_hoc_command (mock, connection ansible.platform.http, persistent disabled)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    # Forces the connection plugin's non-persistent ("direct") dispatch path
+    # instead of the persistent manager used by the plays above.
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    # DIRECT PHASE 1: Launch ad hoc command without waiting
+    - name: (direct) Launch ad hoc command (no wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: ping
+      register: direct_launch_result
+
+    - name: (direct) Assert launch succeeded
+      ansible.builtin.assert:
+        that:
+          - direct_launch_result is changed
+          - direct_launch_result.id is defined
+          - direct_launch_result.status is defined
+        fail_msg: "Direct-mode launch should succeed with id and status. Got: {{ direct_launch_result }}"
+
+    # DIRECT PHASE 2: Launch ad hoc command with wait -> success
+    - name: (direct) Launch ad hoc command (with wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: echo hello
+        wait: true
+        interval: 1
+        timeout: 30
+      register: direct_wait_result
+
+    - name: (direct) Assert waited launch succeeded
+      ansible.builtin.assert:
+        that:
+          - direct_wait_result is changed
+          - direct_wait_result.id is defined
+          - direct_wait_result.status == "successful"
+        fail_msg: "Direct-mode waited launch should complete with status successful. Got: {{ direct_wait_result }}"
+
+    # DIRECT PHASE 3: Waited command that resolves to a failed status on Controller
+    - name: (direct) Launch ad hoc command that resolves to failed (with wait)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: "__fail__"
+        wait: true
+        interval: 1
+        timeout: 30
+      register: direct_failed_result
+      ignore_errors: true
+
+    - name: (direct) Assert failed command still reports id and status
+      ansible.builtin.assert:
+        that:
+          - direct_failed_result is failed
+          - direct_failed_result.id is defined
+          - direct_failed_result.id is not none
+          - direct_failed_result.status == "failed"
+        fail_msg: "Direct-mode failed command should report failed with id/status set. Got: {{ direct_failed_result }}"
+
+    # DIRECT PHASE 4: Wait-timeout must still return the launched command's id
+    - name: (direct) Launch ad hoc command that never finishes (wait times out)
+      ansible.platform.ad_hoc_command:
+        inventory: Demo Inventory
+        credential: Demo Credential
+        module_name: command
+        module_args: "__hang__"
+        wait: true
+        interval: 1
+        timeout: 3
+      register: direct_timeout_result
+      ignore_errors: true
+
+    - name: (direct) Assert wait-timeout still reports the launched id
+      ansible.builtin.assert:
+        that:
+          - direct_timeout_result is failed
+          - direct_timeout_result.id is defined
+          - direct_timeout_result.id is not none
+        fail_msg: "Direct-mode wait-timeout should still report the launched command's id. Got: {{ direct_timeout_result }}"
 ...
