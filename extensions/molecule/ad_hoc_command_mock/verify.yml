@@ -19,12 +19,12 @@
       vars:
         ansible_connection: local
 
-    - name: Assert at least 6 commands were created (converge creates 6; check_mode launches none)
+    - name: Assert at least 10 commands were created (6 via persistent/local, 4 via direct mode; check_mode launches none)
       ansible.builtin.assert:
         that:
-          - commands_check.json.count >= 6
+          - commands_check.json.count >= 10
         fail_msg: >-
-          Verify: expected at least 6 ad hoc commands.
+          Verify: expected at least 10 ad hoc commands.
           Got: {{ commands_check.json.count }}
       vars:
         ansible_connection: local
