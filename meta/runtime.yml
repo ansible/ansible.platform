@@ -2,6 +2,7 @@
 requires_ansible: ">=2.16.0"
 action_groups:
   gateway:
+    - ad_hoc_command
     - application
     - authenticator
     - authenticator_map
