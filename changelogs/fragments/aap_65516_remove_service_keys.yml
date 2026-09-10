@@ -1,0 +1,3 @@
+---
+breaking_changes:
+  - service_key - module removed as the endpoint is no longer POSTable. 
