@@ -17,7 +17,7 @@
     msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
   when:
     - _sc_query | length > 1
-    - _sc_query | length != 1 and _sc_query[0].type != 'gateway'
+    - _sc_query | length != 1 and _sc_query[0].name != 'gateway'
 
 - name: Run Test
   module_defaults:
@@ -79,175 +79,21 @@
     - name: Create Service Key 1 with check mode
       ansible.platform.service_key:
         name: "{{ name_prefix }}-Key 1"
-        is_active: true
         service_cluster: "{{ controller_sc.id }}"
-        algorithm: HS384
-        secret: "gateway-secret"
-        mark_previous_inactive: false
-      check_mode: true
+        algorithm: "HS256"
+        mark_previous_inactive: False
+      register: check_mode_create
 
-    - name: Search for Service Key 1
-      ansible.builtin.set_fact:
-        item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'service_keys',
-          query_params={'name': '{{ name_prefix }}-Key 1'}, **connection_info) }}"
+    - name: Include old tests
+      ansible.builtin.include_tasks: "creatable.yml"
+      when: check_mode_create.warnings | default([]) | length == 0
 
-    - name: Assert that Service Key 1 does not exist
-      ansible.builtin.assert:
-        that:
-          - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
-        fail_msg: "Service Key '{{ name_prefix }}-Key 1' exists in the system!"
-
-    - name: Create Service Key 1
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        is_active: true
-        service_cluster: "{{ controller_sc.id }}"
-        algorithm: HS384
-        secret: "gateway-secret"
-        mark_previous_inactive: false
-      register: service_key1
-
-    - name: Assert that we created service key 1
-      ansible.builtin.assert:
-        that:
-          - service_key1 is changed
-
-    # We have to take out the secret because its encrypted
-    - name: Recreate Service Key 1
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        is_active: true
-        service_cluster: "{{ controller_sc.id }}"
-        algorithm: HS384
-        mark_previous_inactive: false
-      register: recreate_service_key1
-
-    - name: Assert that recreate does not change the system
-      ansible.builtin.assert:
-        that:
-          - recreate_service_key1 is not changed
-
-    - name: Create Service Key 2
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 2"
-        service_cluster: "{{ hub_sc.name }}"
-        secret: "gateway-secret"
-        mark_previous_inactive: true
-      register: service_key2
-
-    - name: Assert that we created service key 2
-      ansible.builtin.assert:
-        that:
-          - service_key2 is changed
-
-    - name: Create Service Key 3
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 3"
-        is_active: false
-        service_cluster: "{{ controller_sc.id }}"  # Controller
-        mark_previous_inactive: false
-      register: service_key3
-
-    - name: Assert that we created service key 3
-      ansible.builtin.assert:
-        that:
-          - service_key3 is changed
-
-    - name: Create Service Key 4
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 4"
-        service_cluster: "{{ eda_sc.id }}"  # EDA
-        mark_previous_inactive: false
-      register: service_key4
-
-    - name: Assert that we created service key 4
-      ansible.builtin.assert:
-        that:
-          - service_key4 is changed
-
-    - name: Create Service Key 5
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 5"
-        service_cluster: "{{ controller_sc.id }}"  # Controller, have to set others as inactive
-        mark_previous_inactive: true
-      register: service_key5
-
-    - name: Assert that we created service key 5
-      ansible.builtin.assert:
-        that:
-          - service_key5 is changed
-
-    - name: Deactivate a key
-      ansible.platform.service_key:
-        name: "{{ service_key2.name }}"
-        is_active: false
-      register: change_service_key2
-
-    - name: Assert that we changed the existing key
-      ansible.builtin.assert:
-        that:
-          - change_service_key2 is changed
-          - change_service_key2.id == change_service_key2.id
-
-    - name: See if a key exists
-      ansible.platform.service_key:
-        name: "{{ service_key3.id }}"
-        state: exists
-      register: exists_service_key3
-
-    - name: Assert that exists does not change the system
-      ansible.builtin.assert:
-        that:
-          - exists_service_key3 is not changed
-
-    - name: Rename a key
-      ansible.platform.service_key:
-        name: "{{ service_key4.id }}"
-        new_name: "{{ service_key4.id }}-New"
-      register: rename_service_key4
-
-    - name: Assert that the rename changed an existing service key
-      ansible.builtin.assert:
-        that:
-          - rename_service_key4 is changed
-          - rename_service_key4.id == service_key4.id
-
-    - name: Delete a non-existing service key
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-DNE"
-        state: absent
-      register: delete
-
-    - name: Assert that delete of non-existent dies not change the system
-      ansible.builtin.assert:
-        that:
-          - delete is not changed
-
-    - name: Delete an actual service key
-      ansible.platform.service_key:
-        name: "{{ service_key5.id }}"
-        state: absent
-      register: delete
-
-    - name: Assert that the delete changed the system
-      ansible.builtin.assert:
-        that:
-          - delete is changed
+    - name: Include new tests
+      ansible.builtin.include_tasks: "editable.yml"
+      when: check_mode_create.warnings | default([]) | length > 0
 
   always:
     # Always Cleanup
-    - name: Delete Service Keys
-      ansible.platform.service_key:
-        state: absent
-        name: "{{ vars[item].id }}"
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "service_key1"
-        - "service_key2"
-        - "service_key3"
-        - "service_key4"
-        - "service_key5"
-
     - name: Delete Service Clusters
       ansible.platform.service_cluster:
         name: "{{ vars[item].id }}"

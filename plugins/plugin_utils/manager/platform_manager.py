@@ -483,6 +483,23 @@ class PlatformService(BaseAPIClient):
 
         return url
 
+    def endpoint_supports_method(self, path: str, method: str) -> bool:
+        """Return whether an endpoint advertises an HTTP method via OPTIONS."""
+        method = method.upper()
+        cache_key = f"endpoint-method:{path}:{method}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        response = self.session.options(self._build_url(path), timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        allowed = response.headers.get("Allow", "")
+        if allowed:
+            supported = method in {item.strip().upper() for item in allowed.split(",")}
+        else:
+            supported = method in response.json().get("actions", {})
+        self.cache[cache_key] = supported
+        return supported
+
     def execute(self, operation: str, module_name: str, ansible_data_dict: dict) -> dict:
         """
         Execute a generic operation on any resource.
@@ -660,7 +677,7 @@ class PlatformService(BaseAPIClient):
                 lookup_field = mixin_class.get_lookup_field()
                 api_normalized_fields = {"slug"}
                 internal_fields = {"organization_id"}
-                skip_fields = read_only_fields | {"state", lookup_field} | api_normalized_fields | internal_fields
+                skip_fields = read_only_fields | {"state", "new_name", lookup_field} | api_normalized_fields | internal_fields
                 requested = asdict(ansible_data)
                 for k, v in requested.items():
                     if k in skip_fields or v is None:
@@ -703,7 +720,7 @@ class PlatformService(BaseAPIClient):
             internal_fields = {"organization_id"}
             norm = self._normalize_for_compare
             lookup_field = mixin_class.get_lookup_field()
-            skip_fields = read_only_fields | {"state", lookup_field} | api_normalized_fields | internal_fields
+            skip_fields = read_only_fields | {"state", "new_name", lookup_field} | api_normalized_fields | internal_fields
             requested = asdict(ansible_data)
             changed = False
             for k, v in requested.items():

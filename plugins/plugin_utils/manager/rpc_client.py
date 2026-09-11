@@ -112,6 +112,10 @@ class ManagerRPCClient:
         """
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value)
 
+    def endpoint_supports_method(self, path: str, method: str) -> bool:
+        """Ask the manager whether an endpoint advertises an HTTP method."""
+        return self.service_proxy.endpoint_supports_method(path, method)
+
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.

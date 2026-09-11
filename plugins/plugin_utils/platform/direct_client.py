@@ -1018,3 +1018,23 @@ class DirectHTTPClient(BaseAPIClient):
             return json.loads(response_body) if response_body else {}
         except Exception:
             return {}
+
+    def endpoint_supports_method(self, path: str, method: str) -> bool:
+        """Return whether an endpoint advertises an HTTP method via OPTIONS."""
+        method = method.upper()
+        cache_key = f"endpoint-method:{path}:{method}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        response = self._make_request("OPTIONS", self._build_url(path), operation="options", resource=path)
+        allowed = getattr(response, "headers", {}).get("Allow", "")
+        if allowed:
+            supported = method in {item.strip().upper() for item in allowed.split(",")}
+        else:
+            try:
+                response_data = json.loads(response.read() or "{}")
+            except (TypeError, ValueError):
+                response_data = {}
+            supported = method in response_data.get("actions", {})
+        self.cache[cache_key] = supported
+        return supported

@@ -1,0 +1,90 @@
+---
+- name: Load existing service keys
+  ansible.builtin.set_fact:
+    existing_service_keys: "{{ lookup('ansible.platform.gateway_api', 'service_keys', **connection_info) }}"
+
+- name: Ensure we have at least one service key
+  ansible.builtin.fail:
+    msg: "No service keys found in the system and unable to create them via the API. Please create at least one service key before running this test."
+  when: existing_service_keys | length == 0
+      
+- ansible.builtin.debug: 
+    msg: "Existing service key we will be using: {{ existing_service_keys[0] }}"
+
+- name: Run Editable Service Key Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Service Keys> ----------------------------
+    - name: Try running the module with all of the fields to see what happens
+      ansible.platform.service_key:
+        name: "{{ existing_service_keys[0].name }}"
+        secret: "Some Secret"
+        algorithm: "HS512"
+        service_cluster: "{{ controller_sc.id }}"
+        mark_previous_inactive: false
+        is_active: "{{ existing_service_keys[0].is_active }}"
+      register: all_params_update
+
+    - name: Assert that our call didn't fail
+      ansible.builtin.assert:
+        that:
+          - all_params_update is not changed
+
+    - name: Attempt to update the first service key with the same values
+      ansible.platform.service_key:
+        name: "{{ existing_service_keys[0].name }}"
+        is_active: "{{ existing_service_keys[0].is_active }}"
+      register: check_mode_update
+
+    - name: Assert that we could have changed the service key
+      ansible.builtin.assert:
+        that:
+          - check_mode_update is not changed
+    
+    - name: Attempt to change the first service key with check mode
+      ansible.platform.service_key:
+        name: "{{ existing_service_keys[0].name }}"
+        is_active: "{{ not existing_service_keys[0].is_active }}"
+      check_mode: true
+      register: check_mode_update
+
+    - name: Assert that we would havechanged the first service key
+      ansible.builtin.assert:
+        that:
+          - check_mode_update is changed
+    
+    - name: Change the active state of the service key
+      ansible.platform.service_key:
+        name: "{{ existing_service_keys[0].name }}"
+        is_active: "{{ not existing_service_keys[0].is_active }}"
+      register: updated_service_key_result
+
+    - name: Assert that we changed the service key
+      ansible.builtin.assert:
+        that:
+          - updated_service_key_result is changed
+    
+    - name: Reload the service key to verify the changes
+      ansible.builtin.set_fact:
+        updated_service_key: "{{ lookup('ansible.platform.gateway_api', 'service_keys/' ~ existing_service_keys[0].id, **connection_info) }}"
+
+    - name: Assert the fields have been updated
+      ansible.builtin.assert:
+        that:
+          - updated_service_key.id == existing_service_keys[0].id
+          - updated_service_key.name == existing_service_keys[0].name
+          - updated_service_key.is_active != existing_service_keys[0].is_active
+    
+  always:
+    # Always Cleanup
+    - name: Reset the active state to the original value (if needed)
+      ansible.platform.service_key:
+        name: "{{ existing_service_keys[0].name }}"
+        is_active: "{{ existing_service_keys[0].is_active }}"
+      when: updated_service_key_result is defined and updated_service_key_result is changed

@@ -359,6 +359,19 @@ class BaseResourceActionPlugin(ActionBase):
             operation: The resolved operation string.
         """
 
+    def _handle_operation_error(self, error: Exception, operation: str, result: dict) -> bool:
+        """Handle a resource-specific operation failure.
+
+        Return ``True`` after updating *result* to convert an expected API
+        limitation into a successful module result.  The default leaves all
+        errors to the standard action-plugin failure path.
+        """
+        return False
+
+    def _skip_operation(self, operation: str, result: dict) -> bool:
+        """Optionally complete an operation without sending an API request."""
+        return False
+
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get connection client from the connection plugin.
@@ -1201,10 +1214,13 @@ class BaseResourceActionPlugin(ActionBase):
                 else:
                     operation = "create"
 
-            # ---- check mode ------------------------------------------------
+            # ---- unsupported operation / check mode -----------------------
             ansible_data = self._build_ansible_data(resource, validated_params, operation)
             if operation == "update" and state == "enforced":
                 ansible_data["_platform_enforced"] = True
+
+            if self._skip_operation(operation, result):
+                return result
 
             if self._task.check_mode and operation in ("create", "update", "delete"):
                 if operation == "delete":
@@ -1236,7 +1252,9 @@ class BaseResourceActionPlugin(ActionBase):
                     module_name=self.MODULE_NAME,
                     ansible_data=ansible_data,
                 )
-            except ValueError as exc:
+            except Exception as exc:
+                if self._handle_operation_error(exc, operation, result):
+                    return result
                 if operation == "find" and ("not found" in str(exc).lower() or "resource with" in str(exc).lower()):
                     result.update(
                         {
