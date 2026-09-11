@@ -1,0 +1,75 @@
+---
+# Integration test for vault credentials fix
+#
+# This test verifies that vaulted aap_username and aap_password work correctly
+# with the ansible.platform collection.
+#
+# Bug fixed: AnsibleVaultEncryptedUnicode credentials caused subprocess spawn
+# to fail because they weren't converted to str() before subprocess.Popen.
+
+- name: Test organization module with vaulted credentials
+  ansible.platform.organization:
+    aap_hostname: "{{ aap_hostname }}"
+    aap_validate_certs: "{{ aap_validate_certs }}"
+    aap_username: "{{ aap_username | string }}"  # Force string conversion to simulate vault
+    aap_password: "{{ aap_password | string }}"
+    name: "{{ organization_name }}"
+    state: exists
+  register: org_result
+
+- name: Verify organization check succeeded
+  ansible.builtin.assert:
+    that:
+      - not org_result.failed
+      - org_result.exists is defined
+    fail_msg: "Organization check with vault-like credentials failed"
+    success_msg: "Organization check with vault-like credentials succeeded"
+
+- name: Create test token with vaulted credentials
+  ansible.platform.token:
+    aap_hostname: "{{ aap_hostname }}"
+    aap_validate_certs: "{{ aap_validate_certs }}"
+    aap_username: "{{ aap_username | string }}"
+    aap_password: "{{ aap_password | string }}"
+    description: "Vault credentials integration test token"
+    scope: write
+    state: present
+  register: token_result
+
+- name: Verify token creation succeeded
+  ansible.builtin.assert:
+    that:
+      - not token_result.failed
+      - token_result.token is defined
+      - token_result.id is defined
+    fail_msg: "Token creation with vault-like credentials failed"
+    success_msg: "Token creation with vault-like credentials succeeded"
+
+- name: Use token for authentication (regression test for vault bug)
+  ansible.platform.organization:
+    aap_hostname: "{{ aap_hostname }}"
+    aap_validate_certs: "{{ aap_validate_certs }}"
+    aap_token: "{{ token_result.token }}"
+    # Note: Even though using token auth, username/password still exist
+    # in playbook variables. This scenario triggered the vault bug.
+    name: "{{ organization_name }}"
+    state: exists
+  register: token_auth_result
+
+- name: Verify token authentication succeeded
+  ansible.builtin.assert:
+    that:
+      - not token_auth_result.failed
+      - token_auth_result.exists is defined
+    fail_msg: "Token authentication with vaulted credentials in variables failed (vault bug regression)"
+    success_msg: "Token authentication succeeded - vault bug is fixed"
+
+- name: Cleanup test token
+  ansible.platform.token:
+    aap_hostname: "{{ aap_hostname }}"
+    aap_validate_certs: "{{ aap_validate_certs }}"
+    aap_username: "{{ aap_username | string }}"
+    aap_password: "{{ aap_password | string }}"
+    existing_token_id: "{{ token_result.id }}"
+    state: absent
+  when: token_result.id is defined
