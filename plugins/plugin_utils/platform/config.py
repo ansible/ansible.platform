@@ -6,7 +6,7 @@ This module is part of the platform SDK and is not Ansible-specific.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class GatewayConfig:
     password: Optional[str] = None
     oauth_token: Optional[str] = None
     verify_ssl: bool = True
+    ca_bundle: Optional[str] = None
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
     idle_timeout: float = 3600.0
@@ -39,12 +40,22 @@ class GatewayConfig:
                 self.base_url,
             )
         logger.info(
-            "GatewayConfig initialized: base_url=%s, verify_ssl=%s, timeout=%s, idle_timeout=%s",
+            "GatewayConfig initialized: base_url=%s, verify_ssl=%s, ca_bundle=%s, timeout=%s, idle_timeout=%s",
             self.base_url,
             self.verify_ssl,
+            self.ca_bundle,
             self.request_timeout,
             self.idle_timeout,
         )
+
+    @property
+    def requests_verify(self) -> Union[bool, str]:
+        """Value passed to requests ``verify=`` for TLS validation."""
+        if not self.verify_ssl:
+            return False
+        if self.ca_bundle:
+            return self.ca_bundle
+        return True
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -81,6 +92,25 @@ def _extract_persistent_manager_idle_timeout(
         return task_args["persistent_manager_idle_timeout"]
     if "persistent_manager_idle_timeout" in host_vars:
         return host_vars["persistent_manager_idle_timeout"]
+    return None
+
+
+def _resolve_ca_bundle(
+    task_args: Dict[str, Any],
+    host_vars: Dict[str, Any],
+) -> Optional[str]:
+    """Return a CA bundle path from task or inventory scope.
+
+    Aliases: aap_ca_bundle (primary), gateway_ca_bundle, ansible_platform_ca_bundle.
+    Task arguments override host/inventory variables.
+    """
+    _ca_bundle_keys = ("aap_ca_bundle", "gateway_ca_bundle", "ansible_platform_ca_bundle")
+    for scope in (task_args, host_vars):
+        for key in _ca_bundle_keys:
+            if key in scope:
+                value = scope[key]
+                if value is not None and value != "":
+                    return str(value)
     return None
 
 
@@ -178,6 +208,7 @@ def extract_gateway_config(
     # Local persistent manager idle shutdown (not a gateway session timeout).
     # Default: 3600 s. Set to 0 to disable. See _extract_persistent_manager_idle_timeout.
     pm_idle_timeout = _extract_persistent_manager_idle_timeout(task_args, host_vars)
+    gateway_ca_bundle = _resolve_ca_bundle(task_args, host_vars)
     # Connection mode: "standard" (default) or "experimental" (persistent manager)
     connection_mode = task_args.get("platform_connection_mode") or host_vars.get("platform_connection_mode") or "standard"
 
@@ -193,10 +224,11 @@ def extract_gateway_config(
     else:
         auth_method = "none"
     logger.info(
-        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, timeout=%s",
+        "Gateway config extracted: url=%s, auth_method=%s, verify_ssl=%s, ca_bundle=%s, timeout=%s",
         gateway_url,
         auth_method,
         gateway_validate_certs,
+        gateway_ca_bundle,
         gateway_request_timeout,
     )
 
@@ -206,6 +238,7 @@ def extract_gateway_config(
         password=gateway_password,
         oauth_token=gateway_token,
         verify_ssl=gateway_validate_certs,
+        ca_bundle=gateway_ca_bundle,
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
         idle_timeout=(float(pm_idle_timeout) if pm_idle_timeout is not None else 3600.0),

@@ -48,6 +48,19 @@ options:
     - If value not set, will try environment variable C(GATEWAY_VERIFY_SSL), or E(AAP_VALIDATE_CERTS).
     type: bool
     aliases: [ validate_certs, gateway_validate_certs ]
+  aap_ca_bundle:
+    description:
+    - Path on the Ansible control node to a PEM file containing trusted CA certificate(s)
+      used to verify the automation platform gateway TLS certificate.
+    - When set with C(aap_validate_certs=true), the collection forwards this path to the
+      manager subprocess as E(REQUESTS_CA_BUNDLE) so private or enterprise CA chains work
+      without installing trust material in the system CA store.
+    - This parameter is authentication-only and is stripped before the resource API model
+      is instantiated (see C(BaseResourceActionPlugin._AUTH_PARAMS)).
+    - Precedence for E(REQUESTS_CA_BUNDLE) is control-node shell environment, then task
+      or play C(environment), then this inventory variable.
+    type: path
+    aliases: [ gateway_ca_bundle, ansible_platform_ca_bundle ]
   aap_request_timeout:
     description:
     - Specify the timeout Ansible should use in requests to the automation platform gateway.
