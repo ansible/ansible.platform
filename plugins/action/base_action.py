@@ -1237,7 +1237,7 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                    resource = self.MODEL_CLASS(**{k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
+                    resource = self._build_resource({k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
                     operation = "update"
                 else:
                     operation = "create"
