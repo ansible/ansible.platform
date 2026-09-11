@@ -375,9 +375,14 @@ class BaseResourceActionPlugin(ActionBase):
         execution.  It is therefore usable by non-CRUD action plugins without
         entering the idempotency state machine implemented by :meth:`run`.
 
+        Args:
+            tmp: Temporary directory passed through to Ansible's base action.
+            task_vars: Ansible task variables used to initialize the manager.
+
         Returns:
-            A dictionary containing ``result``, ``argspec``, ``validated_params``,
-            ``resource_data``, ``write_only_data``, and ``manager``.
+            dict: A dictionary containing ``result``, ``argspec``,
+                ``validated_params``, ``resource_data``, ``write_only_data``,
+                and ``manager``.
         """
         if task_vars is None:
             task_vars = {}

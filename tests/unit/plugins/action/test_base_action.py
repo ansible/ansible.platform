@@ -38,6 +38,7 @@ class TestActionPreparation(unittest.TestCase):
             "old_value": "legacy",
         }
         action._display = MagicMock()
+        action._display.verbosity = 0
         return action
 
     def test_prepare_action_reuses_documentation_validation_and_manager(self):
