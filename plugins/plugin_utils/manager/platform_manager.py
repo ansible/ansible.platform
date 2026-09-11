@@ -1081,6 +1081,8 @@ class PlatformService(BaseAPIClient):
 
         changed = False
 
+        errors = []
+
         for item_id in resolved_ids:
             if item_id not in current_ids:
                 try:
@@ -1092,7 +1094,7 @@ class PlatformService(BaseAPIClient):
                     )
                     changed = True
                 except Exception as exc:
-                    logger.debug("Failed to associate %s %s: %s", association_field, item_id, exc)
+                    errors.append("Failed to associate %s %s: %s" % (association_field, item_id, exc))
 
         for item_id in current_ids:
             if item_id not in resolved_ids:
@@ -1105,7 +1107,10 @@ class PlatformService(BaseAPIClient):
                     )
                     changed = True
                 except Exception as exc:
-                    logger.debug("Failed to disassociate %s %s: %s", association_field, item_id, exc)
+                    errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
+
+        if errors:
+            raise ValueError("; ".join(errors))
 
         return changed
 
@@ -1152,14 +1157,15 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
 
         source = None
+        last_error = None
         try:
             source = self.execute(
                 operation="find",
                 module_name=module_name,
                 ansible_data_dict={"name": source_name_or_id},
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            last_error = exc
 
         if not source or not source.get("id"):
             if str(source_name_or_id).isdigit():
@@ -1169,11 +1175,14 @@ class PlatformService(BaseAPIClient):
                         module_name=module_name,
                         ansible_data_dict={"id": int(source_name_or_id), "name": str(source_name_or_id)},
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    last_error = exc
 
         if not source or not source.get("id"):
-            raise ValueError("Could not find %s '%s' to copy from" % (module_name, source_name_or_id))
+            msg = "Could not find %s '%s' to copy from" % (module_name, source_name_or_id)
+            if last_error:
+                msg += ": %s" % last_error
+            raise ValueError(msg)
 
         copy_url = self._build_url("%s/%s/copy/" % (copy_endpoint_path, source["id"]))
         response = self.session.post(

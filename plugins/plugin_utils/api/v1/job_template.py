@@ -389,12 +389,17 @@ class JobTemplateTransformMixin_v1(BaseTransformMixin):
             except (json.JSONDecodeError, ValueError):
                 pass
 
+        inv = api_data.get("inventory")
+        proj = api_data.get("project")
+        ee = api_data.get("execution_environment")
+        wh_cred = api_data.get("webhook_credential")
+
         return AnsibleJobTemplate(
             name=api_data.get("name"),
             description=api_data.get("description"),
             job_type=api_data.get("job_type"),
-            inventory=api_data.get("inventory"),
-            project=api_data.get("project"),
+            inventory=str(inv) if inv is not None else None,
+            project=str(proj) if proj is not None else None,
             playbook=api_data.get("playbook"),
             scm_branch=api_data.get("scm_branch"),
             forks=api_data.get("forks"),
@@ -407,7 +412,7 @@ class JobTemplateTransformMixin_v1(BaseTransformMixin):
             start_at_task=api_data.get("start_at_task"),
             timeout=api_data.get("timeout"),
             use_fact_cache=api_data.get("use_fact_cache"),
-            execution_environment=api_data.get("execution_environment"),
+            execution_environment=str(ee) if ee is not None else None,
             host_config_key=api_data.get("host_config_key"),
             ask_scm_branch_on_launch=api_data.get("ask_scm_branch_on_launch"),
             ask_diff_mode_on_launch=api_data.get("ask_diff_mode_on_launch"),
@@ -431,7 +436,7 @@ class JobTemplateTransformMixin_v1(BaseTransformMixin):
             allow_simultaneous=api_data.get("allow_simultaneous"),
             job_slice_count=api_data.get("job_slice_count"),
             webhook_service=api_data.get("webhook_service"),
-            webhook_credential=api_data.get("webhook_credential"),
+            webhook_credential=str(wh_cred) if wh_cred is not None else None,
             prevent_instance_group_fallback=api_data.get("prevent_instance_group_fallback"),
             opa_query_path=api_data.get("opa_query_path"),
             id=api_data.get("id"),

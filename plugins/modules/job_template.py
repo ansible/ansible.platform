@@ -10,7 +10,7 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: job_template
-author: "Ansible Platform Collection Contributors"
+author: "Jake Jackson (@thedoubl3j)"
 short_description: Create, update, or destroy job templates.
 description:
     - Create, update, or destroy job templates in Ansible Automation Platform.
@@ -310,6 +310,7 @@ notes:
   - This module is the ansible.platform equivalent of the C(awx.awx.job_template)
     and C(ansible.controller.job_template) modules.
   - JSON for survey_spec can be found in the API Documentation.
+...
 """
 
 
