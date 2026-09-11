@@ -78,6 +78,15 @@ class TestActionPreparation(unittest.TestCase):
                 with self.assertRaisesRegex(Exception, "Could not load DOCUMENTATION"):
                     action._prepare_action()
 
+    def test_run_preserves_preparation_error(self):
+        action = self._make_action()
+
+        with patch.object(action, "_prepare_action", side_effect=ValueError("invalid documentation")):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertEqual(result["msg"], "invalid documentation")
+
 
 if __name__ == "__main__":
     unittest.main()

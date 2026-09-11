@@ -1095,6 +1095,10 @@ class BaseResourceActionPlugin(ActionBase):
         if self.MODEL_CLASS is None:
             raise AnsibleError("%s must set MODEL_CLASS or override run()" % type(self).__name__)
 
+        # Preparation can fail before _prepare_action() returns a result.
+        # Keep a valid Ansible result available so the exception handler does
+        # not mask the original validation, documentation, or connection error.
+        result = {}
         try:
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
