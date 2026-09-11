@@ -52,7 +52,7 @@ def _resolve_application_id(manager, application, organization=None):
             query_params["organization"] = org_id
 
     url = manager._build_url("applications", query_params=query_params)
-    response = manager.session.get(url, timeout=manager.request_timeout, verify=manager.verify_ssl)
+    response = manager.session.get(url, timeout=manager.request_timeout, verify=manager.requests_verify)
     response.raise_for_status()
     results = response.json().get("results", [])
 

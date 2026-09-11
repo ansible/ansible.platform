@@ -23,6 +23,8 @@ _SCALAR_FIELDS = (
     "outlier_detection_interval_seconds",
     "outlier_detection_base_ejection_time_seconds",
     "outlier_detection_max_ejection_percent",
+    "outlier_detection_split_external_local_origin_errors",
+    "outlier_detection_consecutive_local_origin_failure",
     "health_checks_enabled",
     "health_check_timeout_seconds",
     "health_check_interval_seconds",
@@ -47,6 +49,8 @@ class APIServiceCluster_v1(BaseTransformMixin):
     outlier_detection_interval_seconds: Optional[int] = None
     outlier_detection_base_ejection_time_seconds: Optional[int] = None
     outlier_detection_max_ejection_percent: Optional[int] = None
+    outlier_detection_split_external_local_origin_errors: Optional[bool] = None
+    outlier_detection_consecutive_local_origin_failure: Optional[int] = None
     health_checks_enabled: Optional[bool] = None
     health_check_timeout_seconds: Optional[int] = None
     health_check_interval_seconds: Optional[int] = None
@@ -112,6 +116,8 @@ class ServiceClusterTransformMixin_v1(BaseTransformMixin):
             "outlier_detection_interval_seconds",
             "outlier_detection_base_ejection_time_seconds",
             "outlier_detection_max_ejection_percent",
+            "outlier_detection_split_external_local_origin_errors",
+            "outlier_detection_consecutive_local_origin_failure",
             "health_checks_enabled",
             "health_check_timeout_seconds",
             "health_check_interval_seconds",
@@ -152,6 +158,8 @@ class ServiceClusterTransformMixin_v1(BaseTransformMixin):
             outlier_detection_interval_seconds=api_data.get("outlier_detection_interval_seconds"),
             outlier_detection_base_ejection_time_seconds=api_data.get("outlier_detection_base_ejection_time_seconds"),
             outlier_detection_max_ejection_percent=api_data.get("outlier_detection_max_ejection_percent"),
+            outlier_detection_split_external_local_origin_errors=api_data.get("outlier_detection_split_external_local_origin_errors"),
+            outlier_detection_consecutive_local_origin_failure=api_data.get("outlier_detection_consecutive_local_origin_failure"),
             health_checks_enabled=api_data.get("health_checks_enabled"),
             health_check_timeout_seconds=api_data.get("health_check_timeout_seconds"),
             health_check_interval_seconds=api_data.get("health_check_interval_seconds"),

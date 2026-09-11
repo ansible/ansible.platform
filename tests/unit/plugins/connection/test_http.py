@@ -84,7 +84,7 @@ def test_get_client_persistent_option_true_routes_to_persistent():
             with patch.object(conn, "_get_persistent_client", mock_persistent):
                 client, facts = conn.get_client(task_vars, gateway_config)
 
-    mock_persistent.assert_called_once_with(task_vars, gateway_config)
+    mock_persistent.assert_called_once_with(task_vars, gateway_config, task_env=None)
     mock_direct.assert_not_called()
     assert client is mock_client
     assert facts == mock_facts
