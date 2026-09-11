@@ -82,8 +82,7 @@ def test_vault_credentials_converted_to_strings():
         except Exception as e:
             # We expect it might fail for other reasons (missing files, etc)
             # but NOT with the Vault type error
-            assert "AnsibleVaultEncryptedUnicode" not in str(e), \
-                f"Vault credentials not converted to strings: {e}"
+            assert "AnsibleVaultEncryptedUnicode" not in str(e), f"Vault credentials not converted to strings: {e}"
 
         # Verify Popen was called
         assert mock_popen.called, "subprocess.Popen should have been called"
@@ -95,17 +94,14 @@ def test_vault_credentials_converted_to_strings():
         # Verify all cmd elements are proper types (str, not Vault objects)
         for i, arg in enumerate(cmd):
             # subprocess.Popen requires each arg to be str, bytes, or PathLike
-            assert isinstance(arg, (str, bytes)) or hasattr(arg, "__fspath__"), \
-                f"cmd[{i}] = {arg!r} (type: {type(arg)}) is not a valid subprocess argument"
+            assert isinstance(arg, (str, bytes)) or hasattr(arg, "__fspath__"), f"cmd[{i}] = {arg!r} (type: {type(arg)}) is not a valid subprocess argument"
 
         # Specifically verify credentials are plain strings
         username_arg = cmd[6]  # gateway_config.username
         password_arg = cmd[7]  # gateway_config.password
 
-        assert isinstance(username_arg, str) and type(username_arg) is str, \
-            f"Username arg is {type(username_arg)}, expected str"
-        assert isinstance(password_arg, str) and type(password_arg) is str, \
-            f"Password arg is {type(password_arg)}, expected str"
+        assert isinstance(username_arg, str) and type(username_arg) is str, f"Username arg is {type(username_arg)}, expected str"
+        assert isinstance(password_arg, str) and type(password_arg) is str, f"Password arg is {type(password_arg)}, expected str"
 
         # Verify the VALUES are correct (vault decrypted)
         assert username_arg == "admin", f"Expected 'admin', got {username_arg!r}"
@@ -182,8 +178,7 @@ def test_base_url_also_converted_to_string():
             cmd = mock_popen.call_args[0][0]
             base_url_arg = cmd[5]  # gateway_config.base_url
 
-            assert type(base_url_arg) is str, \
-                f"base_url should be plain str, got {type(base_url_arg)}"
+            assert type(base_url_arg) is str, f"base_url should be plain str, got {type(base_url_arg)}"
             assert base_url_arg == "https://gateway.example.com"
 
 
