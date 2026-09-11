@@ -99,8 +99,8 @@ def test_vault_credentials_converted_to_strings():
                 f"cmd[{i}] = {arg!r} (type: {type(arg)}) is not a valid subprocess argument"
 
         # Specifically verify credentials are plain strings
-        username_arg = cmd[5]  # gateway_config.username
-        password_arg = cmd[6]  # gateway_config.password
+        username_arg = cmd[6]  # gateway_config.username
+        password_arg = cmd[7]  # gateway_config.password
 
         assert isinstance(username_arg, str) and type(username_arg) is str, \
             f"Username arg is {type(username_arg)}, expected str"
@@ -144,9 +144,9 @@ def test_empty_vault_credentials_become_empty_strings():
             cmd = mock_popen.call_args[0][0]
 
             # Verify None became "" not "None"
-            assert cmd[5] == "", f"None username should be '', got {cmd[5]!r}"
-            assert cmd[6] == "", f"None password should be '', got {cmd[6]!r}"
-            assert cmd[7] == "", f"None token should be '', got {cmd[7]!r}"
+            assert cmd[6] == "", f"None username should be '', got {cmd[6]!r}"
+            assert cmd[7] == "", f"None password should be '', got {cmd[7]!r}"
+            assert cmd[8] == "", f"None token should be '', got {cmd[8]!r}"
 
 
 def test_base_url_also_converted_to_string():
@@ -180,7 +180,7 @@ def test_base_url_also_converted_to_string():
 
         if mock_popen.called:
             cmd = mock_popen.call_args[0][0]
-            base_url_arg = cmd[4]  # gateway_config.base_url
+            base_url_arg = cmd[5]  # gateway_config.base_url
 
             assert type(base_url_arg) is str, \
                 f"base_url should be plain str, got {type(base_url_arg)}"
