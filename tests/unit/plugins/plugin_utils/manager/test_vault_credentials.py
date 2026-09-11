@@ -5,13 +5,10 @@
 
 from __future__ import absolute_import, division, print_function
 
-import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
 
@@ -105,9 +102,9 @@ def test_vault_credentials_converted_to_strings():
         username_arg = cmd[5]  # gateway_config.username
         password_arg = cmd[6]  # gateway_config.password
 
-        assert isinstance(username_arg, str) and type(username_arg) == str, \
+        assert isinstance(username_arg, str) and type(username_arg) is str, \
             f"Username arg is {type(username_arg)}, expected str"
-        assert isinstance(password_arg, str) and type(password_arg) == str, \
+        assert isinstance(password_arg, str) and type(password_arg) is str, \
             f"Password arg is {type(password_arg)}, expected str"
 
         # Verify the VALUES are correct (vault decrypted)
@@ -185,7 +182,7 @@ def test_base_url_also_converted_to_string():
             cmd = mock_popen.call_args[0][0]
             base_url_arg = cmd[4]  # gateway_config.base_url
 
-            assert type(base_url_arg) == str, \
+            assert type(base_url_arg) is str, \
                 f"base_url should be plain str, got {type(base_url_arg)}"
             assert base_url_arg == "https://gateway.example.com"
 
