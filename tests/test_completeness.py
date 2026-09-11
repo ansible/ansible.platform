@@ -25,7 +25,9 @@ read_only_endpoints_with_modules = ["settings", "authenticator_user"]
 no_module_for_endpoint = []
 
 # Some modules work on the related fields of an endpoint. These modules will not have an auto-associated endpoint
-no_endpoint_for_module = ["token"]
+# ad_hoc_command hits Controller (/api/controller/v2/ad_hoc_commands/), which isn't listed in the
+# Gateway's own /api/gateway/v1/ index this script queries, so it can never be auto-discovered here.
+no_endpoint_for_module = ["token", "ad_hoc_command"]
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
 conditional_endpoint_modules = {
@@ -33,7 +35,7 @@ conditional_endpoint_modules = {
 }
 
 # Add modules with endpoints that are not at /api/v2
-extra_endpoints = {"ad_hoc_commands": "/api/controller/v2/ad_hoc_commands/"}
+extra_endpoints = {}
 
 # Global module parameters we can ignore
 ignore_module_parameters = ["state", "new_name", "new_organization", "new_authenticator", "update_secrets", "copy_from", "assignment_objects"]

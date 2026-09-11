@@ -10,7 +10,7 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict, is_dataclass, replace
+from dataclasses import asdict, fields, is_dataclass, replace
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -505,15 +505,20 @@ class PlatformService(BaseAPIClient):
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+
         # Pop launch-command wait/poll directives (e.g. ad_hoc_command) — these are
-        # control flags for this method, not fields on the resource dataclass.
-        wait = ansible_data_dict.pop("wait", False)
-        wait_interval = ansible_data_dict.pop("interval", 2.0)
-        wait_timeout = ansible_data_dict.pop("timeout", None)
+        # control flags for this method, not fields on the resource dataclass. Only
+        # pop a name the target dataclass doesn't itself declare, so a module with a
+        # genuine field of the same name (e.g. job_template's own `timeout`) keeps it.
+        ansible_field_names = {f.name for f in fields(AnsibleClass)}
+        wait = ansible_data_dict.pop("wait", False) if "wait" not in ansible_field_names else False
+        wait_interval = ansible_data_dict.pop("interval", 2.0) if "interval" not in ansible_field_names else 2.0
+        wait_timeout = ansible_data_dict.pop("timeout", None) if "timeout" not in ansible_field_names else None
         if wait and wait_timeout is None:
             wait_timeout = DEFAULT_WAIT_TIMEOUT
 
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
         ansible_instance = AnsibleClass(**ansible_data_dict)
         context = TransformContext(
             manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
