@@ -1,0 +1,64 @@
+---
+- name: Cleanup — vault credentials test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "{{ 'mock' | string }}"
+    gateway_password: "{{ 'testpass' | string }}"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete token created during test
+      ansible.platform.token:
+        existing_token_id: "{{ token_id_local }}"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      when: token_id_local is defined
+      ignore_errors: true
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — vault credentials test (http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "{{ 'mock' | string }}"
+    gateway_password: "{{ 'testpass' | string }}"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete team
+      ansible.platform.team:
+        name: "vault-test-team-hp"
+        organization: "vault-test-org-local"
+        state: absent
+      ignore_errors: true
+
+- name: Cleanup — delete organization
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "{{ 'mock' | string }}"
+    gateway_password: "{{ 'testpass' | string }}"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete organization
+      ansible.platform.organization:
+        name: "vault-test-org-local"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      ignore_errors: true
+      vars:
+        ansible_connection: local
+...
