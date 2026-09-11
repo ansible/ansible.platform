@@ -18,7 +18,7 @@
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
       when: token_id_local is defined
-      ignore_errors: true
+      failed_when: false
       vars:
         ansible_connection: local
 
@@ -38,7 +38,7 @@
         name: "vault-test-team-hp"
         organization: "vault-test-org-local"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
 - name: Cleanup — delete organization
   hosts: localhost
@@ -58,7 +58,7 @@
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
-      ignore_errors: true
+      failed_when: false
       vars:
         ansible_connection: local
 ...
