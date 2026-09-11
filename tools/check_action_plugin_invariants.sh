@@ -6,72 +6,97 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION_DIR="${ROOT}/plugins/action"
 
-if [[ ! -d "${ACTION_DIR}" ]]; then
+if [[ ! -d "${ACTION_DIR}" || -L "${ACTION_DIR}" ]]; then
     echo "ERROR: Action plugin directory not found: ${ACTION_DIR}" >&2
     exit 1
 fi
 
-# grep -R: status 0 = match, 1 = no match, 2+ = error (fail closed).
-grep_action_plugins() {
-    local pattern="$1"
-    local matches=""
-    local status=0
-    matches="$(grep -R -n -E "${pattern}" "${ACTION_DIR}" --include='*.py' 2>/dev/null)" || status=$?
-    if [[ "${status}" -ge 2 ]]; then
-        echo "ERROR: Failed to scan ${ACTION_DIR} for pattern: ${pattern}" >&2
-        exit 1
-    fi
-    if [[ -n "${matches}" ]]; then
-        printf '%s\n' "${matches}"
-    fi
-}
+python3 - "${ROOT}" "${ACTION_DIR}" <<'PY'
+import ast
+import os
+import re
+import sys
 
-# Invariant 2: no direct HTTP in action plugins.
-HTTP_PATTERN='manager\.session|import requests|from requests import|from requests\.'
-HTTP_MATCHES="$(grep_action_plugins "${HTTP_PATTERN}")"
+root, action_dir = sys.argv[1:]
+violations = []
+url_pattern = re.compile(r"(?:https?://|/api/)")
 
-if [[ -n "${HTTP_MATCHES}" ]]; then
-    echo "ERROR: Action plugins must not perform HTTP directly." >&2
-    echo "Use PlatformService.execute() and transform mixins instead." >&2
-    echo "See docs/09-agent-collaboration.md section 10 (invariant 2)." >&2
-    printf '%s\n' "${HTTP_MATCHES}" >&2
-    exit 1
-fi
 
-# Invariant 7: job wait/poll logic belongs in PlatformService, not action plugins.
-# base_action.py may use time.sleep for process lifecycle (not API polling).
-POLL_PATTERN='_wait_for|wait_for_completion'
-sleep_action_plugins() {
-    local matches=""
-    local status=0
-    matches="$(grep -R -n -E 'time\.sleep' "${ACTION_DIR}" --include='*.py' 2>/dev/null)" || status=$?
-    if [[ "${status}" -ge 2 ]]; then
-        echo "ERROR: Failed to scan ${ACTION_DIR} for time.sleep" >&2
-        exit 1
-    fi
-    if [[ -n "${matches}" ]]; then
-        printf '%s\n' "${matches}" | grep -v 'plugins/action/base_action.py:' || true
-    fi
-}
+def location(path, node, message):
+    violations.append(f"{os.path.relpath(path, root)}:{node.lineno}: {message}")
 
-POLL_MATCHES="$(grep_action_plugins "${POLL_PATTERN}")"
-POLL_MATCHES="$(printf '%s\n' "${POLL_MATCHES}" | grep -v 'plugins/action/base_action.py:' || true)"
 
-SLEEP_MATCHES="$(sleep_action_plugins)"
+def call_name(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
 
-if [[ -n "${POLL_MATCHES}" || -n "${SLEEP_MATCHES}" ]]; then
-    echo "ERROR: Action plugins must not implement job wait/poll logic." >&2
-    echo "Move wait, interval, and timeout handling to PlatformService.execute()" >&2
-    echo "(shared wait_for_completion helper). See docs/09-agent-collaboration.md" >&2
-    echo "section 10 (invariant 7) and docs/07-adding-resources.md section 4c." >&2
-    echo "Example: https://github.com/ansible/ansible.platform/pull/227" >&2
-    if [[ -n "${POLL_MATCHES}" ]]; then
-        printf '%s\n' "${POLL_MATCHES}" >&2
-    fi
-    if [[ -n "${SLEEP_MATCHES}" ]]; then
-        printf '%s\n' "${SLEEP_MATCHES}" >&2
-    fi
-    exit 1
-fi
+
+def is_session_expression(node):
+    return isinstance(node, ast.Name) and node.id == "session" or (
+        isinstance(node, ast.Attribute) and node.attr == "session"
+    )
+
+
+def has_find_execute(node):
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call) or call_name(child.func) != "execute":
+            continue
+        for keyword in child.keywords:
+            if keyword.arg == "operation" and isinstance(keyword.value, ast.Constant) and keyword.value.value == "find":
+                return True
+    return False
+
+
+def docstring_values(tree):
+    values = set()
+    for parent in ast.walk(tree):
+        if isinstance(parent, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and parent.body:
+            first = parent.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                values.add(id(first.value))
+    return values
+
+
+for directory, dirnames, filenames in os.walk(action_dir, followlinks=False):
+    dirnames[:] = [name for name in dirnames if not os.path.islink(os.path.join(directory, name))]
+    for filename in filenames:
+        path = os.path.join(directory, filename)
+        if not filename.endswith(".py") or os.path.islink(path) or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as source:
+                tree = ast.parse(source.read(), filename=path)
+        except (OSError, SyntaxError) as exc:
+            print(f"ERROR: Could not scan {path}: {exc}", file=sys.stderr)
+            sys.exit(2)
+
+        documentation = docstring_values(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = [alias.name for alias in node.names]
+                if any(name == "requests" or name.startswith("requests.") for name in names):
+                    location(path, node, "direct requests import")
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str) and url_pattern.search(node.value):
+                if id(node) in documentation:
+                    continue
+                location(path, node, "hardcoded API URL")
+            elif isinstance(node, ast.Attribute) and node.attr == "session":
+                location(path, node, "direct session access")
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in {"get", "post", "put", "patch", "delete"} and is_session_expression(node.func.value):
+                    location(path, node, "direct session HTTP call")
+            elif isinstance(node, ast.While) and has_find_execute(node):
+                location(path, node, "polling loop performs manager.execute(operation='find')")
+
+if violations:
+    print("ERROR: Action plugins violate SDK execution invariants:", file=sys.stderr)
+    print("Use PlatformService.execute() and transform mixins instead.", file=sys.stderr)
+    print("See docs/09-agent-collaboration.md section 10.", file=sys.stderr)
+    print("\n".join(violations), file=sys.stderr)
+    sys.exit(1)
+PY
 
 echo "check_action_plugin_invariants: OK"
