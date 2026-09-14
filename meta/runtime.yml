@@ -29,4 +29,5 @@ action_groups:
     - inventory
     - inventory_source
     - inventory_source_update
+    - schedule
 ...
