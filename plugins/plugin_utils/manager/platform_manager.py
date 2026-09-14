@@ -1028,12 +1028,14 @@ class PlatformService(BaseAPIClient):
             if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
                 request_data = next(iter(request_data.values()))
 
-            # Skip only when the operation actually declares body fields but none of
-            # them ended up populated (e.g. an unused optional secondary endpoint).
-            # An operation deliberately declared with fields=[] is a no-body launch
-            # trigger (e.g. inventory_source_update's POST .../update/) and must
-            # still fire even though request_data is empty.
-            if not request_data and endpoint_op.fields:
+            # Skip only secondary (dependent) operations that have no data to send
+            # (matches DirectHTTPClient._execute_operations). A primary operation
+            # (no depends_on) must always fire even with an empty body — either it
+            # deliberately has fields=[] (a no-body launch trigger, e.g.
+            # inventory_source_update's POST .../update/), or it has optional
+            # fields that all happen to be unset on this call (e.g. job_launch
+            # with no prompt overrides — the launch must still happen).
+            if endpoint_op.depends_on and not request_data:
                 logger.debug("Skipping %s - no data", op_name)
                 continue
 

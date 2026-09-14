@@ -3,11 +3,16 @@
 
 """Regression tests for PlatformService._execute_operations (AAP-91390).
 
-Covers two bugs found migrating inventory_source_update, a launch-trigger
-sub-action with no request body and a custom path param name:
-  1. An operation declared with fields=[] (a deliberate no-body trigger) must
-     still fire — it must not be treated the same as an unused optional
-     secondary endpoint with nothing populated.
+Covers two bugs found migrating inventory_source_update and job_launch, both
+launch-trigger sub-actions:
+  1. A *primary* operation (no depends_on) must always fire, even when its
+     computed request body is empty — either because it's deliberately
+     declared with fields=[] (a no-body trigger, e.g. inventory_source_update's
+     POST .../update/), or because it has optional fields that all happen to
+     be unset on this call (e.g. job_launch with no prompt overrides — the
+     launch must still happen). Only a *secondary* operation (depends_on set,
+     e.g. an optional survey_spec sub-endpoint) is skipped when it has nothing
+     to send — matching DirectHTTPClient's already-correct behavior.
   2. path_params entries other than the literal name "id" must be resolved
      from the matching attribute on api_data, not silently left unsubstituted.
 """
@@ -101,8 +106,8 @@ class TestNoBodyLaunchTrigger(unittest.TestCase):
         self.assertNotIn("{resource_id}", called_url)
         self.assertIn("/7/update/", called_url)
 
-    def test_optional_secondary_endpoint_with_no_data_is_still_skipped(self):
-        """An operation with real fields, none of which are populated, is still skipped."""
+    def test_dependent_secondary_endpoint_with_no_data_is_still_skipped(self):
+        """A secondary op (depends_on set) with nothing populated is skipped — e.g. an unused optional survey_spec sub-endpoint."""
         operations = {
             "create": EndpointOperation(
                 path="/api/controller/v2/widgets/",
@@ -111,17 +116,57 @@ class TestNoBodyLaunchTrigger(unittest.TestCase):
                 required_for="create",
                 order=1,
             ),
+            "survey_spec": EndpointOperation(
+                path="/api/controller/v2/widgets/{id}/survey_spec/",
+                method="POST",
+                fields=["survey_spec"],
+                path_params=["id"],
+                required_for="create",
+                depends_on="create",
+                order=2,
+            ),
         }
 
         @dataclass
-        class _EmptyData:
-            name: Optional[str] = None
+        class _WidgetData:
+            name: Optional[str] = "demo"
+            survey_spec: Optional[dict] = None
+            id: Optional[int] = None
 
-        with patch.object(self.svc.session, "request") as mock_request:
-            result = self.svc._execute_operations(operations, _EmptyData(), context={}, required_for="create")
+        with patch.object(self.svc.session, "request", return_value=_resp({"id": 1, "name": "demo"})) as mock_request:
+            result = self.svc._execute_operations(operations, _WidgetData(), context={}, required_for="create")
 
-        mock_request.assert_not_called()
-        self.assertEqual(result, {})
+        # Only the primary "create" call fires; the dependent "survey_spec" op is
+        # skipped because it has no data and depends_on a prior op.
+        mock_request.assert_called_once()
+        self.assertEqual(result, {"id": 1, "name": "demo"})
+
+    def test_primary_operation_with_no_optional_fields_set_still_fires(self):
+        """job_launch with no prompt overrides: fields is non-empty but all unset — the launch must still happen."""
+        operations = {
+            "create": EndpointOperation(
+                path="/api/controller/v2/job_templates/{job_template_id}/launch/",
+                method="POST",
+                fields=["extra_vars", "limit"],
+                path_params=["job_template_id"],
+                required_for="create",
+                order=1,
+            ),
+        }
+
+        @dataclass
+        class _LaunchData:
+            job_template_id: Optional[int] = None
+            extra_vars: Optional[dict] = None
+            limit: Optional[str] = None
+
+        api_data = _LaunchData(job_template_id=9)
+
+        with patch.object(self.svc.session, "request", return_value=_resp({"id": 100, "status": "pending"})) as mock_request:
+            result = self.svc._execute_operations(operations, api_data, context={}, required_for="create")
+
+        mock_request.assert_called_once()
+        self.assertEqual(result, {"id": 100, "status": "pending"})
 
 
 if __name__ == "__main__":

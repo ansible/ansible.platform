@@ -1,0 +1,28 @@
+---
+# Verify: job_launch has no persistent identity of its own to check (Shape 2,
+# launch-only) — confirm the seeded job_template is still reachable instead.
+- name: Verify — seeded job_template still exists (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Get job_template by name (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/?name=molecule-jt-local"
+        method: GET
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        status_code: 200
+      register: jt_check
+      vars:
+        ansible_connection: local
+
+    - name: Assert job_template found (connection local)
+      ansible.builtin.assert:
+        that: jt_check.json.count == 1
+        fail_msg: "Verify: seeded job_template molecule-jt-local not found."
+      vars:
+        ansible_connection: local
+...
