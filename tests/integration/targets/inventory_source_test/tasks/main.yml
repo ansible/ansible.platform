@@ -1,0 +1,127 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-InventorySource-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+      register: inv1
+
+    - name: Create inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test-Source"
+        inventory: "{{ inv1.name }}"
+        source: scm
+        source_path: "inventory.yml"
+        overwrite: true
+      register: created_source
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_source is changed
+          - created_source.inventory_source.name is defined
+          - created_source.inventory_source.overwrite == true
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test-Source"
+        inventory: "{{ inv1.name }}"
+        source: scm
+        source_path: "inventory.yml"
+        overwrite: true
+      register: idempotent_source
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_source is not changed
+
+    - name: Update inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test-Source"
+        inventory: "{{ inv1.name }}"
+        source: scm
+        source_path: "inventory.yml"
+        overwrite: false
+        update_on_launch: true
+      register: updated_source
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_source is changed
+          - updated_source.inventory_source.id == created_source.inventory_source.id
+
+    - name: Check exists returns true
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test-Source"
+        inventory: "{{ inv1.name }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true and no change
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Delete inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test-Source"
+        inventory: "{{ inv1.name }}"
+        state: absent
+      register: deleted_source
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - deleted_source is changed
+
+    - name: Delete inventory source again (idempotent)
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test-Source"
+        inventory: "{{ inv1.name }}"
+        state: absent
+      register: deleted_source_again
+
+    - name: Assert repeat delete is a no-op
+      ansible.builtin.assert:
+        that:
+          - deleted_source_again is not changed
+
+  always:
+    - name: Delete Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...
