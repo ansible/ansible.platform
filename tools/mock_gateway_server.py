@@ -303,6 +303,12 @@ class Store:
             url_prefix="/api/controller/v2/inventory_sources/",
             associations=["notification_templates_started", "notification_templates_success", "notification_templates_error"],
         )
+        self._controller_resources["inventory_updates"] = GenericResource(
+            resource_name="inventory_updates",
+            required_fields=[],
+            start_id=12000,
+            url_prefix="/api/controller/v2/inventory_updates/",
+        )
 
     def controller_resource(self, name: str) -> Optional[GenericResource]:
         return self._controller_resources.get(name)
@@ -653,6 +659,29 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
+    def _advance_inventory_update_poll(self, store: "GenericResource", item_id: int) -> Dict[str, Any]:
+        """Advance an inventory update's pending -> successful lifecycle on each GET-by-id poll.
+
+        Simulates a real Controller update staying pending across the first two
+        polls before resolving, so wait/poll loops in tests actually poll more
+        than once instead of the mock resolving synchronously on launch.
+        """
+        with store.lock:
+            if item_id not in store._items:
+                raise KeyError("not found")
+            item = store._items[item_id]
+
+            if item.get("finished"):
+                return dict(item)
+
+            item["_polls"] = item.get("_polls", 0) + 1
+            if item["_polls"] >= 2:
+                item["status"] = "successful"
+                item["finished"] = _now_iso()
+                item["modified"] = _now_iso()
+
+            return dict(item)
+
     # ------------------------------------------------------------------
     # Generic CRUD helper
     # ------------------------------------------------------------------
@@ -696,7 +725,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
             if self.command == "GET":
                 try:
-                    self._send_json(200, store.get(item_id))
+                    if store.resource_name == "inventory_updates":
+                        self._send_json(200, self._advance_inventory_update_poll(store, item_id))
+                    else:
+                        self._send_json(200, store.get(item_id))
                 except KeyError:
                     self._send_json(404, {"detail": "Not Found"})
                 return True
@@ -775,6 +807,33 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(404, {"detail": "Not Found"})
                     except ValueError as e:
                         self._send_json(400, {"detail": str(e)})
+                    return
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            # inventory_sources/{id}/update/: launch a new inventory_updates job.
+            # Stays pending across the first two GET-by-id polls (see
+            # _advance_inventory_update_poll) so wait/poll loops actually poll
+            # more than once, instead of the mock resolving synchronously.
+            if field == "update" and resource == "inventory_sources":
+                if self.command == "POST":
+                    try:
+                        source = store.get(item_id)
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                        return
+                    updates_store = self.store.controller_resource("inventory_updates")
+                    launched = updates_store.create(
+                        "2",
+                        {
+                            "name": source.get("name"),
+                            "inventory": source.get("inventory"),
+                            "status": "pending",
+                            "finished": None,
+                            "_polls": 0,
+                        },
+                    )
+                    self._send_json(202, launched)
                     return
                 self._send_json(404, {"detail": "Not Found"})
                 return

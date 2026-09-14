@@ -1,0 +1,33 @@
+---
+# Verify: the inventory sources created by converge are still present (they are
+# CRUD resources; inventory_source_update itself has no persistent identity to verify).
+- name: Verify — inventory source still exists (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_inv_name: "Molecule Test Inventory InvSrcUpdate Local"
+    molecule_source_name: "molecule-source-update-local"
+  tasks:
+    - name: Get inventory source (state exists, connection local)
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert inventory source still exists (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+        fail_msg: "Verify: inventory source {{ molecule_source_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+...
