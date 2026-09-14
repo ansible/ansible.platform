@@ -28,4 +28,5 @@ action_groups:
     - host
     - inventory
     - inventory_source
+    - inventory_source_update
 ...
