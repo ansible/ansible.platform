@@ -1,0 +1,4 @@
+minor_changes:
+  - schedule - add module migrated from awx.awx/ansible.controller, including
+    credentials/labels/instance_groups associations
+    (https://issues.redhat.com/browse/AAP-91390).
