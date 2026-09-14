@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
 
@@ -38,6 +39,13 @@ def _resp(payload=None, status_code=200):
     r.status_code = status_code
     r.text = "" if payload is None else str(payload)
     r.json.return_value = payload if payload is not None else {}
+    # Match real requests.Response.raise_for_status() semantics — a plain
+    # MagicMock would otherwise never raise, silently defeating any test of
+    # the raise_for_status() calls added to manage_associations.
+    if status_code >= 400:
+        r.raise_for_status.side_effect = requests.HTTPError("%s error" % status_code, response=r)
+    else:
+        r.raise_for_status.return_value = None
     return r
 
 
@@ -120,6 +128,36 @@ class TestManageAssociations(unittest.TestCase):
                     "/api/controller/v2/instance_groups/",
                     "name",
                 )
+
+    def test_get_failure_propagates_instead_of_silently_treated_as_empty(self):
+        """A read failure must not be swallowed into 'no current associations' —
+        that would make disassociation of anything currently associated a silent no-op."""
+        with patch.object(self.svc.session, "get", return_value=_resp(status_code=500)):
+            with self.assertRaises(requests.HTTPError):
+                self.svc.manage_associations(
+                    "/api/controller/v2/inventories",
+                    1,
+                    "instance_groups",
+                    ["5"],
+                    "/api/controller/v2/instance_groups/",
+                    "name",
+                )
+
+    def test_failed_associate_post_raises_instead_of_reporting_changed(self):
+        """requests.Session.post() does not raise on 4xx/5xx by itself — without
+        raise_for_status() a rejected associate would be reported as a success."""
+        with patch.object(self.svc, "lookup_resource_id", return_value=42):
+            with patch.object(self.svc.session, "get", return_value=_resp({"results": []})):
+                with patch.object(self.svc.session, "post", return_value=_resp(status_code=400)):
+                    with self.assertRaises(ValueError):
+                        self.svc.manage_associations(
+                            "/api/controller/v2/inventories",
+                            1,
+                            "instance_groups",
+                            ["Demo Group"],
+                            "/api/controller/v2/instance_groups/",
+                            "name",
+                        )
 
 
 class TestManageSubResource(unittest.TestCase):

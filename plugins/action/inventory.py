@@ -82,6 +82,17 @@ class ActionModule(BaseResourceActionPlugin):
         for field in _ASSOCIATION_FIELDS:
             val = self._task.args.pop(field, None)
             if val is not None:
+                # Popped before BaseResourceActionPlugin.run() validates self._task.args,
+                # so the documented list/elements:str constraint never runs on these —
+                # restore the minimum check that protects manage_associations() from
+                # silently iterating a wrong-typed value (e.g. a bare string) character by
+                # character instead of failing clearly.
+                if not isinstance(val, list):
+                    return {
+                        "changed": False,
+                        "failed": True,
+                        "msg": "argument '%s' is of type %s and we were unable to convert to a list" % (field, type(val).__name__),
+                    }
                 association_data[field] = val
 
         if copy_from and state not in ("absent", "deleted"):
@@ -95,25 +106,42 @@ class ActionModule(BaseResourceActionPlugin):
                     result["ansible_facts"] = facts_to_set
                     result["_ansible_facts_cacheable"] = True
 
-                copied = manager.copy_resource(
-                    self.MODULE_NAME,
-                    copy_from,
-                    self._task.args.get("name"),
-                    _INVENTORY_BASE_PATH,
-                )
+                # Idempotency: copy_from should only ever seed a brand-new resource. If
+                # a resource with the target name (scoped by organization) already
+                # exists, skip copy_resource and fall through to a normal find-or-update
+                # run instead — otherwise every re-run would create another copy.
+                existing = None
+                try:
+                    existing = manager.execute(
+                        operation="find",
+                        module_name=self.MODULE_NAME,
+                        ansible_data={"name": self._task.args.get("name"), "organization": self._task.args.get("organization")},
+                    )
+                except Exception:
+                    existing = None
 
-                if copied and copied.get("id"):
-                    # No need to inject an "id" into self._task.args here — "id" isn't a
-                    # declared module option (would fail argspec validation on this second
-                    # call), and the copy already has the target name, so a plain re-run
-                    # finds it naturally via LOOKUP_FIELD (name) + organization.
+                if existing and existing.get("id"):
                     result = super().run(tmp, task_vars)
-                    # copy_resource() always creates a new resource — that's a change even
-                    # if the follow-up update-with-remaining-params finds nothing left to
-                    # change and would otherwise report changed=False on its own.
-                    result["changed"] = True
                 else:
-                    result.update(changed=True, failed=False, **{self.MODULE_NAME: copied or {}})
+                    copied = manager.copy_resource(
+                        self.MODULE_NAME,
+                        copy_from,
+                        self._task.args.get("name"),
+                        _INVENTORY_BASE_PATH,
+                    )
+
+                    if copied and copied.get("id"):
+                        # No need to inject an "id" into self._task.args here — "id" isn't a
+                        # declared module option (would fail argspec validation on this second
+                        # call), and the copy already has the target name, so a plain re-run
+                        # finds it naturally via LOOKUP_FIELD (name) + organization.
+                        result = super().run(tmp, task_vars)
+                        # copy_resource() always creates a new resource — that's a change even
+                        # if the follow-up update-with-remaining-params finds nothing left to
+                        # change and would otherwise report changed=False on its own.
+                        result["changed"] = True
+                    else:
+                        result.update(changed=True, failed=False, **{self.MODULE_NAME: copied or {}})
 
             except Exception as exc:
                 result.update(changed=False, failed=True, msg=str(exc))
@@ -126,7 +154,11 @@ class ActionModule(BaseResourceActionPlugin):
 
         inventory_id = result.get("id") or (result.get(self.MODULE_NAME, {}) or {}).get("id")
 
-        if inventory_id and state not in ("absent", "deleted", "exists"):
+        # check_mode: base_action.py's own create/update short-circuit happens before
+        # this point, but for an *update* to an already-existing resource it still
+        # returns the real inventory_id — skip the association sync entirely so
+        # check_mode never issues real associate/disassociate writes.
+        if inventory_id and state not in ("absent", "deleted", "exists") and not self._task.check_mode:
             manager = self._client
             if manager:
                 for field, (lookup_ep, lookup_field) in _ASSOCIATION_MAP.items():

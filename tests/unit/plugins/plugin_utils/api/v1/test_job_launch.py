@@ -38,13 +38,15 @@ def _make_context(lookup_returns=None, default=1):
 
 
 class TestJobLaunchTransform(unittest.TestCase):
-    def test_from_ansible_data_resolves_job_template_via_unified_job_templates(self):
+    def test_from_ansible_data_resolves_job_template_via_job_templates_endpoint(self):
+        """Must use job_templates directly, not unified_job_templates — a same-named
+        workflow_job_template would otherwise resolve to the wrong id and 404."""
         ansible = AnsibleJobLaunch(name="Demo Job Template")
-        context = _make_context(lookup_returns={("/api/controller/v2/unified_job_templates/", "Demo Job Template"): 9})
+        context = _make_context(lookup_returns={("/api/controller/v2/job_templates/", "Demo Job Template"): 9})
 
         api = JobLaunchTransformMixin_v1.from_ansible_data(ansible, context)
 
-        context.manager.lookup_resource_id.assert_called_once_with("/api/controller/v2/unified_job_templates/", "name", "Demo Job Template")
+        context.manager.lookup_resource_id.assert_called_once_with("/api/controller/v2/job_templates/", "name", "Demo Job Template")
         self.assertEqual(api.job_template_id, 9)
 
     def test_from_ansible_data_reuses_id_when_already_set(self):
