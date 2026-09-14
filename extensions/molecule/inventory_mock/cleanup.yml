@@ -1,0 +1,142 @@
+---
+# Cleanup: delete inventories/organizations created by converge (local, http direct, http persistent).
+- name: Cleanup — delete inventory and organization (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org Inventory Local"
+    molecule_inv_name: "Molecule Test Inventory Local"
+  tasks:
+    - name: Delete constructed inventory (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}-Constructed"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete copied inventory (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}-Copy"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete renamed inventory (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}-Renamed"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert inventory removed or already absent (connection local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete inventory {{ molecule_inv_name }}-Renamed."
+      vars:
+        ansible_connection: local
+
+    - name: Delete organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete inventory and organization (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org Inventory HTTP Direct"
+    molecule_inv_name: "Molecule Test Inventory HTTP Direct"
+  tasks:
+    - name: Delete inventory (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      register: delete_result_http_direct
+      failed_when: false
+
+    - name: Assert inventory removed or already absent (http direct)
+      ansible.builtin.assert:
+        that: delete_result_http_direct is not failed
+        fail_msg: "Cleanup: failed to delete inventory {{ molecule_inv_name }}."
+
+    - name: Delete organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete inventory and organization (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org Inventory HTTP Persistent"
+    molecule_inv_name: "Molecule Test Inventory HTTP Persistent"
+  tasks:
+    - name: Delete inventory (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      register: delete_result_http_persistent
+      failed_when: false
+
+    - name: Assert inventory removed or already absent (http persistent)
+      ansible.builtin.assert:
+        that: delete_result_http_persistent is not failed
+        fail_msg: "Cleanup: failed to delete inventory {{ molecule_inv_name }}."
+
+    - name: Delete organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

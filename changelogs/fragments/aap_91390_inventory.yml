@@ -1,0 +1,4 @@
+minor_changes:
+  - inventory - add module migrated from awx.awx/ansible.controller, including copy_from,
+    instance_groups/input_inventories associations, and constructed inventory support
+    (https://issues.redhat.com/browse/AAP-91390).
