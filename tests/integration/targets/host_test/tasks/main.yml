@@ -1,0 +1,123 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Host-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+      register: inv1
+
+    - name: Create host
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test-Host"
+        inventory: "{{ inv1.name }}"
+        variables:
+          example_var: 123
+      register: created_host
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_host is changed
+          - created_host.host.name is defined
+          - created_host.host.variables.example_var == 123
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test-Host"
+        inventory: "{{ inv1.name }}"
+        variables:
+          example_var: 123
+      register: idempotent_host
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_host is not changed
+
+    - name: Update host description and disable it
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test-Host"
+        inventory: "{{ inv1.name }}"
+        description: "Updated"
+        enabled: false
+      register: updated_host
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_host is changed
+          - updated_host.host.id == created_host.host.id
+
+    - name: Check exists returns true
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test-Host"
+        inventory: "{{ inv1.name }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true and no change
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Delete host
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test-Host"
+        inventory: "{{ inv1.name }}"
+        state: absent
+      register: deleted_host
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - deleted_host is changed
+
+    - name: Delete host again (idempotent)
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test-Host"
+        inventory: "{{ inv1.name }}"
+        state: absent
+      register: deleted_host_again
+
+    - name: Assert repeat delete is a no-op
+      ansible.builtin.assert:
+        that:
+          - deleted_host_again is not changed
+
+  always:
+    - name: Delete Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...
