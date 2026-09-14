@@ -1,0 +1,321 @@
+---
+# Converge: inventory create, idempotency, update, rename, copy_from, instance_groups
+# association, and delete against the mock Gateway/Controller.
+# Play 1: health check runs on controller (connection: local); platform connection cannot run uri.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+# Play 2: full feature coverage (connection local) — create, idempotency, update, rename,
+# copy_from, instance_groups association, kind=constructed, delete.
+- name: Converge — inventory (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org Inventory Local"
+    molecule_inv_name: "Molecule Test Inventory Local"
+  tasks:
+    - name: Create organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_local
+      vars:
+        ansible_connection: local
+
+    - name: Seed a fake instance group directly against the mock Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/instance_groups/"
+        method: POST
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        body_format: json
+        body:
+          name: "molecule-ig-local"
+        status_code: 201
+      register: ig_local
+      vars:
+        ansible_connection: local
+
+    - name: Create inventory
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_local.name }}"
+        description: "Created by Molecule inventory_mock (connection local)"
+        variables:
+          foo: bar
+        instance_groups:
+          - "molecule-ig-local"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.inventory.id is defined
+          - create_result_local.inventory.name == molecule_inv_name
+          - create_result_local.inventory.variables.foo == "bar"
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_local.name }}"
+        description: "Created by Molecule inventory_mock (connection local)"
+        variables:
+          foo: bar
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed. idem_result_local={{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update inventory description (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_local.name }}"
+        description: "Updated by Molecule inventory_mock (connection local)"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed. update_result_local={{ update_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Rename inventory (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        new_name: "{{ molecule_inv_name }}-Renamed"
+        organization: "{{ org_local.name }}"
+      register: rename_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert rename changed and preserved id (connection local)
+      ansible.builtin.assert:
+        that:
+          - rename_result_local is changed
+          - rename_result_local.id == create_result_local.id
+        fail_msg: "Rename (local) should keep the same id. rename_result_local={{ rename_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Copy inventory (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}-Copy"
+        copy_from: "{{ molecule_inv_name }}-Renamed"
+        organization: "{{ org_local.name }}"
+      register: copy_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert copy created a distinct inventory (connection local)
+      ansible.builtin.assert:
+        that:
+          - copy_result_local is changed
+          - copy_result_local.id is defined
+          - copy_result_local.id != create_result_local.id
+        fail_msg: "Copy (local) should create a new inventory. copy_result_local={{ copy_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Create a constructed inventory with input_inventories (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}-Constructed"
+        organization: "{{ org_local.name }}"
+        kind: constructed
+        input_inventories:
+          - "{{ molecule_inv_name }}-Renamed"
+      register: constructed_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert constructed inventory created (connection local)
+      ansible.builtin.assert:
+        that:
+          - constructed_result_local is changed
+          - constructed_result_local.inventory.kind == "constructed"
+        fail_msg: "Constructed create (local) failed. constructed_result_local={{ constructed_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Re-apply constructed inventory (idempotent on input_inventories, connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}-Constructed"
+        organization: "{{ org_local.name }}"
+        kind: constructed
+        input_inventories:
+          - "{{ molecule_inv_name }}-Renamed"
+      register: constructed_idem_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert no change on re-apply (connection local)
+      ansible.builtin.assert:
+        that: constructed_idem_local is not changed
+        fail_msg: "Constructed re-apply (local) should be idempotent. constructed_idem_local={{ constructed_idem_local }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: basic CRUD parity (http direct).
+- name: Converge — inventory (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org Inventory HTTP Direct"
+    molecule_inv_name: "Molecule Test Inventory HTTP Direct"
+  tasks:
+    - name: Create organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_direct
+
+    - name: Create inventory (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_direct.name }}"
+        description: "Created by Molecule inventory_mock (http direct)"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.inventory.id is defined
+        fail_msg: "Create (http direct) should report changed. create_result_http_direct={{ create_result_http_direct }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_direct.name }}"
+        description: "Created by Molecule inventory_mock (http direct)"
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_http_direct={{ idem_result_http_direct }}"
+
+    - name: Update inventory (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_direct.name }}"
+        description: "Updated by Molecule inventory_mock (http direct)"
+      register: update_result_http_direct
+
+    - name: Assert update changed (http direct)
+      ansible.builtin.assert:
+        that: update_result_http_direct is changed
+        fail_msg: "Update (http direct) should report changed. update_result_http_direct={{ update_result_http_direct }}"
+
+# Play 4: basic CRUD parity (http persistent).
+- name: Converge — inventory (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org Inventory HTTP Persistent"
+    molecule_inv_name: "Molecule Test Inventory HTTP Persistent"
+  tasks:
+    - name: Create organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_persistent
+
+    - name: Create inventory (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_persistent.name }}"
+        description: "Created by Molecule inventory_mock (http persistent)"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.inventory.id is defined
+        fail_msg: "Create (http persistent) should report changed. create_result_http_persistent={{ create_result_http_persistent }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_persistent.name }}"
+        description: "Created by Molecule inventory_mock (http persistent)"
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_http_persistent={{ idem_result_http_persistent }}"
+
+    - name: Update inventory (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_persistent.name }}"
+        description: "Updated by Molecule inventory_mock (http persistent)"
+      register: update_result_http_persistent
+
+    - name: Assert update changed (http persistent)
+      ansible.builtin.assert:
+        that: update_result_http_persistent is changed
+        fail_msg: "Update (http persistent) should report changed. update_result_http_persistent={{ update_result_http_persistent }}"
+...

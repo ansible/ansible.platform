@@ -53,6 +53,8 @@ class GenericResource:
         start_id: int = 2000,
         patch_fields: Optional[List[str]] = None,
         post_only_fields: Optional[Dict[str, Callable[[], Any]]] = None,
+        url_prefix: Optional[str] = None,
+        associations: Optional[List[str]] = None,
     ):
         self.lock = threading.Lock()
         self.resource_name = resource_name
@@ -61,8 +63,18 @@ class GenericResource:
         # post_only_fields: generated on POST, returned in create response, never stored.
         # Simulates API-generated secrets like client_secret that are only visible once.
         self.post_only_fields: Dict[str, Callable[[], Any]] = post_only_fields or {}
+        # url_prefix: full base path (e.g. "/api/controller/v2/inventories/") used to
+        # build the "url" field and copies. None = legacy gateway pattern built from `version`.
+        self.url_prefix: Optional[str] = url_prefix
+        # associations: sub-endpoint names this resource supports (e.g. "instance_groups").
+        self.associations: List[str] = associations or []
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
+
+    def _build_url(self, version: str, item_id: int) -> str:
+        if self.url_prefix:
+            return f"{self.url_prefix}{item_id}/"
+        return f"/api/gateway/v{version}/{self.resource_name}/{item_id}/"
 
     def create(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
@@ -75,7 +87,7 @@ class GenericResource:
                 "id": item_id,
                 "created": _now_iso(),
                 "modified": _now_iso(),
-                "url": f"/api/gateway/v{version}/{self.resource_name}/{item_id}/",
+                "url": self._build_url(version, item_id),
             }
             item.update({k: v for k, v in payload.items() if v is not None})
             self._items[item_id] = item
@@ -85,6 +97,48 @@ class GenericResource:
             for field_name, generator in self.post_only_fields.items():
                 response[field_name] = generator()
             return response
+
+    def get_associations(self, item_id: int, field: str) -> List[int]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            return list(self._items[item_id].get(f"_assoc_{field}", []))
+
+    def set_association(self, item_id: int, field: str, ref_id: Any, associate: bool) -> bool:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            item = dict(self._items[item_id])
+            key = f"_assoc_{field}"
+            current = set(item.get(key, []))
+            changed = False
+            if associate and ref_id not in current:
+                current.add(ref_id)
+                changed = True
+            elif not associate and ref_id in current:
+                current.discard(ref_id)
+                changed = True
+            item[key] = sorted(current)
+            item["modified"] = _now_iso()
+            self._items[item_id] = item
+            return changed
+
+    def copy_item(self, item_id: int, version: str, new_name: str) -> Dict[str, Any]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            if not new_name:
+                raise ValueError("name is required for copy")
+            new_id = self._next_id
+            self._next_id += 1
+            new_item = dict(self._items[item_id])
+            new_item["id"] = new_id
+            new_item["name"] = new_name
+            new_item["created"] = _now_iso()
+            new_item["modified"] = _now_iso()
+            new_item["url"] = self._build_url(version, new_id)
+            self._items[new_id] = new_item
+            return dict(new_item)
 
     def list_items(self, filters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         with self.lock:
@@ -190,6 +244,31 @@ class Store:
 
     # Generic resource stores (keyed by endpoint name)
     _resources: Dict[str, GenericResource] = field(default_factory=dict)
+
+    # Generic Controller-side resource stores (/api/controller/v2/{name}/).
+    # Organizations are handled separately (see _route_controller) — Controller
+    # mirrors the Gateway's org table via a shared ID space, so it reuses
+    # orgs_by_id/orgs_by_name rather than a second independent store.
+    _controller_resources: Dict[str, GenericResource] = field(default_factory=dict)
+
+    def _init_controller_resources(self) -> None:
+        """Create Controller-side (/api/controller/v2/) generic resource stores."""
+        self._controller_resources["instance_groups"] = GenericResource(
+            resource_name="instance_groups",
+            required_fields=["name"],
+            start_id=100,
+            url_prefix="/api/controller/v2/instance_groups/",
+        )
+        self._controller_resources["inventories"] = GenericResource(
+            resource_name="inventories",
+            required_fields=["name", "organization"],
+            start_id=5000,
+            url_prefix="/api/controller/v2/inventories/",
+            associations=["instance_groups", "input_inventories"],
+        )
+
+    def controller_resource(self, name: str) -> Optional[GenericResource]:
+        return self._controller_resources.get(name)
 
     def _init_resources(self) -> None:
         """Create all generic resource stores with appropriate config."""
@@ -543,14 +622,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
     def _handle_generic_resource(self, resource_name: str, parts: list, version: str, qs: Dict[str, list]) -> bool:
         """
-        Handle CRUD for any generic resource.
+        Handle CRUD for any generic Gateway resource.
         Returns True if the request was handled, False otherwise.
         """
         store = self.store.resource(resource_name)
         if store is None:
             return False
+        return self._handle_generic_resource_store(store, parts, version, qs)
 
-        # List / Create:  /api/gateway/vX/{resource}/
+    def _handle_generic_resource_store(self, store: "GenericResource", parts: list, version: str, qs: Dict[str, list]) -> bool:
+        """
+        Handle list/create/get/patch/delete for any generic resource store.
+        Returns True if the request was handled, False otherwise.
+        """
+        # List / Create:  /api/{service}/vX/{resource}/
         if len(parts) == 4:
             if self.command == "GET":
                 filters = {k: v[0] for k, v in qs.items() if v}
@@ -596,6 +681,94 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         return False
 
     # ------------------------------------------------------------------
+    # Controller router (/api/controller/v2/...)
+    # ------------------------------------------------------------------
+
+    def _route_controller(self, parts: list, qs: Dict[str, list]) -> None:
+        if len(parts) < 3 or parts[2] != "v2":
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        resource = parts[3] if len(parts) >= 4 else None
+
+        # Organizations: Controller mirrors the Gateway's org table via a shared
+        # ID space (single unified-auth source of truth), so reuse that store
+        # instead of a second independent one.
+        if resource == "organizations":
+            if len(parts) == 4 and self.command == "GET":
+                name = (qs.get("name") or [None])[0]
+                self._send_json(200, self.store.list_orgs(name=name))
+                return
+            if len(parts) == 5:
+                try:
+                    org_id = int(parts[4])
+                except ValueError:
+                    self._send_json(404, {"detail": "Not Found"})
+                    return
+                if self.command == "GET":
+                    try:
+                        self._send_json(200, self.store.get_org(org_id))
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    return
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        store = self.store.controller_resource(resource) if resource else None
+        if store is None:
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        # Association / copy sub-endpoint:  /api/controller/v2/{resource}/{id}/{field}/
+        if len(parts) == 6:
+            try:
+                item_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            field = parts[5]
+
+            if field == "copy":
+                if self.command == "POST":
+                    try:
+                        payload = self._parse_json_body()
+                        copied = store.copy_item(item_id, "2", payload.get("name"))
+                        self._send_json(201, copied)
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    except ValueError as e:
+                        self._send_json(400, {"detail": str(e)})
+                    return
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            if field in store.associations:
+                if self.command == "GET":
+                    try:
+                        ids = store.get_associations(item_id, field)
+                        self._send_json(200, {"count": len(ids), "results": [{"id": i} for i in ids]})
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    return
+                if self.command == "POST":
+                    try:
+                        payload = self._parse_json_body()
+                        ref_id = payload.get("id")
+                        associate = bool(payload.get("associate")) and not payload.get("disassociate")
+                        store.set_association(item_id, field, ref_id, associate)
+                        self._send_empty(204)
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    return
+
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        if self._handle_generic_resource_store(store, parts, "2", qs):
+            return
+        self._send_json(404, {"detail": "Not Found"})
+
+    # ------------------------------------------------------------------
     # Main router
     # ------------------------------------------------------------------
 
@@ -631,6 +804,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return
 
         parts = [p for p in path.split("/") if p]
+
+        if len(parts) >= 2 and parts[0] == "api" and parts[1] == "controller":
+            self._route_controller(parts, qs)
+            return
 
         if len(parts) < 3 or parts[0] != "api" or parts[1] != "gateway":
             self._send_json(404, {"detail": "Not Found"})
@@ -847,6 +1024,7 @@ def main() -> int:
 
     store = Store()
     store._init_resources()
+    store._init_controller_resources()
     store.seed_defaults()
 
     MockGatewayHandler.store = store
