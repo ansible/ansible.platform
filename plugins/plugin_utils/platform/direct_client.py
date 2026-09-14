@@ -11,6 +11,8 @@ import json
 import logging
 import re
 import threading
+import time
+from dataclasses import fields, is_dataclass, replace
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -20,7 +22,7 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 # Use Ansible's HTTP client instead of requests library for better worker process compatibility
 from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
-from .base_client import BaseAPIClient
+from .base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient, WaitTimeoutError
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
@@ -595,6 +597,18 @@ class DirectHTTPClient(BaseAPIClient):
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
+        # Pop launch-command wait/poll directives (e.g. ad_hoc_command,
+        # inventory_source_update) — these are control flags for this method, not
+        # fields on the resource dataclass. Only pop a name the target dataclass
+        # doesn't itself declare, so a module with a genuine field of the same name
+        # (e.g. job_template's own `timeout`) keeps it.
+        ansible_field_names = {f.name for f in fields(AnsibleClass)}
+        wait = ansible_data_dict.pop("wait", False) if "wait" not in ansible_field_names else False
+        wait_interval = ansible_data_dict.pop("interval", 2.0) if "interval" not in ansible_field_names else 2.0
+        wait_timeout = ansible_data_dict.pop("timeout", None) if "timeout" not in ansible_field_names else None
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
+
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
 
@@ -607,6 +621,8 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
+                if wait:
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
@@ -651,6 +667,50 @@ class DirectHTTPClient(BaseAPIClient):
             return ansible_result
 
         return {"changed": True}
+
+    def _wait_for_resource_completion(
+        self,
+        result: dict,
+        ansible_instance: Any,
+        mixin_class: type,
+        context: TransformContext,
+        module_name: str,
+        interval: float,
+        timeout: Optional[float],
+    ) -> dict:
+        """Poll a just-launched resource until the API reports it finished.
+
+        For launch-style resources (e.g. ad_hoc_command, inventory_source_update)
+        the create operation only starts an async job; the mixin's from_api() must
+        populate a truthy "finished" field once the job completes for this to
+        terminate. Shared by PlatformService and DirectHTTPClient so wait/interval/
+        timeout behave the same regardless of connection mode — action plugins
+        never poll themselves.
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded before the resource finishes.
+                Carries the last poll result so callers can still report id/status.
+        """
+        if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
+            return result
+
+        find_instance = replace(ansible_instance, id=result["id"]) if is_dataclass(ansible_instance) else ansible_instance
+        start = time.monotonic()
+
+        while True:
+            result = self._find_resource(find_instance, mixin_class, context)
+            if result.get("finished") or result.get("event_processing_finished"):
+                return result
+
+            elapsed = time.monotonic() - start
+            if timeout is not None and elapsed >= timeout:
+                raise WaitTimeoutError(
+                    "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
+                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
+                    last_result=result,
+                )
+
+            time.sleep(interval)
 
     def _update_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Update resource with transformation."""
@@ -906,9 +966,14 @@ class DirectHTTPClient(BaseAPIClient):
             url = endpoint_op.path
             logger.info("DirectHTTPClient: Building URL for %s: %s", endpoint_op, url)
             if endpoint_op.path_params:
-                # Replace path parameters
+                # Replace path parameters. Check the running multi-op `results` first
+                # (e.g. an "id" produced by a prior op in this same chain), then fall
+                # back to the matching attribute on api_data — by the param's own
+                # name, not hardcoded to "id", so custom path params like
+                # inventory_source_id (a launch-trigger sub-action, not the
+                # resource's own id) resolve correctly too.
                 for param in endpoint_op.path_params:
-                    param_value = results.get("id") or getattr(api_data, "id", None)
+                    param_value = results.get(param) if param in results else getattr(api_data, param, None)
                     if param_value:
                         url = url.replace(f"{{{param}}}", str(param_value))
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
