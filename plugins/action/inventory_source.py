@@ -67,6 +67,17 @@ class ActionModule(BaseResourceActionPlugin):
         for field in _ASSOCIATION_FIELDS:
             val = self._task.args.pop(field, None)
             if val is not None:
+                # Popped before BaseResourceActionPlugin.run() validates self._task.args,
+                # so the documented list/elements:str constraint never runs on these —
+                # restore the minimum check that protects manage_associations() from
+                # silently iterating a wrong-typed value (e.g. a bare string) character by
+                # character instead of failing clearly.
+                if not isinstance(val, list):
+                    return {
+                        "changed": False,
+                        "failed": True,
+                        "msg": "argument '%s' is of type %s and we were unable to convert to a list" % (field, type(val).__name__),
+                    }
                 association_data[field] = val
 
         result = super().run(tmp, task_vars)
@@ -76,7 +87,11 @@ class ActionModule(BaseResourceActionPlugin):
 
         source_id = result.get("id") or (result.get(self.MODULE_NAME, {}) or {}).get("id")
 
-        if source_id and state not in ("absent", "deleted", "exists"):
+        # check_mode: base_action.py's own create/update short-circuit happens before
+        # this point, but for an *update* to an already-existing resource it still
+        # returns the real source_id — skip the association sync entirely so
+        # check_mode never issues real associate/disassociate writes.
+        if source_id and state not in ("absent", "deleted", "exists") and not self._task.check_mode:
             manager = self._client
             if manager:
                 for field, (lookup_ep, lookup_field) in _ASSOCIATION_MAP.items():
