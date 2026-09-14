@@ -328,6 +328,18 @@ class Store:
             url_prefix="/api/controller/v2/schedules/",
             associations=["credentials", "labels", "instance_groups"],
         )
+        self._controller_resources["job_templates"] = GenericResource(
+            resource_name="job_templates",
+            required_fields=["name"],
+            start_id=16000,
+            url_prefix="/api/controller/v2/job_templates/",
+        )
+        self._controller_resources["jobs"] = GenericResource(
+            resource_name="jobs",
+            required_fields=[],
+            start_id=17000,
+            url_prefix="/api/controller/v2/jobs/",
+        )
 
     def controller_resource(self, name: str) -> Optional[GenericResource]:
         return self._controller_resources.get(name)
@@ -648,6 +660,13 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     store: Store
     reported_api_version: str
 
+    # (source_resource, sub_action) -> target resource store name for
+    # launch-trigger sub-actions (POST {source}/{id}/{sub_action}/).
+    _LAUNCH_SUB_ACTIONS = {
+        ("inventory_sources", "update"): "inventory_updates",
+        ("job_templates", "launch"): "jobs",
+    }
+
     def log_message(self, fmt: str, *args) -> None:
         return  # suppress per-request noise
 
@@ -678,12 +697,14 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
-    def _advance_inventory_update_poll(self, store: "GenericResource", item_id: int) -> Dict[str, Any]:
-        """Advance an inventory update's pending -> successful lifecycle on each GET-by-id poll.
+    def _advance_launch_job_poll(self, store: "GenericResource", item_id: int) -> Dict[str, Any]:
+        """Advance a launched job's pending -> successful lifecycle on each GET-by-id poll.
 
-        Simulates a real Controller update staying pending across the first two
-        polls before resolving, so wait/poll loops in tests actually poll more
-        than once instead of the mock resolving synchronously on launch.
+        Used for both inventory_updates (inventory_source's /update/) and jobs
+        (job_template's /launch/). Simulates a real Controller job staying pending
+        across the first two polls before resolving, so wait/poll loops in tests
+        actually poll more than once instead of the mock resolving synchronously
+        on launch.
         """
         with store.lock:
             if item_id not in store._items:
@@ -744,8 +765,8 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
             if self.command == "GET":
                 try:
-                    if store.resource_name == "inventory_updates":
-                        self._send_json(200, self._advance_inventory_update_poll(store, item_id))
+                    if store.resource_name in ("inventory_updates", "jobs"):
+                        self._send_json(200, self._advance_launch_job_poll(store, item_id))
                     else:
                         self._send_json(200, store.get(item_id))
                 except KeyError:
@@ -802,6 +823,25 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"detail": "Not Found"})
             return
 
+        # unified_job_templates: real Controller is a polymorphic view over
+        # job_templates/inventory_sources/projects/workflow_job_templates sharing
+        # their IDs, not a separate table. GET (list, by name) unions those
+        # concrete stores plus the dedicated unified_job_templates store itself
+        # (kept for tests that only need an arbitrary launchable-looking fixture,
+        # e.g. schedule's unified_job_template field, with no real /launch/
+        # sub-action behind it). POST still creates directly in the dedicated
+        # store, for that same fixture use case.
+        if resource == "unified_job_templates" and len(parts) == 4 and self.command == "GET":
+            name = (qs.get("name") or [None])[0]
+            combined = []
+            for backing in ("unified_job_templates", "job_templates", "inventory_sources"):
+                backing_store = self.store.controller_resource(backing)
+                if backing_store is None:
+                    continue
+                combined.extend(backing_store.list_items({"name": name} if name else None)["results"])
+            self._send_json(200, {"count": len(combined), "results": combined})
+            return
+
         store = self.store.controller_resource(resource) if resource else None
         if store is None:
             self._send_json(404, {"detail": "Not Found"})
@@ -830,19 +870,22 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"detail": "Not Found"})
                 return
 
-            # inventory_sources/{id}/update/: launch a new inventory_updates job.
+            # Launch-trigger sub-actions: POST {resource}/{id}/{field}/ creates a
+            # new job-like item in a separate store (e.g. inventory_sources'
+            # /update/ -> inventory_updates, job_templates' /launch/ -> jobs).
             # Stays pending across the first two GET-by-id polls (see
-            # _advance_inventory_update_poll) so wait/poll loops actually poll
+            # _advance_launch_job_poll) so wait/poll loops actually poll
             # more than once, instead of the mock resolving synchronously.
-            if field == "update" and resource == "inventory_sources":
+            launch_target = self._LAUNCH_SUB_ACTIONS.get((resource, field))
+            if launch_target:
                 if self.command == "POST":
                     try:
                         source = store.get(item_id)
                     except KeyError:
                         self._send_json(404, {"detail": "Not Found"})
                         return
-                    updates_store = self.store.controller_resource("inventory_updates")
-                    launched = updates_store.create(
+                    target_store = self.store.controller_resource(launch_target)
+                    launched = target_store.create(
                         "2",
                         {
                             "name": source.get("name"),
