@@ -309,6 +309,25 @@ class Store:
             start_id=12000,
             url_prefix="/api/controller/v2/inventory_updates/",
         )
+        self._controller_resources["unified_job_templates"] = GenericResource(
+            resource_name="unified_job_templates",
+            required_fields=["name"],
+            start_id=13000,
+            url_prefix="/api/controller/v2/unified_job_templates/",
+        )
+        self._controller_resources["labels"] = GenericResource(
+            resource_name="labels",
+            required_fields=["name"],
+            start_id=14000,
+            url_prefix="/api/controller/v2/labels/",
+        )
+        self._controller_resources["schedules"] = GenericResource(
+            resource_name="schedules",
+            required_fields=["name"],
+            start_id=15000,
+            url_prefix="/api/controller/v2/schedules/",
+            associations=["credentials", "labels", "instance_groups"],
+        )
 
     def controller_resource(self, name: str) -> Optional[GenericResource]:
         return self._controller_resources.get(name)
