@@ -1,0 +1,235 @@
+---
+# Converge: inventory_source_update launch (no wait), launch (wait), non-idempotency,
+# and check_mode against the mock Gateway/Controller.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+# Play 2: full feature coverage (connection local) — launch without wait, launch with
+# wait, non-idempotency, check_mode.
+- name: Converge — inventory_source_update (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org InvSrcUpdate Local"
+    molecule_inv_name: "Molecule Test Inventory InvSrcUpdate Local"
+    molecule_source_name: "molecule-source-update-local"
+  tasks:
+    - name: Create organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_local
+      vars:
+        ansible_connection: local
+
+    - name: Create inventory
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_local.name }}"
+      register: inv_local
+      vars:
+        ansible_connection: local
+
+    - name: Create inventory source
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_local.name }}"
+        source: scm
+        source_path: "inventory.yml"
+      register: source_local
+      vars:
+        ansible_connection: local
+
+    - name: Check mode launch (must not call the API)
+      ansible.platform.inventory_source_update:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_local.name }}"
+      check_mode: true
+      register: check_mode_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert check_mode launch reports changed with no id (connection local)
+      ansible.builtin.assert:
+        that:
+          - check_mode_result_local is changed
+          - check_mode_result_local.id is none
+        fail_msg: "Check mode (local) should report changed with no id. check_mode_result_local={{ check_mode_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Launch update without waiting (connection local)
+      ansible.platform.inventory_source_update:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_local.name }}"
+      register: launch_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert launch changed and pending (connection local)
+      ansible.builtin.assert:
+        that:
+          - launch_result_local is changed
+          - launch_result_local.id is defined
+          - launch_result_local.status == "pending"
+        fail_msg: "Launch (local) should report changed and pending. launch_result_local={{ launch_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Launch update again, waiting for completion (connection local)
+      ansible.platform.inventory_source_update:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_local.name }}"
+        wait: true
+        interval: 0.2
+        timeout: 30
+      register: wait_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert wait launch resolved and is a distinct id (non-idempotent, connection local)
+      ansible.builtin.assert:
+        that:
+          - wait_result_local is changed
+          - wait_result_local.status == "successful"
+          - wait_result_local.id != launch_result_local.id
+        fail_msg: "Wait launch (local) should resolve to successful with a new id. wait_result_local={{ wait_result_local }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: connection-mode parity (http direct) — launch with wait.
+- name: Converge — inventory_source_update (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org InvSrcUpdate HTTP Direct"
+    molecule_inv_name: "Molecule Test Inventory InvSrcUpdate HTTP Direct"
+    molecule_source_name: "molecule-source-update-http-direct"
+  tasks:
+    - name: Create organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_direct
+
+    - name: Create inventory (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_direct.name }}"
+      register: inv_http_direct
+
+    - name: Create inventory source (http direct)
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_http_direct.name }}"
+        source: scm
+        source_path: "inventory.yml"
+      register: source_http_direct
+
+    - name: Launch update, waiting for completion (http direct)
+      ansible.platform.inventory_source_update:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_http_direct.name }}"
+        wait: true
+        interval: 0.2
+        timeout: 30
+      register: wait_result_http_direct
+
+    - name: Assert wait launch resolved (http direct)
+      ansible.builtin.assert:
+        that:
+          - wait_result_http_direct is changed
+          - wait_result_http_direct.status == "successful"
+        fail_msg: "Wait launch (http direct) should resolve to successful. wait_result_http_direct={{ wait_result_http_direct }}"
+
+# Play 4: connection-mode parity (http persistent) — launch with wait.
+- name: Converge — inventory_source_update (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org InvSrcUpdate HTTP Persistent"
+    molecule_inv_name: "Molecule Test Inventory InvSrcUpdate HTTP Persistent"
+    molecule_source_name: "molecule-source-update-http-persistent"
+  tasks:
+    - name: Create organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_persistent
+
+    - name: Create inventory (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_persistent.name }}"
+      register: inv_http_persistent
+
+    - name: Create inventory source (http persistent)
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_http_persistent.name }}"
+        source: scm
+        source_path: "inventory.yml"
+      register: source_http_persistent
+
+    - name: Launch update, waiting for completion (http persistent)
+      ansible.platform.inventory_source_update:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ inv_http_persistent.name }}"
+        wait: true
+        interval: 0.2
+        timeout: 30
+      register: wait_result_http_persistent
+
+    - name: Assert wait launch resolved (http persistent)
+      ansible.builtin.assert:
+        that:
+          - wait_result_http_persistent is changed
+          - wait_result_http_persistent.status == "successful"
+        fail_msg: "Wait launch (http persistent) should resolve to successful. wait_result_http_persistent={{ wait_result_http_persistent }}"
+...
