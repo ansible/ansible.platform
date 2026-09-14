@@ -272,6 +272,37 @@ class Store:
             start_id=6000,
             url_prefix="/api/controller/v2/hosts/",
         )
+        self._controller_resources["credentials"] = GenericResource(
+            resource_name="credentials",
+            required_fields=["name"],
+            start_id=7000,
+            url_prefix="/api/controller/v2/credentials/",
+        )
+        self._controller_resources["execution_environments"] = GenericResource(
+            resource_name="execution_environments",
+            required_fields=["name"],
+            start_id=8000,
+            url_prefix="/api/controller/v2/execution_environments/",
+        )
+        self._controller_resources["projects"] = GenericResource(
+            resource_name="projects",
+            required_fields=["name"],
+            start_id=9000,
+            url_prefix="/api/controller/v2/projects/",
+        )
+        self._controller_resources["notification_templates"] = GenericResource(
+            resource_name="notification_templates",
+            required_fields=["name"],
+            start_id=10000,
+            url_prefix="/api/controller/v2/notification_templates/",
+        )
+        self._controller_resources["inventory_sources"] = GenericResource(
+            resource_name="inventory_sources",
+            required_fields=["name", "inventory"],
+            start_id=11000,
+            url_prefix="/api/controller/v2/inventory_sources/",
+            associations=["notification_templates_started", "notification_templates_success", "notification_templates_error"],
+        )
 
     def controller_resource(self, name: str) -> Optional[GenericResource]:
         return self._controller_resources.get(name)

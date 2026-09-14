@@ -27,4 +27,5 @@ action_groups:
   controller:
     - host
     - inventory
+    - inventory_source
 ...
