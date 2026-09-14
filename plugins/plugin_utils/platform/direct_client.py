@@ -518,8 +518,13 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = "1"
             self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
-        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        # Callers may pass a full API path (e.g. "/api/controller/v2/inventories/")
+        # to resolve FKs on non-Gateway components; only bare resource names
+        # (e.g. "authenticators") get the Gateway prefix.
+        if endpoint.startswith("/api/"):
+            api_path = endpoint if endpoint.endswith("/") else f"{endpoint}/"
+        else:
+            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
@@ -1077,14 +1082,15 @@ class DirectHTTPClient(BaseAPIClient):
                     raise ValueError("Could not find %s entry with %s='%s'" % (lookup_endpoint, lookup_field, item))
                 resolved_ids.append(rid)
 
+        # Let GET failures (auth, network, non-2xx, JSON parsing) propagate instead
+        # of silently treating them as "no current associations" — that would make
+        # the disassociate loop below a silent no-op, leaving stale associations
+        # in place while reporting success.
         assoc_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, association_field))
-        try:
-            response = self._make_request("get", assoc_url, operation="manage_associations", resource=association_field)
-            response_body = response.read()
-            current_data = json.loads(response_body) if response_body else {}
-            current_ids = [item["id"] for item in current_data.get("results", [])]
-        except Exception:
-            current_ids = []
+        response = self._make_request("get", assoc_url, operation="manage_associations", resource=association_field)
+        response_body = response.read()
+        current_data = json.loads(response_body) if response_body else {}
+        current_ids = [item["id"] for item in current_data.get("results", [])]
 
         changed = False
         errors = []

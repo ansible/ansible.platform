@@ -10,9 +10,12 @@ target two different Controller resource types:
   - create: POST /api/controller/v2/job_templates/{job_template_id}/launch/
   - get (poll for completion): GET /api/controller/v2/jobs/{id}/
 
-The job_template itself is resolved via /api/controller/v2/unified_job_templates/
-by name rather than a job_template-specific endpoint, since this collection does
-not (yet) ship a job_template CRUD module to depend on.
+The job_template itself is resolved directly via /api/controller/v2/job_templates/
+by name (not unified_job_templates, which also returns other unified job template
+types sharing the same name — see from_ansible_data's docstring). This collection
+does not (yet) ship a job_template CRUD module to depend on, but the underlying
+Controller list endpoint exists regardless of whether this collection has a
+module wrapping it.
 """
 
 import logging
@@ -86,13 +89,18 @@ class JobLaunchTransformMixin_v1(BaseTransformMixin):
         If ``ansible_instance.id`` is already set (a poll of an in-flight job,
         via _wait_for_resource_completion's replace()), reuse it directly for
         the "get" operation's {id} path param. Otherwise this is the initial
-        launch: resolve the target job_template's id via unified_job_templates
-        (by name) for the "create" operation's {job_template_id} path param.
+        launch: resolve the target job_template's id directly via the
+        job_templates endpoint (not unified_job_templates, which also returns
+        workflow_job_templates/inventory_sources/projects sharing the same
+        name — lookup_resource_id takes the first match regardless of type,
+        so a same-named workflow job template would resolve to the wrong id
+        and 404 against the job_template-specific /launch/ endpoint) for the
+        "create" operation's {job_template_id} path param.
         """
         if ansible_instance.id is not None:
             return APIJobLaunch_v1(id=ansible_instance.id)
 
-        job_template_id = context.manager.lookup_resource_id("/api/controller/v2/unified_job_templates/", "name", ansible_instance.name)
+        job_template_id = context.manager.lookup_resource_id("/api/controller/v2/job_templates/", "name", ansible_instance.name)
         if job_template_id is None:
             raise ValueError("Unable to find job template by name '%s'" % ansible_instance.name)
 

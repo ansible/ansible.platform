@@ -1143,13 +1143,15 @@ class PlatformService(BaseAPIClient):
                     raise ValueError("Could not find %s entry with %s='%s'" % (lookup_endpoint, lookup_field, item))
                 resolved_ids.append(rid)
 
+        # Let GET failures (auth, network, non-2xx, JSON parsing) propagate instead
+        # of silently treating them as "no current associations" — that would make
+        # the disassociate loop below a silent no-op, leaving stale associations
+        # in place while reporting success.
         assoc_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, association_field))
-        try:
-            response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.requests_verify)
-            current_data = response.json() if response.status_code == 200 else {}
-            current_ids = [item["id"] for item in current_data.get("results", [])]
-        except Exception:
-            current_ids = []
+        response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        current_data = response.json()
+        current_ids = [item["id"] for item in current_data.get("results", [])]
 
         changed = False
         errors = []
@@ -1157,12 +1159,13 @@ class PlatformService(BaseAPIClient):
         for item_id in resolved_ids:
             if item_id not in current_ids:
                 try:
-                    self.session.post(
+                    resp = self.session.post(
                         assoc_url,
                         json={"id": item_id, "associate": True},
                         timeout=self.request_timeout,
                         verify=self.requests_verify,
                     )
+                    resp.raise_for_status()
                     changed = True
                 except Exception as exc:
                     errors.append("Failed to associate %s %s: %s" % (association_field, item_id, exc))
@@ -1170,12 +1173,13 @@ class PlatformService(BaseAPIClient):
         for item_id in current_ids:
             if item_id not in resolved_ids:
                 try:
-                    self.session.post(
+                    resp = self.session.post(
                         assoc_url,
                         json={"id": item_id, "disassociate": True},
                         timeout=self.request_timeout,
                         verify=self.requests_verify,
                     )
+                    resp.raise_for_status()
                     changed = True
                 except Exception as exc:
                     errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
@@ -1196,7 +1200,9 @@ class PlatformService(BaseAPIClient):
 
         if data == {}:
             response = self.session.delete(spec_url, timeout=self.request_timeout, verify=self.requests_verify)
-            return response.status_code in (200, 204)
+            if response.status_code not in (200, 204):
+                raise ValueError("Failed to delete %s: %s" % (sub_path, response.text or "Unknown error"))
+            return True
 
         try:
             current_response = self.session.get(spec_url, timeout=self.request_timeout, verify=self.requests_verify)
