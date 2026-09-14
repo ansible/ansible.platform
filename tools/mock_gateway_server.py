@@ -266,6 +266,12 @@ class Store:
             url_prefix="/api/controller/v2/inventories/",
             associations=["instance_groups", "input_inventories"],
         )
+        self._controller_resources["hosts"] = GenericResource(
+            resource_name="hosts",
+            required_fields=["name", "inventory"],
+            start_id=6000,
+            url_prefix="/api/controller/v2/hosts/",
+        )
 
     def controller_resource(self, name: str) -> Optional[GenericResource]:
         return self._controller_resources.get(name)

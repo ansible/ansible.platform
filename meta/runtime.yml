@@ -25,5 +25,6 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
+    - host
     - inventory
 ...
