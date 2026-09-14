@@ -9,5 +9,11 @@ exclude_paths:
   - 'extensions/molecule/inventory.yml'
   - 'extensions/molecule/organization_mock/inventory.yml'
   - 'extensions/molecule/users_mock/inventory.yml'
+  - 'extensions/molecule/inventory_mock/inventory.yml'
+  - 'extensions/molecule/host_mock/inventory.yml'
+  - 'extensions/molecule/inventory_source_mock/inventory.yml'
+  - 'extensions/molecule/inventory_source_update_mock/inventory.yml'
+  - 'extensions/molecule/schedule_mock/inventory.yml'
+  - 'extensions/molecule/job_launch_mock/inventory.yml'
 use_default_rules: true
 ...
