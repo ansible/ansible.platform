@@ -1,0 +1,16 @@
+---
+# Cleanup: nothing persistent to remove beyond the manager survive flag —
+# job_templates/projects/jobs are seeded directly in the mock store, which
+# resets when the mock server process is stopped by the destroy phase.
+- name: Cleanup — job_wait (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
