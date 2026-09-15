@@ -52,15 +52,11 @@ class ActionModule(BaseResourceActionPlugin):
         state = self._task.args.get("state", "present")
 
         if copy_from and state not in ("absent", "deleted"):
-            result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-            self._task_vars = task_vars or {}
-
+            result = {}
             try:
-                manager, facts_to_set = self._get_or_spawn_manager(task_vars or {})
-                self._client = manager
-                if facts_to_set:
-                    result["ansible_facts"] = facts_to_set
-                    result["_ansible_facts_cacheable"] = True
+                prepared = self._prepare_action(tmp, task_vars)
+                result = prepared["result"]
+                manager = prepared["manager"]
 
                 # Idempotency: copy_from should only ever seed a brand-new resource. If
                 # a resource with the target name (scoped by organization) already
