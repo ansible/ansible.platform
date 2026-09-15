@@ -1,0 +1,88 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-NotifTemplate-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create notification_template
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Test-Notification"
+        organization: "{{ org1.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: created_nt
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_nt is changed
+          - created_nt.notification_template.name is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Test-Notification"
+        organization: "{{ org1.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: idempotent_nt
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_nt is not changed
+
+    - name: Copy notification_template
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Test-Notification-Copy"
+        copy_from: "{{ name_prefix }}-Test-Notification"
+      register: copy_result
+
+    - name: Assert copy changed and created a new resource
+      ansible.builtin.assert:
+        that:
+          - copy_result is changed
+          - copy_result.notification_template.id != created_nt.notification_template.id
+
+    - name: Delete copied notification_template
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Test-Notification-Copy"
+        state: absent
+
+    - name: Delete notification_template
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Test-Notification"
+        state: absent
+      register: deleted_nt
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - deleted_nt is changed
+
+  always:
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...
