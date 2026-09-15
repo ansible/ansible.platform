@@ -1,0 +1,30 @@
+---
+# Verify: the project created by converge is still present (it is a CRUD
+# resource; project_update itself has no persistent identity to verify).
+- name: Verify — project still exists (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    molecule_project_name: "molecule-project-update-local"
+  tasks:
+    - name: List projects by name (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/?name={{ molecule_project_name }}"
+        method: GET
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        status_code: 200
+      register: list_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert project still exists (connection local)
+      ansible.builtin.assert:
+        that:
+          - list_result_local.json.count | int > 0
+        fail_msg: "Verify: project {{ molecule_project_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+...
