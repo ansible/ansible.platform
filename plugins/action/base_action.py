@@ -359,6 +359,67 @@ class BaseResourceActionPlugin(ActionBase):
             operation: The resolved operation string.
         """
 
+    def _build_resource(self, resource_data: dict) -> Any:
+        """Construct the resource model from filtered task parameters.
+
+        Launch-style action plugins can override this when their argument
+        specification contains control parameters that are not model fields.
+        The default preserves the existing CRUD action-plugin behavior.
+        """
+        return self.MODEL_CLASS(**resource_data)
+
+    def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
+        """Prepare the common inputs needed by an action plugin.
+
+        This helper deliberately stops before operation detection and manager
+        execution.  It is therefore usable by non-CRUD action plugins without
+        entering the idempotency state machine implemented by :meth:`run`.
+
+        Args:
+            tmp: Temporary directory passed through to Ansible's base action.
+            task_vars: Ansible task variables used to initialize the manager.
+
+        Returns:
+            dict: A dictionary containing ``result``, ``argspec``,
+                ``validated_params``, ``resource_data``, ``write_only_data``,
+                and ``manager``.
+        """
+        if task_vars is None:
+            task_vars = {}
+        self._task_vars = task_vars
+        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
+        del tmp
+
+        doc = self._get_documentation()
+        argspec = self._build_argspec_from_docs(doc) if doc else None
+        if not argspec:
+            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
+
+        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+        self._client = manager
+        if facts_to_set:
+            result["ansible_facts"] = facts_to_set
+            result["_ansible_facts_cacheable"] = True
+
+        validated_params = validated_input.validated_parameters
+        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
+
+        for field, (msg, version) in self._DEPRECATED_FIELDS.items():
+            if resource_data.pop(field, None) is not None:
+                result.setdefault("deprecations", []).append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
+
+        write_only_data = {f: resource_data.pop(f) for f in self._WRITE_ONLY_FIELDS if f in resource_data}
+
+        return {
+            "result": result,
+            "argspec": argspec,
+            "validated_params": validated_params,
+            "resource_data": resource_data,
+            "write_only_data": write_only_data,
+            "manager": manager,
+        }
+
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get connection client from the connection plugin.
@@ -1036,44 +1097,24 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             dict: Ansible result dictionary
         """
-        if task_vars is None:
-            task_vars = {}
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
         if self.MODEL_CLASS is None:
             raise AnsibleError("%s must set MODEL_CLASS or override run()" % type(self).__name__)
 
+        # Preparation can fail before _prepare_action() returns a result.
+        # Keep a valid Ansible result available so the exception handler does
+        # not mask the original validation, documentation, or connection error.
+        result = {}
         try:
-            # ---- argspec & input validation --------------------------------
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-
-            # ---- manager connection ----------------------------------------
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            argspec = prepared["argspec"]
+            validated_params = prepared["validated_params"]
+            resource_data = prepared["resource_data"]
+            _write_only_data = prepared["write_only_data"]
+            manager = prepared["manager"]
 
             # ---- build resource object -------------------------------------
-            validated_params = validated_input.validated_parameters
-            resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
-
-            # Warn about and strip deprecated argspec fields.
-            for field, (msg, version) in self._DEPRECATED_FIELDS.items():
-                if resource_data.pop(field, None) is not None:
-                    result.setdefault("deprecations", []).append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
-
-            # Pop write-only fields (not present in MODEL_CLASS) before instantiation;
-            # they are passed to _pre_execute_hook for use just before manager.execute().
-            _write_only_data = {f: resource_data.pop(f) for f in self._WRITE_ONLY_FIELDS if f in resource_data}
-
-            resource = self.MODEL_CLASS(**resource_data)
+            resource = self._build_resource(resource_data)
 
             # Allow subclasses to resolve lookup-by-id or other mutations.
             self._resolve_lookup(resource, resource_data, validated_params)
@@ -1196,7 +1237,7 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                    resource = self.MODEL_CLASS(**{k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
+                    resource = self._build_resource({k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
                     operation = "update"
                 else:
                     operation = "create"
