@@ -1,0 +1,116 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Group-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+      register: inv1
+
+    - name: Create hosts to associate
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Host-{{ item }}"
+        inventory: "{{ inv1.name }}"
+      loop: [1, 2]
+
+    - name: Create group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test-Group"
+        inventory: "{{ inv1.name }}"
+        variables:
+          example_var: 123
+      register: created_group
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_group is changed
+          - created_group.group.name is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test-Group"
+        inventory: "{{ inv1.name }}"
+        variables:
+          example_var: 123
+      register: idempotent_group
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_group is not changed
+
+    - name: Associate host 1
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test-Group"
+        inventory: "{{ inv1.name }}"
+        hosts:
+          - "{{ name_prefix }}-Host-1"
+      register: assoc_result
+
+    - name: Assert association changed
+      ansible.builtin.assert:
+        that:
+          - assoc_result is changed
+
+    - name: Associate host 2, preserving host 1
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test-Group"
+        inventory: "{{ inv1.name }}"
+        hosts:
+          - "{{ name_prefix }}-Host-2"
+        preserve_existing_hosts: true
+      register: preserve_result
+
+    - name: Assert preserve_existing_hosts added without removing host 1
+      ansible.builtin.assert:
+        that:
+          - preserve_result is changed
+
+    - name: Delete group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test-Group"
+        inventory: "{{ inv1.name }}"
+        state: absent
+      register: deleted_group
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - deleted_group is changed
+
+  always:
+    - name: Delete Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...
