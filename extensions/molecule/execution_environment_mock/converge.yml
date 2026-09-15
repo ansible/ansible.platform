@@ -1,0 +1,174 @@
+---
+# Converge: execution_environment create, idempotency, update, delete against the mock Gateway/Controller.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+# Play 2: full feature coverage (connection local) — create, idempotency, update, delete.
+- name: Converge — execution_environment (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_ee_name: "Molecule Test EE Local"
+  tasks:
+    - name: Create execution_environment
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.execution_environment.id is defined
+          - create_result_local.execution_environment.name == molecule_ee_name
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed. idem_result_local={{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update execution_environment (connection local)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+        pull: always
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - update_result_local is changed
+          - update_result_local.execution_environment.pull == "always"
+        fail_msg: "Update (local) should report changed. update_result_local={{ update_result_local }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: basic CRUD parity (http direct).
+- name: Converge — execution_environment (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_ee_name: "Molecule Test EE HTTP Direct"
+  tasks:
+    - name: Create execution_environment (http direct)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.execution_environment.id is defined
+        fail_msg: "Create (http direct) should report changed. create_result_http_direct={{ create_result_http_direct }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_http_direct={{ idem_result_http_direct }}"
+
+# Play 4: basic CRUD parity (http persistent).
+- name: Converge — execution_environment (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_ee_name: "Molecule Test EE HTTP Persistent"
+  tasks:
+    - name: Create execution_environment (http persistent)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.execution_environment.id is defined
+        fail_msg: "Create (http persistent) should report changed. create_result_http_persistent={{ create_result_http_persistent }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_http_persistent={{ idem_result_http_persistent }}"
+...

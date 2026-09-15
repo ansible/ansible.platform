@@ -1,0 +1,78 @@
+---
+# Cleanup: delete execution_environments created by converge.
+- name: Cleanup — delete execution_environment (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_ee_name: "Molecule Test EE Local"
+  tasks:
+    - name: Delete execution_environment (connection local)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete execution_environment (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_ee_name: "Molecule Test EE HTTP Direct"
+  tasks:
+    - name: Delete execution_environment (http direct)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete execution_environment (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_ee_name: "Molecule Test EE HTTP Persistent"
+  tasks:
+    - name: Delete execution_environment (http persistent)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
