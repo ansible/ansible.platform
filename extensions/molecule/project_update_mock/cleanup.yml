@@ -1,0 +1,42 @@
+---
+# Cleanup: delete projects seeded by converge (best-effort; the mock server
+# resets on restart regardless).
+- name: Cleanup — delete project (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    molecule_project_name: "molecule-project-update-local"
+  tasks:
+    - name: Look up project id (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/?name={{ molecule_project_name }}"
+        method: GET
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        status_code: 200
+      register: lookup_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete project (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/{{ lookup_local.json.results[0].id }}/"
+        method: DELETE
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        status_code: 204
+      when: lookup_local.json is defined and (lookup_local.json.results | default([]) | length) > 0
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
