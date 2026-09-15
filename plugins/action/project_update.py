@@ -19,7 +19,6 @@ __metaclass__ = type
 
 import dataclasses
 
-from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.project_update import AnsibleProjectUpdate
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
@@ -30,6 +29,15 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "project_update"
     MODEL_CLASS = AnsibleProjectUpdate
+
+    def _build_resource(self, resource_data):
+        """Filter resource_data to model fields before constructing MODEL_CLASS.
+
+        The project_update argspec includes control params (wait, interval,
+        timeout) that are not AnsibleProjectUpdate fields.
+        """
+        model_fields = {f.name for f in dataclasses.fields(self.MODEL_CLASS)}
+        return self.MODEL_CLASS(**{k: v for k, v in resource_data.items() if k in model_fields})
 
     def _build_ansible_data(self, resource, validated_params, operation):
         """Forward wait/interval/timeout so manager.execute() can poll for us.
@@ -44,31 +52,15 @@ class ActionModule(BaseResourceActionPlugin):
         return ansible_data
 
     def run(self, tmp=None, task_vars=None):
-        if task_vars is None:
-            task_vars = {}
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
+        result = {}
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for project_update module")
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            validated_params = prepared["validated_params"]
+            resource_data = prepared["resource_data"]
+            manager = prepared["manager"]
 
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
-
-            validated_params = validated_input.validated_parameters
-
-            resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
-            model_fields = {f.name for f in dataclasses.fields(self.MODEL_CLASS)}
-            resource = self.MODEL_CLASS(**{k: v for k, v in resource_data.items() if k in model_fields})
+            resource = self._build_resource(resource_data)
             ansible_data = self._build_ansible_data(resource, validated_params, "create")
 
             # Project updates are never idempotent — every real run launches a
