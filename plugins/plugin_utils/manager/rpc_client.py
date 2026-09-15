@@ -139,6 +139,7 @@ class ManagerRPCClient:
         desired_items: list,
         lookup_endpoint: str,
         lookup_field: str,
+        disassociate_missing: bool = True,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process."""
         return self.service_proxy.manage_associations(
@@ -148,6 +149,7 @@ class ManagerRPCClient:
             desired_items,
             lookup_endpoint,
             lookup_field,
+            disassociate_missing,
         )
 
     def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict] = None) -> bool:

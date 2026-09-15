@@ -921,7 +921,16 @@ class PlatformService(BaseAPIClient):
         if resolved_id:
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
-            url = self._build_url(get_op.path.replace("{id}", str(resolved_id)))
+            # Substitute every declared path param, not just the literal "{id}" —
+            # a resource whose GET path is scoped by more than the primary key
+            # (e.g. job_wait's /{job_type}/{id}/) needs the other param(s) pulled
+            # from ansible_data too.
+            path = get_op.path
+            for param in get_op.path_params or ["id"]:
+                value = resolved_id if param == "id" else getattr(ansible_data, param, None)
+                if value is not None:
+                    path = path.replace(f"{{{param}}}", str(value))
+            url = self._build_url(path)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
@@ -1129,8 +1138,14 @@ class PlatformService(BaseAPIClient):
         desired_items: list,
         lookup_endpoint: str,
         lookup_field: str,
+        disassociate_missing: bool = True,
     ) -> bool:
-        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate."""
+        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate.
+
+        disassociate_missing=False only adds desired_items, leaving any other
+        current association untouched — used by resources whose legacy module
+        exposed a "preserve_existing_*" option (e.g. group's hosts/children).
+        """
         self.record_activity()
 
         resolved_ids = []
@@ -1170,19 +1185,20 @@ class PlatformService(BaseAPIClient):
                 except Exception as exc:
                     errors.append("Failed to associate %s %s: %s" % (association_field, item_id, exc))
 
-        for item_id in current_ids:
-            if item_id not in resolved_ids:
-                try:
-                    resp = self.session.post(
-                        assoc_url,
-                        json={"id": item_id, "disassociate": True},
-                        timeout=self.request_timeout,
-                        verify=self.requests_verify,
-                    )
-                    resp.raise_for_status()
-                    changed = True
-                except Exception as exc:
-                    errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
+        if disassociate_missing:
+            for item_id in current_ids:
+                if item_id not in resolved_ids:
+                    try:
+                        resp = self.session.post(
+                            assoc_url,
+                            json={"id": item_id, "disassociate": True},
+                            timeout=self.request_timeout,
+                            verify=self.requests_verify,
+                        )
+                        resp.raise_for_status()
+                        changed = True
+                    except Exception as exc:
+                        errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
 
         if errors:
             raise ValueError("; ".join(errors))

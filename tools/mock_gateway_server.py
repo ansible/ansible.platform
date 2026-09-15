@@ -55,6 +55,7 @@ class GenericResource:
         post_only_fields: Optional[Dict[str, Callable[[], Any]]] = None,
         url_prefix: Optional[str] = None,
         associations: Optional[List[str]] = None,
+        sub_resources: Optional[List[str]] = None,
     ):
         self.lock = threading.Lock()
         self.resource_name = resource_name
@@ -68,6 +69,11 @@ class GenericResource:
         self.url_prefix: Optional[str] = url_prefix
         # associations: sub-endpoint names this resource supports (e.g. "instance_groups").
         self.associations: List[str] = associations or []
+        # sub_resources: GET/POST/DELETE sub-endpoint names backed by an arbitrary
+        # stored JSON blob per item (e.g. "survey_spec"), as opposed to associations'
+        # id-reference-list semantics.
+        self.sub_resources: List[str] = sub_resources or []
+        self._sub_data: Dict[int, Dict[str, Any]] = {}
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
 
@@ -122,6 +128,24 @@ class GenericResource:
             item["modified"] = _now_iso()
             self._items[item_id] = item
             return changed
+
+    def get_sub_resource(self, item_id: int, field: str) -> Optional[Dict[str, Any]]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            return self._sub_data.get(item_id, {}).get(field)
+
+    def set_sub_resource(self, item_id: int, field: str, data: Dict[str, Any]) -> None:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            self._sub_data.setdefault(item_id, {})[field] = data
+
+    def delete_sub_resource(self, item_id: int, field: str) -> None:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            self._sub_data.setdefault(item_id, {}).pop(field, None)
 
     def copy_item(self, item_id: int, version: str, new_name: str) -> Dict[str, Any]:
         with self.lock:
@@ -339,6 +363,39 @@ class Store:
             required_fields=[],
             start_id=17000,
             url_prefix="/api/controller/v2/jobs/",
+        )
+        self._controller_resources["groups"] = GenericResource(
+            resource_name="groups",
+            required_fields=["name", "inventory"],
+            start_id=18000,
+            url_prefix="/api/controller/v2/groups/",
+            associations=["hosts", "children"],
+        )
+        self._controller_resources["workflow_job_templates"] = GenericResource(
+            resource_name="workflow_job_templates",
+            required_fields=["name"],
+            start_id=19000,
+            url_prefix="/api/controller/v2/workflow_job_templates/",
+            associations=[
+                "labels",
+                "notification_templates_started",
+                "notification_templates_success",
+                "notification_templates_error",
+                "notification_templates_approvals",
+            ],
+            sub_resources=["survey_spec"],
+        )
+        self._controller_resources["project_updates"] = GenericResource(
+            resource_name="project_updates",
+            required_fields=[],
+            start_id=20000,
+            url_prefix="/api/controller/v2/project_updates/",
+        )
+        self._controller_resources["workflow_jobs"] = GenericResource(
+            resource_name="workflow_jobs",
+            required_fields=[],
+            start_id=21000,
+            url_prefix="/api/controller/v2/workflow_jobs/",
         )
 
     def controller_resource(self, name: str) -> Optional[GenericResource]:
@@ -665,7 +722,12 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     _LAUNCH_SUB_ACTIONS = {
         ("inventory_sources", "update"): "inventory_updates",
         ("job_templates", "launch"): "jobs",
+        ("projects", "update"): "project_updates",
     }
+
+    # Resource stores whose GET-by-id simulates a pending -> successful
+    # lifecycle across the first two polls (see _advance_launch_job_poll).
+    _POLLING_RESOURCES = ("inventory_updates", "jobs", "project_updates", "workflow_jobs")
 
     def log_message(self, fmt: str, *args) -> None:
         return  # suppress per-request noise
@@ -765,7 +827,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
             if self.command == "GET":
                 try:
-                    if store.resource_name in ("inventory_updates", "jobs"):
+                    if store.resource_name in self._POLLING_RESOURCES:
                         self._send_json(200, self._advance_launch_job_poll(store, item_id))
                     else:
                         self._send_json(200, store.get(item_id))
@@ -866,6 +928,33 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(404, {"detail": "Not Found"})
                     except ValueError as e:
                         self._send_json(400, {"detail": str(e)})
+                    return
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            # Sub-resource endpoints backed by an arbitrary stored blob per item
+            # (e.g. workflow_job_templates' survey_spec) — GET/compare/POST/DELETE,
+            # as opposed to associations' id-reference-list semantics.
+            if field in store.sub_resources:
+                try:
+                    if self.command == "GET":
+                        data = store.get_sub_resource(item_id, field)
+                        if data is None:
+                            self._send_json(404, {"detail": "Not Found"})
+                        else:
+                            self._send_json(200, data)
+                        return
+                    if self.command == "POST":
+                        payload = self._parse_json_body()
+                        store.set_sub_resource(item_id, field, payload)
+                        self._send_json(200, payload)
+                        return
+                    if self.command == "DELETE":
+                        store.delete_sub_resource(item_id, field)
+                        self._send_empty(204)
+                        return
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
                     return
                 self._send_json(404, {"detail": "Not Found"})
                 return
