@@ -861,7 +861,16 @@ class DirectHTTPClient(BaseAPIClient):
         # instead of a list-filter, which would find nothing.
         if get_op and lookup_value is not None and str(lookup_value).strip().isdigit():
             try:
-                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())))
+                # Substitute every declared path param, not just "{id}" — a
+                # resource whose GET path is scoped by more than the primary key
+                # (e.g. job_wait's /{job_type}/{id}/) needs the other param(s)
+                # pulled from ansible_data too.
+                id_path = get_op.path
+                for param in get_op.path_params or ["id"]:
+                    value = int(str(lookup_value).strip()) if param == "id" else getattr(ansible_data, param, None)
+                    if value is not None:
+                        id_path = id_path.replace(f"{{{param}}}", str(value))
+                id_url = self._build_url(id_path)
                 logger.info("DirectHTTPClient: ID-based lookup URL for %s: %s", mixin_class.__name__, id_url)
                 with self._lock:
                     self._http_request_count += 1
@@ -1060,8 +1069,14 @@ class DirectHTTPClient(BaseAPIClient):
         desired_items: list,
         lookup_endpoint: str,
         lookup_field: str,
+        disassociate_missing: bool = True,
     ) -> bool:
-        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate."""
+        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate.
+
+        disassociate_missing=False only adds desired_items, leaving any other
+        current association untouched — used by resources whose legacy module
+        exposed a "preserve_existing_*" option (e.g. group's hosts/children).
+        """
         if not self._authenticated:
             self._authenticate()
             self._authenticated = True
@@ -1109,19 +1124,20 @@ class DirectHTTPClient(BaseAPIClient):
                 except Exception as exc:
                     errors.append("Failed to associate %s %s: %s" % (association_field, item_id, exc))
 
-        for item_id in current_ids:
-            if item_id not in resolved_ids:
-                try:
-                    self._make_request(
-                        "post",
-                        assoc_url,
-                        operation="disassociate",
-                        resource=association_field,
-                        json={"id": item_id, "disassociate": True},
-                    )
-                    changed = True
-                except Exception as exc:
-                    errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
+        if disassociate_missing:
+            for item_id in current_ids:
+                if item_id not in resolved_ids:
+                    try:
+                        self._make_request(
+                            "post",
+                            assoc_url,
+                            operation="disassociate",
+                            resource=association_field,
+                            json={"id": item_id, "disassociate": True},
+                        )
+                        changed = True
+                    except Exception as exc:
+                        errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
 
         if errors:
             raise ValueError("; ".join(errors))

@@ -153,6 +153,7 @@ class BaseAPIClient(ABC):
         desired_items: list,
         lookup_endpoint: str,
         lookup_field: str,
+        disassociate_missing: bool = True,
     ) -> bool:
         """
         Sync an association sub-endpoint for a resource.
@@ -167,6 +168,9 @@ class BaseAPIClient(ABC):
             desired_items: List of names or IDs to associate
             lookup_endpoint: API endpoint for resolving names (e.g. 'credentials')
             lookup_field: Field to filter by when resolving (e.g. 'name')
+            disassociate_missing: When False, only associate desired_items and
+                leave any other current association untouched (used by
+                "preserve_existing_*" legacy options, e.g. group's hosts/children)
 
         Returns:
             True if any associations were changed, False otherwise
