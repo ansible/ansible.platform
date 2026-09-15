@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - "Extract common action preparation and resource construction helpers into BaseResourceActionPlugin."
+bugfixes:
+  - "Preserve the original error when action preparation fails before a result is returned."
