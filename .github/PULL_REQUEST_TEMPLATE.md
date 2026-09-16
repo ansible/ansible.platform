@@ -15,6 +15,15 @@
 - [ ] Development environment change
 - [ ] Configuration change
 
+## Definition of Done
+<!-- Required when this PR introduces or changes an API, behavior, or collection surface -->
+<!-- Skip the ansible.platform lines only if this is a pure test/docs/CI change -->
+- [ ] This PR does NOT change an API or collection behavior (skip the lines below)
+- [ ] `ansible.platform` module/plugin code updated for the API change
+- [ ] `DOCUMENTATION` string updated (params, RETURN values, EXAMPLES)
+- [ ] Integration test added/updated and passing in CI
+- [ ] CasC notification completed (see section below)
+
 ## Self-Review Checklist
 <!-- These items help ensure quality - they complement our automated CI checks -->
 - [ ] I have performed a self-review of my code
@@ -26,6 +35,7 @@
 - [ ] I have tested the changes in my local environment
 - [ ] Existing playbook FQCNs are preserved (no renames without a redirect in `meta/routing.yml`)
 - [ ] Deprecated parameters include a `deprecated:` block in `DOCUMENTATION` with removal version
+- [ ] Return values match the shared structure from `plugin_utils` (no one-off return formats)
 
 ## Testing Instructions
 <!-- Optional for test-only changes. Mandatory for all other changes -->
