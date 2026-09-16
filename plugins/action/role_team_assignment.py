@@ -10,6 +10,44 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
 
+# Maps the suffix of a role definition's content_type to the Gateway API
+# endpoint used for name-based object lookup.
+# e.g. "awx.project" → suffix "project" → endpoint "projects"
+_CONTENT_TYPE_ENDPOINT_MAP = {
+    "organization": "organizations",
+    "team": "teams",
+    # Controller (awx)
+    "project": "projects",
+    "inventory": "inventories",
+    "credential": "credentials",
+    "jobtemplate": "job_templates",
+    "workflowjobtemplate": "workflow_job_templates",
+    "executionenvironment": "execution_environments",
+    "instancegroup": "instance_groups",
+    "notificationtemplate": "notification_templates",
+    # EDA (eda)
+    "activation": "activations",
+    "edacredential": "eda_credentials",
+    "eventstream": "event_streams",
+    "decisionenvironment": "decision_environments",
+    "credentialinputsource": "credential_input_sources",
+    # Hub (galaxy)
+    "namespace": "namespaces",
+    "collectionremote": "collection_remotes",
+    "ansiblerepository": "ansible_repositories",
+    "containernamespace": "container_namespaces",
+    "containerrepository": "container_repositories",
+}
+
+
+def _get_expected_endpoint(content_type):
+    """Derive the expected lookup endpoint from a role definition's content_type."""
+    raw = (content_type or "").strip()
+    if not raw:
+        return None
+    suffix = raw.split(".")[-1] if "." in raw else raw
+    return _CONTENT_TYPE_ENDPOINT_MAP.get(suffix, "{0}s".format(suffix))
+
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "role_team_assignment"
@@ -78,6 +116,20 @@ class ActionModule(BaseResourceActionPlugin):
                 # ---- single-object path: standard run logic -------------------
                 return self._run_standard(result, manager, argspec, validated_params, state)
 
+            # ---- resolve role_definition content_type for type validation -----
+            role_def_name = validated_params.get("role_definition", "")
+            _role_def_obj = None
+            try:
+                _role_def_obj = manager.execute(
+                    operation="find",
+                    module_name="role_definition",
+                    ansible_data={"name": role_def_name},
+                )
+            except Exception:
+                pass
+            _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
+            _expected_endpoint = _get_expected_endpoint(_role_content_type)
+
             # ---- multi-object path: iterate over assignment_objects -----------
             # Base data shared across all assignments (role + team, no object_id)
             _skip = self._AUTH_PARAMS | {
@@ -102,6 +154,23 @@ class ActionModule(BaseResourceActionPlugin):
                 elif obj.get("object_ansible_id"):
                     per_obj["object_ansible_id"] = str(obj["object_ansible_id"])
                 elif obj.get("name") and obj.get("type"):
+                    # Validate that the user-provided type matches what the
+                    # role's content_type expects. Mismatches cause the Gateway
+                    # API to reject the assignment with 400/500.
+                    if _expected_endpoint and obj["type"] != _expected_endpoint:
+                        raise AnsibleError(
+                            "Role '{role}' has content_type that requires type '{expected}' "
+                            "for name-based lookup, but assignment_objects specifies "
+                            "type '{provided}'. To grant access to all {resource}s within "
+                            "an organization, use the organization-scoped variant of this "
+                            "role. To target a specific {resource}, use "
+                            "type '{expected}' with the resource name.".format(
+                                role=role_def_name,
+                                expected=_expected_endpoint,
+                                provided=obj["type"],
+                                resource=_expected_endpoint.rstrip("s"),
+                            )
+                        )
                     try:
                         oid = manager.lookup_resource_id(obj["type"], "name", obj["name"])
                         per_obj["object_id"] = str(oid)  # CRITICAL: Must be string
