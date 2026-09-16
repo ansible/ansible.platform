@@ -152,11 +152,7 @@ class Connection(ConnectionBase):
         # Route to appropriate client implementation
         if persistent:
             logger.debug("Connection plugin dispatcher: Routing to persistent client (ManagerRPCClient)")
-            # task_env is intentionally NOT forwarded to persistent mode: the manager
-            # process is spawned once at connection setup time (before any task
-            # environment: block is evaluated) and is reused across tasks.
-            # Task-level env vars cannot retroactively affect an already-running manager.
-            return self._get_persistent_client(task_vars, gateway_config)
+            return self._get_persistent_client(task_vars, gateway_config, task_env=task_env)
         else:
             logger.debug("Connection plugin dispatcher: Routing to direct client (DirectHTTPClient)")
             return self._get_direct_client(task_vars, gateway_config, task_env=task_env)
@@ -220,7 +216,7 @@ class Connection(ConnectionBase):
                 raise
 
             logger.debug("Generating connection info...")
-            conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config)
+            conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config, task_env=task_env)
 
             socket_path = conn_info.socket_path
             authkey = conn_info.authkey
@@ -294,7 +290,9 @@ class Connection(ConnectionBase):
         # Return client without facts (direct mode doesn't persist facts)
         return client, None
 
-    def _get_persistent_client(self, task_vars: dict, gateway_config: "GatewayConfig") -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
+    def _get_persistent_client(
+        self, task_vars: dict, gateway_config: "GatewayConfig", task_env: Optional[dict] = None
+    ) -> Tuple["ManagerRPCClient", Optional[Dict[str, Any]]]:
         """
         Get ManagerRPCClient with persistent manager.
 
@@ -314,7 +312,9 @@ class Connection(ConnectionBase):
         # If an existing manager is already running for these credentials, the
         # socket path will match and we can reuse it.
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
-        conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
+        conn_info = ProcessManager.generate_connection_info(
+            identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config, task_env=task_env
+        )
 
         expected_socket_path = str(conn_info.socket_path)
         meta_path = expected_socket_path + ".meta"
@@ -420,6 +420,7 @@ class Connection(ConnectionBase):
                 authkey_b64=authkey_b64,
                 sys_path=list(sys.path),
                 owner_pid=os.getppid(),
+                task_env=task_env,
             )
 
             # Wait for manager to start and create socket

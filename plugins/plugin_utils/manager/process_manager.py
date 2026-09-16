@@ -45,14 +45,20 @@ class ProcessManager:
     """
 
     @staticmethod
-    def generate_connection_info(identifier: str, socket_dir: Optional[Path] = None, gateway_config: Optional["GatewayConfig"] = None) -> ProcessConnectionInfo:
+    def generate_connection_info(
+        identifier: str,
+        socket_dir: Optional[Path] = None,
+        gateway_config: Optional["GatewayConfig"] = None,
+        task_env: Optional[dict] = None,
+    ) -> ProcessConnectionInfo:
         """
         Generate connection information for a new manager process.
 
         Args:
             identifier: Unique identifier (e.g., inventory_hostname)
             socket_dir: Directory for socket files (default: tempdir)
-            gateway_config: Gateway configuration (optional, for credential-aware socket path)
+            gateway_config: Gateway configuration (optional, for credential- and TLS-aware socket path)
+            task_env: Task/play ``environment:`` vars used to resolve the effective CA bundle
 
         Returns:
             ProcessConnectionInfo with socket_path and authkey
@@ -76,20 +82,15 @@ class ProcessManager:
         except OSError as e:
             logger.warning("Failed to set socket directory permissions: %s", e)
 
-        # Include user ID and credentials in socket path to prevent collisions
+        # Include user ID and identity hash in socket path to prevent collisions
         # User ID ensures different users on same jump host don't collide
-        # Credential hash ensures different credentials get different managers
-        import hashlib
-
+        # Identity hash ensures different credentials or TLS trust policy get different managers
         user_id = os.getuid()
 
         if gateway_config:
-            # Create a hash of credentials to include in socket path
-            # This ensures different credentials = different socket path = different manager
-            cred_string = f"{gateway_config.username or ''}:{gateway_config.password or ''}:{gateway_config.oauth_token or ''}"
-            cred_hash = hashlib.sha256(cred_string.encode("utf-8")).hexdigest()[:8]
-            socket_path = str(socket_dir / f"manager_{user_id}_{identifier}_{cred_hash}.sock")
-            logger.debug("Including user ID (%s) and credentials in socket path (hash: %s...)", user_id, cred_hash[:4])
+            identity_hash = ProcessManager.manager_identity_hash(gateway_config, task_env=task_env)
+            socket_path = str(socket_dir / f"manager_{user_id}_{identifier}_{identity_hash}.sock")
+            logger.debug("Including user ID (%s) and identity hash in socket path (hash: %s...)", user_id, identity_hash[:4])
         else:
             # Backward compatibility: if no gateway_config, use old format but still include user ID
             socket_path = str(socket_dir / f"manager_{user_id}_{identifier}.sock")
@@ -101,6 +102,30 @@ class ProcessManager:
         logger.debug("Connection info generated: socket_path=%s, socket_dir=%s, authkey_length=%s", socket_path, socket_dir, len(authkey))
 
         return ProcessConnectionInfo(socket_path=socket_path, authkey=authkey, authkey_b64=authkey_b64)
+
+    @staticmethod
+    def manager_identity_hash(gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> str:
+        """Return the short hash that identifies a persistent manager instance.
+
+        Credentials and TLS trust policy are baked into the manager subprocess
+        at spawn time and never re-evaluated, so both must participate in the
+        socket-path identity. The CA bundle hashed here is the effective
+        ``REQUESTS_CA_BUNDLE`` after ``merge_manager_environment`` precedence
+        (shell env, task ``environment:``, inventory ``aap_ca_bundle``, then the
+        ``SSL_CERT_FILE`` shim), not inventory ``ca_bundle`` alone.
+        """
+        import hashlib
+
+        env = ProcessManager.merge_manager_environment(gateway_config, task_env=task_env)
+        effective_ca_bundle = env.get("REQUESTS_CA_BUNDLE") or ""
+        identity = (
+            f"{gateway_config.username or ''}:"
+            f"{gateway_config.password or ''}:"
+            f"{gateway_config.oauth_token or ''}:"
+            f"{effective_ca_bundle}:"
+            f"{1 if gateway_config.verify_ssl else 0}"
+        )
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
 
     @staticmethod
     def is_socket_stale(socket_path: str) -> bool:
@@ -253,20 +278,8 @@ class ProcessManager:
         sys_path_json = json.dumps(sys_path)
         sys_path_b64 = base64.b64encode(sys_path_json.encode("utf-8")).decode("utf-8")
 
-        # Build subprocess environment: shell env + task-level overrides.
-        env = os.environ.copy()
-        if task_env:
-            env.update({k: str(v) for k, v in task_env.items() if v is not None})
-            logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
-
-        if env.get("SSL_CERT_FILE") and not env.get("REQUESTS_CA_BUNDLE"):
-            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
-            logger.warning(
-                "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "
-                "The manager subprocess uses the requests library which reads REQUESTS_CA_BUNDLE, not SSL_CERT_FILE. "
-                "Please set REQUESTS_CA_BUNDLE directly in your environment block. "
-                "SSL_CERT_FILE support will be removed in a future release."
-            )
+        # Build subprocess environment: shell env + task-level overrides + inventory CA bundle.
+        env = ProcessManager.merge_manager_environment(gateway_config, task_env=task_env)
 
         env["ANSIBLE_PLATFORM_SYS_PATH"] = sys_path_b64
         env["ANSIBLE_PLATFORM_AUTHKEY"] = authkey_b64
@@ -310,6 +323,41 @@ class ProcessManager:
 
             logger.error(traceback.format_exc())
             raise RuntimeError(f"Failed to start manager process: {e}") from e
+
+    @staticmethod
+    def merge_manager_environment(gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> dict:
+        """Build the manager subprocess environment for TLS and proxy settings.
+
+        Precedence for ``REQUESTS_CA_BUNDLE``:
+        1. Existing control-node shell environment
+        2. Task/play ``environment:`` block (``task_env``)
+        3. Inventory ``aap_ca_bundle`` / aliases when ``verify_ssl`` is enabled
+        4. Deprecated ``SSL_CERT_FILE`` → ``REQUESTS_CA_BUNDLE`` shim
+        """
+        env = os.environ.copy()
+        shell_had_requests_ca = "REQUESTS_CA_BUNDLE" in os.environ
+
+        if task_env:
+            filtered_task_env = {k: str(v) for k, v in task_env.items() if v is not None}
+            if shell_had_requests_ca and "REQUESTS_CA_BUNDLE" in filtered_task_env:
+                filtered_task_env = {k: v for k, v in filtered_task_env.items() if k != "REQUESTS_CA_BUNDLE"}
+            env.update(filtered_task_env)
+            logger.debug("Applied %d task-level environment variable(s) to manager subprocess", len(task_env))
+
+        if gateway_config.verify_ssl and gateway_config.ca_bundle and "REQUESTS_CA_BUNDLE" not in env:
+            env["REQUESTS_CA_BUNDLE"] = gateway_config.ca_bundle
+            logger.debug("Applied inventory CA bundle to manager subprocess REQUESTS_CA_BUNDLE")
+
+        if env.get("SSL_CERT_FILE") and "REQUESTS_CA_BUNDLE" not in env:
+            env["REQUESTS_CA_BUNDLE"] = env["SSL_CERT_FILE"]
+            logger.warning(
+                "Deprecated: SSL_CERT_FILE is being mapped to REQUESTS_CA_BUNDLE for backward compatibility. "
+                "The manager subprocess uses the requests library which reads REQUESTS_CA_BUNDLE, not SSL_CERT_FILE. "
+                "Please set REQUESTS_CA_BUNDLE directly in your environment block. "
+                "SSL_CERT_FILE support will be removed in a future release."
+            )
+
+        return env
 
     @staticmethod
     def wait_for_process_startup(socket_path: str, socket_dir: Path, identifier: str, process: subprocess.Popen, max_wait: int = 50) -> None:
@@ -419,7 +467,7 @@ def spawn_ephemeral_client(task_vars, gateway_config, task_env=None):
     socket_dir = Path("/tmp") / "ap"
     socket_dir.mkdir(exist_ok=True, parents=True)
 
-    conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config)
+    conn_info = ProcessManager.generate_connection_info(identifier=identifier, socket_dir=socket_dir, gateway_config=gateway_config, task_env=task_env)
     socket_path = conn_info.socket_path
     authkey = conn_info.authkey
     ProcessManager.cleanup_old_socket(socket_path)
