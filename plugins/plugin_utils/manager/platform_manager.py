@@ -10,7 +10,7 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict, fields, is_dataclass, replace
+from dataclasses import asdict, fields
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient, WaitTimeoutError
+from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -579,49 +579,6 @@ class PlatformService(BaseAPIClient):
             return ansible_result
 
         return {"changed": True}
-
-    def _wait_for_resource_completion(
-        self,
-        result: dict,
-        ansible_instance: Any,
-        mixin_class: type,
-        context: "TransformContext",
-        module_name: str,
-        interval: float,
-        timeout: Optional[float],
-    ) -> dict:
-        """Poll a just-launched resource until the API reports it finished.
-
-        For launch-style resources (e.g. ad_hoc_command) the create operation only
-        starts an async job; the mixin's from_api() must populate a truthy
-        "finished" field once the job completes for this to terminate. Shared by
-        PlatformService and DirectHTTPClient so wait/interval/timeout behave the
-        same regardless of connection mode — action plugins never poll themselves.
-
-        Raises:
-            WaitTimeoutError: If timeout is exceeded before the resource finishes.
-                Carries the last poll result so callers can still report id/status.
-        """
-        if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
-            return result
-
-        find_instance = replace(ansible_instance, id=result["id"]) if is_dataclass(ansible_instance) else ansible_instance
-        start = time.monotonic()
-
-        while True:
-            result = self._find_resource(find_instance, mixin_class, context)
-            if result.get("finished") or result.get("event_processing_finished"):
-                return result
-
-            elapsed = time.monotonic() - start
-            if timeout is not None and elapsed >= timeout:
-                raise WaitTimeoutError(
-                    "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
-                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
-                    last_result=result,
-                )
-
-            time.sleep(interval)
 
     def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """

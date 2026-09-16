@@ -50,7 +50,7 @@ class TestExecuteWait(unittest.TestCase):
 
         with patch.object(self.client, "_create_resource", return_value=dict(pending)):
             with patch.object(self.client, "_find_resource", side_effect=[dict(pending), dict(finished)]) as mock_find:
-                with patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client.time.sleep"):
+                with patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep"):
                     result = self.client.execute(
                         operation="create",
                         module_name="ad_hoc_command",
@@ -65,7 +65,7 @@ class TestExecuteWait(unittest.TestCase):
 
         with patch.object(self.client, "_create_resource", return_value=dict(pending)):
             with patch.object(self.client, "_find_resource", return_value=dict(pending)) as mock_find:
-                with patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client.time.sleep"):
+                with patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep"):
                     with self.assertRaises(ValueError) as ctx:
                         self.client.execute(
                             operation="create",
