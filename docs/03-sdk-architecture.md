@@ -534,14 +534,14 @@ sub-endpoints, secondary sub-resources, and copy operations never require an
 action plugin to touch `manager.session`/HTTP directly:
 
 ```python
-def manage_associations(self, base_path, resource_id, association_field,
-                         desired_items, lookup_endpoint, lookup_field) -> bool:
+def manage_associations(self, base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field) -> bool:
     """Sync an association sub-endpoint (e.g. a resource's instance_groups).
 
     Resolves desired_items (names or IDs) to integer IDs, diffs against the
     current association list, and issues associate/disassociate POSTs for
     the difference. Returns True if anything changed.
     """
+
 
 def manage_sub_resource(self, base_path, resource_id, sub_path, data=None) -> bool:
     """GET/compare/POST a secondary sub-resource (e.g. survey_spec).
@@ -550,8 +550,8 @@ def manage_sub_resource(self, base_path, resource_id, sub_path, data=None) -> bo
     only if the current value differs. Returns True if changed.
     """
 
-def copy_resource(self, module_name, source_name_or_id, new_name,
-                   copy_endpoint_path) -> dict:
+
+def copy_resource(self, module_name, source_name_or_id, new_name, copy_endpoint_path) -> dict:
     """POST to a resource's /copy/ sub-endpoint.
 
     Finds the source via execute('find', ...), falling back to an ID-based
