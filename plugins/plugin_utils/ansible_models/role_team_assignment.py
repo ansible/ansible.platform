@@ -25,7 +25,6 @@ class AnsibleRoleTeamAssignment:
 
     # Object selector (mutually exclusive groups)
     object_id: Optional[int] = None
-    object_ids: Optional[List] = None  # multi-object iteration
     object_ansible_id: Optional[str] = None
 
     state: str = "present"

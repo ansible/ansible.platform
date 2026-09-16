@@ -14,16 +14,37 @@ from ...platform.base_transform import BaseTransformMixin
 from ...platform.types import EndpointOperation, TransformContext
 
 
-def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
-    """Resolve a name or id string to an integer id via the manager."""
+def _resolve_fk(manager, endpoint: str, lookup_field: str, value, display=None) -> Optional[str]:
+    """Resolve a name or id string to an integer id via the manager.
+
+    Returns the resolved numeric ID as a string on success.
+    Returns the original value as a string on lookup failure and emits a
+    warning (if a display object is provided) so operators can diagnose
+    the issue.  The Gateway will typically reject non-integer values with
+    a 400 error, but the warning makes the root cause (failed lookup)
+    immediately visible in playbook output.
+    """
     if value is None:
+        return None
+    if value == "":
         return None
     if str(value).isdigit():
         return str(value)
     try:
         return str(manager.lookup_resource_id(endpoint, lookup_field, str(value)))
     except Exception:
-        return None
+        # Lookup failed (team not found, API error, etc.).
+        # Return the original value so the caller can still include it in the
+        # payload. The Gateway will respond with a useful error if the value
+        # is invalid, rather than silently missing the field.
+        if display:
+            display.warning(
+                "Failed to resolve %s '%s' to an ID via '%s'. "
+                "The name will be sent as-is. If the API rejects this, "
+                "verify the %s exists and is accessible with current "
+                "credentials." % (lookup_field, value, endpoint, lookup_field)
+            )
+        return str(value)
 
 
 @dataclass
@@ -76,7 +97,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
             api_data["team"] = str(team)
 
         team_ansible_id = _get("team_ansible_id")
-        if team_ansible_id is not None:
+        if team_ansible_id is not None and team_ansible_id != "":
             api_data["team_ansible_id"] = str(team_ansible_id)
 
         object_id = _get("object_id")
@@ -95,7 +116,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
                 api_data["object_id"] = str(object_id)
 
         object_ansible_id = _get("object_ansible_id")
-        if object_ansible_id is not None:
+        if object_ansible_id is not None and object_ansible_id != "":
             api_data["object_ansible_id"] = str(object_ansible_id)
 
         for ro_field in ("id", "url", "created", "modified"):
@@ -161,13 +182,13 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
         if team is not None:
             params["team"] = str(team)
         team_ansible_id = _get("team_ansible_id")
-        if team_ansible_id is not None:
+        if team_ansible_id is not None and team_ansible_id != "":
             params["team_ansible_id"] = str(team_ansible_id)
         object_id = _get("object_id")
         if object_id is not None:
             params["object_id"] = str(object_id)
         object_ansible_id = _get("object_ansible_id")
-        if object_ansible_id is not None:
+        if object_ansible_id is not None and object_ansible_id != "":
             params["object_ansible_id"] = str(object_ansible_id)
 
         return params
