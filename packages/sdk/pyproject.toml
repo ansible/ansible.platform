@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ansible-platform-sdk"
+version = "0.1.0"
+description = "Ansible Automation Platform Gateway SDK — the engine behind the ansible.platform collection"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.11"
+authors = [
+    { name = "Ansible Platform Collection Contributors" },
+]
+keywords = [
+    "ansible",
+    "aap",
+    "gateway",
+    "automation",
+    "sdk",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "requests",
+    "pyyaml",
+]
+
+[project.urls]
+Homepage = "https://github.com/ansible/ansible.platform"
+Repository = "https://github.com/ansible/ansible.platform"
+Issues = "https://github.com/ansible/ansible.platform/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_collections"]

@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ansible-platform-mcp"
+version = "0.1.0"
+description = "MCP server that exposes Ansible Automation Platform Gateway resources as AI-agent tools"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.11"
+authors = [
+    { name = "Ansible Platform Collection Contributors" },
+]
+keywords = [
+    "ansible",
+    "aap",
+    "mcp",
+    "model-context-protocol",
+    "automation",
+    "ai-agent",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+    "ansible-platform-sdk>=0.1.0",
+    "mcp>=1.27,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/ansible/ansible.platform"
+Documentation = "https://github.com/ansible/ansible.platform/tree/main/packages/mcp-server"
+Repository = "https://github.com/ansible/ansible.platform"
+Issues = "https://github.com/ansible/ansible.platform/issues"
+Changelog = "https://github.com/ansible/ansible.platform/blob/main/packages/mcp-server/CHANGELOG.md"
+
+[project.scripts]
+ansible-platform-mcp = "ansible_platform_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ansible_platform_mcp"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
