@@ -23,7 +23,7 @@ description:
     - Not all role assignments are valid. See Limitations below.
 notes:
   - Global roles (e.g. Platform Auditor) cannot be assigned to teams.
-  - Team roles cannot be assigned to another team
+  - Team roles cannot be assigned to another team.
     (Team Admin to Team is not supported).
   - Organization Member role cannot be assigned to teams.
   - Only resource-scoped organization roles such as Organization Inventory Admin

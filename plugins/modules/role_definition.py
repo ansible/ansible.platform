@@ -12,7 +12,7 @@ DOCUMENTATION = """
 ---
 module: role_definition
 author: Rohit Thakur (@rohitthakur2590)
-short_description: Configure a gateway role definition.
+short_description: Configure a gateway role definitions.
 description:
     - Create, update, or delete role definitions on the Automation Platform Gateway.
     - A role definition consists of a name, content type, and permissions, and is platform-wide.
