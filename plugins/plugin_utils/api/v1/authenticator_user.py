@@ -141,7 +141,7 @@ class AuthenticatorUserTransformMixin_v1(BaseTransformMixin):
 
         return AnsibleAuthenticatorUser(
             authenticator_user_id=str(api_data.get("id", "")),
-            authenticator=str(api_data.get("authenticator", "")),
+            authenticator=str(api_data.get("provider", "")),
             new_uid=api_data.get("new_uid"),
             keep_memberships=api_data.get("keep_memberships", False),
             merge_with_user=api_data.get("merge_with_user"),
