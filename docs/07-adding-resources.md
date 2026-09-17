@@ -345,6 +345,71 @@ class ActionModule(BaseResourceActionPlugin):
 
 ---
 
+## SECTION 4a: Secondary Endpoints, Associations, and Controller Resources
+
+When a resource needs behavior beyond a single CRUD endpoint — association sub-resources
+(`credentials`, `labels`, `instance_groups`), secondary endpoints (`survey_spec`),
+copy workflows (`copy_from`), or controller-service paths (`/api/controller/v2/`) —
+implement that logic in the **transform mixin** and `PlatformService`, not in the action
+plugin.
+
+**Do**:
+
+- Declare secondary operations in `get_endpoint_operations()` (see [Common Patterns
+  Catalog — Pattern 6](#pattern-6-secondary-endpoint-post-create-operation)).
+- Resolve association names to IDs in `from_ansible_data()` using
+  `context.manager.lookup_resource_id()`.
+- Keep write-only / side-effect parameters in `_WRITE_ONLY_FIELDS` on the action plugin
+  so they are stripped before model instantiation.
+- Use Pattern B hooks (`_pre_execute_hook`, `_post_create`) only to orchestrate
+  **additional `manager.execute()` calls** when the SDK requires multiple steps.
+
+**Do not**:
+
+- Call `manager.session.get/post/delete` from `plugins/action/` (forbidden — see
+  [05-design-principles.md](05-design-principles.md) §1 and §3a).
+- Hardcode API paths in the action plugin; paths belong in the mixin / registry layer.
+- Add a large custom `run()` to implement HTTP that MCP and other SDK consumers cannot
+  reach (see [09-agent-collaboration.md](09-agent-collaboration.md) §10).
+
+Controller migrations from `awx.awx` / `ansible.controller` often need this section:
+awx modules historically bundled association and survey logic in the module/action layer.
+In `ansible.platform`, that parity work belongs in the SDK so playbooks, MCP, and future
+CLI tools share one implementation.
+
+---
+
+## SECTION 4c: Launch and Job Modules (Wait / Poll)
+
+Controller launch modules (`ad_hoc_command`, future `job_launch`, `project_update`, etc.)
+POST a job-like resource and optionally block until completion. These are **not** CRUD
+resources — every invocation creates a new execution — but they still must obey SDK
+consumer parity ([#206](https://github.com/ansible/ansible.platform/pull/206)).
+
+**Do**:
+
+- Document `wait`, `interval`, and `timeout` in module `DOCUMENTATION` when parity with
+  `awx.awx` / `ansible.controller` requires them.
+- Implement wait semantics in **`PlatformService.execute()`**: pop action-only params
+  before instantiating the Ansible dataclass, call create via the mixin, then poll with a
+  **shared** SDK helper (mixin hooks supply `is_finished()` / failure status rules).
+- Keep the action plugin thin — Pattern A is enough when the SDK handles launch + wait.
+
+**Do not**:
+
+- Add `_wait_for_completion()` or `time.sleep()` poll loops in `plugins/action/`. MCP and
+  other SDK consumers never import action plugins; wait logic there is Ansible-only.
+- Treat a correct `manager.execute()` launch as sufficient when `wait` is documented but
+  unimplemented in the SDK — that breaks MCP `execute` mode while playbooks appear to work.
+
+**Reference**: [#227](https://github.com/ansible/ansible.platform/pull/227) ports
+`ad_hoc_command` with solid mixin/transform coverage but places wait/poll in the action
+plugin — a documentation and placement miss, not a direct-HTTP violation like
+[#228](https://github.com/ansible/ansible.platform/pull/228). Guidance and CI checks are
+added in [#239](https://github.com/ansible/ansible.platform/pull/239).
+
+---
+
 ## SECTION 4b: Document Fragment Registration (`plugins/doc_fragments/`)
 
 If your resource introduces a new connection-level or authentication option (like `gateway_idle_timeout`), it must be registered in the documentation fragment so it appears in `ansible-doc` output.
