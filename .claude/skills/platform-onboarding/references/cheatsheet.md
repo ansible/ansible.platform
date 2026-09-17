@@ -59,19 +59,25 @@ class ActionModule(BaseResourceActionPlugin):
 Available hooks: `_pre_create`, `_post_create`, `_pre_update`, `_post_update`,
 `_pre_delete`, `_post_delete`, `_custom_exists`.
 
-### Pattern C — Fully Custom
+### Pattern C — Orchestration-only custom `run()`
 
-Use when: Complex resources with write-only fields, multiple endpoints,
-or non-standard workflows.
+Use when: Multi-step Ansible workflows that still delegate all HTTP to the SDK
+(for example `user.py`, `role_team_assignment.py`).
+
+**Do not** use Pattern C to add `manager.session` HTTP, association sub-endpoints,
+or survey/copy logic — put that in the transform mixin
+([05-design-principles.md §3a](../../docs/05-design-principles.md)).
 
 ```python
 class ActionModule(BaseResourceActionPlugin):
-    resource_type = "user"
+    MODULE_NAME = "user"
+    MODEL_CLASS = AnsibleUser
+    _WRITE_ONLY_FIELDS = frozenset({"update_secrets"})
 
-    def execute(self, operation, ansible_data):
-        # Full custom logic — handle password (write-only),
-        # multi-org assignment, etc.
-        ...
+    def run(self, tmp=None, task_vars=None):
+        # Orchestrate multiple manager.execute() calls if needed.
+        # All HTTP stays in PlatformService — required for MCP (#206) parity.
+        return super().run(tmp, task_vars)
 ```
 
 ---
@@ -140,7 +146,7 @@ class FooTransformMixin_v1:
 
 - No custom logic needed → Pattern A (3 lines)
 - Need hooks → Pattern B
-- Complex resource → Pattern C
+- Need multi-step orchestration via `manager.execute()` → Pattern C (not HTTP in action plugin)
 
 ### Step 5–7: Tests
 
@@ -164,6 +170,9 @@ molecule test -s <resource>_mock
 
 # Run linting
 ansible-test sanity --docker -v
+
+# Verify action plugins do not call HTTP directly or poll job status
+make check_action_plugin_invariants
 
 # Check registry discovers your module
 python -c "
