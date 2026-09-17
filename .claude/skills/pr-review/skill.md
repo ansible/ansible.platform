@@ -98,7 +98,7 @@ gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
 - Import errors
 - Test coverage for changed code
 
-#### 2.3 Sanity Tests
+#### 2.3 Sanity Tests (**STRICT** - Must Pass)
 
 ```bash
 # Check sanity test failures
@@ -106,18 +106,57 @@ gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
   grep -A 20 "ansible-test sanity"
 ```
 
-**Common issues:**
+**Common issues (ALL BLOCKING):**
 - Documentation validation (malformed DOCUMENTATION)
-- Import validation
-- PEP8 violations
+- Import validation (unused imports, missing __init__.py)
+- PEP8 violations (line length, indentation)
+- ansible-lint violations
+- yamllint violations
+- pep8 formatting issues
 
-#### 2.4 DVCS Integration (Non-blocking)
+**STRICT ENFORCEMENT:**
+- ❌ **BLOCK** PR if ANY sanity test fails
+- ❌ **BLOCK** PR if ruff linting fails
+- ❌ **BLOCK** PR if yamllint fails
+- Request specific fixes with line numbers and exact errors
 
-**Check:** Jira issue reference in PR title
+#### 2.4 Linting Checks (**STRICT** - Must Pass)
 
-**Format:** `[AAP-XXXXX]` or `AAP-XXXXX`
+```bash
+# Check ruff linting
+gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
+  grep -A 20 "ruff check"
 
-**If missing:** Request Jira reference (but not a blocker)
+# Check yamllint
+gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
+  grep -A 20 "yamllint"
+```
+
+**STRICT ENFORCEMENT:**
+- ❌ **BLOCK** PR for unused imports
+- ❌ **BLOCK** PR for undefined names
+- ❌ **BLOCK** PR for formatting issues (use `ruff format`)
+- ❌ **BLOCK** PR for YAML syntax errors
+- Provide exact file:line references for each violation
+
+#### 2.5 JIRA Integration
+
+**Check:** Jira issue reference in PR title or body
+
+**Format:** `[AAP-XXXXX]` or `AAP-XXXXX` or `ANSTRAT-XXXXX`
+
+**ENFORCEMENT:**
+- ❌ **BLOCKING for bugfix PRs** (`fix:`) - JIRA is **MANDATORY**
+- ⚠️ **Recommended for feature PRs** (`feat:`) - Request but don't block
+- ✅ **Optional for docs/CI PRs**
+
+**If missing on bugfix:**
+```markdown
+❌ **BLOCKER: Missing JIRA reference**
+
+Bugfix PRs must reference a JIRA issue (AAP-XXXXX or ANSTRAT-XXXXX).
+Please add the JIRA reference to the PR title or description.
+```
 
 ---
 
@@ -181,22 +220,27 @@ git diff origin/devel --name-only | grep -E \
 
 ### Step 5: Determine Safe-to-Test Readiness
 
-**Prerequisites for `safe to test` label:**
+**STRICT Prerequisites for `safe to test` label (ALL MUST PASS):**
 
-- ✅ Collection completeness test passing
-- ✅ Unit tests passing
-- ✅ Sanity tests passing
-- ✅ Changelog fragment present (if code changes)
-- ✅ Jira issue referenced (recommended)
-- ✅ No obvious security issues
+- ✅ Collection completeness test passing (**BLOCKING**)
+- ✅ Unit tests passing (**BLOCKING**)
+- ✅ Sanity tests passing - ALL checks (**BLOCKING**)
+- ✅ Ruff linting passing - zero violations (**BLOCKING**)
+- ✅ Yamllint passing - zero violations (**BLOCKING**)
+- ✅ Changelog fragment present (if code changes) (**BLOCKING**)
+- ✅ JIRA issue referenced (**BLOCKING for bugfixes**, recommended for features)
+- ✅ No security issues (**BLOCKING**)
 
 **Decision:**
 
 | Status | Action |
 |--------|--------|
 | All prerequisites met | ✅ **Ready for `safe to test`** |
-| Any pre-merge check failing | ❌ **Request fixes first** |
-| Docs-only PR | ✅ **Can merge without label** |
+| **ANY** pre-merge check failing | ❌ **BLOCK - Request fixes** |
+| Linting violations present | ❌ **BLOCK - Must be zero violations** |
+| Sanity test failures | ❌ **BLOCK - All must pass** |
+| Bugfix missing JIRA | ❌ **BLOCK - JIRA mandatory** |
+| Docs-only PR (no code changes) | ✅ **Can merge without label** |
 
 ---
 
@@ -233,12 +277,15 @@ gh run rerun <RUN_ID> --repo ansible/ansible.platform --failed
 **Files Changed:** X files  
 **CI Status:** [✅ All Green|❌ N Failing|⏳ Pending]
 
-### Pre-Merge CI Checks
+### Pre-Merge CI Checks (STRICT - All Must Pass)
 
 - [x] Collection completeness: ✅ Passing
-- [ ] Unit tests: ❌ 2 failures (see details below)
+- [ ] Unit tests: ❌ 2 failures (see details below) **BLOCKING**
 - [x] Sanity tests: ✅ Passing
+- [x] Ruff linting: ✅ Zero violations
+- [x] Yamllint: ✅ Zero violations  
 - [x] Changelog: ✅ Present
+- [x] JIRA reference: ✅ AAP-12345 (required for bugfixes)
 
 ### Architecture Review (Features Only)
 
@@ -328,11 +375,19 @@ refactor: → Feature review (architecture check)
 
 ## Reference Files
 
+**Start here:** `references/common-patterns.md` - Shared validation patterns and code references
+
+**PR-type specific:**
 - `references/feature-review.md` - Seven-file pattern, architecture compliance
 - `references/bugfix-review.md` - Regression test requirements
 - `references/ci-workflow-review.md` - CI/workflow specific checks
+- `references/connection-manager-review.md` - Core infrastructure (CRITICAL)
 
 ---
 
-**Last Updated:** 2026-09-11  
-**Based on:** PR #227 review experience
+**Last Updated:** 2026-09-17
+**Changes:**
+- Added strict linting and sanity enforcement
+- Made JIRA mandatory for bugfixes
+- Added common-patterns.md to reduce context consumption
+- Refactored references to point to real code examples
