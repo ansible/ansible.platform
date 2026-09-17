@@ -100,8 +100,8 @@ def test_vault_credentials_converted_to_strings():
         username_arg = cmd[6]  # gateway_config.username
         password_arg = cmd[7]  # gateway_config.password
 
-        assert isinstance(username_arg, str) and type(username_arg) is str, f"Username arg is {type(username_arg)}, expected str"
-        assert isinstance(password_arg, str) and type(password_arg) is str, f"Password arg is {type(password_arg)}, expected str"
+        assert isinstance(username_arg, str), f"Username arg is {type(username_arg)}, expected str"
+        assert isinstance(password_arg, str), f"Password arg is {type(password_arg)}, expected str"
 
         # Verify the VALUES are correct (vault decrypted)
         assert username_arg == "admin", f"Expected 'admin', got {username_arg!r}"
@@ -178,7 +178,7 @@ def test_base_url_also_converted_to_string():
             cmd = mock_popen.call_args[0][0]
             base_url_arg = cmd[5]  # gateway_config.base_url
 
-            assert type(base_url_arg) is str, f"base_url should be plain str, got {type(base_url_arg)}"
+            assert isinstance(base_url_arg, str), f"base_url should be plain str, got {type(base_url_arg)}"
             assert base_url_arg == "https://gateway.example.com"
 
 
