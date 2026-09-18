@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - api - restructure API layer to support per-service versioning (gateway, controller, etc.) with service-scoped directory layout and independent version detection (https://issues.redhat.com/browse/AAP-93608).
