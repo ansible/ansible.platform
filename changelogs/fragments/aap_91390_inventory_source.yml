@@ -1,0 +1,4 @@
+minor_changes:
+  - inventory_source - add module migrated from awx.awx/ansible.controller, including
+    notification_templates_started/success/error associations
+    (https://issues.redhat.com/browse/AAP-91390).

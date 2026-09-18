@@ -1,0 +1,106 @@
+---
+# Verify: all three connection scenarios (local, http direct, http persistent).
+- name: Verify — host created with connection local (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_inv_name: "Molecule Test Inventory Host Local"
+    molecule_host_name: "molecule-host-local"
+  tasks:
+    - name: Get host (state exists, connection local)
+      ansible.platform.host:
+        name: "{{ molecule_host_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert host was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('host') is defined
+        fail_msg: "Verify: host {{ molecule_host_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+
+    - name: Assert host disabled and description updated (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local.host.description == "Updated by Molecule host_mock (connection local)"
+          - exists_result_local.host.enabled == false
+        fail_msg: "Verify: host (local) was not updated as expected."
+      vars:
+        ansible_connection: local
+
+- name: Verify — host created with http direct (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_inv_name: "Molecule Test Inventory Host HTTP Direct"
+    molecule_host_name: "molecule-host-http-direct"
+  tasks:
+    - name: Get host (state exists, http direct)
+      ansible.platform.host:
+        name: "{{ molecule_host_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert host was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+        fail_msg: "Verify: host {{ molecule_host_name }} not found (http direct)."
+
+    - name: Assert description updated (http direct)
+      ansible.builtin.assert:
+        that: exists_result_http_direct.host.description == "Updated by Molecule host_mock (http direct)"
+        fail_msg: "Verify: host (http direct) description was not updated."
+
+- name: Verify — host created with http persistent (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_inv_name: "Molecule Test Inventory Host HTTP Persistent"
+    molecule_host_name: "molecule-host-http-persistent"
+  tasks:
+    - name: Get host (state exists, http persistent)
+      ansible.platform.host:
+        name: "{{ molecule_host_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert host was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+        fail_msg: "Verify: host {{ molecule_host_name }} not found (http persistent)."
+
+    - name: Assert description updated (http persistent)
+      ansible.builtin.assert:
+        that: exists_result_http_persistent.host.description == "Updated by Molecule host_mock (http persistent)"
+        fail_msg: "Verify: host (http persistent) description was not updated."
+...

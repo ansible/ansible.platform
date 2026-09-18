@@ -10,7 +10,7 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, fields, is_dataclass, replace
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import BaseAPIClient
+from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient, WaitTimeoutError
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -507,6 +507,19 @@ class PlatformService(BaseAPIClient):
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+
+        # Pop launch-command wait/poll directives (e.g. ad_hoc_command,
+        # inventory_source_update) — these are control flags for this method, not
+        # fields on the resource dataclass. Only pop a name the target dataclass
+        # doesn't itself declare, so a module with a genuine field of the same name
+        # (e.g. job_template's own `timeout`) keeps it.
+        ansible_field_names = {f.name for f in fields(AnsibleClass)}
+        wait = ansible_data_dict.pop("wait", False) if "wait" not in ansible_field_names else False
+        wait_interval = ansible_data_dict.pop("interval", 2.0) if "interval" not in ansible_field_names else 2.0
+        wait_timeout = ansible_data_dict.pop("timeout", None) if "timeout" not in ansible_field_names else None
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
+
         ansible_instance = AnsibleClass(**ansible_data_dict)
         context = TransformContext(
             manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
@@ -515,6 +528,8 @@ class PlatformService(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
+                if wait:
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
@@ -565,6 +580,50 @@ class PlatformService(BaseAPIClient):
             return ansible_result
 
         return {"changed": True}
+
+    def _wait_for_resource_completion(
+        self,
+        result: dict,
+        ansible_instance: Any,
+        mixin_class: type,
+        context: "TransformContext",
+        module_name: str,
+        interval: float,
+        timeout: Optional[float],
+    ) -> dict:
+        """Poll a just-launched resource until the API reports it finished.
+
+        For launch-style resources (e.g. ad_hoc_command, inventory_source_update)
+        the create operation only starts an async job; the mixin's from_api() must
+        populate a truthy "finished" field once the job completes for this to
+        terminate. Shared by PlatformService and DirectHTTPClient so wait/interval/
+        timeout behave the same regardless of connection mode — action plugins
+        never poll themselves.
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded before the resource finishes.
+                Carries the last poll result so callers can still report id/status.
+        """
+        if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
+            return result
+
+        find_instance = replace(ansible_instance, id=result["id"]) if is_dataclass(ansible_instance) else ansible_instance
+        start = time.monotonic()
+
+        while True:
+            result = self._find_resource(find_instance, mixin_class, context)
+            if result.get("finished") or result.get("event_processing_finished"):
+                return result
+
+            elapsed = time.monotonic() - start
+            if timeout is not None and elapsed >= timeout:
+                raise WaitTimeoutError(
+                    "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
+                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
+                    last_result=result,
+                )
+
+            time.sleep(interval)
 
     def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
         """
@@ -969,17 +1028,30 @@ class PlatformService(BaseAPIClient):
             if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
                 request_data = next(iter(request_data.values()))
 
-            if not request_data:
+            # Skip only secondary (dependent) operations that have no data to send
+            # (matches DirectHTTPClient._execute_operations). A primary operation
+            # (no depends_on) must always fire even with an empty body — either it
+            # deliberately has fields=[] (a no-body launch trigger, e.g.
+            # inventory_source_update's POST .../update/), or it has optional
+            # fields that all happen to be unset on this call (e.g. job_launch
+            # with no prompt overrides — the launch must still happen).
+            if endpoint_op.depends_on and not request_data:
                 logger.debug("Skipping %s - no data", op_name)
                 continue
 
             path = endpoint_op.path
             if endpoint_op.path_params:
+                # Check the running multi-op `results` first (e.g. an "id" produced
+                # by a prior op in this same chain), then fall back to the matching
+                # attribute on api_data — by the param's own name, not hardcoded to
+                # "id", so custom path params like inventory_source_id (a
+                # launch-trigger sub-action, not the resource's own id) resolve
+                # correctly too.
                 for param in endpoint_op.path_params:
                     if param in results:
                         path = path.replace(f"{{{param}}}", str(results[param]))
-                    elif param == "id" and "id" in api_data_dict:
-                        path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
+                    elif param in api_data_dict and api_data_dict[param] is not None:
+                        path = path.replace(f"{{{param}}}", str(api_data_dict[param]))
 
             url = self._build_url(path)
 
@@ -1048,6 +1120,158 @@ class PlatformService(BaseAPIClient):
             remaining.pop(ready[0])
 
         return sorted_ops
+
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+    ) -> bool:
+        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate."""
+        self.record_activity()
+
+        resolved_ids = []
+        for item in desired_items:
+            if str(item).isdigit():
+                resolved_ids.append(int(item))
+            else:
+                rid = self.lookup_resource_id(lookup_endpoint, lookup_field, str(item))
+                if rid is None:
+                    raise ValueError("Could not find %s entry with %s='%s'" % (lookup_endpoint, lookup_field, item))
+                resolved_ids.append(rid)
+
+        # Let GET failures (auth, network, non-2xx, JSON parsing) propagate instead
+        # of silently treating them as "no current associations" — that would make
+        # the disassociate loop below a silent no-op, leaving stale associations
+        # in place while reporting success.
+        assoc_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, association_field))
+        response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        current_data = response.json()
+        current_ids = [item["id"] for item in current_data.get("results", [])]
+
+        changed = False
+        errors = []
+
+        for item_id in resolved_ids:
+            if item_id not in current_ids:
+                try:
+                    resp = self.session.post(
+                        assoc_url,
+                        json={"id": item_id, "associate": True},
+                        timeout=self.request_timeout,
+                        verify=self.requests_verify,
+                    )
+                    resp.raise_for_status()
+                    changed = True
+                except Exception as exc:
+                    errors.append("Failed to associate %s %s: %s" % (association_field, item_id, exc))
+
+        for item_id in current_ids:
+            if item_id not in resolved_ids:
+                try:
+                    resp = self.session.post(
+                        assoc_url,
+                        json={"id": item_id, "disassociate": True},
+                        timeout=self.request_timeout,
+                        verify=self.requests_verify,
+                    )
+                    resp.raise_for_status()
+                    changed = True
+                except Exception as exc:
+                    errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        return changed
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict] = None) -> bool:
+        """Manage a secondary sub-endpoint (GET/compare/POST or DELETE)."""
+        self.record_activity()
+
+        if data is None:
+            return False
+
+        spec_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, sub_path))
+
+        if data == {}:
+            response = self.session.delete(spec_url, timeout=self.request_timeout, verify=self.requests_verify)
+            if response.status_code not in (200, 204):
+                raise ValueError("Failed to delete %s: %s" % (sub_path, response.text or "Unknown error"))
+            return True
+
+        try:
+            current_response = self.session.get(spec_url, timeout=self.request_timeout, verify=self.requests_verify)
+            current_data = current_response.json() if current_response.status_code == 200 else None
+        except Exception:
+            current_data = None
+
+        if data != current_data:
+            response = self.session.post(
+                spec_url,
+                json=data,
+                timeout=self.request_timeout,
+                verify=self.requests_verify,
+            )
+            if response.status_code not in (200, 201):
+                error_msg = "Unknown error"
+                if response.text:
+                    try:
+                        error_msg = response.json().get("error", response.text)
+                    except Exception:
+                        error_msg = response.text
+                raise ValueError("Failed to update %s: %s" % (sub_path, error_msg))
+            return True
+
+        return False
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str) -> dict:
+        """Copy a resource via its /copy/ sub-endpoint."""
+        self.record_activity()
+
+        source = None
+        last_error = None
+        try:
+            source = self.execute(
+                operation="find",
+                module_name=module_name,
+                ansible_data_dict={"name": source_name_or_id},
+            )
+        except Exception as exc:
+            last_error = exc
+
+        if not source or not source.get("id"):
+            if str(source_name_or_id).isdigit():
+                try:
+                    source = self.execute(
+                        operation="find",
+                        module_name=module_name,
+                        ansible_data_dict={"id": int(source_name_or_id), "name": str(source_name_or_id)},
+                    )
+                except Exception as exc:
+                    last_error = exc
+
+        if not source or not source.get("id"):
+            msg = "Could not find %s '%s' to copy from" % (module_name, source_name_or_id)
+            if last_error:
+                msg += ": %s" % last_error
+            raise ValueError(msg)
+
+        copy_url = self._build_url("%s/%s/copy/" % (copy_endpoint_path, source["id"]))
+        response = self.session.post(
+            copy_url,
+            json={"name": new_name},
+            timeout=self.request_timeout,
+            verify=self.requests_verify,
+        )
+        if response.status_code in (200, 201):
+            return response.json()
+        else:
+            raise ValueError("Failed to copy %s: %s" % (module_name, response.text or "Unknown error"))
 
     def lookup_org_ids(self, org_names: list) -> list:
         """

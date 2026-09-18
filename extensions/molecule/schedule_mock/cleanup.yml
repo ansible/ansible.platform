@@ -1,0 +1,104 @@
+---
+# Cleanup: delete schedules created by converge (local, http direct, http persistent).
+- name: Cleanup — delete schedule (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_ujt_name: "molecule-ujt-local"
+    molecule_schedule_name: "molecule-schedule-local"
+  tasks:
+    - name: Delete schedule (connection local)
+      ansible.platform.schedule:
+        name: "{{ molecule_schedule_name }}"
+        unified_job_template: "{{ molecule_ujt_name }}"
+        state: absent
+      register: delete_result_local
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Assert schedule removed or already absent (connection local)
+      ansible.builtin.assert:
+        that: delete_result_local is not failed
+        fail_msg: "Cleanup: failed to delete schedule {{ molecule_schedule_name }}."
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete schedule (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_ujt_name: "molecule-ujt-http-direct"
+    molecule_schedule_name: "molecule-schedule-http-direct"
+  tasks:
+    - name: Delete schedule (http direct)
+      ansible.platform.schedule:
+        name: "{{ molecule_schedule_name }}"
+        unified_job_template: "{{ molecule_ujt_name }}"
+        state: absent
+      register: delete_result_http_direct
+      failed_when: false
+
+    - name: Assert schedule removed or already absent (http direct)
+      ansible.builtin.assert:
+        that: delete_result_http_direct is not failed
+        fail_msg: "Cleanup: failed to delete schedule {{ molecule_schedule_name }}."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete schedule (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_ujt_name: "molecule-ujt-http-persistent"
+    molecule_schedule_name: "molecule-schedule-http-persistent"
+  tasks:
+    - name: Delete schedule (http persistent)
+      ansible.platform.schedule:
+        name: "{{ molecule_schedule_name }}"
+        unified_job_template: "{{ molecule_ujt_name }}"
+        state: absent
+      register: delete_result_http_persistent
+      failed_when: false
+
+    - name: Assert schedule removed or already absent (http persistent)
+      ansible.builtin.assert:
+        that: delete_result_http_persistent is not failed
+        fail_msg: "Cleanup: failed to delete schedule {{ molecule_schedule_name }}."
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

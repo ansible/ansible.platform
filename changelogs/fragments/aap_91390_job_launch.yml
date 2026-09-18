@@ -1,0 +1,10 @@
+minor_changes:
+  - job_launch - add module migrated from awx.awx/ansible.controller to launch
+    an Ansible job template (https://issues.redhat.com/browse/AAP-91390).
+bugfixes:
+  - Fix the SDK layer's shared operation executor to still call the API for a
+    primary create/launch operation when all of its optional body fields
+    happen to be unset (e.g. job_launch with no prompt overrides) — it was
+    only correctly distinguishing this from an unused optional secondary
+    endpoint (like an association or sub-resource) in one of the two
+    connection-mode implementations.
