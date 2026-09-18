@@ -12,7 +12,7 @@ PYTHON_VERSION:
 	@echo "$(subst python,,$(PYTHON))"
 
 .PHONY: PYTHON_VERSION clean git_hooks_config \
-	check_ruff check_mypy check_pydoclint \
+	check_ruff check_mypy check_pydoclint check_action_plugin_invariants \
 	collection-install collection-test collection-docs \
 	collection-lint collection-sanity  collection-test-completeness \
 	collection-test-integration-check \
@@ -41,6 +41,10 @@ check_mypy:
 ## Run pydoclint docstring style check
 check_pydoclint:
 	tox -e pydoclint
+
+## Fail if action plugins contain direct HTTP or Ansible-only wait/poll logic
+check_action_plugin_invariants:
+	@bash tools/check_action_plugin_invariants.sh
 
 ## Install the collection locally on your machine
 collection-install:
