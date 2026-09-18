@@ -1169,8 +1169,10 @@ class BaseResourceActionPlugin(ActionBase):
                             return result
                         operation = "update"
                         resource.id = find_result["id"]
-                except Exception:
-                    if not self._allow_create_when_missing():
+                except Exception as exc:
+                    if self._allow_create_when_missing():
+                        pass
+                    elif not isinstance(exc, ValueError) or "not found" not in str(exc).lower():
                         raise
 
                 if not find_result and not self._allow_create_when_missing():
