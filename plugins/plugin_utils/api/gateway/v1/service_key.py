@@ -5,8 +5,8 @@ API v1 Service Key dataclass and transform mixin.
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
@@ -75,7 +75,7 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleServiceKey":
-        from ...ansible_models.service_key import AnsibleServiceKey
+        from ....ansible_models.service_key import AnsibleServiceKey
 
         return AnsibleServiceKey(
             name=api_data.get("name", ""),
