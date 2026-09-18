@@ -1,3 +1,4 @@
 ---
 bugfixes:
   - service_key - restrict service key management to existing keys and fail instead of creating a missing key (https://issues.redhat.com/browse/AAP-65516).
+...
