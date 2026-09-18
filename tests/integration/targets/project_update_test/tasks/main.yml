@@ -1,0 +1,88 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-ProjectUpdate-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # No "project" module exists in this collection yet — seed one directly
+    # against the Controller API so this target is self-contained.
+    - name: Create a project via a raw API call
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/"
+        method: POST
+        force_basic_auth: true
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Test-Project"
+          scm_type: ""
+        status_code: 201
+      delegate_to: localhost
+      register: project1
+
+    - name: Check mode launch (must not actually launch)
+      ansible.platform.project_update:
+        name: "{{ name_prefix }}-Test-Project"
+      check_mode: true
+      register: check_mode_result
+
+    - name: Assert check mode reports changed with no id
+      ansible.builtin.assert:
+        that:
+          - check_mode_result is changed
+          - check_mode_result.id is none
+
+    - name: Launch a project update, waiting for completion
+      ansible.platform.project_update:
+        name: "{{ name_prefix }}-Test-Project"
+        interval: 1
+        timeout: 120
+      register: launch_result
+
+    - name: Assert the update launched and completed
+      ansible.builtin.assert:
+        that:
+          - launch_result is changed
+          - launch_result.id is defined
+          - launch_result.status in ("successful", "failed", "error", "canceled")
+
+    - name: Launch again without waiting (non-idempotent — always launches)
+      ansible.platform.project_update:
+        name: "{{ name_prefix }}-Test-Project"
+        wait: false
+      register: launch_result_again
+
+    - name: Assert the second launch is a distinct update
+      ansible.builtin.assert:
+        that:
+          - launch_result_again is changed
+          - launch_result_again.id != launch_result.id
+
+  always:
+    - name: Delete the project via a raw API call
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/{{ project1.json.id }}/"
+        method: DELETE
+        force_basic_auth: true
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: 204
+      delegate_to: localhost
+      when: project1 is defined and project1.json is defined and "id" in project1.json
+...

@@ -1,0 +1,71 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-JobWait-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # No "project" module exists in this collection yet — seed one directly
+    # against the Controller API so this target is self-contained.
+    - name: Create a project via a raw API call
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/"
+        method: POST
+        force_basic_auth: true
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Test-Project"
+          scm_type: ""
+        status_code: 201
+      delegate_to: localhost
+      register: project1
+
+    - name: Launch a project update without waiting
+      ansible.platform.project_update:
+        name: "{{ name_prefix }}-Test-Project"
+        wait: false
+      register: project_update_result
+
+    - name: Wait for the project update to finish
+      ansible.platform.job_wait:
+        job_id: "{{ project_update_result.id }}"
+        job_type: project_updates
+        interval: 1
+        timeout: 120
+      register: job_wait_result
+
+    - name: Assert job_wait resolved and never reports changed
+      ansible.builtin.assert:
+        that:
+          - job_wait_result is not changed
+          - job_wait_result.id == project_update_result.id
+          - job_wait_result.status in ("successful", "failed", "error", "canceled")
+
+  always:
+    - name: Delete the project via a raw API call
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/{{ project1.json.id }}/"
+        method: DELETE
+        force_basic_auth: true
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: 204
+      delegate_to: localhost
+      when: project1 is defined and project1.json is defined and "id" in project1.json
+...

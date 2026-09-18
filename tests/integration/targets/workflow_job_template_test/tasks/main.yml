@@ -1,0 +1,125 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-WFJT-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create notification_template to associate
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Notification"
+        organization: "{{ org1.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+
+    - name: Create workflow_job_template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test-WFJT"
+        organization: "{{ org1.name }}"
+        extra_vars:
+          foo: bar
+      register: created_wfjt
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_wfjt is changed
+          - created_wfjt.workflow_job_template.name is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test-WFJT"
+        organization: "{{ org1.name }}"
+        extra_vars:
+          foo: bar
+      register: idempotent_wfjt
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_wfjt is not changed
+
+    - name: Add survey_spec and notification association
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test-WFJT"
+        organization: "{{ org1.name }}"
+        survey_enabled: true
+        survey_spec:
+          name: ""
+          description: ""
+          spec:
+            - question_name: "Environment"
+              variable: environment
+              type: text
+              required: true
+        notification_templates_success:
+          - "{{ name_prefix }}-Notification"
+      register: survey_result
+
+    - name: Assert survey/association update changed
+      ansible.builtin.assert:
+        that:
+          - survey_result is changed
+
+    - name: Copy workflow_job_template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test-WFJT-Copy"
+        copy_from: "{{ name_prefix }}-Test-WFJT"
+        organization: "{{ org1.name }}"
+      register: copy_result
+
+    - name: Assert copy changed and created a new resource
+      ansible.builtin.assert:
+        that:
+          - copy_result is changed
+          - copy_result.workflow_job_template.id != created_wfjt.workflow_job_template.id
+
+    - name: Delete copied workflow_job_template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test-WFJT-Copy"
+        organization: "{{ org1.name }}"
+        state: absent
+
+    - name: Delete workflow_job_template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test-WFJT"
+        organization: "{{ org1.name }}"
+        state: absent
+      register: deleted_wfjt
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - deleted_wfjt is changed
+
+  always:
+    - name: Delete notification_template
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Notification"
+        state: absent
+      when: org1 is defined and "id" in org1
+
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...

@@ -1,0 +1,30 @@
+---
+# Verify: the notification_templates created by converge are still present.
+- name: Verify — notification_template still exists (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_nt_name: "molecule-notification-local"
+  tasks:
+    - name: Get notification_template (state exists, connection local)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert notification_template still exists (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+        fail_msg: "Verify: notification_template {{ molecule_nt_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+...

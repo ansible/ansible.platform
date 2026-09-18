@@ -1,0 +1,124 @@
+---
+# Cleanup: delete workflow_job_templates/notification_templates/organizations
+# created by converge.
+- name: Cleanup — delete workflow_job_template, notification_template, organization (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org WFJT Local"
+    molecule_wfjt_name: "molecule-wfjt-local"
+    molecule_wfjt_copy_name: "molecule-wfjt-copy-local"
+    molecule_nt_name: "molecule-wfjt-notification-local"
+  tasks:
+    - name: Delete copied workflow_job_template (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ molecule_wfjt_copy_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete workflow_job_template (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ molecule_wfjt_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete notification_template (connection local)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete workflow_job_template, organization (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org WFJT HTTP Direct"
+    molecule_wfjt_name: "molecule-wfjt-http-direct"
+  tasks:
+    - name: Delete workflow_job_template (http direct)
+      ansible.platform.workflow_job_template:
+        name: "{{ molecule_wfjt_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete workflow_job_template, organization (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org WFJT HTTP Persistent"
+    molecule_wfjt_name: "molecule-wfjt-http-persistent"
+  tasks:
+    - name: Delete workflow_job_template (http persistent)
+      ansible.platform.workflow_job_template:
+        name: "{{ molecule_wfjt_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

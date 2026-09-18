@@ -1,0 +1,248 @@
+---
+# Converge: notification_template create, idempotency, update, copy_from,
+# copy_from idempotency, delete against the mock Gateway/Controller.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+# Play 2: full feature coverage (connection local) — create, idempotency, update,
+# copy_from, copy_from idempotency, delete.
+- name: Converge — notification_template (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org NotifTemplate Local"
+    molecule_nt_name: "molecule-notification-local"
+    molecule_nt_copy_name: "molecule-notification-copy-local"
+  tasks:
+    - name: Create organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_local
+      vars:
+        ansible_connection: local
+
+    - name: Create notification_template
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_local.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.notification_template.id is defined
+          - create_result_local.notification_template.name == molecule_nt_name
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_local.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed. idem_result_local={{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Update notification_template description (connection local)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_local.name }}"
+        notification_type: webhook
+        description: "Updated by Molecule notification_template_mock (connection local)"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+        fail_msg: "Update (local) should report changed. update_result_local={{ update_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Copy notification_template (connection local)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_copy_name }}"
+        copy_from: "{{ molecule_nt_name }}"
+      register: copy_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert copy changed and created a new resource (connection local)
+      ansible.builtin.assert:
+        that:
+          - copy_result_local is changed
+          - copy_result_local.notification_template.id is defined
+          - copy_result_local.notification_template.id != create_result_local.notification_template.id
+        fail_msg: "Copy (local) should report changed with a new id. copy_result_local={{ copy_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Re-run copy_from — must not create a second copy (connection local)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_copy_name }}"
+        copy_from: "{{ molecule_nt_name }}"
+      register: copy_idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert re-run copy_from is idempotent (connection local)
+      ansible.builtin.assert:
+        that:
+          - copy_idem_result_local.notification_template.id == copy_result_local.notification_template.id
+        fail_msg: "Re-run copy_from (local) should not create another copy. copy_idem_result_local={{ copy_idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: basic CRUD parity (http direct).
+- name: Converge — notification_template (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org NotifTemplate HTTP Direct"
+    molecule_nt_name: "molecule-notification-http-direct"
+  tasks:
+    - name: Create organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_direct
+
+    - name: Create notification_template (http direct)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_http_direct.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.notification_template.id is defined
+        fail_msg: "Create (http direct) should report changed. create_result_http_direct={{ create_result_http_direct }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_http_direct.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_http_direct={{ idem_result_http_direct }}"
+
+# Play 4: basic CRUD parity (http persistent).
+- name: Converge — notification_template (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org NotifTemplate HTTP Persistent"
+    molecule_nt_name: "molecule-notification-http-persistent"
+  tasks:
+    - name: Create organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_persistent
+
+    - name: Create notification_template (http persistent)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_http_persistent.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.notification_template.id is defined
+        fail_msg: "Create (http persistent) should report changed. create_result_http_persistent={{ create_result_http_persistent }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.notification_template:
+        name: "{{ molecule_nt_name }}"
+        organization: "{{ org_http_persistent.name }}"
+        notification_type: webhook
+        notification_configuration:
+          url: "http://example.invalid/hook"
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_http_persistent={{ idem_result_http_persistent }}"
+...

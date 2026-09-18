@@ -1,0 +1,100 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+      register: inv1
+
+    # An inventory_source is itself a launchable unified_job_template — used
+    # here instead of a job_template (not part of this migration batch) so the
+    # test stays self-contained.
+    - name: Create inventory source (launchable unified_job_template)
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Source"
+        inventory: "{{ inv1.name }}"
+        source: scm
+        source_path: "inventory.yml"
+      register: source1
+
+    - name: Check mode launch (must not actually launch)
+      ansible.platform.job_launch:
+        name: "{{ source1.inventory_source.name }}"
+      check_mode: true
+      register: check_mode_result
+
+    - name: Assert check mode reports changed with no id
+      ansible.builtin.assert:
+        that:
+          - check_mode_result is changed
+          - check_mode_result.id is none
+
+    - name: Launch a job, waiting for completion
+      ansible.platform.job_launch:
+        name: "{{ source1.inventory_source.name }}"
+        wait: true
+        interval: 1
+        timeout: 120
+      register: launch_result
+
+    - name: Assert the job launched and completed
+      ansible.builtin.assert:
+        that:
+          - launch_result is changed
+          - launch_result.id is defined
+          - launch_result.status in ("successful", "failed", "error", "canceled")
+
+    - name: Launch again without waiting (non-idempotent — always launches)
+      ansible.platform.job_launch:
+        name: "{{ source1.inventory_source.name }}"
+      register: launch_result_again
+
+    - name: Assert the second launch is a distinct job
+      ansible.builtin.assert:
+        that:
+          - launch_result_again is changed
+          - launch_result_again.id != launch_result.id
+
+  always:
+    - name: Delete Inventory Source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Source"
+        inventory: "{{ name_prefix }}-Inventory"
+        state: absent
+      when: inv1 is defined and "id" in inv1
+
+    - name: Delete Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...

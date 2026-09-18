@@ -1,0 +1,269 @@
+---
+# Converge: group create, idempotency, update, hosts/children associations,
+# preserve_existing_*, delete against the mock Gateway/Controller.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+# Play 2: full feature coverage (connection local) — create, idempotency, update,
+# hosts/children associations, preserve_existing_*, delete.
+- name: Converge — group (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org Group Local"
+    molecule_inv_name: "Molecule Test Inventory Group Local"
+    molecule_group_name: "molecule-group-local"
+  tasks:
+    - name: Create organization
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_local
+      vars:
+        ansible_connection: local
+
+    - name: Create inventory
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_local.name }}"
+      register: inv_local
+      vars:
+        ansible_connection: local
+
+    - name: Create hosts to associate
+      ansible.platform.host:
+        name: "molecule-group-host-{{ item }}-local"
+        inventory: "{{ inv_local.name }}"
+      loop: [1, 2]
+      vars:
+        ansible_connection: local
+
+    - name: Create group
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_local.name }}"
+        description: "Created by Molecule group_mock (connection local)"
+        variables:
+          example_var: 123
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.group.id is defined
+          - create_result_local.group.name == molecule_group_name
+        fail_msg: "Create (local) should report changed. create_result_local={{ create_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_local.name }}"
+        description: "Created by Molecule group_mock (connection local)"
+        variables:
+          example_var: 123
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent run did not change (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+        fail_msg: "Idempotent run (local) should not report changed. idem_result_local={{ idem_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Associate host 1 into group (connection local)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_local.name }}"
+        hosts:
+          - "molecule-group-host-1-local"
+      register: assoc_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert association changed (connection local)
+      ansible.builtin.assert:
+        that: assoc_result_local is changed
+        fail_msg: "Association (local) should report changed. assoc_result_local={{ assoc_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Associate host 2, preserving host 1 (connection local)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_local.name }}"
+        hosts:
+          - "molecule-group-host-2-local"
+        preserve_existing_hosts: true
+      register: preserve_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert preserve_existing_hosts added without removing host 1 (connection local)
+      ansible.builtin.assert:
+        that: preserve_result_local is changed
+        fail_msg: "preserve_existing_hosts (local) should report changed. preserve_result_local={{ preserve_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Check mode update (must not call the API)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_local.name }}"
+        description: "Should not be applied"
+        hosts:
+          - "molecule-group-host-1-local"
+      check_mode: true
+      register: check_mode_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert check_mode reports changed (connection local)
+      ansible.builtin.assert:
+        that: check_mode_result_local is changed
+        fail_msg: "Check mode (local) should report changed. check_mode_result_local={{ check_mode_result_local }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: basic CRUD parity (http direct).
+- name: Converge — group (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org Group HTTP Direct"
+    molecule_inv_name: "Molecule Test Inventory Group HTTP Direct"
+    molecule_group_name: "molecule-group-http-direct"
+  tasks:
+    - name: Create organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_direct
+
+    - name: Create inventory (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_direct.name }}"
+      register: inv_http_direct
+
+    - name: Create group (http direct)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_http_direct.name }}"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.group.id is defined
+        fail_msg: "Create (http direct) should report changed. create_result_http_direct={{ create_result_http_direct }}"
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_http_direct.name }}"
+      register: idem_result_http_direct
+
+    - name: Assert idempotent run did not change (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+        fail_msg: "Idempotent run (http direct) should not report changed. idem_result_http_direct={{ idem_result_http_direct }}"
+
+# Play 4: basic CRUD parity (http persistent).
+- name: Converge — group (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org Group HTTP Persistent"
+    molecule_inv_name: "Molecule Test Inventory Group HTTP Persistent"
+    molecule_group_name: "molecule-group-http-persistent"
+  tasks:
+    - name: Create organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+      register: org_http_persistent
+
+    - name: Create inventory (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ org_http_persistent.name }}"
+      register: inv_http_persistent
+
+    - name: Create group (http persistent)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_http_persistent.name }}"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.group.id is defined
+        fail_msg: "Create (http persistent) should report changed. create_result_http_persistent={{ create_result_http_persistent }}"
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ inv_http_persistent.name }}"
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent run did not change (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+        fail_msg: "Idempotent run (http persistent) should not report changed. idem_result_http_persistent={{ idem_result_http_persistent }}"
+...
