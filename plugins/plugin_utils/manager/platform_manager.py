@@ -359,7 +359,7 @@ class PlatformService(BaseAPIClient):
         import sys
         from pathlib import Path
 
-        supported = self.registry.get_supported_versions()
+        supported = self.registry.get_supported_versions("gateway")
 
         _error_log_path = None
         try:
@@ -506,10 +506,15 @@ class PlatformService(BaseAPIClient):
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+        service_version = self.get_api_version(service)
+
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         ansible_instance = AnsibleClass(**ansible_data_dict)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
+            manager=self, session=self.session, cache=self.cache, api_version=service_version, service=service, operation=operation, include_nulls_for_update=include_nulls
         )
 
         try:
@@ -1118,7 +1123,7 @@ class PlatformService(BaseAPIClient):
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str) -> Optional[int]:
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway") -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
@@ -1128,10 +1133,12 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
-        cache_key = f"{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
         if cache_key in self.cache:
             return self.cache[cache_key]
-        url = self._build_url(endpoint, query_params={lookup_field: lookup_value})
+        svc_version = self.get_api_version(service)
+        full_endpoint = f"/api/{service}/v{svc_version}/{endpoint}"
+        url = self._build_url(full_endpoint, query_params={lookup_field: lookup_value})
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         results = response.json().get("results", [])
