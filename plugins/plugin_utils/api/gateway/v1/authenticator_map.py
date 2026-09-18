@@ -6,8 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleAuthenticatorMap":
-        from ...ansible_models.authenticator_map import AnsibleAuthenticatorMap
+        from ....ansible_models.authenticator_map import AnsibleAuthenticatorMap
 
         auth = api_data.get("authenticator")
         return AnsibleAuthenticatorMap(

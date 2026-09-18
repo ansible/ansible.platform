@@ -15,8 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
@@ -102,7 +102,7 @@ class FeatureFlagTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.feature_flag import AnsibleFeatureFlag
+        from ....ansible_models.feature_flag import AnsibleFeatureFlag
 
         return AnsibleFeatureFlag(
             name=api_data.get("name", ""),

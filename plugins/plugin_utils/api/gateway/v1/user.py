@@ -8,8 +8,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +232,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
         Returns:
             AnsibleUser dataclass instance (not dict - use asdict() if dict needed)
         """
-        from ...ansible_models.user import AnsibleUser
+        from ....ansible_models.user import AnsibleUser
 
         username = api_data.get("username", "unknown")
         logger.info("Transforming APIUser_v1 to Ansible format: username=%s", username)

@@ -8,8 +8,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class ServiceTypeTransformMixin_v1(BaseTransformMixin):
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleServiceType":
         """Transform from API format to Ansible format."""
-        from ...ansible_models.service_type import AnsibleServiceType
+        from ....ansible_models.service_type import AnsibleServiceType
 
         ansible_data = {
             "name": api_data.get("name", ""),
