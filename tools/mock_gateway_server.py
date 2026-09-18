@@ -13,7 +13,11 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   role_definitions, role_team_assignments, role_user_assignments,
   routes, service_clusters, service_keys, service_nodes,
   service_types, services, tokens, ui_plugin_routes,
-  settings (singleton), settings/all (flat dict read)
+  settings (singleton), settings/all (flat dict read),
+  inventories, credentials, execution_environments
+
+Controller endpoints (under /api/controller/v2/):
+  ad_hoc_commands
 
 Notes
 -----
@@ -221,6 +225,10 @@ class Store:
             ("services", ["name"], 4400),
             ("tokens", [], 4500),
             ("ui_plugin_routes", ["name"], 4600),
+            ("inventories", ["name"], 5000),
+            ("credentials", ["name"], 5100),
+            ("execution_environments", ["name"], 5200),
+            ("ad_hoc_commands", ["module_name"], 5300),
         ]
         for endpoint, required, start_id in defs:
             self._resources[endpoint] = GenericResource(
@@ -275,6 +283,34 @@ class Store:
                 },
             ]
             ff_store.seed("1", flags)
+
+        # Seed inventories, credentials, execution environments (for ad_hoc_command tests)
+        inv_store = self._resources.get("inventories")
+        if inv_store and not inv_store._items:
+            inv_store.seed(
+                "1",
+                [
+                    {"id": 1, "name": "Demo Inventory", "organization": 1},
+                    {"id": 2, "name": "Production", "organization": 1},
+                ],
+            )
+        cred_store = self._resources.get("credentials")
+        if cred_store and not cred_store._items:
+            cred_store.seed(
+                "1",
+                [
+                    {"id": 1, "name": "Demo Credential", "credential_type": 1},
+                    {"id": 2, "name": "Machine Credential", "credential_type": 1},
+                ],
+            )
+        ee_store = self._resources.get("execution_environments")
+        if ee_store and not ee_store._items:
+            ee_store.seed(
+                "1",
+                [
+                    {"id": 1, "name": "Default EE", "image": "quay.io/ansible/awx-ee:latest"},
+                ],
+            )
 
         # Seed settings
         with self._settings_lock:
@@ -537,6 +573,38 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
+    def _advance_ad_hoc_command_poll(self, store: "GenericResource", item_id: int) -> Dict[str, Any]:
+        """Advance an ad hoc command's pending -> terminal lifecycle on each GET-by-id poll.
+
+        Simulates a real Controller command staying pending across the first two
+        polls before resolving, so wait/poll loops in tests actually poll more
+        than once instead of the mock resolving synchronously on create.
+
+        module_args markers (opt-in, do not affect normal launches):
+          - "__fail__": resolves to status=failed instead of successful
+          - "__hang__": never resolves (for wait-timeout tests)
+        """
+        with store.lock:
+            if item_id not in store._items:
+                raise KeyError("not found")
+            item = store._items[item_id]
+
+            if item.get("finished"):
+                return dict(item)
+
+            module_args = item.get("module_args") or ""
+            if "__hang__" in module_args:
+                return dict(item)
+
+            item["_polls"] = item.get("_polls", 0) + 1
+            if item["_polls"] >= 2:
+                item["status"] = "failed" if "__fail__" in module_args else "successful"
+                item["finished"] = _now_iso()
+                item["event_processing_finished"] = True
+                item["modified"] = _now_iso()
+
+            return dict(item)
+
     # ------------------------------------------------------------------
     # Generic CRUD helper
     # ------------------------------------------------------------------
@@ -559,6 +627,16 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             if self.command == "POST":
                 try:
                     payload = self._parse_json_body()
+                    # ad_hoc_commands: inject status lifecycle fields. The command
+                    # stays pending across the first two GET-by-id polls (see the
+                    # GET handler below) so wait/poll loops actually poll more than
+                    # once, instead of the mock resolving synchronously on create —
+                    # a real Controller ad hoc command is always async.
+                    if resource_name == "ad_hoc_commands":
+                        payload["status"] = "pending"
+                        payload["finished"] = None
+                        payload["event_processing_finished"] = False
+                        payload["_polls"] = 0
                     created = store.create(version, payload)
                     self._send_json(201, created)
                 except ValueError as e:
@@ -574,7 +652,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
             if self.command == "GET":
                 try:
-                    self._send_json(200, store.get(item_id))
+                    if resource_name == "ad_hoc_commands":
+                        self._send_json(200, self._advance_ad_hoc_command_poll(store, item_id))
+                    else:
+                        self._send_json(200, store.get(item_id))
                 except KeyError:
                     self._send_json(404, {"detail": "Not Found"})
                 return True
@@ -632,7 +713,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         parts = [p for p in path.split("/") if p]
 
-        if len(parts) < 3 or parts[0] != "api" or parts[1] != "gateway":
+        if len(parts) < 3 or parts[0] != "api" or parts[1] not in ("gateway", "controller"):
             self._send_json(404, {"detail": "Not Found"})
             return
 

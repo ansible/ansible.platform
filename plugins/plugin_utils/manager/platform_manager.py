@@ -10,7 +10,7 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import BaseAPIClient
+from ..platform.base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -507,6 +507,18 @@ class PlatformService(BaseAPIClient):
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+
+        # Pop launch-command wait/poll directives (e.g. ad_hoc_command) — these are
+        # control flags for this method, not fields on the resource dataclass. Only
+        # pop a name the target dataclass doesn't itself declare, so a module with a
+        # genuine field of the same name (e.g. job_template's own `timeout`) keeps it.
+        ansible_field_names = {f.name for f in fields(AnsibleClass)}
+        wait = ansible_data_dict.pop("wait", False) if "wait" not in ansible_field_names else False
+        wait_interval = ansible_data_dict.pop("interval", 2.0) if "interval" not in ansible_field_names else 2.0
+        wait_timeout = ansible_data_dict.pop("timeout", None) if "timeout" not in ansible_field_names else None
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
+
         ansible_instance = AnsibleClass(**ansible_data_dict)
         context = TransformContext(
             manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
@@ -515,6 +527,8 @@ class PlatformService(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
+                if wait:
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
