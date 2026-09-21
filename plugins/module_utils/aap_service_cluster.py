@@ -58,6 +58,14 @@ class AAPServiceCluster(AAPObject):
         if outlier_detection_max_ejection_percent is not None:
             self.new_fields["outlier_detection_max_ejection_percent"] = outlier_detection_max_ejection_percent
 
+        outlier_detection_split_external_local_origin_errors = self.params.get('outlier_detection_split_external_local_origin_errors')
+        if outlier_detection_split_external_local_origin_errors is not None:
+            self.new_fields["outlier_detection_split_external_local_origin_errors"] = outlier_detection_split_external_local_origin_errors
+
+        outlier_detection_consecutive_local_origin_failure = self.params.get('outlier_detection_consecutive_local_origin_failure')
+        if outlier_detection_consecutive_local_origin_failure is not None:
+            self.new_fields["outlier_detection_consecutive_local_origin_failure"] = outlier_detection_consecutive_local_origin_failure
+
         health_checks_enabled = self.params.get('health_checks_enabled')
         if health_checks_enabled is not None:
             self.new_fields["health_checks_enabled"] = health_checks_enabled
