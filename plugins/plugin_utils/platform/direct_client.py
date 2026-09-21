@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import threading
+from dataclasses import fields
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -20,7 +21,7 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 # Use Ansible's HTTP client instead of requests library for better worker process compatibility
 from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
-from .base_client import BaseAPIClient
+from .base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
@@ -516,8 +517,13 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = "1"
             self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
-        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        # Callers may pass a full API path (e.g. "/api/controller/v2/inventories/")
+        # to resolve FKs on non-Gateway components; only bare resource names
+        # (e.g. "authenticators") get the Gateway prefix.
+        if endpoint.startswith("/api/"):
+            api_path = endpoint if endpoint.endswith("/") else f"{endpoint}/"
+        else:
+            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
@@ -595,6 +601,17 @@ class DirectHTTPClient(BaseAPIClient):
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
+        # Pop launch-command wait/poll directives (e.g. ad_hoc_command) — these are
+        # control flags for this method, not fields on the resource dataclass. Only
+        # pop a name the target dataclass doesn't itself declare, so a module with a
+        # genuine field of the same name (e.g. job_template's own `timeout`) keeps it.
+        ansible_field_names = {f.name for f in fields(AnsibleClass)}
+        wait = ansible_data_dict.pop("wait", False) if "wait" not in ansible_field_names else False
+        wait_interval = ansible_data_dict.pop("interval", 2.0) if "interval" not in ansible_field_names else 2.0
+        wait_timeout = ansible_data_dict.pop("timeout", None) if "timeout" not in ansible_field_names else None
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
+
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
 
@@ -607,6 +624,8 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
+                if wait:
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
@@ -770,9 +789,6 @@ class DirectHTTPClient(BaseAPIClient):
             return asdict(ansible_instance)
 
         # --- Standard CRUD resources ---
-        if not list_op:
-            raise ValueError(f"List operation not defined for {mixin_class.__name__}")
-
         # Get lookup field from mixin
         lookup_field = mixin_class.get_lookup_field()
         logger.info("DirectHTTPClient: Lookup field for %s: %s", mixin_class.__name__, lookup_field)
@@ -833,6 +849,13 @@ class DirectHTTPClient(BaseAPIClient):
             except Exception as id_exc:
                 logger.info("DirectHTTPClient: ID-based lookup failed for %s id=%s: %s", mixin_class.__name__, lookup_value, id_exc)
                 raise
+
+        # List-filter fallback requires a list operation; only enforced here (not
+        # unconditionally at the top of this method) so launch-only mixins that
+        # define just create+get (e.g. ad_hoc_command) can still poll by id via
+        # the ID-based lookup above without needing a list endpoint.
+        if not list_op:
+            raise ValueError(f"List operation not defined for {mixin_class.__name__}")
 
         if not lookup_value and not composite_params:
             raise ValueError(f"Lookup field '{lookup_field}' not found in data")

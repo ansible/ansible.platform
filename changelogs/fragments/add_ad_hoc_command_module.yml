@@ -1,0 +1,9 @@
+---
+minor_changes:
+  - ad_hoc_command - add a new module to launch ad hoc commands against
+    Controller, ported from the awx.awx/ansible.controller collection.
+  - base_action, ansible.platform.http connection plugin - centralize
+    launch-command wait/poll and check_mode handling in
+    PlatformService/DirectHTTPClient so persistent and direct connection
+    modes share identical semantics.
+...

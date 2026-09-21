@@ -6,7 +6,9 @@ error handling, credential management, CRUD operations) is used by both modes.
 """
 
 import logging
+import time
 from abc import ABC, abstractmethod
+from dataclasses import is_dataclass, replace
 from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
@@ -14,6 +16,24 @@ from ..platform.loader import DynamicClassLoader
 from ..platform.registry import APIVersionRegistry
 
 logger = logging.getLogger(__name__)
+
+# Default ceiling (seconds) for launch-command wait/poll loops (e.g. ad_hoc_command)
+# when the caller sets wait=True but does not supply an explicit timeout. Prevents
+# indefinite polling in PlatformService/DirectHTTPClient._wait_for_resource_completion().
+DEFAULT_WAIT_TIMEOUT = 3600.0
+
+
+class WaitTimeoutError(ValueError):
+    """Raised when a launch-command wait/poll loop exceeds its timeout.
+
+    Carries the last poll result so callers (e.g. action plugins) can still
+    report the launched resource's id/status instead of losing it — the
+    resource keeps running on the server even though waiting for it gave up.
+    """
+
+    def __init__(self, message: str, last_result: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.last_result = last_result or {}
 
 
 class BaseAPIClient(ABC):
@@ -125,6 +145,49 @@ class BaseAPIClient(ABC):
             ValueError: If operation is unknown or execution fails
         """
         pass
+
+    def _wait_for_resource_completion(
+        self,
+        result: dict,
+        ansible_instance: Any,
+        mixin_class: type,
+        context: Any,
+        module_name: str,
+        interval: float,
+        timeout: Optional[float],
+    ) -> dict:
+        """Poll a just-launched resource until the API reports it finished.
+
+        For launch-style resources (e.g. ad_hoc_command) the create operation only
+        starts an async job; the mixin's from_api() must populate a truthy
+        "finished" field once the job completes for this to terminate. Shared by
+        PlatformService and DirectHTTPClient so wait/interval/timeout behave the
+        same regardless of connection mode — action plugins never poll themselves.
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded before the resource finishes.
+                Carries the last poll result so callers can still report id/status.
+        """
+        if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
+            return result
+
+        find_instance = replace(ansible_instance, id=result["id"]) if is_dataclass(ansible_instance) else ansible_instance
+        start = time.monotonic()
+
+        while True:
+            result = self._find_resource(find_instance, mixin_class, context)
+            if result.get("finished") or result.get("event_processing_finished"):
+                return result
+
+            elapsed = time.monotonic() - start
+            if timeout is not None and elapsed >= timeout:
+                raise WaitTimeoutError(
+                    "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
+                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
+                    last_result=result,
+                )
+
+            time.sleep(interval)
 
     def lookup_organization_ids(self, names: list) -> list:
         """
