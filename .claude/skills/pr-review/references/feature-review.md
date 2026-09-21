@@ -137,17 +137,28 @@ def from_ansible_data(cls, ansible_instance, context):
 ```python
 @classmethod
 def from_api(cls, api_data, context):
-    # ✅ CORRECT: Map API data back to Ansible model
+    # ✅ CORRECT: Resolve API IDs back to Ansible names for idempotency
+    org_id = api_data.get("organization")
+    org_name = None
+    if org_id:
+        # API returns ID, but Ansible model uses name
+        org_name = context.manager.lookup_resource_name("organization", org_id)
+    
     return AnsibleFoo(
         id=api_data.get("id"),
         name=api_data.get("name"),
-        organization=api_data.get("organization"),  # ID in API, name in Ansible
+        organization=org_name,  # Resolved from ID → name
         description=api_data.get("description"),
     )
 ```
 
-**Common mistake:**
+**Common mistakes:**
 ```python
+# ❌ WRONG: Assigning ID directly when Ansible expects name
+organization=api_data.get("organization")  # Breaks idempotency!
+# API returns integer ID (1234), but Ansible expects string name ("Default")
+# Next run tries to update 1234 → "Default" → changed=true every time
+
 # ❌ WRONG: Forgetting to map field in reverse transform
 # If you add opa_query_path to from_ansible_data() but forget from_api(),
 # idempotency breaks (second run always shows changed=true)

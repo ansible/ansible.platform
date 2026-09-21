@@ -353,14 +353,28 @@ def from_ansible_data(cls, ansible_instance, context):
 @classmethod
 def from_api(cls, api_data, context):
     """Map API response back to Ansible model."""
+    # Resolve API IDs back to Ansible names for idempotency
+    org_id = api_data.get("organization")
+    org_name = None
+    if org_id:
+        # API returns ID, but Ansible model uses name
+        org_name = context.manager.lookup_resource_name("organization", org_id)
+    
     return AnsibleTeam(
         id=api_data.get("id"),
         name=api_data.get("name"),
-        organization=api_data.get("organization"),  # ID→name conversion handled elsewhere
+        organization=org_name,  # ✅ Resolved from ID → name here
         description=api_data.get("description"),
         # ⚠️ DON'T FORGET: If you add field to from_ansible_data(),
         # also add to from_api() or idempotency breaks!
     )
+```
+
+**❌ Common mistake:**
+```python
+# WRONG: Assigning ID directly when Ansible expects name
+organization=api_data.get("organization")  # Breaks idempotency!
+# API returns integer ID (1234), but Ansible expects string name ("Default")
 ```
 
 **Checklist:**
@@ -800,16 +814,32 @@ cmd = [
     gateway_config.password,  # ❌ Vault object
 ]
 
-# AFTER (fixed)
-cmd = [
-    sys.executable,
-    str(gateway_config.username) if gateway_config.username else "",  # ✅ Converted
-    str(gateway_config.password) if gateway_config.password else "",  # ✅ Converted
-]
+# AFTER (fixed) - Note: str() conversion alone is NOT SECURE
+# ❌ STILL INSECURE: Credentials visible in process list (ps, /proc/<pid>/cmdline)
+# cmd = [sys.executable, str(gateway_config.username), str(gateway_config.password)]
+
+# ✅ SECURE: Use environment variables or stdin pipe
+cmd = [sys.executable, str(script_path), socket_path]
+
+env = os.environ.copy()
+if gateway_config.username:
+    env['AAP_USERNAME'] = str(gateway_config.username)  # ✅ Converted vault to str
+if gateway_config.password:
+    env['AAP_PASSWORD'] = str(gateway_config.password)  # ✅ Converted vault to str
+
+process = subprocess.Popen(cmd, env=env)
+
+# Even better: Use stdin pipe if subprocess can read from it
+# config_json = json.dumps({'username': str(gateway_config.username), ...})
+# process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+# process.stdin.write(config_json.encode())
 ```
 
 **Checklist:**
 
+- [ ] **Credentials NOT in command-line arguments** (security risk)
+- [ ] **Vault objects converted to str()** (if using env vars)
+- [ ] **Prefer stdin pipe over env vars** for credential passing
 - [ ] Fix addresses root cause (not just symptoms)
 - [ ] Fix is minimal (no unrelated refactoring)
 - [ ] No commented-out debug code
@@ -898,7 +928,20 @@ jobs:
       - run: echo "${{ secrets.AAP_PASSWORD }}"  # LEAKED to fork!
 ```
 
-**✅ SAFE:**
+**✅ SAFE Option 1: Run PR code WITHOUT secrets**
+
+```yaml
+on:
+  pull_request:  # No secrets available to forks
+
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v4  # Checks out PR code
+      - run: make test-unit  # Safe - no secrets exposed
+```
+
+**✅ SAFE Option 2: Secrets only with TRUSTED code**
 
 ```yaml
 on:
@@ -912,12 +955,23 @@ jobs:
       github.event.label.name == 'safe to test' &&
       github.event.pull_request.author_association == 'MEMBER'
     steps:
+      # Checks out BASE branch (trusted repository code, NOT PR code)
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
       - env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
-        run: ansible-playbook tests/integration/
+        # Run trusted scripts only - they can fetch/test PR if needed
+        run: ./scripts/run-approved-integration-tests.sh
+```
+
+**❌ NEVER DO THIS:**
+```yaml
+# DON'T: Check out PR code and give it secrets
+- uses: actions/checkout@v4
+  with:
+    ref: ${{ github.event.pull_request.head.sha }}  # Untrusted PR code
+- env:
+    AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}  # Secrets exposed!
+  run: ansible-playbook tests/integration/  # Runs untrusted code with secrets
 ```
 
 **Rule 2: Secrets in env vars, not inline**
@@ -950,20 +1004,43 @@ jobs:
 
 ```bash
 # CRITICAL: Find workflows leaking secrets to fork PRs
-for f in .github/workflows/*.yml; do
-  if grep -q "on: pull_request" "$f" && grep -q "secrets\." "$f"; then
-    echo "❌ DANGER: $f exposes secrets to fork PRs!"
-  fi
-done
+# Use YAML-aware parsing (not line-based grep)
+python3 << 'EOF'
+import yaml
+from pathlib import Path
 
-# Find safe to test label gates
+for wf_file in Path(".github/workflows").glob("*.yml"):
+    with open(wf_file) as f:
+        wf = yaml.safe_load(f)
+        content = wf_file.read_text()
+    
+    # Check triggers (both inline and block forms)
+    triggers = wf.get("on", {})
+    if isinstance(triggers, dict):
+        has_pr = "pull_request" in triggers
+        has_pr_target = "pull_request_target" in triggers
+    else:
+        has_pr = "pull_request" in (triggers if isinstance(triggers, list) else [])
+        has_pr_target = False
+    
+    # Check for secret usage
+    has_secrets = "secrets." in content
+    
+    # Check for gates (label checks)
+    has_label_gate = "safe to test" in content
+    has_member_check = "author_association" in content
+    
+    if has_pr and has_secrets and not has_label_gate:
+        print(f"❌ DANGER: {wf_file} exposes secrets to fork PRs without gate!")
+    
+    if has_pr_target and "github.event.pull_request.head.sha" in content:
+        print(f"⚠️  WARNING: {wf_file} checks out PR code with pull_request_target")
+
+EOF
+
+# Quick checks
 grep -l "safe to test" .github/workflows/*.yml
-
-# Find author association checks
 grep -l "author_association" .github/workflows/*.yml
-
-# Find unsafe inline secret usage
-grep -n '\${{ secrets\.' .github/workflows/*.yml | grep -v 'env:'
 ```
 
 #### 3. Permissions Review
@@ -1446,15 +1523,22 @@ module = AnsibleModule(
 )
 ```
 
-**No credentials in logs:**
+**No credentials in logs (at ANY verbosity level):**
 
 ```python
-# ✅ SAFE
-self._display.vvvv(f"Password: {password}")  # Only with -vvvv
+# ✅ SAFE: Log only presence, not value
+self._display.vvvv(f"Using password authentication: {'yes' if password else 'no'}")
+self._display.vvvv(f"Authenticating to {host} as {username}")
 
-# ❌ DANGEROUS
-logger.debug(f"Password: {password}")  # Logged!
+# ✅ SAFE: Mask credential value
+logger.debug(f"Password: ***")
+
+# ❌ DANGEROUS: Credentials visible even at high verbosity
+self._display.vvvv(f"Password: {password}")  # LEAKED at -vvvv!
+logger.debug(f"Password: {password}")        # LEAKED to logs!
 ```
+
+**Why:** Even `-vvvv` output can be captured in CI logs, callback plugins, and log files.
 
 ---
 

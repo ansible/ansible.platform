@@ -227,7 +227,7 @@ git diff origin/devel --name-only | grep -E \
 - ✅ Sanity tests passing - ALL checks (**BLOCKING**)
 - ✅ Ruff linting passing - zero violations (**BLOCKING**)
 - ✅ Yamllint passing - zero violations (**BLOCKING**)
-- ✅ Changelog fragment present (if code changes) (**BLOCKING**)
+- ✅ Changelog fragment present (if plugins/**/*.py or tests/**/*.py changed) (**BLOCKING**)
 - ✅ JIRA issue referenced (**BLOCKING for bugfixes**, recommended for features)
 - ✅ No security issues (**BLOCKING**)
 

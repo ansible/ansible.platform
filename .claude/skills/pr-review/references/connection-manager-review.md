@@ -202,24 +202,45 @@ return self._run_persistent(cmd, in_data)  # No fallback!
 ```python
 @staticmethod
 def spawn_manager_process(script_path, socket_path, gateway_config, ...):
-    # CRITICAL: All arguments must be subprocess.Popen compatible
+    # ❌ INSECURE: Never pass credentials as command-line arguments
+    # They appear in process listings (ps, /proc/<pid>/cmdline)
+    
+    # ✅ SECURE: Use environment variables or secure IPC
     cmd = [
         sys.executable,
-        str(script_path),       # ✅ Must be str or Path
+        str(script_path),
         socket_path,
-        str(gateway_config.base_url),      # ✅ Convert vault strings
-        str(gateway_config.username) if gateway_config.username else "",
-        str(gateway_config.password) if gateway_config.password else "",
     ]
     
-    process = subprocess.Popen(cmd, ...)
+    env = os.environ.copy()
+    env['AAP_BASE_URL'] = str(gateway_config.base_url)
+    # Credentials passed via environment (not perfect but better than argv)
+    if gateway_config.username:
+        env['AAP_USERNAME'] = str(gateway_config.username)
+    if gateway_config.password:
+        env['AAP_PASSWORD'] = str(gateway_config.password)
+    
+    process = subprocess.Popen(cmd, env=env, ...)
+    
+    # ✅ BEST: Use pipe for credential passing (if subprocess accepts stdin)
+    # import json
+    # config_data = json.dumps({
+    #     'base_url': str(gateway_config.base_url),
+    #     'username': str(gateway_config.username) if gateway_config.username else None,
+    #     'password': str(gateway_config.password) if gateway_config.password else None,
+    # })
+    # process = subprocess.Popen(cmd, stdin=subprocess.PIPE, ...)
+    # process.stdin.write(config_data.encode())
+    # process.stdin.close()
 ```
 
 **Checklist:**
 
+- [ ] **NEVER pass credentials in cmd arguments** (visible in process list)
+- [ ] **Use environment variables for secrets** (less visible than argv)
+- [ ] **BEST: Use stdin pipe or secure IPC** (most secure)
 - [ ] **All cmd arguments are str/bytes/Path** (not custom objects)
 - [ ] **Vault credentials converted to str()** (AnsibleVaultEncryptedUnicode)
-- [ ] **None values handled** (convert to "" or omit)
 - [ ] **No shell=True** (security risk)
 - [ ] **Process cleanup on error**
 
@@ -263,23 +284,30 @@ socket_path = "/tmp/ansible-platform-<identifier>.sock"
 **4. Error Handling**
 
 ```python
-# ✅ GOOD: Handle spawn failures
+# ✅ CORRECT: Clean up socket only on spawn failure
 try:
     process = subprocess.Popen(cmd, ...)
+    # Success - socket is now owned by manager process
+    # Manager will clean it up on shutdown
 except OSError as e:
-    raise AnsibleConnectionFailure(f"Failed to spawn manager: {e}")
-finally:
-    # Cleanup resources
+    # Failed to spawn - clean up the socket we created
     if socket_path and os.path.exists(socket_path):
         os.unlink(socket_path)
+    raise AnsibleConnectionFailure(f"Failed to spawn manager: {e}")
+
+# ❌ WRONG: Don't unlink socket in finally block
+# finally:
+#     os.unlink(socket_path)  # Removes socket manager process needs!
 ```
 
 **Checklist:**
 
+- [ ] Socket removed ONLY on spawn failure (not in finally)
+- [ ] Successful spawn leaves socket for manager process
+- [ ] Manager shutdown handles socket cleanup (normal path)
 - [ ] Spawn failures don't leave orphaned sockets
 - [ ] Spawn failures don't leave zombie processes
 - [ ] Clear error messages for common failures
-- [ ] Resource cleanup in finally blocks
 
 ---
 
@@ -475,18 +503,40 @@ def authenticate(self):
 **5. Name → ID Lookup**
 
 ```python
+# ❌ VULNERABLE: URL injection, doesn't handle 0 or multiple results
+# def lookup_resource_id(self, resource_type, name, endpoint):
+#     result = self._make_request("GET", f"{endpoint}?name={name}")  # name can contain '&'
+#     return result["results"][0]["id"]  # Fails if 0 results, wrong if >1 results
+
+# ✅ SECURE: Use URL encoding and handle all result counts
+from urllib.parse import urlencode
+
 def lookup_resource_id(self, resource_type, name, endpoint):
-    # Critical: Used by ALL modules for reference resolution
-    result = self._make_request("GET", f"{endpoint}?name={name}")
-    return result["results"][0]["id"]
+    # Use _build_url or proper URL encoding
+    query_params = {"name": name}
+    url = f"{endpoint}?{urlencode(query_params)}"
+    
+    result = self._make_request("GET", url)
+    results = result.get("results", [])
+    
+    # Explicitly handle all cases
+    if len(results) == 0:
+        raise AnsibleError(f"{resource_type} not found: {name}")
+    elif len(results) > 1:
+        raise AnsibleError(
+            f"Ambiguous {resource_type} name '{name}': found {len(results)} matches"
+        )
+    
+    return results[0]["id"]
 ```
 
 **Checklist:**
 
+- [ ] **URL parameters properly encoded** (use urlencode or _build_url)
+- [ ] **Handles not found** (0 results → clear error)
+- [ ] **Handles multiple matches** (>1 results → error, not silent first-match)
+- [ ] **Handles special characters in names** (& = ? # etc.)
 - [ ] Lookup works for all resource types
-- [ ] Handles not found (404) gracefully
-- [ ] Handles multiple matches (ambiguous name)
-- [ ] Handles special characters in names
 - [ ] Caching works (if implemented)
 
 ---
@@ -702,23 +752,29 @@ lookup_ids(fields)  # 1 API call
 **CRITICAL: Ensure credentials never logged/exposed**
 
 ```python
-# ❌ DANGEROUS: Credentials in logs
+# ❌ DANGEROUS: Credentials in any logs (even at high verbosity)
 logger.debug(f"Auth with {username}:{password}")  # LEAKED!
+self._display.vvvv(f"Password: {password}")      # LEAKED at -vvvv!
 
-# ✅ SAFE: Mask credentials
+# ✅ SAFE: Mask credential values, log only presence
 logger.debug(f"Auth with {username}:***")
+self._display.vvvv(f"Using password authentication: {'yes' if password else 'no'}")
 
-# ✅ SAFE: Use display.vvvv for secrets (hidden by default)
-self._display.vvvv(f"Password: {password}")  # Only with -vvvv
+# ✅ SAFE: Log authentication state, not credential values
+self._display.vvvv(f"Authenticating to {host} as {username}")
 ```
 
 **Checklist:**
 
-- [ ] No credentials in logs (debug/info/warning)
+- [ ] **NEVER log credential values** (not even at -vvvv level)
+- [ ] Log only masked values (***) or presence (yes/no)
+- [ ] No credentials in logs (debug/info/warning/vvvv)
 - [ ] No credentials in error messages
 - [ ] No credentials in subprocess arguments (visible in ps)
 - [ ] Credentials converted from vault properly
 - [ ] Credentials cleared from memory when done
+
+**Why:** Even `-vvvv` output can be captured in CI logs, callback plugins, and log files.
 
 ### 2. Subprocess Security
 
