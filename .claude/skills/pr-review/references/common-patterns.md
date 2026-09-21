@@ -38,15 +38,26 @@ Instead of inline examples, point reviewers to actual code in the repository:
 ### Check Seven-File Pattern
 ```bash
 # For new module named 'foo'
-FILES=(
-  "plugins/modules/foo.py"
-  "plugins/action/foo.py"
-  "plugins/plugin_utils/ansible_models/foo.py"
-  "plugins/plugin_utils/api/v1/foo.py"
+# See docs/07-adding-resources.md for details
+REQUIRED_FILES=(
+  "plugins/modules/foo.py"                                    # 1. Module
+  "plugins/plugin_utils/ansible_models/foo.py"                # 2. Ansible model
+  "plugins/plugin_utils/api/v1/foo.py"                        # 3. Transform mixin
+  "plugins/action/foo.py"                                     # 4. Action plugin
+  "tests/integration/targets/foos_test/tasks/main.yml"        # 5. Integration tests (note plural 'foos')
 )
 
-for f in "${FILES[@]}"; do
-  test -f "$f" && echo "✅ $f" || echo "❌ Missing: $f"
+OPTIONAL_FILES=(
+  "extensions/molecule/foo_mock/"                             # 6. Molecule mock (recommended)
+  "tests/unit/plugins/plugin_utils/api/v1/test_foo.py"       # 7. Unit tests (if complex transforms)
+)
+
+for f in "${REQUIRED_FILES[@]}"; do
+  test -f "$f" || test -d "$f" && echo "✅ $f" || echo "❌ Missing: $f"
+done
+
+for f in "${OPTIONAL_FILES[@]}"; do
+  test -f "$f" || test -d "$f" && echo "✅ $f" || echo "⚠️  Recommended: $f"
 done
 ```
 
@@ -87,10 +98,11 @@ Use this for all PR types:
 - [ ] No credential logging (even at -vvvv)
 - [ ] No plaintext passwords in subprocess args
 
-### Testing (BLOCKING)
-- [ ] Unit tests for new code
-- [ ] Transform tests (to_api/from_api)
-- [ ] Regression test for bugfixes
+### Testing (BLOCKING - apply based on PR type)
+- [ ] Unit tests for new code (if plugins/**/*.py changed)
+- [ ] Transform tests (to_api/from_api) - ONLY if transform logic changed
+- [ ] Regression test for bugfixes (bugfix PRs only)
+- [ ] Workflow validation (CI/workflow PRs only - use actionlint)
 
 ## Common Code Smells
 

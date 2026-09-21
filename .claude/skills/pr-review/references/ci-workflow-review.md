@@ -26,11 +26,29 @@ Review checklist for CI, GitHub Actions, and workflow changes.
 **Quick secret protection check:**
 ```bash
 # Does workflow use secrets AND run on pull_request?
-grep -l "secrets\." .github/workflows/*.yml | \
-  xargs grep -l "on: pull_request" && \
-  echo "⚠️ DANGER: Secrets exposed to fork PRs!"
+# Parse YAML to check both inline and block forms
+python3 -c '
+import yaml
+import sys
+from pathlib import Path
 
-# Should use pull_request_target + label gate instead
+for wf_file in Path(".github/workflows").glob("*.yml"):
+    with open(wf_file) as f:
+        wf = yaml.safe_load(f)
+    
+    # Check if workflow has secrets and pull_request trigger
+    has_secrets = "secrets." in wf_file.read_text()
+    triggers = wf.get("on", {})
+    if isinstance(triggers, dict):
+        has_pr = "pull_request" in triggers
+    else:
+        has_pr = "pull_request" in (triggers if isinstance(triggers, list) else [])
+    
+    if has_secrets and has_pr:
+        print(f"⚠️ DANGER: {wf_file} exposes secrets to fork PRs!")
+'
+
+# Verify label-gated workflows exist
 grep -l "safe to test" .github/workflows/*.yml
 ```
 
@@ -73,20 +91,26 @@ git diff origin/devel --name-status .github/workflows/ | grep '^A'
 #### 1.1 Syntax and Structure
 
 ```bash
-# Validate workflow YAML syntax
+# Validate YAML syntax only
 yamllint .github/workflows/<workflow>.yml
 
-# Check GitHub Actions syntax
-gh workflow view <workflow-name> --repo ansible/ansible.platform
+# Validate GitHub Actions workflow syntax locally (REQUIRED)
+actionlint .github/workflows/<workflow>.yml
+
+# Alternative: dry-run validation
+act --dryrun -W .github/workflows/<workflow>.yml
 ```
 
 **Checklist:**
 
-- [ ] Valid YAML syntax
+- [ ] Valid YAML syntax (yamllint)
+- [ ] Valid GitHub Actions syntax (actionlint - REQUIRED)
 - [ ] Workflow name is clear and descriptive
 - [ ] Trigger conditions are appropriate
 - [ ] Jobs are properly defined
 - [ ] Steps are in logical order
+
+**Note:** `gh workflow view` only shows the workflow file stored in the repository, not your local changes. Always use `actionlint` or `act --dryrun` to validate modified workflows locally.
 
 #### 1.2 Trigger Conditions
 
@@ -184,7 +208,21 @@ jobs:
       - run: |
           echo "${{ secrets.AAP_PASSWORD }}"  # LEAKED to fork!
 
-# ✅ SAFE: Use pull_request_target with label gate
+# ✅ SAFE: Use pull_request WITHOUT secrets for fork testing
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v4
+        # Runs PR code (safe - no secrets exposed)
+      - run: |
+          echo "Running tests without secrets"
+          make test-unit
+
+# ✅ SAFE: Separate workflow for privileged operations (uses trusted code only)
 on:
   pull_request:
     types: [labeled]
@@ -195,11 +233,12 @@ jobs:
       github.event.label.name == 'safe to test' &&
       github.event.pull_request.author_association == 'MEMBER'
     steps:
+      # Checks out BASE branch (trusted repository code)
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
       - run: |
-          echo "Secrets only after manual approval"
+          echo "Secrets only in trusted code"
+          # Run integration tests using trusted scripts
+          ./scripts/run-integration-tests.sh
         env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
 ```
@@ -296,22 +335,32 @@ grep -n "safe to test" .github/workflows/*.yml
 #### 1.6 Dependencies and Actions
 
 ```yaml
-# ✅ GOOD: Pinned to specific version
-- uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab  # v3.5.2
+# ✅ BEST: Third-party actions pinned to immutable SHA
+- uses: octokit/request-action@872c5c97b3c85c23516a572f02b31401ef82415d  # v2.1.0
 
-# ⚠️ ACCEPTABLE: Pinned to major version (with auto-updates)
+# ✅ ACCEPTABLE: First-party GitHub actions with major version
 - uses: actions/checkout@v4
+- uses: actions/setup-python@v5
 
-# ❌ BAD: Unpinned, can break anytime
+# ❌ BAD: Mutable references (can break or introduce vulnerabilities)
 - uses: actions/checkout@main
+- uses: third-party/action@v1  # Tags can be moved
 ```
+
+**Pinning Policy:**
+- **Third-party actions:** MUST be pinned to commit SHA (immutable)
+- **GitHub actions/\*:** MAY use major version tags (e.g., @v4)
+- **Never use:** @main, @master, or other branch names
+- **Always include:** Version comment for SHA pins
 
 **Checklist:**
 
-- [ ] Actions pinned to SHA or major version
+- [ ] Third-party actions pinned to commit SHA (REQUIRED)
+- [ ] First-party actions use major version tags or SHAs
+- [ ] No mutable references (@main, @master, branch names)
+- [ ] Version comments included for all SHA pins
 - [ ] No deprecated actions
 - [ ] Dependencies are maintained/trustworthy
-- [ ] Version comments included for pinned SHAs
 
 ---
 
