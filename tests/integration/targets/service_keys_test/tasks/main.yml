@@ -1,7 +1,7 @@
 ---
 - name: Load existing service keys
   ansible.builtin.set_fact:
-    existing_service_keys: "{{ lookup('ansible.platform.gateway_api', 'service_keys', **connection_info) }}"
+    existing_service_keys: "{{ query('ansible.platform.gateway_api', 'service_keys', **connection_info) }}"
 
 - name: Ensure a service key is available for update tests
   ansible.builtin.fail:
