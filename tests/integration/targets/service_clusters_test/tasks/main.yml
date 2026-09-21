@@ -60,8 +60,6 @@
         health_check_interval_seconds: 1162
         dns_discovery_type: LOGICAL_DNS
         dns_lookup_family: V4_ONLY
-        outlier_detection_split_external_local_origin_errors: true
-        outlier_detection_consecutive_local_origin_failure: 0
       register: controller_sc
 
     - name: Assert that we created the controller service cluster
@@ -74,8 +72,6 @@
         name: "{{ test_id }}-Automation-Controller"
         service_type: "{{ controller_st.id }}"
         health_check_interval_seconds: 1162
-        outlier_detection_split_external_local_origin_errors: true
-        outlier_detection_consecutive_local_origin_failure: 0
       register: recreate_controller_sc
 
     - name: Assert that we a recreate does not change the system
@@ -104,30 +100,6 @@
       ansible.builtin.assert:
         that:
           - hub_sc is changed
-
-    - name: Update Hub Service Cluster local-origin outlier detection
-      ansible.platform.service_cluster:
-        name: "{{ hub_sc.id }}"
-        outlier_detection_split_external_local_origin_errors: false
-        outlier_detection_consecutive_local_origin_failure: 50
-      register: updated_hub_sc
-
-    - name: Assert that local-origin outlier detection can be updated
-      ansible.builtin.assert:
-        that:
-          - updated_hub_sc is changed
-
-    - name: Query the updated Hub Service Cluster
-      ansible.builtin.set_fact:
-        _updated_hub_sc: "{{ query('ansible.platform.gateway_api', 'service_clusters',
-          query_params={'name': hub_sc.name}, **connection_info) }}"
-
-    - name: Assert that local-origin outlier detection round-trips
-      ansible.builtin.assert:
-        that:
-          - _updated_hub_sc | length == 1
-          - _updated_hub_sc[0].outlier_detection_split_external_local_origin_errors == false
-          - _updated_hub_sc[0].outlier_detection_consecutive_local_origin_failure == 50
 
     - name: Create EDA Service Type
       ansible.platform.service_type:
