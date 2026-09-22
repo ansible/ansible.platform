@@ -49,8 +49,8 @@
     - name: Read the user's authenticator association
       ansible.builtin.set_fact:
         source_authenticator_users: >-
-          {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
-                    **connection_info)
+          {{ query('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
+                   **connection_info)
              | selectattr('user', 'equalto', test_user.id)
              | selectattr('provider', 'equalto', source_authenticator.id)
              | list }}
@@ -76,8 +76,8 @@
     - name: Confirm that check mode did not move the authenticator user
       ansible.builtin.set_fact:
         authenticator_users_after_check_mode: >-
-          {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
-                    **connection_info)
+          {{ query('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
+                   **connection_info)
              | selectattr('id', 'equalto', source_authenticator_users[0].id)
              | list }}
 
@@ -102,8 +102,8 @@
     - name: Read the moved authenticator association
       ansible.builtin.set_fact:
         moved_authenticator_users: >-
-          {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
-                    **connection_info)
+          {{ query('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
+                   **connection_info)
              | selectattr('id', 'equalto', source_authenticator_users[0].id)
              | list }}
 
