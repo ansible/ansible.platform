@@ -55,8 +55,7 @@
         source_authenticator_users: >-
           {{ query('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
                    **connection_info)
-             | selectattr('user', 'equalto', test_user.id)
-             | selectattr('provider', 'equalto', source_authenticator.id)
+             | selectattr('uid', 'equalto', username)
              | list }}
 
     - name: Assert that the source authenticator association exists
@@ -64,6 +63,8 @@
         that:
           - source_authenticator_users | length == 1
           - source_authenticator_users[0].uid == username
+          - source_authenticator_users[0].user | int == test_user.id | int
+          - source_authenticator_users[0].provider | int == source_authenticator.id | int
 
     - name: Move the authenticator user in check mode
       ansible.platform.authenticator_user:
@@ -89,7 +90,7 @@
       ansible.builtin.assert:
         that:
           - authenticator_users_after_check_mode | length == 1
-          - authenticator_users_after_check_mode[0].provider == source_authenticator.id
+          - authenticator_users_after_check_mode[0].provider | int == source_authenticator.id | int
 
     - name: Move the authenticator user
       ansible.platform.authenticator_user:
@@ -101,7 +102,7 @@
       ansible.builtin.assert:
         that:
           - move_result is changed
-          - move_result.id == source_authenticator_users[0].id
+          - move_result.id | int == source_authenticator_users[0].id | int
 
     - name: Read the moved authenticator association
       ansible.builtin.set_fact:
@@ -115,8 +116,8 @@
       ansible.builtin.assert:
         that:
           - moved_authenticator_users | length == 1
-          - moved_authenticator_users[0].provider == destination_authenticator.id
-          - moved_authenticator_users[0].user == test_user.id
+          - moved_authenticator_users[0].provider | int == destination_authenticator.id | int
+          - moved_authenticator_users[0].user | int == test_user.id | int
 
     - name: Move the authenticator user again
       ansible.platform.authenticator_user:
