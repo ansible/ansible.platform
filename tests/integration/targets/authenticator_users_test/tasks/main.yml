@@ -39,12 +39,16 @@
           SECRET: github-oauth2-secret
       register: destination_authenticator
 
-    - name: Create a user associated with the source authenticator
+    - name: Create the test user
       ansible.platform.user:
         username: "{{ username }}"
         password: "{{ 65535 | random | to_uuid }}"
-        associated_authenticators: "{{ {source_authenticator.id: {'uid': username}} }}"
       register: test_user
+
+    - name: Associate the user with the source authenticator
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: "{{ {source_authenticator.id: {'uid': username}} }}"
 
     - name: Read the user's authenticator association
       ansible.builtin.set_fact:
