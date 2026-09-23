@@ -594,7 +594,8 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=service_version, service=service, operation=operation, include_nulls_for_update=include_nulls
+            manager=self, session=self.session, cache=self.cache, api_version=service_version,
+            service=service, operation=operation, include_nulls_for_update=include_nulls,
         )
 
         # Execute operation (shared CRUD logic)
