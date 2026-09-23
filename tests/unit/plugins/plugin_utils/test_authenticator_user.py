@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
@@ -35,19 +36,22 @@ class TestAuthenticatorUserTransform(unittest.TestCase):
         self.assertEqual(api.id, 42)
         self.assertEqual(api.new_authenticator, 7)
 
-    def test_from_api_maps_provider_to_authenticator(self):
+    def test_from_api_resolves_provider_slug_to_authenticator_id(self):
+        manager = Mock()
+        manager.lookup_resource_id.return_value = 7
         ansible = AuthenticatorUserTransformMixin_v1.from_api(
             {
                 "id": 42,
-                "provider": 7,
+                "provider": "example-authenticator",
                 "uid": "example-user",
                 "user": 10,
             },
-            {},
+            {"manager": manager},
         )
 
         self.assertEqual(ansible.authenticator_user_id, "42")
         self.assertEqual(ansible.authenticator, "7")
+        manager.lookup_resource_id.assert_called_once_with("authenticators", "slug", "example-authenticator")
         self.assertEqual(ansible.uid, "example-user")
         self.assertEqual(ansible.user, 10)
 
