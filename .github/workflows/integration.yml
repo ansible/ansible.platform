@@ -67,6 +67,14 @@ jobs:
             -e gateway_vars=$(readlink -f container-startup.yml)
         working-directory: aap-gateway
 
+      - name: Seed a service key for edit-only collection tests
+        run: >-
+          docker exec aap_gw_1 aap-gateway-manage shell -c
+          "from aap_gateway_api.models import ServiceCluster, ServiceKey;
+          ServiceKey.objects.get_or_create(
+          name='ansible-platform-collection-test-service-key',
+          defaults={'service_cluster': ServiceCluster.objects.get(name='gateway')})"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
