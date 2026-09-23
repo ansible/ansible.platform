@@ -1,7 +1,11 @@
 ---
+- name: Set the seeded service key name
+  ansible.builtin.set_fact:
+    service_key_test_name: ansible-platform-collection-test-service-key
+
 - name: Load existing service keys
   ansible.builtin.set_fact:
-    existing_service_keys: "{{ query('ansible.platform.gateway_api', 'service_keys', **connection_info) }}"
+    existing_service_keys: "{{ query('ansible.platform.gateway_api', 'service_keys', query_params={'name': service_key_test_name}, **connection_info) }}"
 
 - name: Ensure a service key is available for update tests
   ansible.builtin.fail:
