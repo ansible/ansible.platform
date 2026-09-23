@@ -64,7 +64,7 @@
           - source_authenticator_users | length == 1
           - source_authenticator_users[0].uid == username
           - source_authenticator_users[0].user | int == test_user.id | int
-          - source_authenticator_users[0].provider | int == source_authenticator.id | int
+          - source_authenticator_users[0].provider == source_authenticator.slug
 
     - name: Move the authenticator user in check mode
       ansible.platform.authenticator_user:
@@ -90,7 +90,7 @@
       ansible.builtin.assert:
         that:
           - authenticator_users_after_check_mode | length == 1
-          - authenticator_users_after_check_mode[0].provider | int == source_authenticator.id | int
+          - authenticator_users_after_check_mode[0].provider == source_authenticator.slug
 
     - name: Move the authenticator user
       ansible.platform.authenticator_user:
@@ -116,7 +116,7 @@
       ansible.builtin.assert:
         that:
           - moved_authenticator_users | length == 1
-          - moved_authenticator_users[0].provider | int == destination_authenticator.id | int
+          - moved_authenticator_users[0].provider == destination_authenticator.slug
           - moved_authenticator_users[0].user | int == test_user.id | int
 
     - name: Move the authenticator user again
