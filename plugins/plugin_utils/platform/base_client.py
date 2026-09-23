@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
 from ..platform.loader import DynamicClassLoader
-from ..platform.registry import APIVersionRegistry, DEFAULT_SERVICE
+from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 

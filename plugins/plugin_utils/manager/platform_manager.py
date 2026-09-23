@@ -514,7 +514,8 @@ class PlatformService(BaseAPIClient):
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         ansible_instance = AnsibleClass(**ansible_data_dict)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=service_version, service=service, operation=operation, include_nulls_for_update=include_nulls
+            manager=self, session=self.session, cache=self.cache, api_version=service_version,
+            service=service, operation=operation, include_nulls_for_update=include_nulls,
         )
 
         try:

@@ -6,7 +6,7 @@ and module implementations, scoped by service (gateway, controller, etc.).
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
