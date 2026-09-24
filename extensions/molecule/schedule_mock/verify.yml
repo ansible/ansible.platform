@@ -1,0 +1,94 @@
+---
+# Verify: all three connection scenarios (local, http direct, http persistent).
+- name: Verify — schedule created with connection local (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_ujt_name: "molecule-ujt-local"
+    molecule_schedule_name: "molecule-schedule-local"
+  tasks:
+    - name: Get schedule (state exists, connection local)
+      ansible.platform.schedule:
+        name: "{{ molecule_schedule_name }}"
+        unified_job_template: "{{ molecule_ujt_name }}"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert schedule was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('schedule') is defined
+        fail_msg: "Verify: schedule {{ molecule_schedule_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+
+    - name: Assert schedule was disabled by the update (connection local)
+      ansible.builtin.assert:
+        that: exists_result_local.schedule.enabled == false
+        fail_msg: "Verify: schedule (local) was not disabled as expected."
+      vars:
+        ansible_connection: local
+
+- name: Verify — schedule created with http direct (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_ujt_name: "molecule-ujt-http-direct"
+    molecule_schedule_name: "molecule-schedule-http-direct"
+  tasks:
+    - name: Get schedule (state exists, http direct)
+      ansible.platform.schedule:
+        name: "{{ molecule_schedule_name }}"
+        unified_job_template: "{{ molecule_ujt_name }}"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert schedule was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+        fail_msg: "Verify: schedule {{ molecule_schedule_name }} not found (http direct)."
+
+- name: Verify — schedule created with http persistent (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_ujt_name: "molecule-ujt-http-persistent"
+    molecule_schedule_name: "molecule-schedule-http-persistent"
+  tasks:
+    - name: Get schedule (state exists, http persistent)
+      ansible.platform.schedule:
+        name: "{{ molecule_schedule_name }}"
+        unified_job_template: "{{ molecule_ujt_name }}"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert schedule was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+        fail_msg: "Verify: schedule {{ molecule_schedule_name }} not found (http persistent)."
+...

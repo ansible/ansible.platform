@@ -24,4 +24,11 @@ action_groups:
     - token
     - ui_plugin_route
     - user
+  controller:
+    - host
+    - inventory
+    - inventory_source
+    - inventory_source_update
+    - job_launch
+    - schedule
 ...

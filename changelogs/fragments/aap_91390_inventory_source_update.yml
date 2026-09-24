@@ -1,0 +1,10 @@
+minor_changes:
+  - inventory_source_update - add module migrated from awx.awx/ansible.controller
+    to launch an inventory source update (sync)
+    (https://issues.redhat.com/browse/AAP-91390).
+bugfixes:
+  - Fix the SDK layer's shared operation executor to actually call the API for
+    an endpoint operation intentionally declared with no request-body fields
+    (a launch-trigger sub-action), and to resolve any custom path parameter
+    name declared on an EndpointOperation instead of only ever substituting
+    a param literally named C(id).

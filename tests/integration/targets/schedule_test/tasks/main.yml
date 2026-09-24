@@ -1,0 +1,137 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Schedule-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create Organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Organization"
+      register: org1
+
+    - name: Create Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+      register: inv1
+
+    # An inventory_source is itself a schedulable unified_job_template — used
+    # here instead of a job_template (not part of this migration batch) so the
+    # test stays self-contained.
+    - name: Create inventory source (schedulable unified_job_template)
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Source"
+        inventory: "{{ inv1.name }}"
+        source: scm
+        source_path: "inventory.yml"
+      register: source1
+
+    - name: Create schedule
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Schedule"
+        unified_job_template: "{{ source1.inventory_source.name }}"
+        rrule: "DTSTART:20991219T130551Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+      register: created_schedule
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_schedule is changed
+          - created_schedule.schedule.name is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Schedule"
+        unified_job_template: "{{ source1.inventory_source.name }}"
+        rrule: "DTSTART:20991219T130551Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+      register: idempotent_schedule
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_schedule is not changed
+
+    - name: Update schedule (disable it)
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Schedule"
+        unified_job_template: "{{ source1.inventory_source.name }}"
+        enabled: false
+      register: updated_schedule
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_schedule is changed
+          - updated_schedule.schedule.id == created_schedule.schedule.id
+
+    - name: Check exists returns true
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Schedule"
+        unified_job_template: "{{ source1.inventory_source.name }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true and no change
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Delete schedule
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Schedule"
+        unified_job_template: "{{ source1.inventory_source.name }}"
+        state: absent
+      register: deleted_schedule
+
+    - name: Assert delete changed
+      ansible.builtin.assert:
+        that:
+          - deleted_schedule is changed
+
+    - name: Delete schedule again (idempotent)
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Schedule"
+        unified_job_template: "{{ source1.inventory_source.name }}"
+        state: absent
+      register: deleted_schedule_again
+
+    - name: Assert repeat delete is a no-op
+      ansible.builtin.assert:
+        that:
+          - deleted_schedule_again is not changed
+
+  always:
+    - name: Delete Inventory Source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Source"
+        inventory: "{{ name_prefix }}-Inventory"
+        state: absent
+      when: inv1 is defined and "id" in inv1
+
+    - name: Delete Inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+
+    - name: Delete Organization
+      ansible.platform.organization:
+        name: "{{ org1.name }}"
+        state: absent
+      when: org1 is defined and "id" in org1
+...

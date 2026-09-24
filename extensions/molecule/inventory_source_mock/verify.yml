@@ -1,0 +1,96 @@
+---
+# Verify: all three connection scenarios (local, http direct, http persistent).
+- name: Verify — inventory_source created with connection local (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_inv_name: "Molecule Test Inventory InvSource Local"
+    molecule_source_name: "molecule-source-local"
+  tasks:
+    - name: Get inventory source (state exists, connection local)
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert inventory source was found (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+          - exists_result_local.get('inventory_source') is defined
+        fail_msg: "Verify: inventory source {{ molecule_source_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+
+    - name: Assert updated fields persisted (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local.inventory_source.overwrite == false
+          - exists_result_local.inventory_source.update_on_launch == true
+        fail_msg: "Verify: inventory source (local) was not updated as expected."
+      vars:
+        ansible_connection: local
+
+- name: Verify — inventory_source created with http direct (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_inv_name: "Molecule Test Inventory InvSource HTTP Direct"
+    molecule_source_name: "molecule-source-http-direct"
+  tasks:
+    - name: Get inventory source (state exists, http direct)
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_http_direct
+
+    - name: Assert inventory source was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_direct is not failed
+          - exists_result_http_direct.get('exists') | default(false) | bool
+        fail_msg: "Verify: inventory source {{ molecule_source_name }} not found (http direct)."
+
+- name: Verify — inventory_source created with http persistent (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_inv_name: "Molecule Test Inventory InvSource HTTP Persistent"
+    molecule_source_name: "molecule-source-http-persistent"
+  tasks:
+    - name: Get inventory source (state exists, http persistent)
+      ansible.platform.inventory_source:
+        name: "{{ molecule_source_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: exists
+      register: exists_result_http_persistent
+
+    - name: Assert inventory source was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_http_persistent is not failed
+          - exists_result_http_persistent.get('exists') | default(false) | bool
+        fail_msg: "Verify: inventory source {{ molecule_source_name }} not found (http persistent)."
+...

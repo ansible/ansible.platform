@@ -53,6 +53,8 @@ class GenericResource:
         start_id: int = 2000,
         patch_fields: Optional[List[str]] = None,
         post_only_fields: Optional[Dict[str, Callable[[], Any]]] = None,
+        url_prefix: Optional[str] = None,
+        associations: Optional[List[str]] = None,
     ):
         self.lock = threading.Lock()
         self.resource_name = resource_name
@@ -61,8 +63,18 @@ class GenericResource:
         # post_only_fields: generated on POST, returned in create response, never stored.
         # Simulates API-generated secrets like client_secret that are only visible once.
         self.post_only_fields: Dict[str, Callable[[], Any]] = post_only_fields or {}
+        # url_prefix: full base path (e.g. "/api/controller/v2/inventories/") used to
+        # build the "url" field and copies. None = legacy gateway pattern built from `version`.
+        self.url_prefix: Optional[str] = url_prefix
+        # associations: sub-endpoint names this resource supports (e.g. "instance_groups").
+        self.associations: List[str] = associations or []
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
+
+    def _build_url(self, version: str, item_id: int) -> str:
+        if self.url_prefix:
+            return f"{self.url_prefix}{item_id}/"
+        return f"/api/gateway/v{version}/{self.resource_name}/{item_id}/"
 
     def create(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
@@ -75,7 +87,7 @@ class GenericResource:
                 "id": item_id,
                 "created": _now_iso(),
                 "modified": _now_iso(),
-                "url": f"/api/gateway/v{version}/{self.resource_name}/{item_id}/",
+                "url": self._build_url(version, item_id),
             }
             item.update({k: v for k, v in payload.items() if v is not None})
             self._items[item_id] = item
@@ -85,6 +97,48 @@ class GenericResource:
             for field_name, generator in self.post_only_fields.items():
                 response[field_name] = generator()
             return response
+
+    def get_associations(self, item_id: int, field: str) -> List[int]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            return list(self._items[item_id].get(f"_assoc_{field}", []))
+
+    def set_association(self, item_id: int, field: str, ref_id: Any, associate: bool) -> bool:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            item = dict(self._items[item_id])
+            key = f"_assoc_{field}"
+            current = set(item.get(key, []))
+            changed = False
+            if associate and ref_id not in current:
+                current.add(ref_id)
+                changed = True
+            elif not associate and ref_id in current:
+                current.discard(ref_id)
+                changed = True
+            item[key] = sorted(current)
+            item["modified"] = _now_iso()
+            self._items[item_id] = item
+            return changed
+
+    def copy_item(self, item_id: int, version: str, new_name: str) -> Dict[str, Any]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            if not new_name:
+                raise ValueError("name is required for copy")
+            new_id = self._next_id
+            self._next_id += 1
+            new_item = dict(self._items[item_id])
+            new_item["id"] = new_id
+            new_item["name"] = new_name
+            new_item["created"] = _now_iso()
+            new_item["modified"] = _now_iso()
+            new_item["url"] = self._build_url(version, new_id)
+            self._items[new_id] = new_item
+            return dict(new_item)
 
     def list_items(self, filters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         with self.lock:
@@ -190,6 +244,105 @@ class Store:
 
     # Generic resource stores (keyed by endpoint name)
     _resources: Dict[str, GenericResource] = field(default_factory=dict)
+
+    # Generic Controller-side resource stores (/api/controller/v2/{name}/).
+    # Organizations are handled separately (see _route_controller) — Controller
+    # mirrors the Gateway's org table via a shared ID space, so it reuses
+    # orgs_by_id/orgs_by_name rather than a second independent store.
+    _controller_resources: Dict[str, GenericResource] = field(default_factory=dict)
+
+    def _init_controller_resources(self) -> None:
+        """Create Controller-side (/api/controller/v2/) generic resource stores."""
+        self._controller_resources["instance_groups"] = GenericResource(
+            resource_name="instance_groups",
+            required_fields=["name"],
+            start_id=100,
+            url_prefix="/api/controller/v2/instance_groups/",
+        )
+        self._controller_resources["inventories"] = GenericResource(
+            resource_name="inventories",
+            required_fields=["name", "organization"],
+            start_id=5000,
+            url_prefix="/api/controller/v2/inventories/",
+            associations=["instance_groups", "input_inventories"],
+        )
+        self._controller_resources["hosts"] = GenericResource(
+            resource_name="hosts",
+            required_fields=["name", "inventory"],
+            start_id=6000,
+            url_prefix="/api/controller/v2/hosts/",
+        )
+        self._controller_resources["credentials"] = GenericResource(
+            resource_name="credentials",
+            required_fields=["name"],
+            start_id=7000,
+            url_prefix="/api/controller/v2/credentials/",
+        )
+        self._controller_resources["execution_environments"] = GenericResource(
+            resource_name="execution_environments",
+            required_fields=["name"],
+            start_id=8000,
+            url_prefix="/api/controller/v2/execution_environments/",
+        )
+        self._controller_resources["projects"] = GenericResource(
+            resource_name="projects",
+            required_fields=["name"],
+            start_id=9000,
+            url_prefix="/api/controller/v2/projects/",
+        )
+        self._controller_resources["notification_templates"] = GenericResource(
+            resource_name="notification_templates",
+            required_fields=["name"],
+            start_id=10000,
+            url_prefix="/api/controller/v2/notification_templates/",
+        )
+        self._controller_resources["inventory_sources"] = GenericResource(
+            resource_name="inventory_sources",
+            required_fields=["name", "inventory"],
+            start_id=11000,
+            url_prefix="/api/controller/v2/inventory_sources/",
+            associations=["notification_templates_started", "notification_templates_success", "notification_templates_error"],
+        )
+        self._controller_resources["inventory_updates"] = GenericResource(
+            resource_name="inventory_updates",
+            required_fields=[],
+            start_id=12000,
+            url_prefix="/api/controller/v2/inventory_updates/",
+        )
+        self._controller_resources["unified_job_templates"] = GenericResource(
+            resource_name="unified_job_templates",
+            required_fields=["name"],
+            start_id=13000,
+            url_prefix="/api/controller/v2/unified_job_templates/",
+        )
+        self._controller_resources["labels"] = GenericResource(
+            resource_name="labels",
+            required_fields=["name"],
+            start_id=14000,
+            url_prefix="/api/controller/v2/labels/",
+        )
+        self._controller_resources["schedules"] = GenericResource(
+            resource_name="schedules",
+            required_fields=["name"],
+            start_id=15000,
+            url_prefix="/api/controller/v2/schedules/",
+            associations=["credentials", "labels", "instance_groups"],
+        )
+        self._controller_resources["job_templates"] = GenericResource(
+            resource_name="job_templates",
+            required_fields=["name"],
+            start_id=16000,
+            url_prefix="/api/controller/v2/job_templates/",
+        )
+        self._controller_resources["jobs"] = GenericResource(
+            resource_name="jobs",
+            required_fields=[],
+            start_id=17000,
+            url_prefix="/api/controller/v2/jobs/",
+        )
+
+    def controller_resource(self, name: str) -> Optional[GenericResource]:
+        return self._controller_resources.get(name)
 
     def _init_resources(self) -> None:
         """Create all generic resource stores with appropriate config."""
@@ -507,6 +660,13 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     store: Store
     reported_api_version: str
 
+    # (source_resource, sub_action) -> target resource store name for
+    # launch-trigger sub-actions (POST {source}/{id}/{sub_action}/).
+    _LAUNCH_SUB_ACTIONS = {
+        ("inventory_sources", "update"): "inventory_updates",
+        ("job_templates", "launch"): "jobs",
+    }
+
     def log_message(self, fmt: str, *args) -> None:
         return  # suppress per-request noise
 
@@ -537,20 +697,51 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(raw.decode("utf-8"))
 
+    def _advance_launch_job_poll(self, store: "GenericResource", item_id: int) -> Dict[str, Any]:
+        """Advance a launched job's pending -> successful lifecycle on each GET-by-id poll.
+
+        Used for both inventory_updates (inventory_source's /update/) and jobs
+        (job_template's /launch/). Simulates a real Controller job staying pending
+        across the first two polls before resolving, so wait/poll loops in tests
+        actually poll more than once instead of the mock resolving synchronously
+        on launch.
+        """
+        with store.lock:
+            if item_id not in store._items:
+                raise KeyError("not found")
+            item = store._items[item_id]
+
+            if item.get("finished"):
+                return dict(item)
+
+            item["_polls"] = item.get("_polls", 0) + 1
+            if item["_polls"] >= 2:
+                item["status"] = "successful"
+                item["finished"] = _now_iso()
+                item["modified"] = _now_iso()
+
+            return dict(item)
+
     # ------------------------------------------------------------------
     # Generic CRUD helper
     # ------------------------------------------------------------------
 
     def _handle_generic_resource(self, resource_name: str, parts: list, version: str, qs: Dict[str, list]) -> bool:
         """
-        Handle CRUD for any generic resource.
+        Handle CRUD for any generic Gateway resource.
         Returns True if the request was handled, False otherwise.
         """
         store = self.store.resource(resource_name)
         if store is None:
             return False
+        return self._handle_generic_resource_store(store, parts, version, qs)
 
-        # List / Create:  /api/gateway/vX/{resource}/
+    def _handle_generic_resource_store(self, store: "GenericResource", parts: list, version: str, qs: Dict[str, list]) -> bool:
+        """
+        Handle list/create/get/patch/delete for any generic resource store.
+        Returns True if the request was handled, False otherwise.
+        """
+        # List / Create:  /api/{service}/vX/{resource}/
         if len(parts) == 4:
             if self.command == "GET":
                 filters = {k: v[0] for k, v in qs.items() if v}
@@ -574,7 +765,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
             if self.command == "GET":
                 try:
-                    self._send_json(200, store.get(item_id))
+                    if store.resource_name in ("inventory_updates", "jobs"):
+                        self._send_json(200, self._advance_launch_job_poll(store, item_id))
+                    else:
+                        self._send_json(200, store.get(item_id))
                 except KeyError:
                     self._send_json(404, {"detail": "Not Found"})
                 return True
@@ -594,6 +788,143 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 return True
 
         return False
+
+    # ------------------------------------------------------------------
+    # Controller router (/api/controller/v2/...)
+    # ------------------------------------------------------------------
+
+    def _route_controller(self, parts: list, qs: Dict[str, list]) -> None:
+        if len(parts) < 3 or parts[2] != "v2":
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        resource = parts[3] if len(parts) >= 4 else None
+
+        # Organizations: Controller mirrors the Gateway's org table via a shared
+        # ID space (single unified-auth source of truth), so reuse that store
+        # instead of a second independent one.
+        if resource == "organizations":
+            if len(parts) == 4 and self.command == "GET":
+                name = (qs.get("name") or [None])[0]
+                self._send_json(200, self.store.list_orgs(name=name))
+                return
+            if len(parts) == 5:
+                try:
+                    org_id = int(parts[4])
+                except ValueError:
+                    self._send_json(404, {"detail": "Not Found"})
+                    return
+                if self.command == "GET":
+                    try:
+                        self._send_json(200, self.store.get_org(org_id))
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    return
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        # unified_job_templates: real Controller is a polymorphic view over
+        # job_templates/inventory_sources/projects/workflow_job_templates sharing
+        # their IDs, not a separate table. GET (list, by name) unions those
+        # concrete stores plus the dedicated unified_job_templates store itself
+        # (kept for tests that only need an arbitrary launchable-looking fixture,
+        # e.g. schedule's unified_job_template field, with no real /launch/
+        # sub-action behind it). POST still creates directly in the dedicated
+        # store, for that same fixture use case.
+        if resource == "unified_job_templates" and len(parts) == 4 and self.command == "GET":
+            name = (qs.get("name") or [None])[0]
+            combined = []
+            for backing in ("unified_job_templates", "job_templates", "inventory_sources"):
+                backing_store = self.store.controller_resource(backing)
+                if backing_store is None:
+                    continue
+                combined.extend(backing_store.list_items({"name": name} if name else None)["results"])
+            self._send_json(200, {"count": len(combined), "results": combined})
+            return
+
+        store = self.store.controller_resource(resource) if resource else None
+        if store is None:
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        # Association / copy sub-endpoint:  /api/controller/v2/{resource}/{id}/{field}/
+        if len(parts) == 6:
+            try:
+                item_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            field = parts[5]
+
+            if field == "copy":
+                if self.command == "POST":
+                    try:
+                        payload = self._parse_json_body()
+                        copied = store.copy_item(item_id, "2", payload.get("name"))
+                        self._send_json(201, copied)
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    except ValueError as e:
+                        self._send_json(400, {"detail": str(e)})
+                    return
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            # Launch-trigger sub-actions: POST {resource}/{id}/{field}/ creates a
+            # new job-like item in a separate store (e.g. inventory_sources'
+            # /update/ -> inventory_updates, job_templates' /launch/ -> jobs).
+            # Stays pending across the first two GET-by-id polls (see
+            # _advance_launch_job_poll) so wait/poll loops actually poll
+            # more than once, instead of the mock resolving synchronously.
+            launch_target = self._LAUNCH_SUB_ACTIONS.get((resource, field))
+            if launch_target:
+                if self.command == "POST":
+                    try:
+                        source = store.get(item_id)
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                        return
+                    target_store = self.store.controller_resource(launch_target)
+                    launched = target_store.create(
+                        "2",
+                        {
+                            "name": source.get("name"),
+                            "inventory": source.get("inventory"),
+                            "status": "pending",
+                            "finished": None,
+                            "_polls": 0,
+                        },
+                    )
+                    self._send_json(202, launched)
+                    return
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            if field in store.associations:
+                if self.command == "GET":
+                    try:
+                        ids = store.get_associations(item_id, field)
+                        self._send_json(200, {"count": len(ids), "results": [{"id": i} for i in ids]})
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    return
+                if self.command == "POST":
+                    try:
+                        payload = self._parse_json_body()
+                        ref_id = payload.get("id")
+                        associate = bool(payload.get("associate")) and not payload.get("disassociate")
+                        store.set_association(item_id, field, ref_id, associate)
+                        self._send_empty(204)
+                    except KeyError:
+                        self._send_json(404, {"detail": "Not Found"})
+                    return
+
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
+        if self._handle_generic_resource_store(store, parts, "2", qs):
+            return
+        self._send_json(404, {"detail": "Not Found"})
 
     # ------------------------------------------------------------------
     # Main router
@@ -631,6 +962,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return
 
         parts = [p for p in path.split("/") if p]
+
+        if len(parts) >= 2 and parts[0] == "api" and parts[1] == "controller":
+            self._route_controller(parts, qs)
+            return
 
         if len(parts) < 3 or parts[0] != "api" or parts[1] != "gateway":
             self._send_json(404, {"detail": "Not Found"})
@@ -847,6 +1182,7 @@ def main() -> int:
 
     store = Store()
     store._init_resources()
+    store._init_controller_resources()
     store.seed_defaults()
 
     MockGatewayHandler.store = store
