@@ -143,11 +143,16 @@ class APIVersionRegistry:
             service = DEFAULT_SERVICE
         return self.services.get(service, {}).get(api_version, [])
 
-    def get_versions_for_module(self, module_name: str) -> List[str]:
-        """Get list of API versions that implement a module."""
+    def get_versions_for_module(self, module_name: str, service: Optional[str] = None) -> List[str]:
+        """Get list of API versions that implement a module, scoped to a service."""
+        if service and service in self.services:
+            return sorted(
+                [v for v, modules in self.services[service].items() if module_name in modules],
+                key=version.parse,
+            )
         return self.module_versions.get(module_name, [])
 
-    def find_best_version(self, requested_version: str, module_name: str) -> Optional[str]:
+    def find_best_version(self, requested_version: str, module_name: str, service: Optional[str] = None) -> Optional[str]:
         """
         Find the best available version for a module.
 
@@ -156,7 +161,7 @@ class APIVersionRegistry:
         2. Try closest lower version (backward compatible)
         3. Try closest higher version (forward compatible, with warning)
         """
-        available = self.get_versions_for_module(module_name)
+        available = self.get_versions_for_module(module_name, service)
 
         if not available:
             logger.error("Module '%s' not found in any API version", module_name)
@@ -186,6 +191,6 @@ class APIVersionRegistry:
 
         return None
 
-    def module_supports_version(self, module_name: str, api_version: str) -> bool:
+    def module_supports_version(self, module_name: str, api_version: str, service: Optional[str] = None) -> bool:
         """Check if a module has an implementation for an API version."""
-        return api_version in self.get_versions_for_module(module_name)
+        return api_version in self.get_versions_for_module(module_name, service)

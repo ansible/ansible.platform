@@ -510,6 +510,10 @@ class DirectHTTPClient(BaseAPIClient):
 
         svc_version = self.get_api_version(service)
 
+        if "X-API-Version" not in (self.session.headers or {}):
+            gw_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gw_version)})
+
         api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
@@ -594,8 +598,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=service_version,
-            service=service, operation=operation, include_nulls_for_update=include_nulls,
+            manager=self,
+            session=self.session,
+            cache=self.cache,
+            api_version=service_version,
+            service=service,
+            operation=operation,
+            include_nulls_for_update=include_nulls,
         )
 
         # Execute operation (shared CRUD logic)
