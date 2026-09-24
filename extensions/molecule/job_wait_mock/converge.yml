@@ -1,0 +1,228 @@
+---
+# Converge: job_wait against a launched job (job_type=jobs) and a launched
+# project update (job_type=project_updates), against the mock Gateway/Controller.
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+# Play 2: full feature coverage (connection local) — wait on a job (job_type=jobs)
+# and on a project update (job_type=project_updates).
+- name: Converge — job_wait (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_jt_name: "molecule-jw-jt-local"
+    molecule_project_name: "molecule-jw-project-local"
+  tasks:
+    - name: Seed a fake job_template directly against the mock Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/"
+        method: POST
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        body_format: json
+        body:
+          name: "{{ molecule_jt_name }}"
+        status_code: 201
+      register: jt_local
+      vars:
+        ansible_connection: local
+
+    - name: Seed a project via a raw API call
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/projects/"
+        method: POST
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        body_format: json
+        body:
+          name: "{{ molecule_project_name }}"
+        status_code: 201
+      register: project_local
+      vars:
+        ansible_connection: local
+
+    - name: Launch job without waiting (connection local)
+      ansible.platform.job_launch:
+        name: "{{ molecule_jt_name }}"
+      register: job_launch_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert job launch is pending (connection local)
+      ansible.builtin.assert:
+        that:
+          - job_launch_local.status == "pending"
+        fail_msg: "Job launch (local) should be pending. job_launch_local={{ job_launch_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Wait for the launched job to finish (connection local)
+      ansible.platform.job_wait:
+        job_id: "{{ job_launch_local.id }}"
+        interval: 0.2
+        timeout: 30
+      register: job_wait_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert job_wait resolved successfully and never reports changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - job_wait_result_local is not changed
+          - job_wait_result_local.status == "successful"
+          - job_wait_result_local.id == job_launch_local.id
+        fail_msg: "job_wait (local) should resolve to successful with the same id. job_wait_result_local={{ job_wait_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Launch a project update without waiting (connection local)
+      ansible.platform.project_update:
+        name: "{{ molecule_project_name }}"
+        wait: false
+      register: project_update_local
+      vars:
+        ansible_connection: local
+
+    - name: Wait for the launched project update to finish (job_type=project_updates, connection local)
+      ansible.platform.job_wait:
+        job_id: "{{ project_update_local.id }}"
+        job_type: project_updates
+        interval: 0.2
+        timeout: 30
+      register: job_wait_pu_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert job_wait resolved the project update (connection local)
+      ansible.builtin.assert:
+        that:
+          - job_wait_pu_result_local is not changed
+          - job_wait_pu_result_local.status == "successful"
+          - job_wait_pu_result_local.id == project_update_local.id
+        fail_msg: "job_wait (project_updates, local) should resolve to successful. job_wait_pu_result_local={{ job_wait_pu_result_local }}"
+      vars:
+        ansible_connection: local
+
+# Play 3: connection-mode parity (http direct).
+- name: Converge — job_wait (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_jt_name: "molecule-jw-jt-http-direct"
+  tasks:
+    - name: Seed a fake job_template (http direct)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/"
+        method: POST
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        body_format: json
+        body:
+          name: "{{ molecule_jt_name }}"
+        status_code: 201
+      register: jt_http_direct
+
+    - name: Launch job without waiting (http direct)
+      ansible.platform.job_launch:
+        name: "{{ molecule_jt_name }}"
+      register: job_launch_http_direct
+
+    - name: Wait for the launched job to finish (http direct)
+      ansible.platform.job_wait:
+        job_id: "{{ job_launch_http_direct.id }}"
+        interval: 0.2
+        timeout: 30
+      register: job_wait_result_http_direct
+
+    - name: Assert job_wait resolved successfully (http direct)
+      ansible.builtin.assert:
+        that:
+          - job_wait_result_http_direct.status == "successful"
+        fail_msg: "job_wait (http direct) should resolve to successful. job_wait_result_http_direct={{ job_wait_result_http_direct }}"
+
+# Play 4: connection-mode parity (http persistent).
+- name: Converge — job_wait (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_jt_name: "molecule-jw-jt-http-persistent"
+  tasks:
+    - name: Seed a fake job_template (http persistent)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/"
+        method: POST
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        body_format: json
+        body:
+          name: "{{ molecule_jt_name }}"
+        status_code: 201
+      register: jt_http_persistent
+
+    - name: Launch job without waiting (http persistent)
+      ansible.platform.job_launch:
+        name: "{{ molecule_jt_name }}"
+      register: job_launch_http_persistent
+
+    - name: Wait for the launched job to finish (http persistent)
+      ansible.platform.job_wait:
+        job_id: "{{ job_launch_http_persistent.id }}"
+        interval: 0.2
+        timeout: 30
+      register: job_wait_result_http_persistent
+
+    - name: Assert job_wait resolved successfully (http persistent)
+      ansible.builtin.assert:
+        that:
+          - job_wait_result_http_persistent.status == "successful"
+        fail_msg: "job_wait (http persistent) should resolve to successful. job_wait_result_http_persistent={{ job_wait_result_http_persistent }}"
+...

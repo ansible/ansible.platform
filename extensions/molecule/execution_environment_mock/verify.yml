@@ -1,0 +1,31 @@
+---
+# Verify: the execution_environment created by converge is still present.
+- name: Verify — execution_environment still exists (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_ee_name: "Molecule Test EE Local"
+  tasks:
+    - name: Get execution_environment (state exists, connection local)
+      ansible.platform.execution_environment:
+        name: "{{ molecule_ee_name }}"
+        image: "quay.io/ansible/awx-ee:latest"
+        state: exists
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert execution_environment still exists (connection local)
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+        fail_msg: "Verify: execution_environment {{ molecule_ee_name }} not found (connection local)."
+      vars:
+        ansible_connection: local
+...

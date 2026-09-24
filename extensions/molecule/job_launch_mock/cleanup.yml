@@ -1,0 +1,14 @@
+---
+# Cleanup: job_launch and its seeded job_templates/jobs are mock-only artifacts
+# with no module-managed lifecycle — nothing to delete beyond the manager
+# survive flags that keep the persistent connection manager alive across phases.
+- name: Cleanup — remove manager survive flag (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+...

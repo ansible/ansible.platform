@@ -11,6 +11,8 @@ import json
 import logging
 import re
 import threading
+import time
+from dataclasses import fields, is_dataclass, replace
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -20,7 +22,7 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 # Use Ansible's HTTP client instead of requests library for better worker process compatibility
 from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
-from .base_client import BaseAPIClient
+from .base_client import DEFAULT_WAIT_TIMEOUT, BaseAPIClient, WaitTimeoutError
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
@@ -516,8 +518,13 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = "1"
             self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
-        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        # Callers may pass a full API path (e.g. "/api/controller/v2/inventories/")
+        # to resolve FKs on non-Gateway components; only bare resource names
+        # (e.g. "authenticators") get the Gateway prefix.
+        if endpoint.startswith("/api/"):
+            api_path = endpoint if endpoint.endswith("/") else f"{endpoint}/"
+        else:
+            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
@@ -595,6 +602,18 @@ class DirectHTTPClient(BaseAPIClient):
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
+        # Pop launch-command wait/poll directives (e.g. ad_hoc_command,
+        # inventory_source_update) — these are control flags for this method, not
+        # fields on the resource dataclass. Only pop a name the target dataclass
+        # doesn't itself declare, so a module with a genuine field of the same name
+        # (e.g. job_template's own `timeout`) keeps it.
+        ansible_field_names = {f.name for f in fields(AnsibleClass)}
+        wait = ansible_data_dict.pop("wait", False) if "wait" not in ansible_field_names else False
+        wait_interval = ansible_data_dict.pop("interval", 2.0) if "interval" not in ansible_field_names else 2.0
+        wait_timeout = ansible_data_dict.pop("timeout", None) if "timeout" not in ansible_field_names else None
+        if wait and wait_timeout is None:
+            wait_timeout = DEFAULT_WAIT_TIMEOUT
+
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
 
@@ -607,6 +626,8 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             if operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
+                if wait:
+                    result = self._wait_for_resource_completion(result, ansible_instance, MixinClass, context, module_name, wait_interval, wait_timeout)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
             elif operation == "delete":
@@ -651,6 +672,50 @@ class DirectHTTPClient(BaseAPIClient):
             return ansible_result
 
         return {"changed": True}
+
+    def _wait_for_resource_completion(
+        self,
+        result: dict,
+        ansible_instance: Any,
+        mixin_class: type,
+        context: TransformContext,
+        module_name: str,
+        interval: float,
+        timeout: Optional[float],
+    ) -> dict:
+        """Poll a just-launched resource until the API reports it finished.
+
+        For launch-style resources (e.g. ad_hoc_command, inventory_source_update)
+        the create operation only starts an async job; the mixin's from_api() must
+        populate a truthy "finished" field once the job completes for this to
+        terminate. Shared by PlatformService and DirectHTTPClient so wait/interval/
+        timeout behave the same regardless of connection mode — action plugins
+        never poll themselves.
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded before the resource finishes.
+                Carries the last poll result so callers can still report id/status.
+        """
+        if result.get("finished") or result.get("event_processing_finished") or result.get("id") is None:
+            return result
+
+        find_instance = replace(ansible_instance, id=result["id"]) if is_dataclass(ansible_instance) else ansible_instance
+        start = time.monotonic()
+
+        while True:
+            result = self._find_resource(find_instance, mixin_class, context)
+            if result.get("finished") or result.get("event_processing_finished"):
+                return result
+
+            elapsed = time.monotonic() - start
+            if timeout is not None and elapsed >= timeout:
+                raise WaitTimeoutError(
+                    "Timed out waiting for %s %s to complete after %s seconds (status: %s)"
+                    % (module_name, result.get("id"), timeout, result.get("status", "unknown")),
+                    last_result=result,
+                )
+
+            time.sleep(interval)
 
     def _update_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Update resource with transformation."""
@@ -796,7 +861,16 @@ class DirectHTTPClient(BaseAPIClient):
         # instead of a list-filter, which would find nothing.
         if get_op and lookup_value is not None and str(lookup_value).strip().isdigit():
             try:
-                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())))
+                # Substitute every declared path param, not just "{id}" — a
+                # resource whose GET path is scoped by more than the primary key
+                # (e.g. job_wait's /{job_type}/{id}/) needs the other param(s)
+                # pulled from ansible_data too.
+                id_path = get_op.path
+                for param in get_op.path_params or ["id"]:
+                    value = int(str(lookup_value).strip()) if param == "id" else getattr(ansible_data, param, None)
+                    if value is not None:
+                        id_path = id_path.replace(f"{{{param}}}", str(value))
+                id_url = self._build_url(id_path)
                 logger.info("DirectHTTPClient: ID-based lookup URL for %s: %s", mixin_class.__name__, id_url)
                 with self._lock:
                     self._http_request_count += 1
@@ -906,9 +980,14 @@ class DirectHTTPClient(BaseAPIClient):
             url = endpoint_op.path
             logger.info("DirectHTTPClient: Building URL for %s: %s", endpoint_op, url)
             if endpoint_op.path_params:
-                # Replace path parameters
+                # Replace path parameters. Check the running multi-op `results` first
+                # (e.g. an "id" produced by a prior op in this same chain), then fall
+                # back to the matching attribute on api_data — by the param's own
+                # name, not hardcoded to "id", so custom path params like
+                # inventory_source_id (a launch-trigger sub-action, not the
+                # resource's own id) resolve correctly too.
                 for param in endpoint_op.path_params:
-                    param_value = results.get("id") or getattr(api_data, "id", None)
+                    param_value = results.get(param) if param in results else getattr(api_data, param, None)
                     if param_value:
                         url = url.replace(f"{{{param}}}", str(param_value))
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
@@ -981,6 +1060,175 @@ class DirectHTTPClient(BaseAPIClient):
         # TODO: Implement lookup using cache
         # This should use the cache to avoid repeated lookups
         pass
+
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        disassociate_missing: bool = True,
+    ) -> bool:
+        """Sync an association sub-endpoint: compare current vs desired, associate/disassociate.
+
+        disassociate_missing=False only adds desired_items, leaving any other
+        current association untouched — used by resources whose legacy module
+        exposed a "preserve_existing_*" option (e.g. group's hosts/children).
+        """
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = "1"
+
+        resolved_ids = []
+        for item in desired_items:
+            if str(item).isdigit():
+                resolved_ids.append(int(item))
+            else:
+                rid = self.lookup_resource_id(lookup_endpoint, lookup_field, str(item))
+                if rid is None:
+                    raise ValueError("Could not find %s entry with %s='%s'" % (lookup_endpoint, lookup_field, item))
+                resolved_ids.append(rid)
+
+        # Let GET failures (auth, network, non-2xx, JSON parsing) propagate instead
+        # of silently treating them as "no current associations" — that would make
+        # the disassociate loop below a silent no-op, leaving stale associations
+        # in place while reporting success.
+        assoc_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, association_field))
+        response = self._make_request("get", assoc_url, operation="manage_associations", resource=association_field)
+        response_body = response.read()
+        current_data = json.loads(response_body) if response_body else {}
+        current_ids = [item["id"] for item in current_data.get("results", [])]
+
+        changed = False
+        errors = []
+
+        for item_id in resolved_ids:
+            if item_id not in current_ids:
+                try:
+                    self._make_request(
+                        "post",
+                        assoc_url,
+                        operation="associate",
+                        resource=association_field,
+                        json={"id": item_id, "associate": True},
+                    )
+                    changed = True
+                except Exception as exc:
+                    errors.append("Failed to associate %s %s: %s" % (association_field, item_id, exc))
+
+        if disassociate_missing:
+            for item_id in current_ids:
+                if item_id not in resolved_ids:
+                    try:
+                        self._make_request(
+                            "post",
+                            assoc_url,
+                            operation="disassociate",
+                            resource=association_field,
+                            json={"id": item_id, "disassociate": True},
+                        )
+                        changed = True
+                    except Exception as exc:
+                        errors.append("Failed to disassociate %s %s: %s" % (association_field, item_id, exc))
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        return changed
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict] = None) -> bool:
+        """Manage a secondary sub-endpoint (GET/compare/POST or DELETE)."""
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = "1"
+
+        if data is None:
+            return False
+
+        spec_url = self._build_url("%s/%s/%s/" % (base_path, resource_id, sub_path))
+
+        if data == {}:
+            self._make_request("delete", spec_url, operation="delete_sub_resource", resource=sub_path)
+            return True
+
+        try:
+            current_response = self._make_request("get", spec_url, operation="get_sub_resource", resource=sub_path)
+            current_body = current_response.read()
+            current_data = json.loads(current_body) if current_body else None
+        except Exception:
+            current_data = None
+
+        if data != current_data:
+            response = self._make_request(
+                "post",
+                spec_url,
+                operation="update_sub_resource",
+                resource=sub_path,
+                json=data,
+            )
+            status = getattr(response, "status", getattr(response, "code", 0))
+            if status not in (200, 201):
+                response_body = response.read() if hasattr(response, "read") else ""
+                raise ValueError("Failed to update %s: %s" % (sub_path, response_body or "Unknown error"))
+            return True
+
+        return False
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str) -> dict:
+        """Copy a resource via its /copy/ sub-endpoint."""
+        source = None
+        last_error = None
+        try:
+            source = self.execute(
+                operation="find",
+                module_name=module_name,
+                ansible_data_dict={"name": source_name_or_id},
+            )
+        except Exception as exc:
+            last_error = exc
+
+        if not source or not source.get("id"):
+            if str(source_name_or_id).isdigit():
+                try:
+                    source = self.execute(
+                        operation="find",
+                        module_name=module_name,
+                        ansible_data_dict={"id": int(source_name_or_id), "name": str(source_name_or_id)},
+                    )
+                except Exception as exc:
+                    last_error = exc
+
+        if not source or not source.get("id"):
+            msg = "Could not find %s '%s' to copy from" % (module_name, source_name_or_id)
+            if last_error:
+                msg += ": %s" % last_error
+            raise ValueError(msg)
+
+        copy_url = self._build_url("%s/%s/copy/" % (copy_endpoint_path, source["id"]))
+        response = self._make_request(
+            "post",
+            copy_url,
+            operation="copy_resource",
+            resource=module_name,
+            json={"name": new_name},
+        )
+        response_body = response.read()
+        result = json.loads(response_body) if response_body else {}
+        return result
 
     def direct_request(self, method: str, path: str, data=None) -> dict:
         """

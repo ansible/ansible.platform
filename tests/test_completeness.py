@@ -79,14 +79,18 @@ def test_meta_runtime():
 
     meta_data = yaml.load(meta_data_string, Loader=yaml.Loader)
 
-    action_groups = meta_data.get("action_groups", {}).get("gateway", [])
+    # Modules extending ansible.platform.auth must be in *some* action_groups entry
+    # (gateway, controller, etc.) so module_defaults works regardless of which
+    # service backs them — check the union of every group, not just "gateway".
+    all_groups = meta_data.get("action_groups", {})
+    action_groups = [module for group_modules in all_groups.values() for module in group_modules]
     needs_to_be_removed = list(set(action_groups) - set(needs_grouping))
     needs_to_be_added = list(set(needs_grouping) - set(action_groups))
 
     needs_to_be_removed.sort()
     needs_to_be_added.sort()
 
-    group = "action-groups.gateway"
+    group = "action-groups.*"
     if needs_to_be_removed:
         print(
             cause_error(

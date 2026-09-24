@@ -24,4 +24,17 @@ action_groups:
     - token
     - ui_plugin_route
     - user
+  controller:
+    - execution_environment
+    - group
+    - host
+    - inventory
+    - inventory_source
+    - inventory_source_update
+    - job_launch
+    - job_wait
+    - notification_template
+    - project_update
+    - schedule
+    - workflow_job_template
 ...

@@ -525,6 +525,64 @@ class LookupModule(LookupBase):
 This allows dynamic lookups (e.g., "find all users whose username contains 'admin'")
 without spawning additional processes or triggering SSL fork safety issues.
 
+### Generic Methods for Associations, Copy, and Launch/Wait
+
+Beyond `execute()` and `search_api()`, three more generic methods live on
+`BaseAPIClient` (and are implemented identically in `PlatformService` and
+`DirectHTTPClient`, with thin `ManagerRPCClient` wrappers) so that association
+sub-endpoints, secondary sub-resources, and copy operations never require an
+action plugin to touch `manager.session`/HTTP directly:
+
+```python
+def manage_associations(self, base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field) -> bool:
+    """Sync an association sub-endpoint (e.g. a resource's instance_groups).
+
+    Resolves desired_items (names or IDs) to integer IDs, diffs against the
+    current association list, and issues associate/disassociate POSTs for
+    the difference. Returns True if anything changed.
+    """
+
+
+def manage_sub_resource(self, base_path, resource_id, sub_path, data=None) -> bool:
+    """GET/compare/POST a secondary sub-resource (e.g. survey_spec).
+
+    data=None is a no-op; data=={} DELETEs the sub-resource; otherwise POSTs
+    only if the current value differs. Returns True if changed.
+    """
+
+
+def copy_resource(self, module_name, source_name_or_id, new_name, copy_endpoint_path) -> dict:
+    """POST to a resource's /copy/ sub-endpoint.
+
+    Finds the source via execute('find', ...), falling back to an ID-based
+    lookup, then POSTs {'name': new_name} to {copy_endpoint_path}/{id}/copy/.
+    Returns the copied resource's raw API response.
+    """
+```
+
+See `plugins/action/inventory.py` for a full Pattern C example combining
+`copy_resource` (for `copy_from`) and `manage_associations` (for
+`instance_groups`/`input_inventories`).
+
+**Launch/wait** (Shape 2 resources like `ad_hoc_command`, `job_launch`,
+`inventory_source_update`) is handled inside `execute()` itself rather than as
+a separate method: `wait`/`interval`/`timeout` are popped off the incoming
+`ansible_data` dict before the resource dataclass is built (only when the
+target dataclass doesn't declare a field of that name — so a resource with a
+genuine `timeout` field, e.g. `job_template`, keeps it), and — when
+`wait=True` — `_wait_for_resource_completion()` polls the newly-created
+resource via `_find_resource()` until `from_api()` reports a truthy
+`finished` (or `event_processing_finished`), raising `WaitTimeoutError`
+(carrying the last poll result, so the caller can still report `id`/`status`)
+if `timeout` elapses first. `DEFAULT_WAIT_TIMEOUT` (3600s) applies when
+`wait=True` but no `timeout` was given.
+
+Adding a new generic method follows the same four-layer rule as everything
+else in this SDK: `base_client.py` (abstract, raises `NotImplementedError`) →
+`platform_manager.py` → `direct_client.py` → `rpc_client.py`. Skipping the
+`rpc_client.py` wrapper is the most common miss — the method works in direct
+mode but silently isn't reachable from the action plugin in persistent mode.
+
 ---
 
 ## SECTION 7: Directory Structure

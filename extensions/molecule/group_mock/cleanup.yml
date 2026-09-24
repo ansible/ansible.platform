@@ -1,0 +1,130 @@
+---
+# Cleanup: delete groups/inventories/organizations created by converge.
+- name: Cleanup — delete group, inventory, organization (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    molecule_org_name: "Molecule Test Org Group Local"
+    molecule_inv_name: "Molecule Test Inventory Group Local"
+    molecule_group_name: "molecule-group-local"
+  tasks:
+    - name: Delete group (connection local)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete inventory (connection local)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Delete organization (connection local)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete group, inventory, organization (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+    molecule_org_name: "Molecule Test Org Group HTTP Direct"
+    molecule_inv_name: "Molecule Test Inventory Group HTTP Direct"
+    molecule_group_name: "molecule-group-http-direct"
+  tasks:
+    - name: Delete group (http direct)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete inventory (http direct)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete organization (http direct)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete group, inventory, organization (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+    molecule_org_name: "Molecule Test Org Group HTTP Persistent"
+    molecule_inv_name: "Molecule Test Inventory Group HTTP Persistent"
+    molecule_group_name: "molecule-group-http-persistent"
+  tasks:
+    - name: Delete group (http persistent)
+      ansible.platform.group:
+        name: "{{ molecule_group_name }}"
+        inventory: "{{ molecule_inv_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete inventory (http persistent)
+      ansible.platform.inventory:
+        name: "{{ molecule_inv_name }}"
+        organization: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete organization (http persistent)
+      ansible.platform.organization:
+        name: "{{ molecule_org_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag (signals manager to shut down)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
