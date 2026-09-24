@@ -4,7 +4,7 @@ import os
 from sys import exit
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-modules_that_need_development = ["authenticator_users"]
+modules_that_need_development = []
 tests_to_ignore = ["lookup_test", "setup_gateway", "users_examples_test", "backward_compat_26_test", "ssl_env_forwarding_test"]
 
 

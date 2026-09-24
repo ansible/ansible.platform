@@ -11,7 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ansible.plugins.action import ActionBase
+from ansible_collections.ansible.platform.plugins.action.authenticator_user import ActionModule as AuthenticatorUserAction
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.authenticator_user import AnsibleAuthenticatorUser
 
 
 @dataclass
@@ -112,6 +114,32 @@ class TestActionPreparation(unittest.TestCase):
 
         self.assertTrue(result["failed"])
         self.assertEqual(result["msg"], "invalid documentation")
+
+
+class TestAuthenticatorUserLookup(unittest.TestCase):
+    """Tests for authenticator-user lookup resolution."""
+
+    def test_numeric_authenticator_user_id_populates_resource_id(self):
+        """A numeric module ID is copied to the generic resource ID."""
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        resource = AnsibleAuthenticatorUser(authenticator_user_id="42", authenticator="7")
+        resource_data = {"authenticator_user_id": "42", "authenticator": "7"}
+
+        action._resolve_lookup(resource, resource_data, {})
+
+        self.assertEqual(resource.id, 42)
+        self.assertEqual(resource_data["id"], 42)
+
+    def test_nonnumeric_authenticator_user_id_does_not_populate_resource_id(self):
+        """An invalid nonnumeric module ID is left for normal validation."""
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        resource = AnsibleAuthenticatorUser(authenticator_user_id="invalid", authenticator="7")
+        resource_data = {"authenticator_user_id": "invalid", "authenticator": "7"}
+
+        action._resolve_lookup(resource, resource_data, {})
+
+        self.assertIsNone(resource.id)
+        self.assertNotIn("id", resource_data)
 
 
 if __name__ == "__main__":
