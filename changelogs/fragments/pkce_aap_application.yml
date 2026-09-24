@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - Add pkce_required parameter into aap_application similar to stable-2.7 to fix broken
+    integration test for completeness check in stable-2.6
