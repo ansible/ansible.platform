@@ -62,6 +62,13 @@ CONTROLLER_NON_ORG_TYPES = frozenset(
 # Gateway resources that accept an organization scope.
 GATEWAY_ORG_TYPES = frozenset({"teams"})
 
+# Organization endpoints used by assignment-object name lookups. Gateway
+# organizations continue to use the normal resource lookup helper.
+ORGANIZATION_PATH_MAP = {
+    "controller": "/api/controller/v2/organizations/",
+    "eda": "/api/eda/v1/organizations/",
+}
+
 
 def get_expected_assignment_type(content_type):
     """Return the assignment_objects type value for a role_definition content_type.

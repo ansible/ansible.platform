@@ -9,47 +9,9 @@ __metaclass__ = type
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
-from ansible_collections.ansible.platform.plugins.plugin_utils.resource_type_map import (
-    ASSIGNMENT_TYPE_PATH_MAP,
-    CONTROLLER_NON_ORG_TYPES,
-    GATEWAY_ORG_TYPES,
-    get_expected_assignment_type,
-    service_kind,
-)
+from ansible_collections.ansible.platform.plugins.plugin_utils.resource_type_map import get_expected_assignment_type
 
 _get_expected_endpoint = get_expected_assignment_type
-_service_kind = service_kind
-_SERVICE_LOOKUP_PATH_MAP = ASSIGNMENT_TYPE_PATH_MAP
-_CONTROLLER_NON_ORG_TYPES = CONTROLLER_NON_ORG_TYPES
-_GATEWAY_ORG_TYPES = GATEWAY_ORG_TYPES
-
-
-def _result_id(item, name, lookup_path):
-    if "id" in item:
-        return item["id"]
-    if "prn" in item:
-        return str(item["prn"]).rsplit(":", maxsplit=1)[-1]
-    raise ValueError("Resource '%s' at %s returned no 'id' field" % (name, lookup_path))
-
-
-def _search_results(payload):
-    return payload.get("results", payload.get("data", [])) or []
-
-
-def _matches_org(item, org_id):
-    for key in ("organization_id", "organization"):
-        val = item.get(key)
-        if val is None:
-            continue
-        if isinstance(val, dict):
-            val = val.get("id")
-        if str(val) == str(org_id):
-            return True
-    return False
-
-
-def _matches_name(item, name):
-    return item.get("name") == name
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -85,71 +47,6 @@ class ActionModule(BaseResourceActionPlugin):
                 data_dict["team"] = str(data_dict["team"])
 
         return data_dict
-
-    def _resolve_organization_id(self, manager, organization, service):
-        if service == "controller":
-            payload = manager.search_api("/api/controller/v2/organizations/", query_params={"name": organization})
-        elif service == "eda":
-            payload = manager.search_api("/api/eda/v1/organizations/", query_params={"name": organization})
-        else:
-            return manager.lookup_resource_id("organizations", "name", organization)
-
-        results = [result for result in _search_results(payload) if _matches_name(result, organization)]
-        if len(results) != 1:
-            raise AnsibleError("Expected exactly one organization named '%s' on %s, got %s" % (organization, service, len(results)))
-        return _result_id(results[0], organization, "organizations")
-
-    def _resolve_named_object_id(self, manager, obj):
-        obj_type = obj["type"]
-        name = obj["name"]
-        organization = obj.get("organization")
-        lookup_path = _SERVICE_LOOKUP_PATH_MAP.get(obj_type, obj_type)
-        service = _service_kind(obj_type)
-
-        if organization:
-            if service == "hub":
-                raise AnsibleError("organization is not supported for Hub types such as '%s'" % obj_type)
-            if service == "controller" and obj_type in _CONTROLLER_NON_ORG_TYPES:
-                raise AnsibleError("organization is not supported for Controller type such as '%s'" % obj_type)
-            if service == "gateway" and obj_type not in _GATEWAY_ORG_TYPES:
-                raise AnsibleError("organization is only supported for Gateway type 'teams' (got '%s')" % obj_type)
-
-        org_id = None
-        if organization:
-            org_id = self._resolve_organization_id(manager, organization, service)
-
-        query = {"name": name}
-        if org_id is not None and service == "controller":
-            query["organization"] = org_id
-        if org_id is not None and service == "gateway" and obj_type == "teams":
-            query["organization"] = org_id
-
-        if isinstance(lookup_path, str) and lookup_path.startswith("/api/") and not lookup_path.startswith("/api/gateway/"):
-            payload = manager.search_api(lookup_path, query_params=query)
-            results = [result for result in _search_results(payload) if _matches_name(result, name)]
-            if org_id is not None:
-                results = [r for r in results if _matches_org(r, org_id)]
-            if len(results) != 1:
-                raise ValueError(
-                    "Expected exactly one %s named '%s'%s at %s, got %s"
-                    % (
-                        obj_type,
-                        name,
-                        (" in organization '%s'" % organization) if organization else "",
-                        lookup_path,
-                        len(results),
-                    )
-                )
-            return str(_result_id(results[0], name, lookup_path))
-
-        if org_id is not None and obj_type == "teams":
-            payload = manager.search_api("teams", query_params=query)
-            results = [r for r in _search_results(payload) if _matches_name(r, name) and _matches_org(r, org_id)]
-            if len(results) != 1:
-                raise ValueError("Expected exactly one team named '%s' in organization '%s', got %s" % (name, organization, len(results)))
-            return str(_result_id(results[0], name, "teams"))
-
-        return str(manager.lookup_resource_id(lookup_path, "name", name))
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -231,10 +128,19 @@ class ActionModule(BaseResourceActionPlugin):
                                 provided=obj["type"],
                             )
                         )
+                    lookup_data = dict(per_obj)
+                    lookup_data["object_lookup"] = {
+                        "name": obj["name"],
+                        "type": obj["type"],
+                        "organization": obj.get("organization"),
+                    }
                     try:
-                        per_obj["object_id"] = self._resolve_named_object_id(manager, obj)
-                    except AnsibleError:
-                        raise
+                        resolved = manager.execute(
+                            operation="resolve",
+                            module_name=self.MODULE_NAME,
+                            ansible_data=lookup_data,
+                        )
+                        per_obj["object_id"] = str(resolved["object_id"])
                     except Exception as exc:
                         raise AnsibleError(
                             "Could not resolve %s '%s'%s: %s"

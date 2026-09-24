@@ -490,7 +490,7 @@ class PlatformService(BaseAPIClient):
         This is the main entry point called by action plugins via RPC.
 
         Args:
-            operation: Operation type ('create', 'update', 'delete', 'find')
+            operation: Operation type ('create', 'update', 'delete', 'find', or mixin-supported 'resolve')
             module_name: Module name (e.g., 'user', 'organization')
             ansible_data_dict: Ansible dataclass as dict
 
@@ -521,6 +521,11 @@ class PlatformService(BaseAPIClient):
                 result = self._delete_resource(ansible_instance, MixinClass, context)
             elif operation == "find":
                 result = self._find_resource(ansible_instance, MixinClass, context)
+            elif operation == "resolve":
+                resolver = getattr(MixinClass, "resolve", None)
+                if resolver is None:
+                    raise ValueError("Resolve operation is not supported for %s" % module_name)
+                result = resolver(ansible_instance, context)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
 
