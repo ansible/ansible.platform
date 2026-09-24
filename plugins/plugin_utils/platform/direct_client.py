@@ -96,7 +96,6 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Defer authentication and version detection until first request
         # This prevents HTTP requests during worker process initialization
-        self.api_version = None  # Will be set on first request
         self._authenticated = False
         logger.info("DirectHTTPClient: Initialized (authentication deferred until first request)")
 
@@ -120,7 +119,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
 
-        supported = self.registry.get_supported_versions()
+        supported = self.registry.get_supported_versions("gateway")
 
         def _hdr_version(resp) -> str:
             """Extract API version from X-API-Version header; return '' if absent."""
@@ -485,7 +484,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway"):
         """
         Resolve a resource name to ID by GET list with filter.
         Compatible with PlatformService.lookup_resource_id interface.
@@ -495,6 +494,7 @@ class DirectHTTPClient(BaseAPIClient):
             endpoint: API resource endpoint name (e.g. 'authenticators', 'service_clusters')
             lookup_field: Field to filter on (e.g. 'name')
             lookup_value: Value to look up
+            service: Service to route the lookup through (e.g. 'gateway', 'controller')
 
         Returns:
             Resource ID (int) or None
@@ -504,20 +504,17 @@ class DirectHTTPClient(BaseAPIClient):
         if str(lookup_value).isdigit():
             return int(lookup_value)
 
-        cache_key = f"lookup:{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        # Detect API version if not done yet
-        if self.api_version is None:
-            try:
-                self.api_version = self._detect_api_version()
-            except Exception:
-                self.api_version = "1"
-            self.session.headers.update({"X-API-Version": str(self.api_version)})
+        svc_version = self.get_api_version(service)
 
-        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
-        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        if "X-API-Version" not in (self.session.headers or {}):
+            gw_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gw_version)})
+
+        api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
@@ -580,18 +577,19 @@ class DirectHTTPClient(BaseAPIClient):
                 self._last_auth_error = e
                 raise
 
-        # Lazy initialization: Detect API version on first request
-        if self.api_version is None:
-            try:
-                self.api_version = self._detect_api_version()
-                logger.info("DirectHTTPClient: API version detected: v%s", self.api_version)
-            except Exception as e:
-                logger.warning("DirectHTTPClient: Version detection failed: %s, defaulting to v1", e)
-                self.api_version = "1"
-            self.session.headers.update({"X-API-Version": str(self.api_version)})
+        # Resolve this module's service and detect its API version lazily
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+        service_version = self.get_api_version(service)
+
+        # Ensure gateway version header is set (for gateway auth/routing)
+        if "X-API-Version" not in (self.session.headers or {}):
+            gw_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gw_version)})
 
         # Load version-appropriate classes (shared layer)
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
@@ -600,7 +598,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
+            manager=self,
+            session=self.session,
+            cache=self.cache,
+            api_version=service_version,
+            service=service,
+            operation=operation,
+            include_nulls_for_update=include_nulls,
         )
 
         # Execute operation (shared CRUD logic)

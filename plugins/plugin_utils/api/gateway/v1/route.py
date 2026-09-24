@@ -1,5 +1,5 @@
 """
-API v1 UIPluginRoute dataclass and transform mixin.
+API v1 Route dataclass and transform mixin.
 """
 
 from __future__ import annotations
@@ -7,36 +7,36 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
-class APIUIPluginRoute_v1(BaseTransformMixin):
-    """API v1 representation of a gateway UI plugin route."""
+class APIRoute_v1(BaseTransformMixin):
+    """API v1 representation of a gateway route."""
 
     name: Optional[str] = None
 
     description: Optional[str] = None
-    ui_plugin_path: Optional[str] = None
+    gateway_path: Optional[str] = None
     http_port: Optional[int] = None
     service_cluster: Optional[int] = None
     is_service_https: Optional[bool] = None
+    enable_gateway_auth: Optional[bool] = None
+    enable_mtls: Optional[bool] = None
+    is_internal_route: Optional[bool] = None
+    reject_failed_basic_auth: Optional[bool] = None
+    service_path: Optional[str] = None
     service_port: Optional[int] = None
     node_tags: Optional[str] = None
-    order: Optional[int] = None
     idle_timeout_seconds: Optional[int] = None
     request_timeout_seconds: Optional[int] = None
 
-    # Read-only / auto-generated
+    # Read-only
     id: Optional[int] = None
     created: Optional[str] = None
     modified: Optional[str] = None
     url: Optional[str] = None
-    gateway_path: Optional[str] = None
-    service_path: Optional[str] = None
-    enable_gateway_auth: Optional[bool] = None
-    is_internal_route: Optional[bool] = None
 
 
 def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
@@ -51,18 +51,24 @@ def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[in
         return None
 
 
-class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
-    """Transform mixin for UIPluginRoute API v1."""
+class RouteTransformMixin_v1(BaseTransformMixin):
+    """Transform mixin for Route API v1."""
 
     @classmethod
     def from_ansible_data(
         cls,
         ansible_instance,
         context: Union[TransformContext, Dict[str, Any]],
-    ) -> APIUIPluginRoute_v1:
+    ) -> APIRoute_v1:
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
         op = context.operation if isinstance(context, TransformContext) else context.get("operation")
+
+        # Client-side validation: mTLS requires gateway auth to be disabled
+        enable_gateway_auth = getattr(ansible_instance, "enable_gateway_auth", None)
+        enable_mtls = getattr(ansible_instance, "enable_mtls", None)
+        if op in ("create", "update", "enforced") and enable_gateway_auth and enable_mtls:
+            raise ValueError("Mutual TLS can only be enabled when gateway auth is disabled")
 
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
@@ -76,11 +82,15 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
 
         for field in (
             "description",
-            "ui_plugin_path",
+            "gateway_path",
             "is_service_https",
+            "enable_gateway_auth",
+            "enable_mtls",
+            "is_internal_route",
+            "reject_failed_basic_auth",
+            "service_path",
             "service_port",
             "node_tags",
-            "order",
             "idle_timeout_seconds",
             "request_timeout_seconds",
         ):
@@ -102,38 +112,43 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
             if resolved is not None:
                 api_data["service_cluster"] = resolved
 
+        # Read-only fields for URL construction
         for ro in ("id", "created", "modified", "url"):
             val = getattr(ansible_instance, ro, None)
             if val is not None:
                 api_data[ro] = val
 
-        return APIUIPluginRoute_v1(**api_data)
+        return APIRoute_v1(**api_data)
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         fields = [
             "name",
             "description",
-            "ui_plugin_path",
+            "gateway_path",
             "http_port",
             "service_cluster",
             "is_service_https",
+            "enable_gateway_auth",
+            "enable_mtls",
+            "is_internal_route",
+            "reject_failed_basic_auth",
+            "service_path",
             "service_port",
             "node_tags",
-            "order",
             "idle_timeout_seconds",
             "request_timeout_seconds",
         ]
         return {
             "create": EndpointOperation(
-                path="/api/gateway/v1/ui_plugin_routes/",
+                path="/api/gateway/v1/routes/",
                 method="POST",
                 fields=fields,
                 required_for="create",
                 order=1,
             ),
             "update": EndpointOperation(
-                path="/api/gateway/v1/ui_plugin_routes/{id}/",
+                path="/api/gateway/v1/routes/{id}/",
                 method="PATCH",
                 fields=fields,
                 path_params=["id"],
@@ -141,7 +156,7 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
                 order=1,
             ),
             "delete": EndpointOperation(
-                path="/api/gateway/v1/ui_plugin_routes/{id}/",
+                path="/api/gateway/v1/routes/{id}/",
                 method="DELETE",
                 fields=[],
                 path_params=["id"],
@@ -149,7 +164,7 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
                 order=1,
             ),
             "get": EndpointOperation(
-                path="/api/gateway/v1/ui_plugin_routes/{id}/",
+                path="/api/gateway/v1/routes/{id}/",
                 method="GET",
                 fields=[],
                 path_params=["id"],
@@ -157,7 +172,7 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
                 order=1,
             ),
             "list": EndpointOperation(
-                path="/api/gateway/v1/ui_plugin_routes/",
+                path="/api/gateway/v1/routes/",
                 method="GET",
                 fields=[],
                 required_for="find",
@@ -169,30 +184,37 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
     def get_lookup_field(cls) -> str:
         return "name"
 
+    #: After a list-based find returns a match, perform a follow-up GET-by-ID
+    #: to retrieve the full resource state.  Some API list endpoints omit or
+    #: null-out certain fields (e.g. idle_timeout_seconds, request_timeout_seconds
+    #: on routes) that the individual GET endpoint returns correctly.  Setting
+    #: this to True ensures idempotency comparisons use complete resource data.
+    full_resource_lookup: bool = True
+
     @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.ui_plugin_route import AnsibleUIPluginRoute
+        from ....ansible_models.route import AnsibleRoute
 
-        return AnsibleUIPluginRoute(
+        return AnsibleRoute(
             name=api_data.get("name", ""),
             description=api_data.get("description"),
-            ui_plugin_path=api_data.get("ui_plugin_path"),
+            gateway_path=api_data.get("gateway_path"),
             http_port=api_data.get("http_port"),
             service_cluster=api_data.get("service_cluster"),
             is_service_https=api_data.get("is_service_https"),
+            enable_gateway_auth=api_data.get("enable_gateway_auth"),
+            enable_mtls=api_data.get("enable_mtls"),
+            is_internal_route=api_data.get("is_internal_route"),
+            reject_failed_basic_auth=api_data.get("reject_failed_basic_auth"),
+            service_path=api_data.get("service_path"),
             service_port=api_data.get("service_port"),
             node_tags=api_data.get("node_tags"),
-            order=api_data.get("order"),
             idle_timeout_seconds=api_data.get("idle_timeout_seconds"),
             request_timeout_seconds=api_data.get("request_timeout_seconds"),
-            gateway_path=api_data.get("gateway_path"),
-            service_path=api_data.get("service_path"),
-            enable_gateway_auth=api_data.get("enable_gateway_auth"),
-            is_internal_route=api_data.get("is_internal_route"),
             id=api_data.get("id"),
             created=api_data.get("created"),
             modified=api_data.get("modified"),

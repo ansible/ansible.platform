@@ -11,9 +11,14 @@ from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
 from ..platform.loader import DynamicClassLoader
-from ..platform.registry import APIVersionRegistry
+from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_API_VERSIONS = {
+    "gateway": "1",
+    "controller": "2",
+}
 
 
 class BaseAPIClient(ABC):
@@ -48,13 +53,35 @@ class BaseAPIClient(ABC):
         self.registry = APIVersionRegistry()
         self.loader = DynamicClassLoader(self.registry)
 
-        # Shared: API version (detected during initialization)
-        self.api_version: Optional[str] = None
+        # Shared: Per-service API versions (detected lazily)
+        self.api_versions: Dict[str, str] = {}
 
         # Shared: Cache for lookups (org names ↔ IDs, etc.)
         self.cache: Dict[str, Any] = {}
 
         logger.info("BaseAPIClient initialized: base_url=%s, mode=%s", self.base_url, config.connection_mode)
+
+    @property
+    def api_version(self) -> Optional[str]:
+        """Gateway API version (backward-compatible accessor)."""
+        return self.api_versions.get(DEFAULT_SERVICE)
+
+    @api_version.setter
+    def api_version(self, value: Optional[str]) -> None:
+        if value is not None:
+            self.api_versions[DEFAULT_SERVICE] = value
+
+    def get_api_version(self, service: str) -> str:
+        """Get detected API version for a service, detecting lazily if needed."""
+        if service not in self.api_versions:
+            try:
+                detected = self._detect_service_version(service)
+                self.api_versions[service] = detected
+            except Exception:
+                fallback = DEFAULT_API_VERSIONS.get(service, "1")
+                logger.warning("Version detection failed for %s, defaulting to v%s", service, fallback)
+                self.api_versions[service] = fallback
+        return self.api_versions[service]
 
     @property
     def requests_verify(self):
@@ -80,16 +107,29 @@ class BaseAPIClient(ABC):
     @abstractmethod
     def _detect_api_version(self) -> str:
         """
-        Detect API version from platform.
-
-        This is implemented differently by each mode:
-        - Standard mode: Direct HTTP request to /ping endpoint
-        - Experimental mode: Same, but cached in persistent process
+        Detect Gateway API version from platform.
 
         Returns:
             API version string (e.g., '1', '2')
         """
         pass
+
+    def _detect_service_version(self, service: str) -> str:
+        """
+        Detect API version for a specific service.
+
+        Probes the service's API root to discover its version.
+        Subclasses may override for custom detection per service.
+
+        Args:
+            service: Service name (e.g., 'gateway', 'controller')
+
+        Returns:
+            API version string (e.g., '1', '2')
+        """
+        if service == DEFAULT_SERVICE:
+            return self._detect_api_version()
+        return DEFAULT_API_VERSIONS.get(service, "1")
 
     @abstractmethod
     def _authenticate(self) -> None:

@@ -8,8 +8,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.role_user_assignment import AnsibleRoleUserAssignment
+        from ....ansible_models.role_user_assignment import AnsibleRoleUserAssignment
 
         return AnsibleRoleUserAssignment(
             role_definition=str(api_data.get("role_definition", "")),

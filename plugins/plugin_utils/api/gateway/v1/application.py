@@ -7,8 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
@@ -224,7 +224,7 @@ class ApplicationTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.application import AnsibleApplication
+        from ....ansible_models.application import AnsibleApplication
 
         # Redirect URI fields are stored as space-separated strings by the API.
         # We keep them as strings here so _update_resource()'s fallback merge
