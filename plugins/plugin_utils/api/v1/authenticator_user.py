@@ -139,9 +139,17 @@ class AuthenticatorUserTransformMixin_v1(BaseTransformMixin):
     ):
         from ...ansible_models.authenticator_user import AnsibleAuthenticatorUser
 
+        provider = api_data.get("provider")
+        authenticator = str(provider or "")
+        manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
+        if provider and manager and not str(provider).isdigit():
+            resolved_authenticator = _resolve_fk(manager, "authenticators", "slug", provider)
+            if resolved_authenticator is not None:
+                authenticator = str(resolved_authenticator)
+
         return AnsibleAuthenticatorUser(
             authenticator_user_id=str(api_data.get("id", "")),
-            authenticator=str(api_data.get("authenticator", "")),
+            authenticator=authenticator,
             new_uid=api_data.get("new_uid"),
             keep_memberships=api_data.get("keep_memberships", False),
             merge_with_user=api_data.get("merge_with_user"),
