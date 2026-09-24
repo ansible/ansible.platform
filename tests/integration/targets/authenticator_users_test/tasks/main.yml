@@ -1,0 +1,157 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset authenticator user test variables
+  ansible.builtin.set_fact:
+    name_prefix: "GW-Collection-Test-AuthenticatorUsers-{{ test_id }}"
+    username: "gateway-collection-auth-user-{{ test_id }}"
+
+- name: Run authenticator user tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create the source authenticator
+      ansible.platform.authenticator:
+        name: "{{ name_prefix }}-local"
+        slug: "{{ name_prefix }}-local"
+        type: ansible_base.authentication.authenticator_plugins.local
+        enabled: true
+        configuration: {}
+      register: source_authenticator
+
+    - name: Create the destination authenticator
+      ansible.platform.authenticator:
+        name: "{{ name_prefix }}-github"
+        type: ansible_base.authentication.authenticator_plugins.github
+        enabled: false
+        configuration:
+          CALLBACK_URL: https://example.com
+          KEY: github-oauth2-key
+          SECRET: github-oauth2-secret
+      register: destination_authenticator
+
+    - name: Create a user associated with the source authenticator
+      ansible.platform.user:
+        username: "{{ username }}"
+        password: "{{ 65535 | random | to_uuid }}"
+        associated_authenticators: "{{ {source_authenticator.id: {'uid': username}} }}"
+      register: test_user
+
+    - name: Read the user's authenticator association
+      ansible.builtin.set_fact:
+        source_authenticator_users: >-
+          {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
+                    **connection_info)
+             | selectattr('user', 'equalto', test_user.id)
+             | selectattr('provider', 'equalto', source_authenticator.id)
+             | list }}
+
+    - name: Assert that the source authenticator association exists
+      ansible.builtin.assert:
+        that:
+          - source_authenticator_users | length == 1
+          - source_authenticator_users[0].uid == username
+
+    - name: Move the authenticator user in check mode
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "{{ source_authenticator_users[0].id }}"
+        authenticator: "{{ destination_authenticator.id }}"
+      check_mode: true
+      register: check_mode_move
+
+    - name: Assert that check mode reports the pending move
+      ansible.builtin.assert:
+        that:
+          - check_mode_move is changed
+
+    - name: Confirm that check mode did not move the authenticator user
+      ansible.builtin.set_fact:
+        authenticator_users_after_check_mode: >-
+          {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
+                    **connection_info)
+             | selectattr('id', 'equalto', source_authenticator_users[0].id)
+             | list }}
+
+    - name: Assert that the original association remains after check mode
+      ansible.builtin.assert:
+        that:
+          - authenticator_users_after_check_mode | length == 1
+          - authenticator_users_after_check_mode[0].provider == source_authenticator.id
+
+    - name: Move the authenticator user
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "{{ source_authenticator_users[0].id }}"
+        authenticator: "{{ destination_authenticator.id }}"
+      register: move_result
+
+    - name: Assert that the authenticator user was moved
+      ansible.builtin.assert:
+        that:
+          - move_result is changed
+          - move_result.id == source_authenticator_users[0].id
+
+    - name: Read the moved authenticator association
+      ansible.builtin.set_fact:
+        moved_authenticator_users: >-
+          {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
+                    **connection_info)
+             | selectattr('id', 'equalto', source_authenticator_users[0].id)
+             | list }}
+
+    - name: Assert that the API reflects the move
+      ansible.builtin.assert:
+        that:
+          - moved_authenticator_users | length == 1
+          - moved_authenticator_users[0].provider == destination_authenticator.id
+          - moved_authenticator_users[0].user == test_user.id
+
+    - name: Move the authenticator user again
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "{{ source_authenticator_users[0].id }}"
+        authenticator: "{{ destination_authenticator.id }}"
+      register: repeated_move
+
+    - name: Assert that the repeated move is idempotent
+      ansible.builtin.assert:
+        that:
+          - repeated_move is not changed
+
+    - name: Check that the authenticator user exists
+      ansible.platform.authenticator_user:
+        authenticator_user_id: "{{ source_authenticator_users[0].id }}"
+        authenticator: "{{ destination_authenticator.id }}"
+        state: exists
+      register: exists_result
+
+    - name: Assert that exists reports the authenticator user
+      ansible.builtin.assert:
+        that:
+          - exists_result is not changed
+          - exists_result.exists
+
+  always:
+    - name: Delete the test user
+      ansible.platform.user:
+        username: "{{ username }}"
+        state: absent
+      when: username is defined
+      failed_when: false
+
+    - name: Delete the test authenticators
+      ansible.platform.authenticator:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ name_prefix }}-local"
+        - "{{ name_prefix }}-github"
+      when: name_prefix is defined
+      failed_when: false
+...
