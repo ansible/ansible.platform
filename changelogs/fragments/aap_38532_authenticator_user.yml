@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - authenticator_user - map the API ``provider`` field to ``authenticator`` so repeated moves are idempotent (https://issues.redhat.com/browse/AAP-38532).
+...
