@@ -77,6 +77,11 @@ options:
       default: "present"
       choices: ["present", "absent", "exists", "enforced"]
       type: str
+    pkce_required:
+      description:
+        - When True, clients must use PKCE (send code_challenge) when requesting authorization codes for this application.
+      type: bool
+      default: true
     skip_authorization:
       description:
         - Set True to skip authorization step for completely trusted applications.
@@ -131,6 +136,7 @@ def main():
         authorization_grant_type=dict(choices=["password", "authorization-code"]),
         client_type=dict(choices=['public', 'confidential']),
         redirect_uris=dict(type="list", elements='str'),
+        pkce_required=dict(type='bool'),
         skip_authorization=dict(type='bool'),
         algorithm=dict(choices=["", "RS256", "HS256"]),
         post_logout_redirect_uris=dict(type="list", elements="str"),

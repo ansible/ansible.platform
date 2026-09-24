@@ -97,6 +97,10 @@ class AAPApplication(AAPObject):
                 redirect_uris = ' '.join(redirect_uris)
             self.new_fields['redirect_uris'] = redirect_uris
 
+        pkce_required = self.module.params.get('pkce_required')
+        if pkce_required is not None:
+            self.new_fields['pkce_required'] = pkce_required
+
         skip_authorization = self.module.params.get('skip_authorization')
         if skip_authorization is not None:
             self.new_fields['skip_authorization'] = skip_authorization
