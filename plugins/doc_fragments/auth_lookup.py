@@ -12,7 +12,6 @@ class ModuleDocFragment(object):
     # Automation Platform Gateway documentation fragment
     DOCUMENTATION = r'''
 options:
-  # Ansible gives later environment entries precedence; keep GATEWAY_* after AAP_*.
   host:
     description:
     - URL to automation platform gateway.
