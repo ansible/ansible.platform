@@ -57,7 +57,7 @@ class DynamicClassLoader:
         if not service:
             raise ValueError(f"Module '{module_name}' not found in any service")
 
-        best_version = self.registry.find_best_version(api_version, module_name)
+        best_version = self.registry.find_best_version(api_version, module_name, service)
 
         if not best_version:
             raise ValueError(f"No compatible API version found for module '{module_name}' with requested version '{api_version}'")
@@ -73,6 +73,7 @@ class DynamicClassLoader:
 
         result = (ansible_class, api_class, mixin_class)
         logger.debug("Loaded classes: %s, %s, %s", ansible_class.__name__, api_class.__name__, mixin_class.__name__)
+        self._class_cache[cache_key] = result
 
         return result
 
@@ -115,10 +116,7 @@ class DynamicClassLoader:
             Tuple of (APIClass, MixinClass)
         """
         version_normalized = api_version.replace(".", "_")
-        module_path = (
-            f"ansible_collections.ansible.platform.plugins.plugin_utils"
-            f".api.{service}.v{version_normalized}.{module_name}"
-        )
+        module_path = f"ansible_collections.ansible.platform.plugins.plugin_utils.api.{service}.v{version_normalized}.{module_name}"
 
         try:
             module = importlib.import_module(module_path)
