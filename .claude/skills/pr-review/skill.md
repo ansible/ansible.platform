@@ -227,7 +227,7 @@ git diff origin/devel --name-only | grep -E \
 - ✅ Sanity tests passing - ALL checks (**BLOCKING**)
 - ✅ Ruff linting passing - zero violations (**BLOCKING**)
 - ✅ Yamllint passing - zero violations (**BLOCKING**)
-- ✅ Changelog fragment present (if plugins/**/*.py or tests/**/*.py changed) (**BLOCKING**)
+- ✅ Changelog fragment present (if plugins/**/*.py or tests/**/*.py changed, excluding docs/**/*.md and .github/**/*.yml) (**BLOCKING**)
 - ✅ JIRA issue referenced (**BLOCKING for bugfixes**, recommended for features)
 - ✅ No security issues (**BLOCKING**)
 
@@ -344,8 +344,12 @@ gh pr review <PR_NUMBER> --repo ansible/ansible.platform \
 1. **Pre-merge (MUST pass before `safe to test`):**
    - Collection completeness ← **Run FIRST**
    - Unit tests
-   - Sanity tests
-   - Changelog verification
+   - Sanity tests (ALL checks)
+   - Ruff linting (zero violations)
+   - Yamllint (zero violations)
+   - Changelog verification (if code changes)
+   - JIRA reference (MANDATORY for bugfixes)
+   - Security checks (no credential leaks)
 
 2. **Post-label (triggered BY `safe to test`):**
    - Integration tests (live AAP)
