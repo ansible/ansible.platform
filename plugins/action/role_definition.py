@@ -12,3 +12,8 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ro
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "role_definition"
     MODEL_CLASS = AnsibleRoleDefinition
+
+    # Permissions lists are order-insensitive: the Gateway may return them
+    # in alphabetical order regardless of user-specified order.  Without
+    # this opt-in, every run would report spurious changes.
+    _ORDER_INSENSITIVE_FIELDS = frozenset({"permissions"})
