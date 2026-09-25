@@ -50,15 +50,13 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from ansible.plugins.connection import ConnectionBase
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
-if TYPE_CHECKING:
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 logger = logging.getLogger(__name__)
 
