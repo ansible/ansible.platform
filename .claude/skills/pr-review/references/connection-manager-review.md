@@ -91,7 +91,7 @@ def execute(self, operation, ansible_instance, extra_param=None):
 ansible-playbook test.yml  # Uses persistent connection
 
 # Direct (fallback)
-AAP_CONNECTION_MODE=direct ansible-playbook test.yml
+CONNECTION_MODE=http-direct ansible-playbook test.yml
 ```
 
 **Checklist:**
@@ -504,16 +504,16 @@ def authenticate(self):
 
 ```python
 # ❌ VULNERABLE: URL injection, doesn't handle 0 or multiple results
-# def lookup_resource_id(self, resource_type, name, endpoint):
-#     result = self._make_request("GET", f"{endpoint}?name={name}")  # name can contain '&'
+# def lookup_resource_id(self, endpoint, lookup_field, lookup_value):
+#     result = self._make_request("GET", f"{endpoint}?{lookup_field}={lookup_value}")  # value can contain '&'
 #     return result["results"][0]["id"]  # Fails if 0 results, wrong if >1 results
 
 # ✅ SECURE: Use URL encoding and handle all result counts
 from urllib.parse import urlencode
 
-def lookup_resource_id(self, resource_type, name, endpoint):
+def lookup_resource_id(self, endpoint, lookup_field, lookup_value):
     # Use _build_url or proper URL encoding
-    query_params = {"name": name}
+    query_params = {lookup_field: lookup_value}
     url = f"{endpoint}?{urlencode(query_params)}"
     
     result = self._make_request("GET", url)
@@ -521,10 +521,10 @@ def lookup_resource_id(self, resource_type, name, endpoint):
     
     # Explicitly handle all cases
     if len(results) == 0:
-        raise AnsibleError(f"{resource_type} not found: {name}")
+        raise AnsibleError(f"Resource not found: {lookup_field}={lookup_value}")
     elif len(results) > 1:
         raise AnsibleError(
-            f"Ambiguous {resource_type} name '{name}': found {len(results)} matches"
+            f"Ambiguous {lookup_field} '{lookup_value}': found {len(results)} matches"
         )
     
     return results[0]["id"]
@@ -665,7 +665,7 @@ def test_error_handling():
 ansible-playbook tests/integration/test.yml
 
 # Test direct mode
-AAP_CONNECTION_MODE=direct ansible-playbook tests/integration/test.yml
+CONNECTION_MODE=http-direct ansible-playbook tests/integration/test.yml
 
 # Both should work!
 ```

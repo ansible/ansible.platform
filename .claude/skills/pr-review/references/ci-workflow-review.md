@@ -283,7 +283,7 @@ gh run view <RUN_ID> --repo ansible/ansible.platform --log | grep -i password
 name: Integration Tests (Safe to Test)
 
 on:
-  pull_request:
+  pull_request_target:
     types: [labeled]
 
 jobs:
@@ -307,7 +307,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
       
       - name: Run tests with secrets
         env:
@@ -315,15 +315,16 @@ jobs:
           AAP_USERNAME: ${{ secrets.AAP_USERNAME }}
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
         run: |
-          # Secrets are now available, but only after manual approval
+          # CRITICAL: Runs trusted base code, never untrusted PR code
           ansible-playbook tests/integration/playbook.yml
 ```
 
 **Verify secret protection:**
 
 ```bash
-# 1. Check if workflow runs on pull_request (dangerous)
-grep -n "on: pull_request" .github/workflows/*.yml
+# 1. Check if workflow runs on pull_request (dangerous) - handles both inline and block YAML
+grep -E "^\s*(on|'on'|\"on\"):\s*$" -A 5 .github/workflows/*.yml | grep -E "^\s*pull_request:" || \
+grep -E "^\s*(on|'on'|\"on\"):\s*pull_request" .github/workflows/*.yml
 
 # 2. Check if secrets used without protection
 grep -A 5 "secrets\." .github/workflows/*.yml | grep -v "pull_request_target"

@@ -52,13 +52,25 @@ OPTIONAL_FILES=(
   "tests/unit/plugins/plugin_utils/api/v1/test_foo.py"       # 7. Unit tests (if complex transforms)
 )
 
+MISSING=0
 for f in "${REQUIRED_FILES[@]}"; do
-  test -f "$f" || test -d "$f" && echo "✅ $f" || echo "❌ Missing: $f"
+  if test -f "$f" || test -d "$f"; then
+    echo "✅ $f"
+  else
+    echo "❌ Missing: $f"
+    MISSING=1
+  fi
 done
 
 for f in "${OPTIONAL_FILES[@]}"; do
-  test -f "$f" || test -d "$f" && echo "✅ $f" || echo "⚠️  Recommended: $f"
+  if test -f "$f" || test -d "$f"; then
+    echo "✅ $f"
+  else
+    echo "⚠️  Recommended: $f"
+  fi
 done
+
+exit $MISSING
 ```
 
 ### Check Linting (STRICT)

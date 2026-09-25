@@ -35,9 +35,9 @@ git diff origin/devel --name-only | grep -E 'plugins/connection/|plugins/plugin_
 | `plugins/action/<resource>.py` | ✅ | ActionModule class |
 | `plugins/plugin_utils/ansible_models/<resource>.py` | ✅ | Ansible dataclass |
 | `plugins/plugin_utils/api/v1/<resource>.py` | ✅ | API model + mixin |
-| `tests/unit/` tests | ✅ | Transform tests |
-| `extensions/molecule/` | ⚠️ Recommended | Mock tests |
-| `tests/integration/` | ⚠️ Optional | Live AAP tests |
+| `tests/integration/` | ✅ | Integration tests (scaffold generated) |
+| `extensions/molecule/` | ⚠️ Recommended | Molecule mock scenario |
+| `tests/unit/` tests | ⚠️ Optional | Unit tests (only if complex transforms) |
 
 **Validation:** See `common-patterns.md` for detection commands
 
@@ -111,9 +111,9 @@ def from_ansible_data(cls, ansible_instance, context):
     # ✅ CORRECT: Resolve organization name → ID
     if ansible_instance.organization:
         org_id = context.manager.lookup_resource_id(
-            "organization",  # Resource type
-            ansible_instance.organization,  # Name
-            endpoint="/api/gateway/v1/organizations/"  # Lookup endpoint
+            "organizations",  # Endpoint
+            "name",  # Lookup field
+            ansible_instance.organization  # Lookup value
         )
         api_data["organization"] = org_id
     
@@ -137,12 +137,9 @@ def from_ansible_data(cls, ansible_instance, context):
 ```python
 @classmethod
 def from_api(cls, api_data, context):
-    # ✅ CORRECT: Resolve API IDs back to Ansible names for idempotency
-    org_id = api_data.get("organization")
-    org_name = None
-    if org_id:
-        # API returns ID, but Ansible model uses name
-        org_name = context.manager.lookup_resource_name("organization", org_id)
+    # ⚠️  NOTE: from_api receives data as-is from API
+    # For FK fields, API returns IDs. Ansible models should store these as IDs during from_api,
+    # and resolve names during to_api. Reverse lookup is not typically performed.
     
     return AnsibleFoo(
         id=api_data.get("id"),
@@ -241,8 +238,8 @@ If missing → Add to appropriate action_group (gateway/controller/eda/hub)
 - Pattern C (Custom): `plugins/action/credential.py`
 
 **Checklist:**
-- [ ] Inherits from ActionPlatformGenericResource (or appropriate base)
-- [ ] Sets `module_name` and `ansible_model_class`
+- [ ] Inherits from BaseResourceActionPlugin
+- [ ] Sets `MODULE_NAME` and `MODEL_CLASS` class attributes
 - [ ] Uses simplest pattern that works (prefer A → B → C)
 
 ---
