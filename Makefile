@@ -18,7 +18,6 @@ PYTHON_VERSION:
 	collection-test-integration-check \
 	collection-test-local collection-test-http-direct collection-test-http-persistent \
 	collection-test-all-connections \
-	seed-service-key-fixture \
 	molecule-test molecule-test-all
 
 ## Set the local git configuration(specific to this repo) to look for hooks in .githooks folder
@@ -97,11 +96,7 @@ _write_integration_config:
 		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
-## Create the fixture required by the edit-only service_key integration target.
-seed-service-key-fixture:
-	printf '%s\n' "from aap_gateway_api.models import ServiceCluster, ServiceKey; ServiceKey.objects.get_or_create(name='ansible-platform-collection-test-service-key', defaults={'service_cluster': ServiceCluster.objects.get(name='gateway')})" | docker exec -i aap_gw_1 aap-gateway-manage shell
-
-collection-test: collection-install _write_integration_config seed-service-key-fixture
+collection-test: collection-install _write_integration_config
 	cd /tmp/collections/ansible_collections/ansible/platform && \
 	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage
 

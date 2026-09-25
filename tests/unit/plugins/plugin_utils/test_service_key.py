@@ -1,7 +1,7 @@
 # (c) 2026 Red Hat Inc.
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Tests for the edit-only service key API transform."""
+"""Tests for the service key API transform."""
 
 import sys
 import unittest
@@ -20,12 +20,13 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.v1.service_ke
 
 
 class TestServiceKeyTransform(unittest.TestCase):
-    """The service key API permits updates but never creation."""
+    """Service key requests only send editable fields."""
 
     def test_endpoint_operations_only_include_editable_fields(self):
         operations = ServiceKeyTransformMixin_v1.get_endpoint_operations()
 
-        self.assertNotIn("create", operations)
+        self.assertEqual(operations["create"].method, "POST")
+        self.assertEqual(operations["create"].fields, ["name", "is_active"])
         self.assertEqual(operations["update"].fields, ["name", "is_active"])
 
     def test_update_maps_name_and_active_state(self):
@@ -36,13 +37,13 @@ class TestServiceKeyTransform(unittest.TestCase):
         self.assertEqual(api.name, "renamed-key")
         self.assertIs(api.is_active, False)
 
-    def test_create_operation_does_not_build_a_create_payload(self):
+    def test_create_operation_builds_a_payload_with_editable_fields(self):
         service_key = AnsibleServiceKey(name="new-key", is_active=True)
 
         api = ServiceKeyTransformMixin_v1.from_ansible_data(service_key, {"operation": "create"})
 
-        self.assertIsNone(api.name)
-        self.assertIsNone(api.is_active)
+        self.assertEqual(api.name, "new-key")
+        self.assertIs(api.is_active, True)
 
 
 if __name__ == "__main__":

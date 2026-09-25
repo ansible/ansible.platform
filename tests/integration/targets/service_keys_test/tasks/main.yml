@@ -1,16 +1,16 @@
 ---
-- name: Load existing service keys
-  ansible.builtin.set_fact:
-    existing_service_keys: "{{ query('ansible.platform.gateway_api', 'service_keys', **connection_info) }}"
 
-- name: Ensure a service key is available for update tests
-  ansible.builtin.fail:
-    msg: Create a service key before running this edit-only integration test.
-  when: existing_service_keys | length == 0
-
+# Note: we are not pulling a test ID here because it may not be possible
+# for this play to create a service key through its API. Instead we use a fixed name for the mock service key so
+# that a user can manually create it if needed.  We will still try and
+# create it via shell plus if needed but if its not already there and we
+# can't create it the test will fail.
 - name: Generate a missing service key name
   ansible.builtin.set_fact:
-    missing_service_key_name: "GW-Collection-Test-Missing-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+    test_service_key_name: "{{ test_service_key_name }}"
+    non_existent_service_key_name: "{{ test_service_key_name }}-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  vars:
+    test_service_key_name: "GW-Collection-Test-Service-Key"
 
 - name: Run service key edit-only tests
   module_defaults:
@@ -21,10 +21,58 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    - name: Look up the fixture service key
+      ansible.builtin.set_fact:
+        fixture_service_keys: >-
+          {{ query(
+               'ansible.platform.gateway_api',
+               'service_keys',
+               query_params={'name': test_service_key_name},
+               **connection_info
+             ) }}
+
+    - name: Create the fixture service key if it does not exist
+      when: fixture_service_keys | length == 0
+      block:
+        - name: Attempt to create the mock service key if needed
+          ansible.builtin.command:
+            cmd: "docker exec -i aap_gw_1 aap-gateway-manage shell"
+            stdin: |
+              from aap_gateway_api.models import ServiceCluster, ServiceKey;
+              ServiceKey.objects.get_or_create(
+                  name='{{ test_service_key_name }}',
+                  defaults={'service_cluster': ServiceCluster.objects.get(name='gateway')}
+              )
+              print("Key created")
+          register: created_service_key
+
+      rescue:
+        - name: Fail if the mock service key was not created or we couldn't create it
+          ansible.builtin.fail:
+            msg: >-
+              The key {{ test_service_key_name }} did not exist and couldn't be created automatically.
+              You will need to create it manually.
+
+    - name: Verify the fixture service key exists
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        state: exists
+      register: service_key
+
+    - name: Assert the fixture service key exists
+      ansible.builtin.assert:
+        that:
+          - service_key.exists
+
+    - name: Set the service key is_active to true to ensure starting state
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: true
+
     - name: Verify an unchanged service key is idempotent
       ansible.platform.service_key:
-        name: "{{ existing_service_keys[0].name }}"
-        is_active: "{{ existing_service_keys[0].is_active }}"
+        name: "{{ test_service_key_name }}"
+        is_active: true
       register: unchanged_service_key
 
     - name: Assert the unchanged service key was not modified
@@ -32,10 +80,27 @@
         that:
           - unchanged_service_key is not changed
 
+    - name: Warn and ignore deprecated service key creation fields
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: true
+        service_cluster: gateway
+        secret: ignored-secret
+        secret_length: 32
+        mark_previous_inactive: true
+        algorithm: HS256
+      register: deprecated_service_key_fields
+
+    - name: Assert deprecated creation fields are ignored
+      ansible.builtin.assert:
+        that:
+          - deprecated_service_key_fields is not changed
+          - deprecated_service_key_fields.deprecations | length == 5
+
     - name: Verify check mode detects a service key update
       ansible.platform.service_key:
-        name: "{{ existing_service_keys[0].name }}"
-        is_active: "{{ not existing_service_keys[0].is_active }}"
+        name: "{{ test_service_key_name }}"
+        is_active: false
       check_mode: true
       register: planned_service_key_update
 
@@ -46,8 +111,8 @@
 
     - name: Update the service key active state
       ansible.platform.service_key:
-        name: "{{ existing_service_keys[0].name }}"
-        is_active: "{{ not existing_service_keys[0].is_active }}"
+        name: "{{ test_service_key_name }}"
+        is_active: false
       register: updated_service_key
 
     - name: Assert the service key was updated
@@ -55,23 +120,46 @@
         that:
           - updated_service_key is changed
 
-    - name: Reject creation of a missing service key
+    - name: Attempt to create a missing service key
       ansible.platform.service_key:
-        name: "{{ missing_service_key_name }}"
+        name: "{{ non_existent_service_key_name }}"
         is_active: true
       register: missing_service_key
       ignore_errors: true
 
-    - name: Assert a missing service key fails instead of being created
+    - name: Assert Gateway reports why creation of a missing service key failed
       ansible.builtin.assert:
         that:
           - missing_service_key is failed
-          - "'only supports editing existing resources' in missing_service_key.msg"
+          - "'detail' in missing_service_key.msg"
+
+    - name: Delete a non-existent service key
+      ansible.platform.service_key:
+        name: "{{ non_existent_service_key_name }}"
+        state: absent
+      register: deleted_non_existent_service_key
+
+    - name: Assert deletion of a non-existent service key didn't fail
+      ansible.builtin.assert:
+        that:
+          - deleted_non_existent_service_key is not changed
+
+    - name: Delete the mock service key
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        state: absent
+      register: deleted_service_key
+
+    - name: Assert deletion of the mock service key worked
+      ansible.builtin.assert:
+        that:
+          - deleted_service_key is changed
 
   always:
-    - name: Restore the original service key active state
+    # If we built the service key and failed somewhere along the way, restore gateway to its original state
+    - name: Delete the mock service key
       ansible.platform.service_key:
-        name: "{{ existing_service_keys[0].name }}"
-        is_active: "{{ existing_service_keys[0].is_active }}"
-      when: updated_service_key is defined and updated_service_key is changed
+        name: "{{ test_service_key_name }}"
+        state: absent
+      when: created_service_key is defined and created_service_key is changed
 ...

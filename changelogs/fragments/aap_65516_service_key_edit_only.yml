@@ -1,4 +1,4 @@
 ---
-bugfixes:
-  - service_key - restrict service key management to existing keys and fail instead of creating a missing key (https://issues.redhat.com/browse/AAP-65516).
+breaking_changes:
+  - service_key - Gateway no longer supports creating service keys through its API. The legacy creation parameters are deprecated and ignored, and a missing key returns Gateway's create error (https://issues.redhat.com/browse/AAP-65516).
 ...

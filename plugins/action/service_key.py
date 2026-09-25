@@ -13,6 +13,28 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "service_key"
     MODEL_CLASS = AnsibleServiceKey
 
-    def _allow_create_when_missing(self):
-        """Service-key endpoints only permit updates to existing keys."""
-        return False
+    # Gateway no longer permits creating service keys through its API.  Keep
+    # accepting these arguments during their deprecation period, but do not
+    # send them on update or attempted-create requests.
+    _DEPRECATED_FIELDS = {
+        "service_cluster": (
+            "The 'service_cluster' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "secret": (
+            "The 'secret' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "secret_length": (
+            "The 'secret_length' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "mark_previous_inactive": (
+            "The 'mark_previous_inactive' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "algorithm": (
+            "The 'algorithm' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+    }
