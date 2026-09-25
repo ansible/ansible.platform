@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - role_team_assignment - add optional organization on assignment_objects for org-scoped name lookup (Controller/EDA/teams).
+removed_features:
+  - role_team_assignment - remove unimplemented object_ids option (never present on stable-2.6; use assignment_objects with object_id).
