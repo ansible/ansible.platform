@@ -17,11 +17,29 @@
         test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
       when: test_id is not defined
 
-    - name: Preset variables for test resource names
+    - name: Set resource name variables
       ansible.builtin.set_fact:
         organization_name: "GW-Collection-Test-Organization-{{ test_id }}"
         team_name_prefix: "GW-Collection-Test-Team-{{ test_id }}"
         custom_role_name: "GW-Custom-Role-{{ test_id }}"
+        custom_resource_role_name: "GW-Custom-Resource-Role-{{ test_id }}"
+        eda_de_name: "GW-Test-DE-{{ test_id }}"
+        eda_project_name: "GW-Test-EDA-Project-{{ test_id }}"
+        ctrl_inventory_name: "GW-Test-Inventory-{{ test_id }}"
+        ctrl_project_name: "GW-Test-Project-{{ test_id }}"
+        ctrl_ee_name: "GW-Test-EE-{{ test_id }}"
+        ctrl_ig_name: "GW-Test-IG-{{ test_id }}"
+        hub_ns_name: "gw_test_ns_{{ test_id | lower }}"
+        hub_remote_name: "GW-Test-Remote-{{ test_id }}"
+        hub_repo_name: "GW-Test-Repo-{{ test_id }}"
+        hub_cns_name: "gw-test-cns-{{ test_id | lower }}"
+        eda_cred_name: "GW-Test-EDA-Cred-{{ test_id }}"
+        eda_stream_name: "GW-Test-Stream-{{ test_id }}"
+        eda_activation_name: "GW-Test-Activation-{{ test_id }}"
+        ctrl_cred_name: "GW-Test-Cred-{{ test_id }}"
+        ctrl_jt_name: "GW-Test-JT-{{ test_id }}"
+        ctrl_wfjt_name: "GW-Test-WFJT-{{ test_id }}"
+        ctrl_nt_name: "GW-Test-NT-{{ test_id }}"
 
     # --------------------------------------------------------------------------
     # Organizations
@@ -64,6 +82,13 @@
         description: "Test Team 1"
       register: team1
 
+    - name: Create prefix-matching Team 2 in Organization 2
+      ansible.platform.team:
+        name: "{{ team_name_prefix }}-Team-2-prefix-match"
+        organization: "{{ org2.name }}"
+        description: "Prefix collision for strict lookup coverage"
+      register: team2_prefix_match
+
     - name: Create Team 2 in Organization 2
       ansible.platform.team:
         name: "{{ team_name_prefix }}-Team-2"
@@ -89,6 +114,7 @@
       ansible.builtin.assert:
         that:
           - team1 is changed
+          - team2_prefix_match is changed
           - team2 is changed
           - team3 is changed
           - team4 is changed
@@ -106,147 +132,1033 @@
         state: present
       register: custom_role
 
-    # 1. Assign Org Admin role to Team1 on Org1 (Global role can't be assigned)
-    - name: Assign Org Admin to Team1 on Org1
-      ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org1.name }}"
-            type: "organizations"
-        role_definition: Organization Admin
-        team: "{{ team1.id }}"
-      register: org_admin_assignment_1
-      ignore_errors: true  # this may fail depending on AAP limitations
+    # -- Type-mismatch regression (BUG#165) -----------------------------------
+    # Creates a resource-scoped role (awx.inventory) and verifies the module
+    # rejects assignment with type:organizations before making any API call.
+    # This is client-side validation — no Controller connection required.
 
-    # 2. Assign Platform role to Team3 on Org3 (Global role can't be assigned)
-    - name: Assign Platform Auditor to Team1 on Org1
+    - name: Create resource-level role for type-mismatch test
+      ansible.platform.role_definition:
+        name: "{{ custom_resource_role_name }}"
+        content_type: "awx.inventory"
+        permissions:
+          - "awx.view_inventory"
+        state: present
+      register: custom_resource_role
+      ignore_errors: true
+
+    - name: "BUG#165 | resource-level role with type:organizations must fail with clear error"
       ansible.platform.role_team_assignment:
-        assignment_objects:
-          - name: "{{ org1.name }}"
-            type: "organizations"
-        role_definition: Platform Auditor
+        role_definition: "{{ custom_resource_role_name }}"
         team: "{{ team1.name }}"
-      register: org_admin_assignment_2
-      ignore_errors: true  # this may fail depending on AAP limitations
-
-    # 3. Assign Custom Role Assignment Test to Team1 on Org1
-    - name: Assign Custom Role to Team1 on Org1
-      ansible.platform.role_team_assignment:
         assignment_objects:
           - name: "{{ org1.name }}"
-            type: "organizations"
+            type: organizations
+        state: present
+      register: mismatch_project_org
+      ignore_errors: true
+      when: custom_resource_role is not failed
+
+    - name: "BUG#165 | Assert type mismatch is rejected with a clear error"
+      ansible.builtin.assert:
+        that:
+          - mismatch_project_org is failed
+          - "'organizations' in mismatch_project_org.msg"
+        success_msg: "BUG FIX CONFIRMED: type mismatch rejected with clear error."
+        fail_msg: >
+          BUG NOT FIXED: mismatch was accepted or error message is missing context.
+          Result: {{ mismatch_project_org | to_nice_json }}
+      when: custom_resource_role is not failed
+
+    # -- Org-scoped assignment regression -------------------------------------
+    - name: "BUG#165 | org-scoped role with type:organizations must still work (regression check)"
+      ansible.platform.role_team_assignment:
         role_definition: "{{ custom_role_name }}"
         team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
         state: present
-      register: custom_role_assignment
+      register: correct_org_assignment
 
-    # --------------------------------------------------------------------------
-    # VERIFICATION: Query API to confirm assignment persists
-    # --------------------------------------------------------------------------
-    - name: Fetch assignment for Team 1 and Custom Role
+    - name: "BUG#165 | Assert org-level assignment succeeds"
+      ansible.builtin.assert:
+        that:
+          - correct_org_assignment is not failed
+        success_msg: "No regression: org-scoped role + type:organizations still works correctly."
+        fail_msg: "REGRESSION: org-scoped role assignment is broken. {{ correct_org_assignment.msg | default('') }}"
+
+    # TEST 4: Idempotency — re-running org assignment produces no change
+    - name: "BUG#165 | Idempotency — re-run org assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+      register: idempotent_check
+
+    - name: "BUG#165 | Assert idempotency"
+      ansible.builtin.assert:
+        that:
+          - idempotent_check is not failed
+          - idempotent_check is not changed
+        success_msg: "Idempotency confirmed — second run made no changes."
+        fail_msg: "Idempotency broken — second run changed state or failed."
+
+    # TEST 5: object_ansible_id path bypasses type check and still works
+    - name: "BUG#165 | Assignment via object_ansible_id must work regardless of content_type"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_ansible_id: "{{ org2.organization.ansible_id | default(omit) }}"
+        state: present
+      register: ansible_id_assignment
+      when: org2.organization.ansible_id is defined
+      ignore_errors: true
+
+    # TEST 6: state:absent removes assignment correctly
+    - name: "BUG#165 | state:absent removes the assignment"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: absent
+      register: absent_assignment
+
+    - name: "BUG#165 | Assert assignment was removed"
+      ansible.builtin.assert:
+        that:
+          - absent_assignment is not failed
+          - absent_assignment is changed
+        success_msg: "state:absent removed assignment correctly."
+        fail_msg: "state:absent failed or made no change. {{ absent_assignment.msg | default('') }}"
+
+    # TEST 7: Multi-org assignment — single task, multiple objects
+    - name: "BUG#165 | Multi-org assignment in one task"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team3.name }}"
+        assignment_objects:
+          - name: "{{ org3.name }}"
+            type: organizations
+          - name: "{{ org4.name }}"
+            type: organizations
+        state: present
+      register: multi_org_assignment
+
+    - name: "BUG#165 | Assert multi-org assignment succeeded"
+      ansible.builtin.assert:
+        that:
+          - multi_org_assignment is not failed
+          - multi_org_assignment.assignments | length == 2
+        success_msg: "Multi-org assignment: both orgs assigned in one task."
+        fail_msg: "Multi-org assignment failed. {{ multi_org_assignment | to_nice_json }}"
+
+    # -- Verify via API -------------------------------------------------------
+    - name: "Add custom assignment back"
+      ansible.platform.role_team_assignment:
+        role_definition: "{{ custom_role_name }}"
+        team: "{{ team1.name }}"
+        assignment_objects:
+          - name: "{{ org1.name }}"
+            type: organizations
+        state: present
+
+    - name: Fetch custom role assignment from API to confirm persistence
       ansible.builtin.uri:
-        url: "{{ gateway_hostname }}api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/gateway/v1/role_team_assignments/?role_definition={{ custom_role.id }}&team={{ team1.id }}"
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
         force_basic_auth: true
         validate_certs: "{{ gateway_validate_certs | bool }}"
         return_content: true
       register: assignment_query
+      delegate_to: localhost
 
-    - name: Assert Assignment exists
+    - name: Assert assignment exists in API
+      ansible.builtin.assert:
+        that: "assignment_query.json.count > 0"
+        fail_msg: "No assignment found for role={{ custom_role.id }} team={{ team1.id }}."
+
+    # -- Gateway: team --------------------------------------------------------
+    # Assigns a role against a team object — tests type=teams lookup.
+
+    - name: Verify team role assignment (type=teams)
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ team2 is defined }}"
+        res_name: "{{ team2.name }}"
+        res_type: teams
+        res_role_def: "Team Admin"
+        team_name: "{{ team1.name }}"
+        res_organization: "{{ org2.name }}"
+
+    # -- EDA: decision environment --------------------------------------------
+    # EDA uses its own org ID namespace; look up the synced org by name first.
+
+    - name: Look up test organization in EDA
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/organizations/?name={{ org1.name | urlencode }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: eda_org
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Set EDA org ID fact
+      ansible.builtin.set_fact:
+        eda_org_id: "{{ eda_org.json.results[0].id }}"
+      when: eda_org is not failed and eda_org.json.count > 0
+
+    - name: Create EDA decision environment via EDA API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/decision-environments/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_de_name }}"
+          image_url: "quay.io/ansible/de-supported:latest"
+          organization_id: "{{ eda_org_id }}"
+        status_code: [200, 201]
+      register: eda_de
+      when: eda_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify EDA decision environment role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ eda_de is not failed and eda_de is not skipped }}"
+        res_name: "{{ eda_de_name }}"
+        res_type: eda.decisionenvironment
+        res_role_def: "Decision Environment Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- EDA: project ---------------------------------------------------------
+    # Uses type=eda.project (content_type format) which routes to /api/eda/v1/projects/.
+    # type=awx.project would incorrectly route to /api/controller/v2/projects/.
+
+    - name: Create EDA project via EDA API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/projects/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_project_name }}"
+          url: "https://github.com/ansible/event-driven-ansible"
+          organization_id: "{{ eda_org_id }}"
+        status_code: [200, 201]
+      register: eda_project
+      when: eda_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Create EDA project role definition
+      ansible.platform.role_definition:
+        name: "GW-EDA-Project-Role-{{ test_id }}"
+        content_type: eda.project
+        permissions:
+          - eda.view_project
+          - eda.change_project
+          - eda.delete_project
+          - eda.sync_project
+          - eda.view_rulebook
+        state: present
+      register: eda_project_role_def
+      ignore_errors: true
+
+    - name: Verify EDA project role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ eda_project is not failed and eda_project is not skipped and eda_project_role_def is not failed }}"
+        res_name: "{{ eda_project_name }}"
+        res_type: eda.project
+        res_role_def: "GW-EDA-Project-Role-{{ test_id }}"
+        team_name: "{{ team1.name }}"
+        res_organization: "{{ org1.name }}"
+
+    # Assign the same EDA project role via object_id — no type needed, the role's
+    # content_type (eda.project) tells the Gateway which resource the ID refers to.
+    - name: Assign EDA project role to team via object_id
+      ansible.platform.role_team_assignment:
+        role_definition: "GW-EDA-Project-Role-{{ test_id }}"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ eda_project.json.id }}"
+      register: eda_proj_obj_id_assign
+      when: eda_project is not failed and eda_project is not skipped and eda_project_role_def is not failed
+      ignore_errors: true
+
+    - name: Assert EDA project object_id assignment succeeded
       ansible.builtin.assert:
         that:
-          - "assignment_query.json.count > 0"
-        fail_msg: "No role assignment found for Custom Role ID {{ custom_role.id }} and Team ID {{ team1.id }}."
+          - eda_proj_obj_id_assign is not failed
+          - eda_proj_obj_id_assign is changed
+        fail_msg: "EDA project object_id assignment failed: {{ eda_proj_obj_id_assign.msg | default('') }}"
+      when: eda_project is not failed and eda_project is not skipped and eda_proj_obj_id_assign is defined
 
-    # Once we have role_definition , module available we can uncomment these
-    # 3. Assign Org Inventory Admin role to Team2 on Org2
-    # - name: Assign Org Inventory Admin to Team2 on Org2
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org1.name }}"
-    #         type: "organizations"
-    #       - name: "{{ org2.name }}"
-    #         type: "organizations"
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team2.name }}"
-    #     state: present
-    #   register: org_admin_assignment_3
+    - name: Remove EDA project object_id assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "GW-EDA-Project-Role-{{ test_id }}"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ eda_project.json.id }}"
+        state: absent
+      when: eda_project is not failed and eda_project is not skipped and eda_proj_obj_id_assign is not failed
 
-    # - name: Assert Team2 Org Inventory Admin assignment worked
-    #   ansible.builtin.assert:
-    #     that:
-    #       - org_admin_assignment_3 is changed or org_admin_assignment_3 is not failed
+    # -- EDA: eda_credentials -------------------------------------------------
 
-    # 4. Idempotency check (should not change)
-    # - name: Re-run Org Inventory Admin removal for Team2
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org1.name }}"
-    #         type: "organizations"
-    #       - name: "{{ org2.name }}"
-    #         type: "organizations"
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team2.name }}"
-    #     state: present
-    #   register: org_admin_assignment_3_check
+    - name: Look up EDA credential type
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/credential-types/?name=Source+Control"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: eda_cred_types
+      ignore_errors: true
+      delegate_to: localhost
 
-    # - name: Assert no change on idempotent re-run
-    #   ansible.builtin.assert:
-    #     that:
-    #       - org_admin_assignment_3_check is not changed
+    - name: Set EDA credential type fact
+      ansible.builtin.set_fact:
+        eda_cred_type_id: "{{ eda_cred_types.json.results[0].id }}"
+      when: eda_cred_types is not failed and eda_cred_types.json.count > 0
 
-    # 5. Assign Org Inventory Admin role to Team2 on Org1 (absent to test delete)
-    # - name: Assign Org Credential Admin to Team3 on Org3
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org3.name }}"
-    #         type: "organizations"
-    #     role_definition: Organization Credential Admin
-    #     team: "{{ team3.name }}"
-    #     state: present
-    #   register: org_admin_assignment_5
+    - name: Create EDA credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_cred_name }}"
+          credential_type_id: "{{ eda_cred_type_id }}"
+          inputs: {}
+          organization_id: "{{ eda_org_id }}"
+        status_code: [200, 201]
+      register: eda_cred
+      when: eda_cred_type_id is defined and eda_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
 
-    # - name: Assert Org Credential Admin assignment worked
-    #   ansible.builtin.assert:
-    #     that:
-    #       - org_admin_assignment_5 is changed
+    - name: Verify EDA credential role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ eda_cred is defined and eda_cred is not failed and eda_cred is not skipped }}"
+        res_name: "{{ eda_cred_name }}"
+        res_type: eda.edacredential
+        res_role_def: "Eda Credential Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- EDA: event streams ---------------------------------------------------
+    # Event streams require a credential of an event-stream-compatible type.
+
+    - name: Look up Token Event Stream credential type
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/credential-types/?name=Token+Event+Stream"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: eda_stream_cred_types
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Set EDA stream credential type fact
+      ansible.builtin.set_fact:
+        eda_stream_cred_type_id: "{{ eda_stream_cred_types.json.results[0].id }}"
+      when: eda_stream_cred_types is not failed and eda_stream_cred_types.json.count > 0
+
+    - name: Create EDA event stream credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_stream_name }}-cred"
+          credential_type_id: "{{ eda_stream_cred_type_id }}"
+          inputs:
+            token: "integration-test-token"
+          organization_id: "{{ eda_org_id }}"
+        status_code: [200, 201]
+      register: eda_stream_cred
+      when: eda_stream_cred_type_id is defined and eda_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Create EDA event stream
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/event-streams/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_stream_name }}"
+          organization_id: "{{ eda_org_id }}"
+          eda_credential_id: "{{ eda_stream_cred.json.id }}"
+        status_code: [200, 201]
+      register: eda_stream
+      when: eda_org_id is defined and eda_stream_cred is defined and eda_stream_cred is not failed and eda_stream_cred is not skipped
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify EDA event stream role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ eda_stream is defined and eda_stream is not failed and eda_stream is not skipped }}"
+        res_name: "{{ eda_stream_name }}"
+        res_type: eda.eventstream
+        res_role_def: "Event Stream Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- EDA: activations -----------------------------------------------------
+
+    - name: Look up existing EDA rulebook for activation test
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/rulebooks/?page_size=1"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: eda_rulebooks
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Look up existing EDA decision environment for activation test
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/decision-environments/?page_size=1"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: eda_des_list
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Create EDA activation (disabled)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/activations/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ eda_activation_name }}"
+          rulebook_id: "{{ eda_rulebooks.json.results[0].id }}"
+          decision_environment_id: "{{ eda_des_list.json.results[0].id }}"
+          organization_id: "{{ eda_org_id }}"
+          is_enabled: false
+        status_code: [200, 201]
+      register: eda_activation
+      when: >
+        eda_rulebooks is not failed and eda_rulebooks.json.count > 0
+        and eda_des_list is not failed and eda_des_list.json.count > 0
+        and eda_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify EDA activation role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ eda_activation is defined and eda_activation is not failed and eda_activation is not skipped }}"
+        res_name: "{{ eda_activation_name }}"
+        res_type: eda.activation
+        res_role_def: "Activation Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Controller: look up Default org ID -----------------------------------
+
+    - name: Look up Default organization in Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_default_org
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Set Controller org ID fact
+      ansible.builtin.set_fact:
+        ctrl_org_id: "{{ ctrl_default_org.json.results[0].id }}"
+      when: ctrl_default_org is not failed and ctrl_default_org.json.count > 0
+
+    # -- Controller: inventory ------------------------------------------------
+
+    - name: Create Controller inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_inventory_name }}"
+          organization: "{{ ctrl_org_id }}"
+        status_code: [200, 201]
+      register: ctrl_inventory
+      when: ctrl_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify inventory role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_inventory is not failed and ctrl_inventory is not skipped }}"
+        res_name: "{{ ctrl_inventory_name }}"
+        res_type: awx.inventory
+        res_role_def: "Inventory Admin"
+        team_name: "{{ team1.name }}"
+        res_organization: Default
+
+    # Assign the same role via object_id — numeric ID bypasses name lookup entirely.
+    - name: Assign inventory role to team via object_id
+      ansible.platform.role_team_assignment:
+        role_definition: "Inventory Admin"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ ctrl_inventory.json.id }}"
+      register: inv_obj_id_assign
+      when: ctrl_inventory is not failed and ctrl_inventory is not skipped
+      ignore_errors: true
+
+    - name: Assert inventory object_id assignment succeeded
+      ansible.builtin.assert:
+        that:
+          - inv_obj_id_assign is not failed
+          - inv_obj_id_assign is changed
+        fail_msg: "Inventory object_id assignment failed: {{ inv_obj_id_assign.msg | default('') }}"
+      when: ctrl_inventory is not failed and ctrl_inventory is not skipped and inv_obj_id_assign is defined
+
+    - name: Idempotency — re-run inventory object_id assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "Inventory Admin"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ ctrl_inventory.json.id }}"
+      register: inv_obj_id_idem
+      when: ctrl_inventory is not failed and ctrl_inventory is not skipped and inv_obj_id_assign is not failed
+      ignore_errors: true
+
+    - name: Assert inventory object_id assignment idempotent
+      ansible.builtin.assert:
+        that: inv_obj_id_idem is not changed
+        fail_msg: "Inventory object_id re-run should not change."
+      when: ctrl_inventory is not failed and ctrl_inventory is not skipped and inv_obj_id_assign is not failed and inv_obj_id_idem is defined
+
+    - name: Remove inventory object_id assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "Inventory Admin"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ ctrl_inventory.json.id }}"
+        state: absent
+      when: ctrl_inventory is not failed and ctrl_inventory is not skipped and inv_obj_id_assign is not failed
+
+    # -- Controller: project --------------------------------------------------
+
+    - name: Create Controller project (manual SCM)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_project_name }}"
+          organization: "{{ ctrl_org_id }}"
+          scm_type: ""
+        status_code: [200, 201]
+      register: ctrl_project
+      when: ctrl_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify project role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_project is not failed and ctrl_project is not skipped }}"
+        res_name: "{{ ctrl_project_name }}"
+        res_type: awx.project
+        res_role_def: "Project Admin"
+        team_name: "{{ team1.name }}"
+
+    # Mixed list: one item uses name+type lookup, another uses object_id directly.
+    # type alongside object_id is optional — included here for readability only;
+    # the role definition's content_type (awx.project) already identifies the resource.
+    - name: Assign project role to team — mixed name+type and object_id in one task
+      ansible.platform.role_team_assignment:
+        role_definition: "Project Admin"
+        team: "{{ team3.name }}"
+        assignment_objects:
+          - name: "{{ ctrl_project_name }}"
+            type: awx.project
+          - object_id: "{{ ctrl_project.json.id }}"
+            type: awx.project
+      register: proj_mixed_assign
+      when: ctrl_project is not failed and ctrl_project is not skipped
+      ignore_errors: true
+
+    - name: Assert mixed assignment created two entries
+      ansible.builtin.assert:
+        that:
+          - proj_mixed_assign is not failed
+          - proj_mixed_assign.assignments | length == 2
+        fail_msg: "Mixed assignment failed or wrong count: {{ proj_mixed_assign | to_nice_json }}"
+      when: ctrl_project is not failed and ctrl_project is not skipped and proj_mixed_assign is defined
+
+    - name: Remove mixed project assignments
+      ansible.platform.role_team_assignment:
+        role_definition: "Project Admin"
+        team: "{{ team3.name }}"
+        assignment_objects:
+          - name: "{{ ctrl_project_name }}"
+            type: awx.project
+          - object_id: "{{ ctrl_project.json.id }}"
+        state: absent
+      when: ctrl_project is not failed and ctrl_project is not skipped and proj_mixed_assign is not failed
+
+    # -- Controller: execution environment ------------------------------------
+
+    - name: Create Controller execution environment
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/execution_environments/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_ee_name }}"
+          image: "quay.io/ansible/awx-ee:latest"
+        status_code: [200, 201]
+      register: ctrl_ee
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify execution environment role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_ee is not failed and ctrl_ee is not skipped }}"
+        res_name: "{{ ctrl_ee_name }}"
+        res_type: awx.executionenvironment
+        res_role_def: "ExecutionEnvironment Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Controller: instance group -------------------------------------------
+
+    - name: Create Controller instance group
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_ig_name }}"
+        status_code: [200, 201]
+      register: ctrl_ig
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify instance group role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_ig is not failed and ctrl_ig is not skipped }}"
+        res_name: "{{ ctrl_ig_name }}"
+        res_type: awx.instancegroup
+        res_role_def: "InstanceGroup Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Controller: credentials ----------------------------------------------
+
+    - name: Look up Machine credential type in Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_cred_types
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Set Controller credential type fact
+      ansible.builtin.set_fact:
+        ctrl_cred_type_id: "{{ ctrl_cred_types.json.results[0].id }}"
+      when: ctrl_cred_types is not failed and ctrl_cred_types.json.count > 0
+
+    - name: Create Controller credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_cred_name }}"
+          credential_type: "{{ ctrl_cred_type_id }}"
+          inputs: {}
+          organization: "{{ ctrl_org_id }}"
+        status_code: [200, 201]
+      register: ctrl_cred
+      when: ctrl_cred_type_id is defined and ctrl_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify credential role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_cred is defined and ctrl_cred is not failed and ctrl_cred is not skipped }}"
+        res_name: "{{ ctrl_cred_name }}"
+        res_type: awx.credential
+        res_role_def: "Credential Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Controller: job templates --------------------------------------------
+
+    - name: Look up Controller project with playbooks for job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/?status=successful&page_size=10"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_synced_projects
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Look up playbooks from synced project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}{{ ctrl_synced_projects.json.results[0].related.playbooks }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_playbooks
+      when: ctrl_synced_projects is not failed and ctrl_synced_projects.json.count > 0
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Set job template project and playbook facts
+      ansible.builtin.set_fact:
+        ctrl_jt_project_id: "{{ ctrl_synced_projects.json.results[0].id }}"
+        ctrl_jt_playbook: "{{ ctrl_playbooks.json[0] }}"
+      when: >
+        ctrl_synced_projects is not failed and ctrl_synced_projects.json.count > 0
+        and ctrl_playbooks is not failed and ctrl_playbooks is not skipped
+        and ctrl_playbooks.json | length > 0
+
+    - name: Create Controller job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_jt_name }}"
+          project: "{{ ctrl_jt_project_id }}"
+          inventory: "{{ ctrl_inventory.json.id }}"
+          playbook: "{{ ctrl_jt_playbook }}"
+        status_code: [200, 201]
+      register: ctrl_jt
+      when: ctrl_jt_project_id is defined and ctrl_jt_playbook is defined and ctrl_inventory is not failed and ctrl_inventory is not skipped
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify job template role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_jt is defined and ctrl_jt is not failed and ctrl_jt is not skipped }}"
+        res_name: "{{ ctrl_jt_name }}"
+        res_type: awx.jobtemplate
+        res_role_def: "JobTemplate Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Controller: workflow job templates -----------------------------------
+
+    - name: Create Controller workflow job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_wfjt_name }}"
+          organization: "{{ ctrl_org_id }}"
+        status_code: [200, 201]
+      register: ctrl_wfjt
+      when: ctrl_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify workflow job template role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_wfjt is defined and ctrl_wfjt is not failed and ctrl_wfjt is not skipped }}"
+        res_name: "{{ ctrl_wfjt_name }}"
+        res_type: awx.workflowjobtemplate
+        res_role_def: "WorkflowJobTemplate Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Controller: notification templates -----------------------------------
+
+    - name: Create Controller notification template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/notification_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_nt_name }}"
+          organization: "{{ ctrl_org_id }}"
+          notification_type: "webhook"
+          notification_configuration:
+            url: "http://example.com"
+            http_method: "POST"
+            headers: {}
+        status_code: [200, 201]
+      register: ctrl_nt
+      when: ctrl_org_id is defined
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify notification template role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ ctrl_nt is defined and ctrl_nt is not failed and ctrl_nt is not skipped }}"
+        res_name: "{{ ctrl_nt_name }}"
+        res_type: awx.notificationtemplate
+        res_role_def: "NotificationTemplate Admin"
+        team_name: "{{ team1.name }}"
+
+    # -- Hub: collection namespace --------------------------------------------
+
+    - name: Create Hub collection namespace via Galaxy API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/v3/namespaces/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ hub_ns_name }}"
+        status_code: [200, 201]
+      register: hub_ns
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify collection namespace role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ hub_ns is not failed and hub_ns is not skipped }}"
+        res_name: "{{ hub_ns_name }}"
+        res_type: galaxy.namespace
+        res_role_def: "galaxy.collection_namespace_owner"
+        team_name: "{{ team1.name }}"
+
+    # Hub namespaces return pulp_href; the UUID at the end is the object_id.
+    - name: Set Hub namespace UUID fact from pulp_href
+      ansible.builtin.set_fact:
+        hub_ns_uuid: "{{ hub_ns.pulp_href | default('') | regex_replace('.*/', '') | regex_replace('/$', '') }}"
+      when: hub_ns is not failed and hub_ns is not skipped and hub_ns.pulp_href is defined
+
+    - name: Assign namespace role to team via object_id (Hub UUID)
+      ansible.platform.role_team_assignment:
+        role_definition: "galaxy.collection_namespace_owner"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ hub_ns_uuid }}"
+      register: ns_obj_id_assign
+      when: hub_ns_uuid is defined and hub_ns_uuid != ''
+      ignore_errors: true
+
+    - name: Assert namespace object_id assignment succeeded
+      ansible.builtin.assert:
+        that:
+          - ns_obj_id_assign is not failed
+          - ns_obj_id_assign is changed
+        fail_msg: "Hub namespace object_id assignment failed: {{ ns_obj_id_assign.msg | default('') }}"
+      when: hub_ns_uuid is defined and hub_ns_uuid != '' and ns_obj_id_assign is defined
+
+    - name: Remove namespace object_id assignment
+      ansible.platform.role_team_assignment:
+        role_definition: "galaxy.collection_namespace_owner"
+        team: "{{ team2.name }}"
+        assignment_objects:
+          - object_id: "{{ hub_ns_uuid }}"
+        state: absent
+      when: hub_ns_uuid is defined and hub_ns_uuid != '' and ns_obj_id_assign is not failed
+
+    # -- Hub: collection remote -----------------------------------------------
+
+    - name: Create Hub collection remote via Pulp API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/pulp/api/v3/remotes/ansible/collection/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ hub_remote_name }}"
+          url: "https://galaxy.ansible.com/api/"
+        status_code: [200, 201]
+      register: hub_remote
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify collection remote role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ hub_remote is not failed and hub_remote is not skipped }}"
+        res_name: "{{ hub_remote_name }}"
+        res_type: galaxy.collectionremote
+        res_role_def: "ansible.collectionremote_owner"
+        team_name: "{{ team1.name }}"
+
+    # -- Hub: ansible repository ----------------------------------------------
+
+    - name: Create Hub ansible repository via Pulp API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/pulp/api/v3/repositories/ansible/ansible/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ hub_repo_name }}"
+        status_code: [200, 201]
+      register: hub_repo
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify ansible repository role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ hub_repo is not failed and hub_repo is not skipped }}"
+        res_name: "{{ hub_repo_name }}"
+        res_type: galaxy.ansiblerepository
+        res_role_def: "ansible.ansiblerepository_owner"
+        team_name: "{{ team1.name }}"
+
+    # -- Hub: container namespace ---------------------------------------------
+
+    - name: Create Hub container namespace via Pulp API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/pulp/api/v3/pulp_container/namespaces/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ hub_cns_name }}"
+        status_code: [200, 201]
+      register: hub_cns
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Verify container namespace role assignment
+      ansible.builtin.include_tasks:
+        file: verify_assignment.yml
+      vars:
+        res_ok: "{{ hub_cns is not failed and hub_cns is not skipped }}"
+        res_name: "{{ hub_cns_name }}"
+        res_type: galaxy.containernamespace
+        res_role_def: "container.containernamespace_collaborator"
+        team_name: "{{ team1.name }}"
 
   always:
-    # ----------------------------------------------------------------------
-    # Explicit Role Cleanup (Uncomment once role_definition implemented)
-    # ----------------------------------------------------------------------
-    # - name: Remove Org Inventory Admin assignment from Team2 on Org1,Org2
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org1.name }}"
-    #         type: organizations
-    #       - name: "{{ org2.name }}"
-    #         type: organizations
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team2.name }}"
-    #     state: absent
 
-    # - name: Remove Org Inventory Admin assignment from Team2 on Org3
-    #   ansible.platform.role_team_assignment:
-    #     assignment_objects:
-    #       - name: "{{ org3.name }}"
-    #         type: organizations
-    #     role_definition: Organization Inventory Admin
-    #     team: "{{ team3.name }}"
-    #     state: absent
-    # ----------------------------------------------------------------------
-    # Cleanup
-    # ----------------------------------------------------------------------
     - name: Delete test teams
       ansible.platform.team:
         name: "{{ item.name }}"
         organization: "{{ item.organization }}"
         state: absent
       loop:
-        - { name: "{{ team1.name }}", organization: "{{ org1.name }}" }
-        - { name: "{{ team2.name }}", organization: "{{ org2.name }}" }
-        - { name: "{{ team3.name }}", organization: "{{ org3.name }}" }
-        - { name: "{{ team4.name }}", organization: "{{ org4.name }}" }
+        - {name: "{{ team1.name }}", organization: "{{ org1.name }}"}
+        - {name: "{{ team2.name }}", organization: "{{ org2.name }}"}
+        - {name: "{{ team3.name }}", organization: "{{ org3.name }}"}
+        - {name: "{{ team4.name }}", organization: "{{ org4.name }}"}
 
     - name: Delete test organizations
       ansible.platform.organization:
@@ -258,7 +1170,7 @@
         - "{{ org3.name }}"
         - "{{ org4.name }}"
 
-    - name: Delete custom role
+    - name: Delete custom org-scoped role
       ansible.platform.role_definition:
         name: "{{ custom_role_name }}"
         content_type: "shared.organization"
@@ -270,4 +1182,264 @@
         - role_delete.failed
         - "'Not found' not in role_delete.msg"
         - "'does not exist' not in role_delete.msg"
+
+    - name: Delete resource-level role definition
+      ansible.platform.role_definition:
+        name: "{{ custom_resource_role_name }}"
+        content_type: "awx.inventory"
+        permissions:
+          - "awx.view_inventory"
+        state: absent
+      register: resource_role_delete
+      failed_when:
+        - resource_role_delete.failed
+        - "'Not found' not in (resource_role_delete.msg | default(''))"
+        - "'does not exist' not in (resource_role_delete.msg | default(''))"
+
+    - name: Delete EDA project role definition
+      ansible.platform.role_definition:
+        name: "GW-EDA-Project-Role-{{ test_id }}"
+        content_type: eda.project
+        permissions:
+          - eda.view_project
+        state: absent
+      register: eda_role_def_delete
+      failed_when:
+        - eda_role_def_delete.failed
+        - "'Not found' not in (eda_role_def_delete.msg | default(''))"
+        - "'does not exist' not in (eda_role_def_delete.msg | default(''))"
+
+    - name: Delete EDA activation
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/activations/{{ eda_activation.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_activation is defined and eda_activation is not failed and eda_activation is not skipped and eda_activation.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete EDA event stream
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/event-streams/{{ eda_stream.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_stream is defined and eda_stream is not failed and eda_stream is not skipped and eda_stream.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete EDA event stream credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/{{ eda_stream_cred.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_stream_cred is defined and eda_stream_cred is not failed and eda_stream_cred is not skipped and eda_stream_cred.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete EDA credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/{{ eda_cred.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_cred is defined and eda_cred is not failed and eda_cred is not skipped and eda_cred.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete EDA project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/projects/{{ eda_project.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_project is defined and eda_project is not failed and eda_project.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete EDA decision environment
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/decision-environments/{{ eda_de.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: eda_de is defined and eda_de is not failed and eda_de.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller notification template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/notification_templates/{{ ctrl_nt.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_nt is defined and ctrl_nt is not failed and ctrl_nt is not skipped and ctrl_nt.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller workflow job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ ctrl_wfjt.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_wfjt is defined and ctrl_wfjt is not failed and ctrl_wfjt is not skipped and ctrl_wfjt.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ ctrl_jt.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_jt is defined and ctrl_jt is not failed and ctrl_jt is not skipped and ctrl_jt.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/{{ ctrl_cred.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_cred is defined and ctrl_cred is not failed and ctrl_cred is not skipped and ctrl_cred.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ ctrl_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_inventory is defined and ctrl_inventory is not failed and ctrl_inventory is not skipped and ctrl_inventory.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ ctrl_project.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_project is defined and ctrl_project is not failed and ctrl_project is not skipped and ctrl_project.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller execution environment
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/execution_environments/{{ ctrl_ee.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_ee is defined and ctrl_ee is not failed and ctrl_ee.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Controller instance group
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/{{ ctrl_ig.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when: ctrl_ig is defined and ctrl_ig is not failed and ctrl_ig.json.id is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Hub collection namespace via Galaxy API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/galaxy/v3/namespaces/{{ hub_ns_name }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: hub_ns is defined and hub_ns is not failed
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Hub collection remote via Pulp API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}{{ hub_remote.json.pulp_href | regex_replace('^/', '') }}"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 404]
+      when: hub_remote is defined and hub_remote is not failed and hub_remote.json.pulp_href is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Hub ansible repository via Pulp API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}{{ hub_repo.json.pulp_href | regex_replace('^/', '') }}"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 404]
+      when: hub_repo is defined and hub_repo is not failed and hub_repo.json.pulp_href is defined
+      failed_when: false
+      delegate_to: localhost
+
+    - name: Delete Hub container namespace via Pulp API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}{{ hub_cns.json.pulp_href | regex_replace('^/', '') }}"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 404]
+      when: hub_cns is defined and hub_cns is not failed and hub_cns.json.pulp_href is defined
+      failed_when: false
+      delegate_to: localhost
 ...

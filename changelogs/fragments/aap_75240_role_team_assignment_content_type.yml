@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - role_team_assignment - validate ``assignment_objects`` ``type`` against the role
+    definition ``content_type`` before API calls, preventing Gateway 400/500 errors
+    when the wrong resource type is used for name-based lookup (https://issues.redhat.com/browse/AAP-75240).
+  - role_team_assignment - allow resource-level ``type`` values (for example
+    ``projects``, ``activations``) in ``assignment_objects`` instead of rejecting
+    all types other than ``organizations`` and ``teams``.
