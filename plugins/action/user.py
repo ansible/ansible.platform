@@ -15,6 +15,9 @@ from typing import Any
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.user import AnsibleUser
 
+# Name of the Platform Auditor role definition in the Gateway API.
+_PLATFORM_AUDITOR_ROLE = "Platform Auditor"
+
 
 class ActionModule(BaseResourceActionPlugin):
     """Action plugin for the user module."""
