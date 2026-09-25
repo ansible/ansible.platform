@@ -88,9 +88,12 @@ options:
 
   update_secrets:
     description:
-      - When C(false), secret fields (e.g. I(password)) will not be sent during updates,
-        preventing false C(changed) reports when the current value cannot be read back.
-      - Set to C(true) (default) to always push secrets.
+      - When C(true) (default), always send the password to the API if the
+        user provides one, regardless of whether other fields changed.
+        Use this to force a password reset.
+      - When C(false), the password is excluded from change detection.
+        It is only included in the API request if other fields
+        (username, email, etc.) trigger an update.
     type: bool
     default: true
 
