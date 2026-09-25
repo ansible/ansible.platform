@@ -575,6 +575,239 @@ def test_handles_api_error():
 
 ---
 
+## Backport Assessment
+
+**Check if bugfix should be backported to stable branches:**
+
+### 1. Severity Check
+
+**High severity (backport required):**
+- Security vulnerability
+- Data loss bug
+- Crash/hang preventing module use
+- Authentication/authorization bypass
+- Breaking production workflows
+
+**Medium severity (backport recommended):**
+- Incorrect behavior affecting correctness
+- Idempotency broken
+- Resource leaks (memory/connections)
+- Performance regression
+
+**Low severity (backport optional):**
+- Minor inconsistencies
+- Cosmetic issues
+- Edge cases rarely hit
+
+### 2. Backport Feasibility
+
+```bash
+# Check stable branches
+git branch -r | grep 'stable-'
+
+# Check if code area exists in stable branches
+git diff origin/stable-2.7..origin/devel --stat -- <changed_files>
+```
+
+**Backport criteria:**
+- [ ] Changed code exists in stable branch
+- [ ] Dependencies available in stable branch
+- [ ] No breaking API changes needed
+- [ ] Tests available in stable branch
+
+### 3. Reviewer Recommendation
+
+**Add to review:**
+
+```markdown
+## Backport Assessment
+
+**Severity:** [High | Medium | Low]
+
+**Recommendation:** 
+- ✅ Should backport to stable-2.7 and stable-2.8
+- ⚠️  Backport to stable-2.7 only (stable-2.8 unaffected)
+- ❌ No backport needed (low severity, edge case)
+
+**Reasoning:** [Brief explanation of severity and impact]
+
+**Action:** Add `backport:stable-2.7` label if approved for backport
+```
+
+---
+
+## New Attribute Test Coverage
+
+**If bugfix adds new module attributes, verify test coverage:**
+
+### 1. Detect New Attributes
+
+```bash
+# Check for new attributes in module DOCUMENTATION
+git diff origin/devel -- plugins/modules/<module>.py | grep "^+.*type:"
+
+# Check for new Ansible model fields
+git diff origin/devel -- plugins/plugin_utils/ansible_models/<module>.py | grep "^+.*:"
+```
+
+### 2. Verify Test Coverage
+
+**Required checks:**
+
+- [ ] **Integration test covers new attribute**
+  ```bash
+  grep -r "new_attribute" tests/integration/targets/<module>s_test/
+  ```
+
+- [ ] **Test both present and absent cases**
+  ```yaml
+  # Should test with attribute
+  - name: Create with new attribute
+    ansible.platform.<module>:
+      name: test
+      new_attribute: value
+  
+  # Should test without attribute (backward compatibility)
+  - name: Create without new attribute  
+    ansible.platform.<module>:
+      name: test
+  ```
+
+- [ ] **Test attribute change (idempotency)**
+  ```yaml
+  - name: Update new attribute
+    ansible.platform.<module>:
+      name: test
+      new_attribute: new_value
+    register: result
+  
+  - assert:
+      that:
+        - result is changed
+  
+  - name: Rerun (should be idempotent)
+    ansible.platform.<module>:
+      name: test  
+      new_attribute: new_value
+    register: result
+  
+  - assert:
+      that:
+        - result is not changed
+  ```
+
+### 3. Review Feedback
+
+**If tests missing:**
+
+```markdown
+❌ **BLOCKER: Insufficient test coverage for new attribute**
+
+The bugfix adds \`new_attribute\` to the module, but integration tests don't cover:
+- [ ] Creating resource with new attribute
+- [ ] Creating resource without new attribute (backward compatibility)
+- [ ] Updating attribute value (idempotency)
+
+Please add test cases to \`tests/integration/targets/<module>s_test/tasks/main.yml\`
+```
+
+---
+
+## Security Validation
+
+**All bugfixes must pass security checks:**
+
+### 1. Credential Handling
+
+- [ ] **No credentials in logs** (even at `-vvvv`)
+  ```bash
+  # Check for password/token logging
+  git diff origin/devel | grep -i "display.vvv.*password\|display.vvv.*token"
+  ```
+
+- [ ] **No credentials in subprocess args**
+  ```bash
+  # Check Popen calls
+  git diff origin/devel | grep -A 5 "Popen"
+  ```
+
+- [ ] **Vault credentials converted to str()**
+  ```python
+  # ✅ CORRECT
+  str(gateway_config.password) if gateway_config.password else None
+  
+  # ❌ WRONG
+  gateway_config.password  # May be AnsibleVaultEncryptedUnicode
+  ```
+
+### 2. Input Validation
+
+- [ ] **User input sanitized** (no code injection)
+  ```python
+  # ❌ DANGEROUS
+  os.system(f"rm {user_provided_path}")  # Command injection!
+  
+  # ✅ SAFE
+  Path(user_provided_path).unlink()  # Uses filesystem API
+  ```
+
+- [ ] **API URLs properly encoded**
+  ```python
+  # ❌ VULNERABLE
+  url = f"{endpoint}?name={name}"  # name can contain & or =
+  
+  # ✅ SECURE
+  from urllib.parse import urlencode
+  url = f"{endpoint}?{urlencode({'name': name})}"
+  ```
+
+### 3. Secret Exposure
+
+- [ ] **No secrets in error messages**
+  ```python
+  # ❌ LEAKS SECRET
+  raise AnsibleError(f"Auth failed with password {password}")
+  
+  # ✅ SAFE
+  raise AnsibleError("Authentication failed")
+  ```
+
+- [ ] **No secrets in return values**
+  ```python
+  # ❌ EXPOSES SECRET
+  return {"password": password, "status": "created"}
+  
+  # ✅ SAFE (write-only field)
+  return {"status": "created"}  # Password not returned
+  ```
+
+### 4. Fail-Safe Defaults
+
+- [ ] **Secure defaults** (don't auto-disable security)
+  ```python
+  # ❌ INSECURE DEFAULT
+  verify_ssl = module.params.get("verify_ssl", False)
+  
+  # ✅ SECURE DEFAULT
+  verify_ssl = module.params.get("verify_ssl", True)
+  ```
+
+**If security issues found:**
+
+```markdown
+❌ **SECURITY BLOCKER**
+
+Security issues detected:
+1. Line X: Password logged at -vvvv level
+2. Line Y: User input not sanitized before shell execution
+
+**Required fixes:**
+- Remove credential from display.vvv() call
+- Replace os.system() with subprocess.run() and proper escaping
+```
+
+---
+
 ## Red Flags
 
 **Request changes if:**
