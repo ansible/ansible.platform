@@ -945,25 +945,34 @@ jobs:
 
 ```yaml
 on:
-  pull_request:
+  pull_request_target:
     types: [labeled]
 
 jobs:
   integration:
-    # Only run after manual approval
-    if: |
-      github.event.label.name == 'safe to test' &&
-      github.event.pull_request.author_association == 'MEMBER'
+    # Only run after maintainer applies "safe to test" label
+    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
+    environment: CI  # Optional: Require environment approval
     steps:
-      # Checks out BASE branch (trusted repository code, NOT PR code)
+      # Check out PR code (head.sha) to actually test the changes
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true
       - env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
-        # Run trusted scripts only - they can fetch/test PR if needed
-        run: ./scripts/run-approved-integration-tests.sh
+        # Safe because:
+        # 1. pull_request_target uses workflow from base (can't be modified by PR)
+        # 2. Label gate requires maintainer review
+        # 3. Workflow file itself is trusted
+        run: ansible-playbook tests/integration/playbook.yml
 ```
+
+**Why this is safe:**
+- **pull_request_target**: Workflow runs from base branch (PR cannot modify the workflow)
+- **Label gate**: Maintainer reviews code BEFORE applying label
+- **head.sha**: Tests actual PR changes (not base branch)
+- **allow-unsafe-pr-checkout**: Explicit acknowledgment that we're testing untrusted code
 
 **❌ NEVER DO THIS:**
 ```yaml

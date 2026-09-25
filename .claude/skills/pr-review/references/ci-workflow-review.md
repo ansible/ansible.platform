@@ -277,7 +277,7 @@ gh run view <RUN_ID> --repo ansible/ansible.platform --log | grep -i password
 - [ ] **No secret in artifacts** - Don't upload logs/files containing secrets
 - [ ] **Secret rotation documented** - If secrets compromised, how to rotate
 
-**Example: Safe secret usage pattern**
+**Example: Safe secret usage pattern (based on actual integration.yml)**
 
 ```yaml
 name: Integration Tests (Safe to Test)
@@ -287,37 +287,37 @@ on:
     types: [labeled]
 
 jobs:
-  check-access:
-    # First job: verify access
-    if: |
-      github.event.label.name == 'safe to test' &&
-      (github.event.pull_request.author_association == 'MEMBER' ||
-       github.event.pull_request.author_association == 'OWNER')
-    runs-on: ubuntu-latest
-    outputs:
-      approved: ${{ steps.check.outputs.approved }}
-    steps:
-      - id: check
-        run: echo "approved=true" >> $GITHUB_OUTPUT
-
   integration:
-    needs: check-access
-    if: needs.check-access.outputs.approved == 'true'
+    # CRITICAL: Gate on "safe to test" label - maintainer must review BEFORE label
+    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
     runs-on: ubuntu-latest
+    environment: CI  # Optional: Require environment approval
+    
     steps:
+      # Check out PR code (head.sha) - ONLY safe because of label gate above
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true  # Acknowledge we're testing untrusted code
       
-      - name: Run tests with secrets
+      - name: Run integration tests with secrets
         env:
           AAP_HOSTNAME: ${{ secrets.AAP_HOSTNAME }}
           AAP_USERNAME: ${{ secrets.AAP_USERNAME }}
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
         run: |
-          # CRITICAL: Runs trusted base code, never untrusted PR code
+          # Safe because:
+          # 1. Maintainer reviewed PR before applying "safe to test" label
+          # 2. Label check gates job execution
+          # 3. PR cannot modify workflow file that runs this
           ansible-playbook tests/integration/playbook.yml
 ```
+
+**Security model:**
+- **pull_request_target** = workflow runs from base branch (cannot be modified by PR)
+- **Label gate** = maintainer review required before testing
+- **head.sha checkout** = test actual PR changes (not base branch)
+- **allow-unsafe-pr-checkout** = explicit acknowledgment of risk
 
 **Verify secret protection:**
 
