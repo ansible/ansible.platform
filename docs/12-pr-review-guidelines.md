@@ -832,7 +832,7 @@ process = subprocess.Popen(cmd, env=env)
 # Even better: Use stdin pipe if subprocess can read from it
 # config_json = json.dumps({'username': str(gateway_config.username), ...})
 # process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-# process.stdin.write(config_json.encode())
+# process.communicate(config_json.encode())  # Sends data and closes stdin
 ```
 
 **Checklist:**
@@ -957,6 +957,8 @@ jobs:
     steps:
       # Checks out BASE branch (trusted repository code, NOT PR code)
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
       - env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
         # Run trusted scripts only - they can fetch/test PR if needed
@@ -1009,31 +1011,40 @@ python3 << 'EOF'
 import yaml
 from pathlib import Path
 
-for wf_file in Path(".github/workflows").glob("*.yml"):
+for wf_file in list(Path(".github/workflows").glob("*.yml")) + list(Path(".github/workflows").glob("*.yaml")):
     with open(wf_file) as f:
         wf = yaml.safe_load(f)
         content = wf_file.read_text()
     
-    # Check triggers (both inline and block forms)
-    triggers = wf.get("on", {})
-    if isinstance(triggers, dict):
+    # Check triggers - handle string, list, dict, and boolean 'on' key
+    triggers = wf.get("on") or wf.get(True) or {}
+    has_pr = False
+    has_pr_target = False
+    
+    if isinstance(triggers, str):
+        # Scalar: 'on: pull_request'
+        has_pr = triggers == "pull_request"
+        has_pr_target = triggers == "pull_request_target"
+    elif isinstance(triggers, list):
+        # List: 'on: [pull_request, push]'
         has_pr = "pull_request" in triggers
         has_pr_target = "pull_request_target" in triggers
-    else:
-        has_pr = "pull_request" in (triggers if isinstance(triggers, list) else [])
-        has_pr_target = False
+    elif isinstance(triggers, dict):
+        # Mapping: 'on:\n  pull_request:\n    types: [labeled]'
+        has_pr = "pull_request" in triggers
+        has_pr_target = "pull_request_target" in triggers
     
     # Check for secret usage
     has_secrets = "secrets." in content
     
-    # Check for gates (label checks)
-    has_label_gate = "safe to test" in content
-    has_member_check = "author_association" in content
+    # Check for authorization gates
+    has_label_gate = "safe to test" in content or "github.event.label.name" in content
+    has_member_check = "author_association" in content or "MEMBER" in content
     
-    if has_pr and has_secrets and not has_label_gate:
-        print(f"❌ DANGER: {wf_file} exposes secrets to fork PRs without gate!")
+    if has_pr and has_secrets and not (has_label_gate and has_member_check):
+        print(f"❌ DANGER: {wf_file} exposes secrets to fork PRs without proper gate!")
     
-    if has_pr_target and "github.event.pull_request.head.sha" in content:
+    if has_pr_target and ("head.sha" in content or "head_sha" in content):
         print(f"⚠️  WARNING: {wf_file} checks out PR code with pull_request_target")
 
 EOF
