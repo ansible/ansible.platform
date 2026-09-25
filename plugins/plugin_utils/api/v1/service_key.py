@@ -31,7 +31,7 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
-        if op == "update":
+        if op in ("create", "update"):
             if new_name is not None:
                 api_data["name"] = new_name
             elif name is not None and not str(name).strip().isdigit():
@@ -47,6 +47,13 @@ class ServiceKeyTransformMixin_v1(BaseTransformMixin):
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
+            "create": EndpointOperation(
+                path="/api/gateway/v1/service_keys/",
+                method="POST",
+                fields=["name", "is_active"],
+                required_for="create",
+                order=1,
+            ),
             "update": EndpointOperation(
                 path="/api/gateway/v1/service_keys/{id}/",
                 method="PATCH",
