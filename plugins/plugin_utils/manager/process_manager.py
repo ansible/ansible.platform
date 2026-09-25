@@ -290,16 +290,19 @@ class ProcessManager:
             env["ANSIBLE_PLATFORM_OWNER_PID"] = str(owner_pid)
 
         # Build command
+        # CRITICAL: All arguments must be str/bytes/PathLike for subprocess.Popen.
+        # Vault credentials (AnsibleVaultEncryptedUnicode) must be converted to str()
+        # or subprocess will fail with TypeError.
         cmd = [
             sys.executable,  # Use same Python interpreter
             str(script_path),
             socket_path,
             socket_dir,
             identifier,
-            gateway_config.base_url,
-            gateway_config.username or "",
-            gateway_config.password or "",
-            gateway_config.oauth_token or "",
+            str(gateway_config.base_url),
+            str(gateway_config.username) if gateway_config.username else "",
+            str(gateway_config.password) if gateway_config.password else "",
+            str(gateway_config.oauth_token) if gateway_config.oauth_token else "",
             str(gateway_config.verify_ssl),
             str(gateway_config.request_timeout),
             str(gateway_config.idle_timeout),
