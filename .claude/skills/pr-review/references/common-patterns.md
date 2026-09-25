@@ -104,11 +104,16 @@ Use this for all PR types:
 - [ ] Changelog present (if code changes)
 - [ ] JIRA referenced (MANDATORY for bugfixes)
 
-### Security (BLOCKING)
-- [ ] No hardcoded credentials
-- [ ] No secrets in workflow outputs
-- [ ] No credential logging (even at -vvvv)
-- [ ] No plaintext passwords in subprocess args
+### Security (BLOCKING - ALL must pass)
+- [ ] **Credentials:** No hardcoded credentials in code
+- [ ] **Workflows:** No secrets in workflow outputs or fork-accessible triggers
+- [ ] **Logging:** No credential logging (not even at -vvvv)
+- [ ] **Subprocess:** No plaintext passwords in subprocess args
+- [ ] **Input validation:** User input sanitized (no command/code injection)
+- [ ] **URL encoding:** API URLs properly encoded (use urlencode)
+- [ ] **Error messages:** No secrets in error messages or return values
+- [ ] **Defaults:** Secure defaults (verify_ssl=True, not False)
+- [ ] **Vault handling:** Vault credentials converted to str() before use
 
 ### Testing (BLOCKING - apply based on PR type)
 - [ ] Unit tests for new code (if plugins/**/*.py changed)

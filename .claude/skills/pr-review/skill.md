@@ -244,7 +244,62 @@ git diff origin/devel --name-only | grep -E \
 
 ---
 
-### Step 6: Post-Label Monitoring (After safe-to-test applied)
+### Step 5.5: Integration Test Guidance (Before Applying Label)
+
+**Once all pre-merge checks pass, ask contributor for integration test guidance:**
+
+```markdown
+## ✅ Pre-merge Checks Passed
+
+All CI checks are passing! Before I apply the \`safe to test\` label to run integration tests:
+
+**Could you provide guidance on testing this change?**
+
+1. **Which modules/resources should be tested?**
+   - [ ] Specific modules affected by your changes
+   - [ ] Any dependent modules
+
+2. **Test scenarios to verify:**
+   - [ ] Key scenarios that should work
+   - [ ] Edge cases that previously failed
+   - [ ] Any specific configurations
+
+3. **Expected integration test results:**
+   - [ ] All tests should pass
+   - [ ] Known failures (if any)
+   - [ ] Specific tests to watch
+
+**How to run integration tests locally (optional):**
+\`\`\`bash
+# Set up AAP credentials
+export AAP_HOSTNAME=your-aap-instance
+export AAP_USERNAME=your-username
+export AAP_PASSWORD=your-password
+
+# Run integration tests
+make collection-test CONNECTION_MODE=http-persistent
+
+# Or run specific test
+ansible-test integration <target> --docker
+\`\`\`
+
+Once you confirm, I'll apply the \`safe to test\` label to trigger the full integration test suite.
+```
+
+**Wait for contributor response before applying label.**
+
+---
+
+### Step 6: Apply Safe-to-Test Label & Monitor
+
+**After contributor confirms test guidance:**
+
+1. Apply `safe to test` label
+2. Monitor integration test execution
+
+---
+
+### Step 7: Post-Label Monitoring (Integration Tests Running)
 
 **Once `safe to test` label is applied, integration tests run:**
 
@@ -266,7 +321,7 @@ gh run rerun <RUN_ID> --repo ansible/ansible.platform --failed
 
 ---
 
-### Step 7: Post Review
+### Step 8: Post Review
 
 **Use template based on findings:**
 
