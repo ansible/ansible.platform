@@ -34,6 +34,34 @@
       vars:
         ansible_connection: local
 
+
+- name: Seed service keys for edit-only tests
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    mock_auth: "Basic bW9jazptb2Nr"
+  tasks:
+    - name: Create service key fixture
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/service_keys/"
+        method: POST
+        headers:
+          Authorization: "{{ mock_auth }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ item }}"
+          is_active: true
+        status_code: 201
+      loop:
+        - molecule-mock-svckey-local
+        - molecule-mock-svckey-local-hd
+        - molecule-mock-svckey-local-hp
+      vars:
+        ansible_connection: local
+
 - name: Converge — service_key (mock, connection local)
   hosts: localhost
   connection: local
@@ -44,7 +72,7 @@
     gateway_password: "testpass"
     gateway_validate_certs: false
   tasks:
-    - name: Create service_key (connection local)
+    - name: Read existing service_key (connection local)
       ansible.platform.service_key:
         name: "molecule-mock-svckey-local"
         is_active: true
@@ -52,14 +80,14 @@
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
-      register: create_result_local
+      register: existing_result_local
       vars:
         ansible_connection: local
 
-    - name: Assert create changed (connection local)
+    - name: Assert existing service_key was not modified (connection local)
       ansible.builtin.assert:
-        that: create_result_local is changed
-        fail_msg: "Create (local) should report changed."
+        that: existing_result_local is not changed
+        fail_msg: "Existing service key (local) should not report changed."
       vars:
         ansible_connection: local
 
@@ -113,16 +141,16 @@
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: false
   tasks:
-    - name: Create service_key (http direct)
+    - name: Read existing service_key (http direct)
       ansible.platform.service_key:
         name: "molecule-mock-svckey-local-hd"
         is_active: true
-      register: create_result_http_direct
+      register: existing_result_http_direct
 
-    - name: Assert create changed (http direct)
+    - name: Assert existing service_key was not modified (http direct)
       ansible.builtin.assert:
-        that: create_result_http_direct is changed
-        fail_msg: "Create (http direct) should report changed."
+        that: existing_result_http_direct is not changed
+        fail_msg: "Existing service key (http direct) should not report changed."
 
     - name: Run again idempotency (http direct)
       ansible.platform.service_key:
@@ -158,16 +186,16 @@
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
   tasks:
-    - name: Create service_key (http persistent)
+    - name: Read existing service_key (http persistent)
       ansible.platform.service_key:
         name: "molecule-mock-svckey-local-hp"
         is_active: true
-      register: create_result_http_persistent
+      register: existing_result_http_persistent
 
-    - name: Assert create changed (http persistent)
+    - name: Assert existing service_key was not modified (http persistent)
       ansible.builtin.assert:
-        that: create_result_http_persistent is changed
-        fail_msg: "Create (http persistent) should report changed."
+        that: existing_result_http_persistent is not changed
+        fail_msg: "Existing service key (http persistent) should not report changed."
 
     - name: Run again idempotency (http persistent)
       ansible.platform.service_key:

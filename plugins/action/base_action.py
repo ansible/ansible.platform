@@ -1097,6 +1097,7 @@ class BaseResourceActionPlugin(ActionBase):
 
         State machine:
           present -> find by LOOKUP_FIELD; update if found, create if not
+                     (unless the resource disables creation)
           absent -> find by LOOKUP_FIELD; delete if found, no-op if not
           exists -> find; return exists=True/False without changes
           enforced -> find; merge declared fields; update or create
@@ -1159,6 +1160,7 @@ class BaseResourceActionPlugin(ActionBase):
 
             # ---- present: idempotent create (find -> compare ->  update only if changed) -----
             if operation == "create" and state == "present":
+                find_result = None
                 try:
                     find_result = manager.execute(
                         operation="find",
@@ -1179,8 +1181,14 @@ class BaseResourceActionPlugin(ActionBase):
                             return result
                         operation = "update"
                         resource.id = find_result["id"]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if self._allow_create_when_missing():
+                        pass
+                    elif not isinstance(exc, ValueError) or "not found" not in str(exc).lower():
+                        raise
+
+                if not find_result and not self._allow_create_when_missing():
+                    raise AnsibleError("%s '%s' does not exist; this module only supports editing existing resources" % (self.MODULE_NAME, lookup_val))
 
             # ---- absent: find by lookup field to get id --------------------
             if operation == "delete" and not getattr(resource, "id", None):
@@ -1252,6 +1260,8 @@ class BaseResourceActionPlugin(ActionBase):
                     resource = self._build_resource({k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
                     operation = "update"
                 else:
+                    if not self._allow_create_when_missing():
+                        raise AnsibleError("%s '%s' does not exist; this module only supports editing existing resources" % (self.MODULE_NAME, lookup_val))
                     operation = "create"
 
             # ---- check mode ------------------------------------------------
@@ -1385,6 +1395,10 @@ class BaseResourceActionPlugin(ActionBase):
                 result["exception"] = _tb.format_exc()
 
         return result
+
+    def _allow_create_when_missing(self) -> bool:
+        """Return whether ``state: present`` may create an absent resource."""
+        return True
 
     def _detect_operation(self, args: dict) -> str:
         """
