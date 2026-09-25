@@ -165,6 +165,89 @@ self._display.vvvv("Authentication configured")
 # Pass credentials via secure IPC
 ```
 
+## Action Plugin Base Class Usage
+
+**All action plugins MUST inherit from `BaseResourceActionPlugin`**
+
+### Required Class Attributes
+
+```python
+from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.foo import AnsibleFoo
+
+class ActionModule(BaseResourceActionPlugin):
+    MODULE_NAME = "foo"        # REQUIRED: Resource name (matches module filename)
+    MODEL_CLASS = AnsibleFoo   # REQUIRED: Ansible dataclass type
+    LOOKUP_FIELD = "name"      # OPTIONAL: Default is "name"
+```
+
+### Three Patterns (Prefer A → B → C)
+
+**Pattern A (Simple Resources):**
+- Define MODULE_NAME and MODEL_CLASS only
+- Inherit run() method from base class
+- No custom logic needed
+- **Example:** `plugins/action/organization.py`
+
+**Pattern B (Resources with Hooks):**
+- Define MODULE_NAME and MODEL_CLASS
+- Override pre/post hooks for orchestration
+- Don't override run() entirely
+- **Example:** `plugins/action/application.py`
+
+**Pattern C (Complex Custom Logic):**
+- Override run() method
+- Still call base class methods (don't reimplement)
+- Use ONLY when A/B patterns insufficient
+- **Example:** `plugins/action/credential.py`
+
+### Checklist for Action Plugin Review
+
+- [ ] **Inherits from BaseResourceActionPlugin** (not ActionBase directly)
+- [ ] **MODULE_NAME set** (matches module filename)
+- [ ] **MODEL_CLASS set** (correct Ansible dataclass)
+- [ ] **Uses simplest pattern** (prefer A over B over C)
+- [ ] **No HTTP calls in action plugin** (use manager.execute() only)
+- [ ] **No hardcoded API URLs** (belong in transform mixin)
+- [ ] **No wait/poll loops** (belong in PlatformService.execute())
+
+### Common Violations
+
+**❌ WRONG: Custom run() that reimplements base logic**
+```python
+class ActionModule(BaseResourceActionPlugin):
+    def run(self, tmp=None, task_vars=None):
+        # Reimplements argument parsing, manager spawning, etc.
+        # This duplicates base class logic!
+```
+
+**✅ CORRECT: Minimal Pattern A**
+```python
+class ActionModule(BaseResourceActionPlugin):
+    MODULE_NAME = "foo"
+    MODEL_CLASS = AnsibleFoo
+    # Inherits run() from base - no custom code needed
+```
+
+**❌ WRONG: HTTP calls in action plugin**
+```python
+class ActionModule(BaseResourceActionPlugin):
+    def run(self, tmp=None, task_vars=None):
+        response = requests.post(...)  # Violates SDK invariant #2!
+```
+
+**✅ CORRECT: Use manager.execute()**
+```python
+class ActionModule(BaseResourceActionPlugin):
+    def run(self, tmp=None, task_vars=None):
+        manager = self._get_or_spawn_manager(task_vars)
+        result = manager.execute(operation="create", ...)  # SDK-compliant
+```
+
+**Reference:** `docs/09-agent-collaboration.md` Section 10 (SDK Execution Invariants)
+
+---
+
 ## Architecture Principles Reference
 
 Point to these docs instead of repeating content:
@@ -173,6 +256,7 @@ Point to these docs instead of repeating content:
 - **Seven-file pattern:** `docs/07-adding-resources.md`  
 - **SDK architecture:** `docs/03-sdk-architecture.md`
 - **Connection modes:** `docs/06-connection-plugin-architecture.md`
+- **Action plugin patterns:** `plugins/action/base_action.py` (docstring)
 
 ## Quick Detection Commands
 
