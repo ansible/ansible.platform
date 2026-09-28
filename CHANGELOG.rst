@@ -4,6 +4,27 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
+v2.7.20260928
+=============
+
+Minor Changes
+-------------
+
+- auth - Add inventory variable ``aap_ca_bundle`` (aliases ``gateway_ca_bundle``, ``ansible_platform_ca_bundle``) to supply a control-node CA bundle path for Gateway TLS verification without per-task ``environment:`` blocks. The path is forwarded to manager subprocesses as ``REQUESTS_CA_BUNDLE`` when ``aap_validate_certs`` is enabled.
+- role_team_assignment - add optional organization on assignment_objects for org-scoped name lookup (Controller/EDA/teams).
+- service_cluster - add ``outlier_detection_split_external_local_origin_errors`` and ``outlier_detection_consecutive_local_origin_failure`` options (https://issues.redhat.com/browse/AAP-76998).
+
+Removed Features (previously deprecated)
+----------------------------------------
+
+- role_team_assignment - remove unimplemented object_ids option (never present on stable-2.6; use assignment_objects with object_id).
+
+Bugfixes
+--------
+
+- auth - Include the effective CA bundle (shell env, task ``REQUESTS_CA_BUNDLE``, inventory ``aap_ca_bundle``) and ``verify_ssl`` in the persistent manager socket identity so a later task that changes trust policy spawns a distinct manager instead of reusing one with a stale trust store.
+- authenticator_user - map the API ``provider`` field to ``authenticator`` so repeated moves are idempotent (https://issues.redhat.com/browse/AAP-38532).
+
 v2.7.20260812
 =============
 
