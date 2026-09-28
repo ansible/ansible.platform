@@ -1,0 +1,9 @@
+---
+# Map gateway variables to aap variables for this test
+# setup_gateway provides gateway_* variables
+aap_hostname: "{{ gateway_hostname }}"
+aap_username: "{{ gateway_username }}"
+aap_password: "{{ gateway_password }}"
+aap_validate_certs: "{{ gateway_validate_certs }}"
+organization_name: "Default"
+...
