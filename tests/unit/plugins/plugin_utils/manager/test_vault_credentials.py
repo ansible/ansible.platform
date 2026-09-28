@@ -100,8 +100,10 @@ def test_vault_credentials_converted_to_strings():
         username_arg = cmd[6]  # gateway_config.username
         password_arg = cmd[7]  # gateway_config.password
 
-        assert type(username_arg) is str, f"Username arg is {type(username_arg)}, expected str"
-        assert type(password_arg) is str, f"Password arg is {type(password_arg)}, expected str"
+        # Use type() is str instead of isinstance() to ensure EXACT str type,
+        # not subclasses like AnsibleVaultEncryptedUnicode
+        assert type(username_arg) is str, f"Username arg is {type(username_arg)}, expected str"  # pylint: disable=unidiomatic-typecheck
+        assert type(password_arg) is str, f"Password arg is {type(password_arg)}, expected str"  # pylint: disable=unidiomatic-typecheck
 
         # Verify the VALUES are correct (vault decrypted)
         assert username_arg == "admin", f"Expected 'admin', got {username_arg!r}"
@@ -178,7 +180,8 @@ def test_base_url_also_converted_to_string():
             cmd = mock_popen.call_args[0][0]
             base_url_arg = cmd[5]  # gateway_config.base_url
 
-            assert type(base_url_arg) is str, f"base_url should be plain str, got {type(base_url_arg)}"
+            # Use type() is str to ensure EXACT str type, not subclasses like AnsibleVaultEncryptedUnicode
+            assert type(base_url_arg) is str, f"base_url should be plain str, got {type(base_url_arg)}"  # pylint: disable=unidiomatic-typecheck
             assert base_url_arg == "https://gateway.example.com"
 
 
