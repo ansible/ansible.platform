@@ -33,7 +33,10 @@ def _service():
     )
     service.session = MagicMock()
     service.cache = {}
+    service.api_versions = {}
     service.api_version = "1"
+    service.registry = MagicMock()
+    service.registry.get_service_for_module.return_value = "gateway"
     service.search_api = MagicMock()
     service.lookup_resource_id = MagicMock()
     service._execute_operations = MagicMock(return_value={"id": 44, "role_definition": "5", "team": "7", "object_id": "202"})
@@ -51,9 +54,14 @@ def _resolve(service, object_lookup):
 def test_direct_client_supports_mixin_resolve_operation():
     client = DirectHTTPClient.__new__(DirectHTTPClient)
     client._authenticated = True
+    client.api_versions = {}
     client.api_version = "1"
     client.session = MagicMock()
+    client.session.headers = {}
     client.cache = {}
+    client.registry = MagicMock()
+    client.registry.get_service_for_module.return_value = "gateway"
+    client._lock = MagicMock()
     client.loader = MagicMock()
     client.loader.load_classes_for_module.return_value = (
         AnsibleRoleTeamAssignment,
