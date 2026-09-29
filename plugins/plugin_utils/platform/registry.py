@@ -104,6 +104,12 @@ class APIVersionRegistry:
                 self.services[service_name][version_str] = module_names
 
                 for module_name in module_names:
+                    existing_service = self.module_service.get(module_name)
+                    if existing_service is not None and existing_service != service_name:
+                        raise ValueError(
+                            f"Module '{module_name}' found in both '{existing_service}' and '{service_name}' services. "
+                            f"Module names must be unique across services."
+                        )
                     self.module_service[module_name] = service_name
                     if module_name not in self.module_versions:
                         self.module_versions[module_name] = []
