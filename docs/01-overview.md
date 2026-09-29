@@ -135,7 +135,7 @@ without touching the platform.
 **Implement only the business logic**: Write one transform mixin class that maps
 Ansible fields to API fields. The base classes handle everything else.
 
-**Version independently**: Add `api/v2/foo.py` to support a new API version. The
+**Version independently**: Add `api/{service}/v2/foo.py` to support a new API version. The
 registry auto-discovers it. The v1 mixin continues to serve older platforms.
 
 **Test with a mock server**: Run `molecule converge` with the mock Gateway server to

@@ -11,7 +11,7 @@ Quick reference for day-to-day development on `ansible.platform`.
 | Add/edit an action plugin | `plugins/action/<resource>.py` |
 | See the base class all plugins inherit | `plugins/action/base_action.py` |
 | Find/edit the Ansible-facing dataclass | `plugins/plugin_utils/ansible_models/<resource>.py` |
-| Find/edit the API model + transform mixin | `plugins/plugin_utils/api/v1/<resource>.py` |
+| Find/edit the API model + transform mixin | `plugins/plugin_utils/api/{service}/v1/<resource>.py` |
 | Find the module documentation stub | `plugins/modules/<resource>.py` |
 | Understand connection routing | `plugins/connection/http.py` |
 | See how the manager subprocess works | `plugins/plugin_utils/manager/platform_manager.py` |
@@ -118,7 +118,7 @@ endpoint paths, service-specific prefixes, and field classification.
 
 ### Step 3: Implement the transform mixin
 
-In `plugins/plugin_utils/api/v1/<resource>.py`:
+In `plugins/plugin_utils/api/{service}/v1/<resource>.py`:
 
 ```python
 class FooTransformMixin_v1:
@@ -229,7 +229,7 @@ If yes → `changed: false`. If no → create/update → `changed: true`.
 the transform mixin automatically resolves `"Red Hat"` → integer ID `42`
 by querying the Gateway API.
 
-**Version isolation**: API changes go in new `api/v2/` directory. The Registry
+**Version isolation**: API changes go in new `api/{service}/v2/` directory. The Registry
 auto-detects. Ansible Models and action plugins never change.
 
 **Persistent manager**: One subprocess per play, shared across all tasks.

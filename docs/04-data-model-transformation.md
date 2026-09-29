@@ -36,7 +36,7 @@ three tiers is essential to understanding any part of the codebase.
                         │ TransformMixin.from_ansible_data()
                         ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  Tier 2: API Model  (api/v1/user.py)                             │
+│  Tier 2: API Model  (api/gateway/v1/user.py)                     │
 │                                                                  │
 │  APIUser_v1 dataclass — the WIRE FORMAT for Gateway API v1.      │
 │  Field names: match the Gateway API field names exactly.         │
@@ -131,7 +131,7 @@ a specific version of the Gateway API.
 
 ### Properties
 
-- Defined as a Python `@dataclass` in `plugins/plugin_utils/api/v<N>/`.
+- Defined as a Python `@dataclass` in `plugins/plugin_utils/api/{service}/v<N>/`.
 - Field names match the Gateway API field names exactly (often different from Ansible names).
 - Reference fields use the API's integer ID type (`int`), not names.
 - One API model per resource per API version.
@@ -165,7 +165,7 @@ this gap.
 When Gateway API v2 renames `organization_ids` to `orgs` and adds a new field:
 
 ```python
-# api/v2/user.py — only the differences from v1
+# api/gateway/v2/user.py — only the differences from v1
 @dataclass
 class APIUser_v2(APIUser_v1):
     orgs: Optional[List[int]] = None  # renamed
@@ -175,7 +175,7 @@ class APIUser_v2(APIUser_v1):
     )
 ```
 
-The `APIVersionRegistry` discovers `api/v2/user.py` automatically. The `DynamicClassLoader`
+The `APIVersionRegistry` discovers `api/gateway/v2/user.py` automatically. The `DynamicClassLoader`
 routes API v2 requests to `APIUser_v2` and `UserTransformMixin_v2`. No framework changes.
 
 ### API Payload Example

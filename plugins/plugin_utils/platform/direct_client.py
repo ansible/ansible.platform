@@ -209,6 +209,66 @@ class DirectHTTPClient(BaseAPIClient):
             return "1"
         return supported[0]
 
+    def _detect_service_version(self, service: str) -> str:
+        """
+        Detect API version for a specific service by probing its API root.
+
+        Probes /api/{service}/ for an X-API-Version header or current_version
+        field, falling back to DEFAULT_API_VERSIONS only when detection fails.
+        """
+        if service == "gateway":
+            return self._detect_api_version()
+
+        from .base_client import DEFAULT_API_VERSIONS
+
+        supported = self.registry.get_supported_versions(service)
+        if not supported:
+            return DEFAULT_API_VERSIONS.get(service, "1")
+
+        try:
+            root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+            logger.debug("DirectHTTPClient: probing service version at %s", root_url)
+            response = self.session.open(
+                "GET",
+                root_url,
+                timeout=self.request_timeout,
+                **self._ansible_tls_kwargs(),
+            )
+
+            headers = getattr(response, "headers", {})
+            raw = (headers.get("X-API-Version", "") if hasattr(headers, "get") else "").lstrip("v")
+            if raw and raw in supported:
+                logger.info("DirectHTTPClient: %s API version detected (header): v%s", service, raw)
+                return raw
+            if raw:
+                major = raw.split(".")[0]
+                if major in supported:
+                    logger.info("DirectHTTPClient: %s API version detected (header major): v%s", service, major)
+                    return major
+
+            try:
+                body_bytes = response.read()
+                body = json.loads(body_bytes) if body_bytes else {}
+                if "current_version" in body:
+                    cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                    cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
+                    if cv_raw in supported:
+                        logger.info("DirectHTTPClient: %s API version detected (body): v%s", service, cv_raw)
+                        return cv_raw
+                    cv_major = cv_raw.split(".")[0]
+                    if cv_major in supported:
+                        logger.info("DirectHTTPClient: %s API version detected (body major): v%s", service, cv_major)
+                        return cv_major
+            except Exception as exc:
+                logger.debug("DirectHTTPClient: %s body parse error: %s", service, exc)
+
+        except Exception as e:
+            logger.debug("DirectHTTPClient: %s version probe failed (%s), using default", service, e)
+
+        fallback = DEFAULT_API_VERSIONS.get(service, supported[0] if supported else "1")
+        logger.warning("DirectHTTPClient: %s version detection failed, defaulting to v%s", service, fallback)
+        return fallback
+
     def _authenticate(self) -> None:
         """
         Set authentication headers in session (no test request).

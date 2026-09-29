@@ -92,6 +92,25 @@ def test_find_best_version_unknown_module_returns_none():
         shutil.rmtree(api_root, ignore_errors=True)
 
 
+def test_module_name_collision_across_services_raises():
+    """Discovery raises ValueError when two services define the same module name."""
+    api_root = Path(tempfile.mkdtemp())
+    try:
+        (api_root / "gateway" / "v1").mkdir(parents=True)
+        (api_root / "controller" / "v2").mkdir(parents=True)
+        (api_root / "gateway" / "v1" / "user.py").write_text("# stub\n")
+        (api_root / "controller" / "v2" / "user.py").write_text("# stub\n")
+
+        try:
+            APIVersionRegistry(api_base_path=str(api_root))
+            assert False, "Expected ValueError for module name collision"
+        except ValueError as exc:
+            assert "user" in str(exc)
+            assert "gateway" in str(exc) or "controller" in str(exc)
+    finally:
+        shutil.rmtree(api_root, ignore_errors=True)
+
+
 def test_find_best_version_closest_lower():
     """find_best_version returns closest lower version when exact match missing."""
     api_root = _make_fake_api_root()

@@ -180,8 +180,8 @@ HTTP to AAP Gateway API
 - Auto-terminates after idle timeout (prevents orphaned processes)
 
 ### Version Compatibility
-- `api/v1/` directory for AAP 2.6 (current release)
-- `api/v2/` directory for AAP 2.7+ (upcoming — add when API changes ship)
+- `api/gateway/v1/` directory for Gateway API (AAP 2.6, current release)
+- `api/{service}/v2/` directory for future API versions (upcoming — add when API changes ship)
 - Ansible interface (`AnsibleUser`, etc.) never changes across versions
 - Registry auto-detects API version and routes to correct mixin
 - Fallback to latest available version if exact match not found

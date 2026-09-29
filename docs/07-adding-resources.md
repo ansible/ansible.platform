@@ -105,7 +105,7 @@ automatically. Files 5–7 require manual work.
 |---|------|-------------|
 | 1 | `plugins/modules/<resource>.py` | **Generated** — `DOCUMENTATION` + `EXAMPLES` scaffold from OpenAPI spec |
 | 2 | `plugins/plugin_utils/ansible_models/<resource>.py` | **Generated** — `AnsibleFoo` dataclass from OpenAPI spec |
-| 3 | `plugins/plugin_utils/api/v1/<resource>.py` | **Generated skeleton, manual completion** — `APIFoo_v1` dataclass + `FooTransformMixin_v1` business logic |
+| 3 | `plugins/plugin_utils/api/{service}/v1/<resource>.py` | **Generated skeleton, manual completion** — `APIFoo_v1` dataclass + `FooTransformMixin_v1` business logic |
 | 4 | `plugins/action/<resource>.py` | **Generated** — `ActionModule(BaseResourceActionPlugin)` skeleton |
 | 5 | `tests/integration/targets/<resource>s_test/tasks/main.yml` | **Generated scaffold, manual completion** — integration test structure |
 | 6 | `extensions/molecule/<resource>_mock/` | **Manual** — Molecule mock scenario |
@@ -142,7 +142,7 @@ python tools/generate_resource.py \
 ```
 plugins/modules/team.py                    ← DOCUMENTATION + EXAMPLES
 plugins/plugin_utils/ansible_models/team.py ← AnsibleTeam dataclass
-plugins/plugin_utils/api/v1/team.py        ← APITeam_v1 + TransformMixin skeleton
+plugins/plugin_utils/api/gateway/v1/team.py ← APITeam_v1 + TransformMixin skeleton
 plugins/action/team.py                     ← ActionModule skeleton
 tests/integration/targets/teams_test/
   tasks/main.yml                           ← integration test scaffold
@@ -184,7 +184,7 @@ keys exactly — they are what the action plugin receives as `task_vars`.
 
 ---
 
-## SECTION 3: Complete the Transform Mixin (`plugins/plugin_utils/api/v1/`)
+## SECTION 3: Complete the Transform Mixin (`plugins/plugin_utils/api/{service}/v1/`)
 
 The generator produces the `APIFoo_v1` dataclass and a `FooTransformMixin_v1` skeleton.
 The `APIFoo_v1` dataclass is usually correct as-is. The transform mixin skeleton needs
@@ -194,7 +194,7 @@ It bridges Ansible model ↔ Gateway API wire format. The generator stubs out th
 methods; you fill in the logic.
 
 ```python
-# plugins/plugin_utils/api/v1/team.py
+# plugins/plugin_utils/api/gateway/v1/team.py
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
@@ -973,7 +973,7 @@ Core Resource Files:
     - Optional fields use Optional[T] = None
     - Read-only fields (id, created, etc.) included
     
-[ ] plugins/plugin_utils/api/v1/<resource>.py
+[ ] plugins/plugin_utils/api/{service}/v1/<resource>.py
     - APIFoo_v1 dataclass matches API wire format
     - TransformMixin.from_ansible_data() handles all non-null fields
     - TransformMixin.from_api() returns AnsibleFoo instance (not dict)
@@ -1038,7 +1038,7 @@ Syntax & Linting:
 [ ] ansible-doc -t module ansible.platform.<resource> renders correctly
 [ ] python -m py_compile plugins/modules/<resource>.py (no syntax errors)
 [ ] python -m py_compile plugins/plugin_utils/ansible_models/<resource>.py
-[ ] python -m py_compile plugins/plugin_utils/api/v1/<resource>.py
+[ ] python -m py_compile plugins/plugin_utils/api/{service}/v1/<resource>.py
 [ ] python -m py_compile plugins/action/<resource>.py
 [ ] tox -e black,flake8,isort passes (or: black + isort + flake8 manual)
 [ ] ansible-lint tests/integration/targets/<resource>s_test/ passes
