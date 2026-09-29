@@ -98,3 +98,44 @@ releases:
     fragments:
     - gateway_api_shutdown.yml
     release_date: '2026-08-12'
+  2.7.20260929:
+    changes:
+      bugfixes:
+      - auth - Include the effective CA bundle (shell env, task ``REQUESTS_CA_BUNDLE``,
+        inventory ``aap_ca_bundle``) and ``verify_ssl`` in the persistent manager
+        socket identity so a later task that changes trust policy spawns a distinct
+        manager instead of reusing one with a stale trust store.
+      - authenticator_user - map the API ``provider`` field to ``authenticator`` so
+        repeated moves are idempotent (https://issues.redhat.com/browse/AAP-38532).
+      - gateway_api lookup - Automatically read exported ``GATEWAY_HOSTNAME``, ``GATEWAY_USERNAME``,
+        ``GATEWAY_PASSWORD``, ``GATEWAY_VERIFY_SSL``, ``GATEWAY_API_TOKEN``, and ``GATEWAY_REQUEST_TIMEOUT``
+        values, with supported ``AAP_*`` aliases as fallbacks. Explicit lookup options
+        take precedence.
+      - process_manager - Fix vault credentials causing subprocess spawn failure when
+        ``aap_username``, ``aap_password``, or ``aap_hostname`` are defined as Ansible
+        Vault encrypted values. The manager subprocess spawn failed with ``TypeError
+        expected str bytes or os.PathLike object not AnsibleVaultEncryptedUnicode``
+        because vault-encrypted values were not converted to ``str()`` before being
+        passed to ``subprocess.Popen``. The issue was particularly visible when using
+        token authentication while vaulted credentials existed in playbook variables.
+      minor_changes:
+      - auth - Add inventory variable ``aap_ca_bundle`` (aliases ``gateway_ca_bundle``,
+        ``ansible_platform_ca_bundle``) to supply a control-node CA bundle path for
+        Gateway TLS verification without per-task ``environment:`` blocks. The path
+        is forwarded to manager subprocesses as ``REQUESTS_CA_BUNDLE`` when ``aap_validate_certs``
+        is enabled.
+      - role_team_assignment - add optional organization on assignment_objects for
+        org-scoped name lookup (Controller/EDA/teams).
+      - service_cluster - add ``outlier_detection_split_external_local_origin_errors``
+        and ``outlier_detection_consecutive_local_origin_failure`` options (https://issues.redhat.com/browse/AAP-76998).
+      removed_features:
+      - role_team_assignment - remove unimplemented object_ids option (never present
+        on stable-2.6; use assignment_objects with object_id).
+    fragments:
+    - aap_38532_authenticator_user.yml
+    - aap_76998_service_cluster_outlier_detection.yml
+    - aap_ca_bundle_inventory_var.yml
+    - fix_vault_credentials_subprocess.yml
+    - gateway_api_env_vars.yaml
+    - role_team_assignment_org_lookup.yml
+    release_date: '2026-09-29'
