@@ -4,34 +4,40 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
-v2.6.20250924
+v2.6.20260928
 =============
-The ansible.platform collection now provides unified, platform-wide Role-Based Access Control (RBAC) management across Ansible Automation Platform components. New or enhanced modules include Organization, Team, User, Role definition, and Role assignment (team/user).
 
-Additional changes:
+Minor Changes
+-------------
 
-* You can declare the RBAC state as code and apply it idempotently across services.
-* Ansible collections now use a standard global environment variable prefix across components. Automation Controller, Automation Hub, and Event-Driven Ansible all use the new standard ``AAP_`` instead of ``COMPONENT_``. For example, ``aap_hostname``. See the Automation Hub documentation for more information.
+- service_cluster - add ``outlier_detection_split_external_local_origin_errors`` and ``outlier_detection_consecutive_local_origin_failure`` options (https://issues.redhat.com/browse/AAP-76998).
 
-v2.6.20251106
-=============
-New module Added ca_certificate got added and a new attribute enable_mtls to the route objects and this enable the collection to work with mtls.
+Breaking Changes / Porting Guide
+--------------------------------
 
-Additional changes:
-* Fixes default handling for gateway_request_timeout (avoids passing an int to a boolean filter path).
+- role_user_assignment - removed deprecated parameter ``object_id`` (singular). It was deprecated in favour of ``object_ids`` (plural list). Replace any use of ``object_id: <n>`` with ``object_ids: ["<n>"]``.
+- user - removed deprecated parameters ``organizations``, ``is_platform_auditor``, ``authenticators``, and ``authenticator_uid`` (and its alias ``auditor``). These were deprecated in 2.6.20251106 with removal date 2026-01-31. Use ``ansible.platform.role_user_assignment`` to assign organization membership or platform auditor roles, and ``associated_authenticators`` to configure authenticator associations.
 
-v2.6.20260306
-=============
-Custom Role Team Assignment is now fixed alongside malformed URLs in the ansible.platform.gateway_api lookup plugin
+Bugfixes
+--------
 
-Additional changes:
-* Enhance plugin description for Gateway API.
-* Fix for the custom role team assignment.
-* Strip scheme and hostname from AAP url builder, which previously led to malformed URLs in the ansible.platform.gateway_api lookup plugin.
-* Add conditional check for 'safe to test' label.
-* Expose collection checkout to aap-gateway build.
-* Integration test workflow use GH environment.
+- authenticator_user - map the API ``provider`` field to ``authenticator`` so repeated moves are idempotent (https://issues.redhat.com/browse/AAP-38532).
+- gateway_api lookup - automatically read exported ``GATEWAY_HOSTNAME``, ``GATEWAY_USERNAME``, ``GATEWAY_PASSWORD``, ``GATEWAY_VERIFY_SSL``, ``GATEWAY_API_TOKEN``, and ``GATEWAY_REQUEST_TIMEOUT`` values, with the supported ``AAP_*`` aliases as fallback. Explicit lookup options take precedence.
+- role_team_assignment - allow resource-level ``type`` values (for example ``projects``, ``activations``) in ``assignment_objects`` instead of rejecting all types other than ``organizations`` and ``teams``.
+- role_team_assignment - validate ``assignment_objects`` ``type`` against the role definition ``content_type`` before API calls, preventing Gateway 400/500 errors when the wrong resource type is used for name-based lookup (https://issues.redhat.com/browse/AAP-75240).
 
 v2.6.20260504
 =============
-Fixed role user assignment - The hardcoded role name check is being replaced with a dynamic API endpoint mapping derived directly from the role definition's content_type attribute.
+
+v2.6.20260306
+=============
+
+v2.6.20251106
+=============
+
+v2.6.20250924
+=============
+
+v1.0.0
+======
+
