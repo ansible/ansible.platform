@@ -10,7 +10,7 @@ import pytest
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import (
     AnsibleRoleTeamAssignment,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.v1.role_team_assignment import (
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
     APIRoleTeamAssignment_v1,
     RoleTeamAssignmentTransformMixin_v1,
 )
