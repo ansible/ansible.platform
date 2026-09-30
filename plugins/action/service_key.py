@@ -12,35 +12,29 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.se
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "service_key"
     MODEL_CLASS = AnsibleServiceKey
-    # mark_previous_inactive: operation-time directive; API never returns it.
-    # secret: write-only; API returns null/hash, not the original value.
-    # secret_length: write-only; API returns null on GET requests.
-    _WRITE_ONLY_FIELDS = frozenset({"mark_previous_inactive", "secret", "secret_length"})
 
-    def _should_update(self, desired_data, current_data):
-        """Override to strictly ignore write-only fields during idempotency checks.
-
-        This prevents the API's 'null' responses for hidden fields from falsely
-        triggering a changed: true state against the user's playbook values.
-        """
-        res_data = {k: v for k, v in desired_data.items() if k not in self._WRITE_ONLY_FIELDS}
-        fnd_data = {k: v for k, v in current_data.items() if k not in self._WRITE_ONLY_FIELDS}
-        return super(ActionModule, self)._should_update(res_data, fnd_data)
-
-    def _pre_execute_hook(self, ansible_data, write_only_data, validated_params, operation):
-        """Re-inject write-only fields so they reach the API payload.
-
-        ``secret`` is strictly non-editable after creation, so we only inject
-        it for "create" operations, never for "update" (PATCH) requests.
-        """
-        if operation == "create":
-            for field in ("mark_previous_inactive", "secret", "secret_length"):
-                val = write_only_data.get(field)
-                if val is not None:
-                    ansible_data[field] = val
-        elif operation == "update":
-            # Secret is non-editable, do not inject it for PATCH
-            for field in ("mark_previous_inactive", "secret_length"):
-                val = write_only_data.get(field)
-                if val is not None:
-                    ansible_data[field] = val
+    # Gateway no longer permits creating service keys through its API.  Keep
+    # accepting these arguments during their deprecation period, but do not
+    # send them on update or attempted-create requests.
+    _DEPRECATED_FIELDS = {
+        "service_cluster": (
+            "The 'service_cluster' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "secret": (
+            "The 'secret' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "secret_length": (
+            "The 'secret_length' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "mark_previous_inactive": (
+            "The 'mark_previous_inactive' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+        "algorithm": (
+            "The 'algorithm' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+            "4.0.0",
+        ),
+    }
