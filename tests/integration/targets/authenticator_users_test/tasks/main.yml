@@ -38,12 +38,16 @@
           SECRET: github-oauth2-secret
       register: destination_authenticator
 
-    - name: Create a user associated with the source authenticator
+    - name: Create the test user
       ansible.platform.user:
         username: "{{ username }}"
         password: "{{ 65535 | random | to_uuid }}"
-        associated_authenticators: "{{ {source_authenticator.id: {'uid': username}} }}"
       register: test_user
+
+    - name: Associate the user with the source authenticator
+      ansible.platform.user:
+        username: "{{ username }}"
+        associated_authenticators: "{{ {source_authenticator.id: {'uid': username, 'email': username ~ '@example.com'}} }}"
 
     - name: Read the user's authenticator association
       ansible.builtin.set_fact:
@@ -51,7 +55,7 @@
           {{ lookup('ansible.platform.gateway_api', 'authenticator_users', return_all=true,
                     **connection_info)
              | selectattr('user', 'equalto', test_user.id)
-             | selectattr('provider', 'equalto', source_authenticator.id)
+             | selectattr('summary_fields.provider.id', 'equalto', source_authenticator.id)
              | list }}
 
     - name: Assert that the source authenticator association exists
@@ -84,7 +88,7 @@
       ansible.builtin.assert:
         that:
           - authenticator_users_after_check_mode | length == 1
-          - authenticator_users_after_check_mode[0].provider == source_authenticator.id
+          - authenticator_users_after_check_mode[0].summary_fields.provider.id == source_authenticator.id
 
     - name: Move the authenticator user
       ansible.platform.authenticator_user:
@@ -110,7 +114,7 @@
       ansible.builtin.assert:
         that:
           - moved_authenticator_users | length == 1
-          - moved_authenticator_users[0].provider == destination_authenticator.id
+          - moved_authenticator_users[0].summary_fields.provider.id == destination_authenticator.id
           - moved_authenticator_users[0].user == test_user.id
 
     - name: Move the authenticator user again
@@ -135,7 +139,7 @@
       ansible.builtin.assert:
         that:
           - exists_result is not changed
-          - exists_result.exists
+          - exists_result.id == source_authenticator_users[0].id
 
   always:
     - name: Delete the test user

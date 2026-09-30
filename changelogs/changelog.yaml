@@ -3,7 +3,6 @@ releases:
   1.0.0:
     release_date: '2024-05-06'
   2.6.20250924:
-    changes: {}
     fragments:
     - create_if_needed.yaml
     release_date: '2025-09-24'
@@ -11,7 +10,41 @@ releases:
     release_date: '2025-11-06'
   2.6.20260306:
     fragments:
-      - fix_pagination.yaml
+    - fix_pagination.yaml
     release_date: '2026-03-06'
   2.6.20260504:
     release_date: '2026-05-04'
+  2.6.20260930:
+    changes:
+      breaking_changes:
+      - 'role_user_assignment - removed deprecated parameter ``object_id`` (singular).
+        It was deprecated in favour of ``object_ids`` (plural list). Replace any use
+        of ``object_id: <n>`` with ``object_ids: ["<n>"]``.'
+      - user - removed deprecated parameters ``organizations``, ``is_platform_auditor``,
+        ``authenticators``, and ``authenticator_uid`` (and its alias ``auditor``).
+        These were deprecated in 2.6.20251106 with removal date 2026-01-31. Use ``ansible.platform.role_user_assignment``
+        to assign organization membership or platform auditor roles, and ``associated_authenticators``
+        to configure authenticator associations.
+      bugfixes:
+      - authenticator_user - map the API ``provider`` field to ``authenticator`` so
+        repeated moves are idempotent (https://issues.redhat.com/browse/AAP-38532).
+      - gateway_api lookup - automatically read exported ``GATEWAY_HOSTNAME``, ``GATEWAY_USERNAME``,
+        ``GATEWAY_PASSWORD``, ``GATEWAY_VERIFY_SSL``, ``GATEWAY_API_TOKEN``, and ``GATEWAY_REQUEST_TIMEOUT``
+        values, with the supported ``AAP_*`` aliases as fallback. Explicit lookup
+        options take precedence.
+      - role_team_assignment - allow resource-level ``type`` values (for example ``projects``,
+        ``activations``) in ``assignment_objects`` instead of rejecting all types
+        other than ``organizations`` and ``teams``.
+      - role_team_assignment - validate ``assignment_objects`` ``type`` against the
+        role definition ``content_type`` before API calls, preventing Gateway 400/500
+        errors when the wrong resource type is used for name-based lookup (https://issues.redhat.com/browse/AAP-75240).
+      minor_changes:
+      - service_cluster - add ``outlier_detection_split_external_local_origin_errors``
+        and ``outlier_detection_consecutive_local_origin_failure`` options (https://issues.redhat.com/browse/AAP-76998).
+    fragments:
+    - aap_38532_authenticator_user.yml
+    - aap_75240_role_team_assignment_content_type.yml
+    - aap_76998_service_cluster_outlier_detection.yml
+    - gateway_api_env_vars.yaml
+    - remove-deprecated-params.yaml
+    release_date: '2026-09-30'
