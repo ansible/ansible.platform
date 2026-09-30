@@ -50,6 +50,21 @@ def _get_requires(pr_body, target):
         return matches.group(1)
 
 
+def _get_aap_gateway_requires(pr_body):
+    """Return the Gateway repository and PR number specified as required.
+
+    Gateway development currently happens in both the legacy ``ansible/jewel``
+    repository and ``ansible-automation-platform/aap-gateway``.  Accept either
+    repository so collection CI can test the Gateway PR named in its body.
+    """
+    repositories = ("ansible-automation-platform/aap-gateway", "ansible/jewel")
+    repositories_re = "|".join(re.escape(repository) for repository in repositories)
+    requires_re = re.compile(f"requires.*({repositories_re})(?:#|/pull/)([0-9]+)", re.IGNORECASE)
+    matches = requires_re.search(pr_body)
+    if matches:
+        return matches.group(1), matches.group(2)
+
+
 def _checkout_aap_gateway(pr_body):
     """Checkout aap-gateway, either from stable-2.6 OR from a specified Pull Request.
        Return the body of the specified Pull Request, if any.
@@ -59,10 +74,11 @@ def _checkout_aap_gateway(pr_body):
     branch = 'stable-2.6'
     aap_gateway_pr_body = ""
 
-    required_pr = _get_requires(pr_body, target="aap-gateway")
-    if required_pr:
-        print(f"This ansible.platform PR requires aap-gateway PR {required_pr}")
-        url = f'https://api.github.com/repos/ansible-automation-platform/aap-gateway/pulls/{required_pr}'
+    required = _get_aap_gateway_requires(pr_body)
+    if required:
+        required_repo, required_pr = required
+        print(f"This ansible.platform PR requires {required_repo} PR {required_pr}")
+        url = f"https://api.github.com/repos/{required_repo}/pulls/{required_pr}"
         response = requests.get(url, headers=GH_API_HEADERS)
         pr_data = response.json()
         merged = pr_data['merged']
