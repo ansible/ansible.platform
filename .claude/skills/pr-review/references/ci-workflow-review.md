@@ -26,30 +26,54 @@ Review checklist for CI, GitHub Actions, and workflow changes.
 **Quick secret protection check:**
 ```bash
 # Does workflow use secrets AND run on pull_request?
-# Parse YAML to check both inline and block forms
-python3 -c '
+# Parse YAML to check both inline and block forms, handle both .yml and .yaml
+python3 << 'EOF'
 import yaml
-import sys
 from pathlib import Path
 
-for wf_file in Path(".github/workflows").glob("*.yml"):
+# Scan both .yml and .yaml extensions
+for wf_file in list(Path(".github/workflows").glob("*.yml")) + list(Path(".github/workflows").glob("*.yaml")):
     with open(wf_file) as f:
         wf = yaml.safe_load(f)
+        content = wf_file.read_text()
     
-    # Check if workflow has secrets and pull_request trigger
-    has_secrets = "secrets." in wf_file.read_text()
-    triggers = wf.get("on", {})
-    if isinstance(triggers, dict):
+    # PyYAML converts unquoted 'on' to boolean True in YAML 1.1
+    # Check both 'on' and True keys
+    triggers = wf.get("on") or wf.get(True) or {}
+    has_pr = False
+    has_pr_target = False
+    
+    # Handle all trigger forms: scalar, list, and mapping
+    if isinstance(triggers, str):
+        # Scalar: on: pull_request
+        has_pr = triggers == "pull_request"
+        has_pr_target = triggers == "pull_request_target"
+    elif isinstance(triggers, list):
+        # List: on: [pull_request, push]
         has_pr = "pull_request" in triggers
-    else:
-        has_pr = "pull_request" in (triggers if isinstance(triggers, list) else [])
+        has_pr_target = "pull_request_target" in triggers
+    elif isinstance(triggers, dict):
+        # Mapping: on:\n  pull_request:\n    types: [labeled]
+        has_pr = "pull_request" in triggers
+        has_pr_target = "pull_request_target" in triggers
     
-    if has_secrets and has_pr:
-        print(f"⚠️ DANGER: {wf_file} exposes secrets to fork PRs!")
-'
+    # Check for secret usage
+    has_secrets = "secrets." in content
+    
+    # Check for authorization gates
+    has_label_gate = "safe to test" in content or "github.event.label.name" in content
+    has_member_check = "author_association" in content or "MEMBER" in content
+    
+    if has_pr and has_secrets and not (has_label_gate and has_member_check):
+        print(f"❌ DANGER: {wf_file} exposes secrets to fork PRs without proper gate!")
+    
+    if has_pr_target and ("head.sha" in content or "head_sha" in content):
+        print(f"⚠️ WARNING: {wf_file} checks out PR code with pull_request_target")
 
-# Verify label-gated workflows exist
-grep -l "safe to test" .github/workflows/*.yml
+EOF
+
+# Verify label-gated workflows exist (check both extensions)
+ls .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null | xargs grep -l "safe to test"
 ```
 
 ---
@@ -110,7 +134,14 @@ act --dryrun -W .github/workflows/<workflow>.yml
 - [ ] Jobs are properly defined
 - [ ] Steps are in logical order
 
-**Note:** `gh workflow view` only shows the workflow file stored in the repository, not your local changes. Always use `actionlint` or `act --dryrun` to validate modified workflows locally.
+**⚠️ CRITICAL: Local Validation Required**
+
+`gh workflow view` only shows the workflow stored on GitHub, NOT your local changes.
+
+**ALWAYS validate locally before pushing:**
+- **actionlint** (REQUIRED) - Fast, catches workflow syntax issues
+- **act --dryrun** (Alternative) - Slower, validates runtime behavior
+- **Never skip** - Workflow errors can break CI for all contributors
 
 #### 1.2 Trigger Conditions
 
@@ -322,15 +353,39 @@ jobs:
 **Verify secret protection:**
 
 ```bash
-# 1. Check if workflow runs on pull_request (dangerous) - handles both inline and block YAML
-grep -E "^\s*(on|'on'|\"on\"):\s*$" -A 5 .github/workflows/*.yml | grep -E "^\s*pull_request:" || \
-grep -E "^\s*(on|'on'|\"on\"):\s*pull_request" .github/workflows/*.yml
+# Use YAML-aware parsing to detect all trigger forms (.yml and .yaml)
+python3 << 'EOF'
+import yaml
+from pathlib import Path
 
-# 2. Check if secrets used without protection
-grep -A 5 "secrets\." .github/workflows/*.yml | grep -v "pull_request_target"
+for wf_file in list(Path(".github/workflows").glob("*.yml")) + list(Path(".github/workflows").glob("*.yaml")):
+    with open(wf_file) as f:
+        wf = yaml.safe_load(f)
+        content = wf_file.read_text()
+    
+    # Handle PyYAML's 'on' -> True conversion
+    triggers = wf.get("on") or wf.get(True) or {}
+    has_pr = False
+    
+    # Check all trigger forms
+    if isinstance(triggers, str):
+        has_pr = triggers == "pull_request"
+    elif isinstance(triggers, list):
+        has_pr = "pull_request" in triggers
+    elif isinstance(triggers, dict):
+        has_pr = "pull_request" in triggers
+    
+    # Check secret usage and gates
+    has_secrets = "secrets." in content
+    has_gate = "safe to test" in content or "author_association" in content
+    
+    if has_pr and has_secrets:
+        if not has_gate:
+            print(f"❌ DANGER: {wf_file} exposes secrets to pull_request without gate!")
+        else:
+            print(f"✅ OK: {wf_file} has pull_request with gate")
 
-# 3. Check for label gates
-grep -n "safe to test" .github/workflows/*.yml
+EOF
 ```
 
 #### 1.6 Dependencies and Actions

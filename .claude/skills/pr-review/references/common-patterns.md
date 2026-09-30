@@ -38,39 +38,39 @@ Instead of inline examples, point reviewers to actual code in the repository:
 ### Check Seven-File Pattern
 ```bash
 # For new module named 'foo'
-# See docs/07-adding-resources.md for details
+# Complete seven-file pattern from docs/07-adding-resources.md
 REQUIRED_FILES=(
   "plugins/modules/foo.py"                                    # 1. Module
   "plugins/plugin_utils/ansible_models/foo.py"                # 2. Ansible model
   "plugins/plugin_utils/api/v1/foo.py"                        # 3. Transform mixin
   "plugins/action/foo.py"                                     # 4. Action plugin
   "tests/integration/targets/foos_test/tasks/main.yml"        # 5. Integration tests (note plural 'foos')
+  "extensions/molecule/foo_mock/"                             # 6. Molecule mock
+  "tests/unit/plugins/plugin_utils/api/v1/test_foo.py"       # 7. Unit tests
 )
 
-OPTIONAL_FILES=(
-  "extensions/molecule/foo_mock/"                             # 6. Molecule mock (recommended)
-  "tests/unit/plugins/plugin_utils/api/v1/test_foo.py"       # 7. Unit tests (if complex transforms)
-)
+# Track failures to exit non-zero
+MISSING_COUNT=0
 
-MISSING=0
+echo "Checking seven-file pattern..."
 for f in "${REQUIRED_FILES[@]}"; do
   if test -f "$f" || test -d "$f"; then
     echo "✅ $f"
   else
-    echo "❌ Missing: $f"
-    MISSING=1
+    echo "❌ Missing REQUIRED: $f"
+    ((MISSING_COUNT++))
   fi
 done
 
-for f in "${OPTIONAL_FILES[@]}"; do
-  if test -f "$f" || test -d "$f"; then
-    echo "✅ $f"
-  else
-    echo "⚠️  Recommended: $f"
-  fi
-done
-
-exit $MISSING
+if [ $MISSING_COUNT -gt 0 ]; then
+  echo ""
+  echo "❌ FAILED: $MISSING_COUNT required file(s) missing"
+  exit 1
+else
+  echo ""
+  echo "✅ All required files present"
+  exit 0
+fi
 ```
 
 ### Check Linting (STRICT)
@@ -115,11 +115,12 @@ Use this for all PR types:
 - [ ] **Defaults:** Secure defaults (verify_ssl=True, not False)
 - [ ] **Vault handling:** Vault credentials converted to str() before use
 
-### Testing (BLOCKING - apply based on PR type)
+### Testing (BLOCKING - type-specific)
 - [ ] Unit tests for new code (if plugins/**/*.py changed)
-- [ ] Transform tests (to_api/from_api) - ONLY if transform logic changed
-- [ ] Regression test for bugfixes (bugfix PRs only)
-- [ ] Workflow validation (CI/workflow PRs only - use actionlint)
+- [ ] Transform tests (to_api/from_api) - **ONLY if** `plugins/plugin_utils/api/` changed
+- [ ] Regression test for bugfixes - **ONLY for** bugfix PRs
+- [ ] Workflow validation - **ONLY for** CI/workflow PRs (use actionlint)
+- [ ] Integration tests for new modules/features - **NOT required** for docs/CI-only changes
 
 ## Common Code Smells
 

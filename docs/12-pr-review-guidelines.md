@@ -941,49 +941,63 @@ jobs:
       - run: make test-unit  # Safe - no secrets exposed
 ```
 
-**✅ SAFE Option 2: Secrets only with TRUSTED code**
+**✅ SAFE Option 2: Manual maintainer-controlled workflow**
+
+For integration tests requiring secrets, use a manual, maintainer-controlled approach that does NOT execute PR code:
 
 ```yaml
+# Maintainer manually runs integration tests AFTER reviewing the PR
+# This is a workflow dispatch that maintainers trigger manually
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test'
+        required: true
+        type: number
+
+jobs:
+  integration:
+    # Manual approval required before execution
+    environment: CI
+    steps:
+      # Maintainer has already reviewed the PR code
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ inputs.pr_number }}/merge
+      - env:
+          AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
+        run: ansible-playbook tests/integration/playbook.yml
+```
+
+**Why this is safer:**
+- **workflow_dispatch**: Requires explicit maintainer action
+- **Manual review**: Maintainer reviews ALL code before running
+- **No automatic execution**: PR cannot trigger this workflow
+
+**❌ AVOID: pull_request_target with head.sha checkout**
+
+Even with label gates, this pattern exposes secrets to code from the PR:
+
+```yaml
+# RISKY: Even with gates, PR code executes with secrets
 on:
   pull_request_target:
     types: [labeled]
 
 jobs:
   integration:
-    # Only run after maintainer applies "safe to test" label
     if: contains(github.event.pull_request.labels.*.name, 'safe to test')
-    environment: CI  # Optional: Require environment approval
     steps:
-      # Check out PR code (head.sha) to actually test the changes
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          allow-unsafe-pr-checkout: true
+          ref: ${{ github.event.pull_request.head.sha }}  # PR code runs with secrets!
       - env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
-        # Safe because:
-        # 1. pull_request_target uses workflow from base (can't be modified by PR)
-        # 2. Label gate requires maintainer review
-        # 3. Workflow file itself is trusted
-        run: ansible-playbook tests/integration/playbook.yml
+        run: ansible-playbook tests/integration/  # Executes untrusted code
 ```
 
-**Why this is safe:**
-- **pull_request_target**: Workflow runs from base branch (PR cannot modify the workflow)
-- **Label gate**: Maintainer reviews code BEFORE applying label
-- **head.sha**: Tests actual PR changes (not base branch)
-- **allow-unsafe-pr-checkout**: Explicit acknowledgment that we're testing untrusted code
-
-**❌ NEVER DO THIS:**
-```yaml
-# DON'T: Check out PR code and give it secrets
-- uses: actions/checkout@v4
-  with:
-    ref: ${{ github.event.pull_request.head.sha }}  # Untrusted PR code
-- env:
-    AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}  # Secrets exposed!
-  run: ansible-playbook tests/integration/  # Runs untrusted code with secrets
-```
+**Why this is risky:** The label gate helps, but PR code still executes with access to secrets. Prefer workflow_dispatch or secret-free pull_request triggers.
 
 **Rule 2: Secrets in env vars, not inline**
 
@@ -1552,13 +1566,10 @@ self._display.vvvv(f"Authenticating to {host} as {username}")
 
 # ✅ SAFE: Mask credential value
 logger.debug(f"Password: ***")
-
-# ❌ DANGEROUS: Credentials visible even at high verbosity
-self._display.vvvv(f"Password: {password}")  # LEAKED at -vvvv!
-logger.debug(f"Password: {password}")        # LEAKED to logs!
+logger.debug(f"Credential provided: {bool(password)}")
 ```
 
-**Why:** Even `-vvvv` output can be captured in CI logs, callback plugins, and log files.
+**Why:** Even `-vvvv` output can be captured in CI logs, callback plugins, and log files. Never log the actual credential value at any verbosity level.
 
 ---
 
