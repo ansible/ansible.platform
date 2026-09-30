@@ -17,436 +17,170 @@ Reviews PRs as a collection maintainer following ansible.platform standards.
 /pr-review <PR_NUMBER>
 ```
 
-## Overview
-
-This skill performs a structured PR review with these priorities:
-
-1. **Pre-merge CI checks** (must pass BEFORE `safe to test`)
-   - Collection completeness test
-   - Unit tests
-   - Sanity tests
-   
-2. **Route to specific review type:**
-   - Feature PR → `references/feature-review.md`
-   - Bugfix PR → `references/bugfix-review.md`
-   - CI/workflow PR → `references/ci-workflow-review.md`
-
-3. **Safe-to-test readiness** (after fixes)
-
-4. **Post-label CI monitoring** (integration tests)
-
----
-
 ## Workflow
 
-### Step 1: Fetch PR Information
+### 1. Fetch PR Info
 
 ```bash
 gh pr view <PR_NUMBER> --repo ansible/ansible.platform \
   --json title,body,author,files,statusCheckRollup,labels
 ```
 
-**Extract:**
-- PR type from title: `feat:`, `fix:`, `ci:`, `refactor:`, `docs:`
-- Files changed count
-- CI check status
-- Jira issue reference
+Extract: PR type, files changed, CI status, JIRA reference
 
----
+### 2. Pre-Merge CI Checks (STRICT - Must Pass BEFORE safe-to-test)
 
-### Step 2: Pre-Merge CI Checks (BEFORE safe-to-test)
+**ALL must pass:**
+- ✅ Collection completeness test
+- ✅ Unit tests  
+- ✅ Sanity tests (ALL checks)
+- ✅ Ruff linting (zero violations)
+- ✅ Yamllint (zero violations)
+- ✅ Changelog (if code changes)
+- ✅ JIRA reference (MANDATORY for bugfixes)
 
-**These must pass before applying `safe to test` label:**
-
-#### 2.1 Collection Completeness Test
-
-**Purpose:** Ensures new modules are registered in `meta/runtime.yml`
-
+**Check status:**
 ```bash
-# If failing, get error details
-gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
-  grep -A 10 "collection completeness"
+gh run view <RUN_ID> --repo ansible/ansible.platform --log | grep -A 10 "collection completeness\|pytest\|ansible-test sanity\|ruff check"
 ```
 
-**Common failure:**
-```
-The following items should be added to meta/runtime.yml action-groups.gateway:
-    <module_name>
-```
+**If ANY fail:** ❌ BLOCK - Request fixes before proceeding
 
-**Fix:**
-```diff
-# meta/runtime.yml
-action_groups:
-  gateway:
-+   - <module_name>
-    - application
-```
+### 3. Route to Specific Review
 
-**Why it matters:** Enables `module_defaults` for `group/ansible.platform.gateway`
-
-#### 2.2 Unit Tests
-
+**Check for core infrastructure changes FIRST:**
 ```bash
-# Check unit test failures
-gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
-  grep -A 20 "pytest"
-```
-
-**Review:**
-- Assertion failures
-- Import errors
-- Test coverage for changed code
-
-#### 2.3 Sanity Tests (**STRICT** - Must Pass)
-
-```bash
-# Check sanity test failures
-gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
-  grep -A 20 "ansible-test sanity"
-```
-
-**Common issues (ALL BLOCKING):**
-- Documentation validation (malformed DOCUMENTATION)
-- Import validation (unused imports, missing __init__.py)
-- PEP8 violations (line length, indentation)
-- ansible-lint violations
-- yamllint violations
-- pep8 formatting issues
-
-**STRICT ENFORCEMENT:**
-- ❌ **BLOCK** PR if ANY sanity test fails
-- ❌ **BLOCK** PR if ruff linting fails
-- ❌ **BLOCK** PR if yamllint fails
-- Request specific fixes with line numbers and exact errors
-
-#### 2.4 Linting Checks (**STRICT** - Must Pass)
-
-```bash
-# Check ruff linting
-gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
-  grep -A 20 "ruff check"
-
-# Check yamllint
-gh run view <RUN_ID> --repo ansible/ansible.platform --log | \
-  grep -A 20 "yamllint"
-```
-
-**STRICT ENFORCEMENT:**
-- ❌ **BLOCK** PR for unused imports
-- ❌ **BLOCK** PR for undefined names
-- ❌ **BLOCK** PR for formatting issues (use `ruff format`)
-- ❌ **BLOCK** PR for YAML syntax errors
-- Provide exact file:line references for each violation
-
-#### 2.5 JIRA Integration
-
-**Check:** Jira issue reference in PR title or body
-
-**Format:** `[AAP-XXXXX]` or `AAP-XXXXX` or `ANSTRAT-XXXXX`
-
-**ENFORCEMENT:**
-- ❌ **BLOCKING for bugfix PRs** (`fix:`) - JIRA is **MANDATORY**
-- ⚠️ **Recommended for feature PRs** (`feat:`) - Request but don't block
-- ✅ **Optional for docs/CI PRs**
-
-**If missing on bugfix:**
-```markdown
-❌ **BLOCKER: Missing JIRA reference**
-
-Bugfix PRs must reference a JIRA issue (AAP-XXXXX or ANSTRAT-XXXXX).
-Please add the JIRA reference to the PR title or description.
-```
-
----
-
-### Step 3: Changelog Verification
-
-**Check if changelog needed:**
-
-```bash
-# Changed files that require changelog
-- plugins/**/*.py → YES
-- tests/**/*.py → YES
-- docs/**/*.md → NO (docs-only)
-- .github/**/*.yml → NO (CI-only)
-```
-
-**Verify changelog exists:**
-```bash
-ls changelogs/fragments/ | grep -E "<pr_number>|<feature_name>"
-```
-
-**Validate format:**
-```yaml
-# For features
-minor_changes:
-  - "Short description (ansible/ansible.platform#<PR>)."
-
-# For bugfixes
-bugfixes:
-  - "Fix description (ansible/ansible.platform#<PR>)."
-```
-
----
-
-### Step 4: Route to Specific Review
-
-**FIRST: Check if PR touches core infrastructure (connection/manager):**
-
-```bash
-# Check for connection or manager changes
 git diff origin/devel --name-only | grep -E \
   'plugins/connection/|plugins/plugin_utils/manager/|plugins/plugin_utils/platform/(base_client|direct_client|config|registry)'
 ```
 
-**If connection/manager files changed:**
-→ **CRITICAL:** Read `references/connection-manager-review.md` FIRST (regardless of PR type)
+**If match:** Read `references/connection-manager-review.md` FIRST
 
-**Then, based on PR type, read appropriate reference:**
+**Then route by PR type:**
 
-| PR Type | Reference File | When to Use |
-|---------|---------------|-------------|
-| `feat:` | `references/feature-review.md` | New module, new feature |
-| `fix:` | `references/bugfix-review.md` | Bug fix, regression fix |
-| `ci:` | `references/ci-workflow-review.md` | CI, GitHub Actions, workflow changes |
-| `refactor:` | `references/feature-review.md` | Code refactoring (use feature checklist) |
-| `docs:` | Skip to Step 6 | Documentation only |
-| **Connection/Manager** | `references/connection-manager-review.md` | Core infrastructure changes |
+| Type | Reference | Trigger |
+|------|-----------|---------|
+| Feature | `references/feature-review.md` | `feat:`, new module |
+| Bugfix | `references/bugfix-review.md` | `fix:`, JIRA AAP-* |
+| CI/Workflow | `references/ci-workflow-review.md` | `ci:`, `.github/workflows/` |
+| Docs-only | Skip to Step 4 | Only `docs/**/*.md` changed |
 
-**Read the reference file and follow its checklist.**
+### 4. Safe-to-Test Readiness
 
----
-
-### Step 5: Determine Safe-to-Test Readiness
-
-**STRICT Prerequisites for `safe to test` label (ALL MUST PASS):**
-
-- ✅ Collection completeness test passing (**BLOCKING**)
-- ✅ Unit tests passing (**BLOCKING**)
-- ✅ Sanity tests passing - ALL checks (**BLOCKING**)
-- ✅ Ruff linting passing - zero violations (**BLOCKING**)
-- ✅ Yamllint passing - zero violations (**BLOCKING**)
-- ✅ Changelog fragment present (if plugins/**/*.py or tests/**/*.py changed, excluding docs/**/*.md and .github/**/*.yml) (**BLOCKING**)
-- ✅ JIRA issue referenced (**BLOCKING for bugfixes**, recommended for features)
-- ✅ No security issues (**BLOCKING**)
+**Prerequisites (ALL must pass):**
+- ✅ All pre-merge CI checks passing
+- ✅ JIRA referenced (if bugfix)
+- ✅ Changelog present (if code changes)
+- ✅ No security issues
 
 **Decision:**
+- All pass → ✅ Ready for `safe to test`
+- ANY fail → ❌ BLOCK - Request fixes
 
-| Status | Action |
-|--------|--------|
-| All prerequisites met | ✅ **Ready for `safe to test`** |
-| **ANY** pre-merge check failing | ❌ **BLOCK - Request fixes** |
-| Linting violations present | ❌ **BLOCK - Must be zero violations** |
-| Sanity test failures | ❌ **BLOCK - All must pass** |
-| Bugfix missing JIRA | ❌ **BLOCK - JIRA mandatory** |
-| Docs-only PR (no code changes) | ✅ **Can merge without label** |
-
----
-
-### Step 5.5: Integration Test Guidance (Before Applying Label)
-
-**Once all pre-merge checks pass, ask contributor for integration test guidance:**
+### 5. Ask for Test Guidance (Before Applying Label)
 
 ```markdown
 ## ✅ Pre-merge Checks Passed
 
-All CI checks are passing! Before I apply the \`safe to test\` label to run integration tests:
+Before applying `safe to test` label:
 
-**Could you provide guidance on testing this change?**
+**Test guidance needed:**
+1. Which modules/resources should be tested?
+2. Expected integration test results?
+3. Known failures (if any)?
 
-1. **Which modules/resources should be tested?**
-   - [ ] Specific modules affected by your changes
-   - [ ] Any dependent modules
-
-2. **Test scenarios to verify:**
-   - [ ] Key scenarios that should work
-   - [ ] Edge cases that previously failed
-   - [ ] Any specific configurations
-
-3. **Expected integration test results:**
-   - [ ] All tests should pass
-   - [ ] Known failures (if any)
-   - [ ] Specific tests to watch
-
-**How to run integration tests locally (optional):**
+**Local testing (optional):**
 \`\`\`bash
-# Set up AAP credentials
-export AAP_HOSTNAME=your-aap-instance
-export AAP_USERNAME=your-username
-export AAP_PASSWORD=your-password
-
-# Run integration tests
+export AAP_HOSTNAME=your-instance
+export AAP_USERNAME=your-user
+export AAP_PASSWORD=your-pass
 make collection-test CONNECTION_MODE=http-persistent
-
-# Or run specific test
-ansible-test integration <target> --docker
 \`\`\`
 
-Once you confirm, I'll apply the \`safe to test\` label to trigger the full integration test suite.
+Confirm and I'll apply the label.
 ```
 
 **Wait for contributor response before applying label.**
 
----
+### 6. Monitor Integration Tests
 
-### Step 6: Apply Safe-to-Test Label & Monitor
-
-**After contributor confirms test guidance:**
-
-1. Apply `safe to test` label
-2. Monitor integration test execution
-
----
-
-### Step 7: Post-Label Monitoring (Integration Tests Running)
-
-**Once `safe to test` label is applied, integration tests run:**
-
+After label applied:
 ```bash
-# Monitor CI
 gh pr checks <PR_NUMBER> --repo ansible/ansible.platform --watch
 ```
 
-**Integration test failures:**
-- AAP connectivity issues (transient → re-run)
-- Resource creation failures (check required fields)
-- Timeout errors (check wait/polling logic)  
-- 404 errors (wrong endpoint path in mixin)
+**Common failures:**
+- AAP connectivity (transient → re-run)
+- Resource creation (check required fields)
+- Timeout (check polling logic)
 
-**Re-run transient failures:**
+**Re-run transient:**
 ```bash
 gh run rerun <RUN_ID> --repo ansible/ansible.platform --failed
 ```
 
----
+### 7. Post Review
 
-### Step 8: Post Review
-
-**Use template based on findings:**
-
+**Template:**
 ```markdown
 ## PR Review: #<PR_NUMBER>
 
-**Type:** [Feature|Bugfix|CI/Workflow|Docs]  
-**Files Changed:** X files  
-**CI Status:** [✅ All Green|❌ N Failing|⏳ Pending]
+**Type:** [Feature|Bugfix|CI|Docs]  
+**CI Status:** [✅ All Green|❌ N Failing]
 
-### Pre-Merge CI Checks (STRICT - All Must Pass)
+### Pre-Merge Checks
+- [x] Collection completeness: ✅
+- [x] Unit tests: ✅
+- [x] Sanity tests: ✅
+- [x] Changelog: ✅
+- [x] JIRA: ✅ AAP-XXXXX
 
-- [x] Collection completeness: ✅ Passing
-- [ ] Unit tests: ❌ 2 failures (see details below) **BLOCKING**
-- [x] Sanity tests: ✅ Passing
-- [x] Ruff linting: ✅ Zero violations
-- [x] Yamllint: ✅ Zero violations  
-- [x] Changelog: ✅ Present
-- [x] JIRA reference: ✅ AAP-12345 (required for bugfixes)
-
-### Architecture Review (Features Only)
-
-[See feature-review.md checklist results]
-
-### Blockers
-
-1. **Unit test failures**
-   - File: `tests/unit/plugins/plugin_utils/api/v1/test_foo.py:42`
-   - Issue: Assertion failed - expected 'bar', got 'baz'
-   - Fix: Update test expectation to match implementation
-
-2. **Missing meta/runtime.yml entry**
-   ```diff
-   action_groups:
-     gateway:
-   +   - foo
-   ```
+### [Type]-Specific Review
+[See reference file findings]
 
 ### Safe-to-Test Status
-
-**Status:** ❌ **NOT READY**
-
-**Reason:** Unit tests failing
-
-**Next Steps:**
-1. Fix unit test failures
-2. Push changes
-3. Re-review
-4. Apply `safe to test` label
+**Status:** [✅ Ready | ❌ Blocked]
+**Reason:** [Details]
 
 ### Final Verdict
-
-**⚠️ REQUEST CHANGES**
-
-Please address the blockers above. Once fixed, I'll re-review and we can proceed with integration testing.
+[✅ LGTM | ⚠️ REQUEST CHANGES | ❌ BLOCK]
 ```
 
-**Post review:**
+**Submit:**
 ```bash
-# Request changes
-gh pr review <PR_NUMBER> --repo ansible/ansible.platform \
-  --request-changes --body "$(cat review.md)"
+# Approve
+gh pr review <PR> --repo ansible/ansible.platform --approve --body "LGTM!"
 
-# Approve (after all checks pass)
-gh pr review <PR_NUMBER> --repo ansible/ansible.platform \
-  --approve --body "LGTM! All checks passing."
+# Request changes
+gh pr review <PR> --repo ansible/ansible.platform --request-changes --body "$(cat review.md)"
 ```
 
 ---
 
 ## Quick Reference
 
-### CI Check Priority
-
-1. **Pre-merge (MUST pass before `safe to test`):**
-   - Collection completeness ← **Run FIRST**
-   - Unit tests
-   - Sanity tests (ALL checks)
-   - Ruff linting (zero violations)
-   - Yamllint (zero violations)
-   - Changelog verification (if code changes)
-   - JIRA reference (MANDATORY for bugfixes)
-   - Security checks (no credential leaks)
-
-2. **Post-label (triggered BY `safe to test`):**
-   - Integration tests (live AAP)
-
-### PR Type Detection
-
-```
-feat: → Feature review
-fix: → Bugfix review
-ci: → CI/workflow review
-docs: → Skip to safe-to-test check
-refactor: → Feature review (architecture check)
-```
+### Pre-Merge CI Priority
+1. Collection completeness (BLOCKING)
+2. Unit tests (BLOCKING)
+3. Sanity tests - ALL checks (BLOCKING)
+4. Linting - zero violations (BLOCKING)
+5. Changelog (BLOCKING if code changes)
+6. JIRA (BLOCKING for bugfixes)
 
 ### Common Fixes
+- Collection completeness → Add to `meta/runtime.yml`
+- Missing changelog → Create `changelogs/fragments/<pr>-<name>.yml`
+- Integration test failures → Check if transient, re-run
 
-**Collection completeness failure:**
-→ Add module to `meta/runtime.yml`
+### Reference Files
 
-**Missing changelog:**
-→ Create `changelogs/fragments/<pr>-<name>.yml`
+**Core infrastructure (CRITICAL):**
+- `references/connection-manager-review.md`
 
-**Integration test failures:**
-→ Check if transient, re-run if needed
+**PR type specific:**
+- `references/feature-review.md` - Seven-file pattern, architecture
+- `references/bugfix-review.md` - Regression tests, JIRA
+- `references/ci-workflow-review.md` - Workflow security
 
----
-
-## Reference Files
-
-**Start here:** `references/common-patterns.md` - Shared validation patterns and code references
-
-**PR-type specific:**
-- `references/feature-review.md` - Seven-file pattern, architecture compliance
-- `references/bugfix-review.md` - Regression test requirements
-- `references/ci-workflow-review.md` - CI/workflow specific checks
-- `references/connection-manager-review.md` - Core infrastructure (CRITICAL)
-
----
-
-**Last Updated:** 2026-09-17
-**Changes:**
-- Added strict linting and sanity enforcement
-- Made JIRA mandatory for bugfixes
-- Added common-patterns.md to reduce context consumption
-- Refactored references to point to real code examples
+**Shared patterns:**
+- `references/common-patterns.md` - Validation commands, checklists
