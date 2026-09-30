@@ -14,7 +14,7 @@ releases:
     release_date: '2026-03-06'
   2.6.20260504:
     release_date: '2026-05-04'
-  2.6.20260928:
+  2.6.20260930:
     changes:
       breaking_changes:
       - 'role_user_assignment - removed deprecated parameter ``object_id`` (singular).
@@ -47,4 +47,4 @@ releases:
     - aap_76998_service_cluster_outlier_detection.yml
     - gateway_api_env_vars.yaml
     - remove-deprecated-params.yaml
-    release_date: '2026-09-29'
+    release_date: '2026-09-30'
