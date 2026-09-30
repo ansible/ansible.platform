@@ -24,6 +24,8 @@
 - [ ] I have considered performance implications
 - [ ] I have thought about error handling and edge cases
 - [ ] I have tested the changes in my local environment
+- [ ] Run Integration Test by applying "safe to test" label to PR
+- [ ] Add E2E tests for new feature (Reference: https://aap-cac-e2e-test-suite-29237a.pages.redhat.com/)
 - [ ] Existing playbook FQCNs are preserved (no renames without a redirect in `meta/routing.yml`)
 - [ ] Deprecated parameters include a `deprecated:` block in `DOCUMENTATION` with removal version
 
