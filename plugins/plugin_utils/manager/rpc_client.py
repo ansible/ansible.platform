@@ -131,6 +131,33 @@ class ManagerRPCClient:
         """
         return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects)
 
+    def manage_associations(
+        self,
+        base_path,
+        resource_id,
+        association_field,
+        desired_items,
+        lookup_endpoint,
+        lookup_field,
+    ):
+        """Sync an association sub-endpoint via the manager process."""
+        return self.service_proxy.manage_associations(
+            base_path,
+            resource_id,
+            association_field,
+            desired_items,
+            lookup_endpoint,
+            lookup_field,
+        )
+
+    def manage_sub_resource(self, base_path, resource_id, sub_path, data=None):
+        """Manage a secondary sub-endpoint resource via the manager process."""
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+
+    def copy_resource(self, module_name, source_name_or_id, new_name, copy_endpoint_path):
+        """Copy a resource via the manager process."""
+        return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path)
+
     def shutdown_manager(self) -> dict:
         """
         Request manager to shutdown gracefully.
