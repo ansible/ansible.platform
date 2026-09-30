@@ -1,5 +1,0 @@
----
-bugfixes:
-  - gateway_api lookup - Automatically read exported ``GATEWAY_HOSTNAME``, ``GATEWAY_USERNAME``, ``GATEWAY_PASSWORD``,
-    ``GATEWAY_VERIFY_SSL``, ``GATEWAY_API_TOKEN``, and ``GATEWAY_REQUEST_TIMEOUT`` values, with supported ``AAP_*``
-    aliases as fallbacks. Explicit lookup options take precedence.
