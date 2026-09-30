@@ -334,9 +334,9 @@ def from_ansible_data(cls, ansible_instance, context):
     # Resolve organization name → ID
     if ansible_instance.organization:
         org_id = context.manager.lookup_resource_id(
-            "organization",  # Resource type
-            ansible_instance.organization,  # Name from user
-            endpoint="/api/gateway/v1/organizations/"  # Lookup endpoint
+            "organizations",  # Endpoint (plural)
+            "name",  # Lookup field
+            ansible_instance.organization  # Lookup value (name from user)
         )
         api_data["organization"] = org_id  # ID in API
     
@@ -1429,8 +1429,8 @@ HTTP Request to AAP Gateway
 - ansible.platform.team:
     organization: "Red Hat"  # String name
 
-# Transform Mixin resolves
-org_id = manager.lookup_resource_id("organization", "Red Hat")
+# Transform Mixin resolves (actual signature)
+org_id = manager.lookup_resource_id("organizations", "name", "Red Hat")
 # Returns: 42
 
 # API Model (wire format)
@@ -1527,8 +1527,9 @@ aap_password: "{{ password }}"
 
 ```python
 try:
-    org_id = manager.lookup_resource_id("organization", org_name)
-except ResourceNotFound:
+    org_id = manager.lookup_resource_id("organizations", "name", org_name)
+except ValueError as e:
+    # lookup_resource_id raises ValueError when not found
     module.fail_json(
         msg=f"Organization '{org_name}' not found. "
             f"Create it first or check spelling."
@@ -1539,7 +1540,7 @@ except ResourceNotFound:
 
 ```python
 # No error handling, crashes with unclear error
-org_id = manager.lookup_resource_id("organization", org_name)
+org_id = manager.lookup_resource_id("organizations", "name", org_name)
 ```
 
 ### Security
@@ -2181,7 +2182,7 @@ open htmlcov/index.html
 1. **Sanity** - Documentation, imports, PEP8
 2. **Unit** - pytest tests
 3. **Completeness** - meta/runtime.yml check
-4. **Linting** - black, isort, flake8
+4. **Linting** - ruff (format + check)
 
 **Post-label (triggered by `safe to test`):**
 

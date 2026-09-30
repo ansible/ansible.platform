@@ -508,14 +508,19 @@ def test_handles_none_value():
 
 **Bug:**
 ```python
-# Fails with AnsibleVaultEncryptedUnicode
-subprocess.Popen([sys.executable, password])
+# Fails with AnsibleVaultEncryptedUnicode passed as environment variable
+env = {"PASSWORD": password}  # Vault object, not string
+subprocess.Popen([sys.executable], env=env)
 ```
 
-**Fix:**
+**Fix (RECOMMENDED - use environment variables, not argv):**
 ```python
-# Convert to str first
-subprocess.Popen([sys.executable, str(password)])
+# Convert vault to str() before passing to subprocess
+env = {"PASSWORD": str(password)}  # Convert vault object to string
+subprocess.Popen([sys.executable], env=env)
+
+# Note: Current production code (process_manager.py) passes some credentials
+# on argv for compatibility reasons. For new code, prefer environment variables.
 ```
 
 **Required test:**

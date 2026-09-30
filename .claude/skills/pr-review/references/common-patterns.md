@@ -21,8 +21,8 @@ Instead of inline examples, point reviewers to actual code in the repository:
 ### Action Plugins
 **Reference:** `plugins/action/application.py`
 - Pattern A: Simple resources (no special behavior)
-- Shows ActionBase inheritance
-- Proper arg_spec usage
+- Shows BaseResourceActionPlugin inheritance
+- MODULE_NAME and MODEL_CLASS pattern
 
 **Reference:** `plugins/action/credential.py`  
 - Pattern C: Credentials (special input handling)
