@@ -2183,11 +2183,11 @@ open htmlcov/index.html
 2. **Unit** - pytest tests
 3. **Completeness** - meta/runtime.yml check
 4. **Linting** - ruff (format + check)
+5. **Molecule** - Mock server tests
 
 **Post-label (triggered by `safe to test`):**
 
-5. **Molecule** - Mock server tests
-6. **Integration** - Live AAP tests
+6. **Integration** - Live AAP tests (requires secrets)
 
 **Expected run times:**
 
