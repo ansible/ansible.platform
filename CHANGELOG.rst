@@ -4,7 +4,7 @@ ansible.platform Release Notes
 
 .. contents:: Topics
 
-v2.7.20260929
+v2.7.20260930
 =============
 
 Minor Changes

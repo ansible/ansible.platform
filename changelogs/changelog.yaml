@@ -98,7 +98,7 @@ releases:
     fragments:
     - gateway_api_shutdown.yml
     release_date: '2026-08-12'
-  2.7.20260929:
+  2.7.20260930:
     changes:
       bugfixes:
       - auth - Include the effective CA bundle (shell env, task ``REQUESTS_CA_BUNDLE``,
@@ -138,4 +138,4 @@ releases:
     - fix_vault_credentials_subprocess.yml
     - gateway_api_env_vars.yaml
     - role_team_assignment_org_lookup.yml
-    release_date: '2026-09-29'
+    release_date: '2026-09-30'
