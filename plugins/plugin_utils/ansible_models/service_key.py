@@ -13,11 +13,6 @@ class AnsibleServiceKey:
     name: str
     new_name: Optional[str] = None
     is_active: Optional[bool] = None
-    service_cluster: Optional[str] = None
-    algorithm: Optional[str] = None
-    secret: Optional[str] = None
-    secret_length: Optional[int] = None
-    mark_previous_inactive: Optional[bool] = None
     state: str = "present"
 
     id: Optional[int] = None
