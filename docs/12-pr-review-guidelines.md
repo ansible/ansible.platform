@@ -355,15 +355,14 @@ def from_api(cls, api_data, context):
     """Map API response back to Ansible model."""
     # Resolve API IDs back to Ansible names for idempotency
     org_id = api_data.get("organization")
-    org_name = None
-    if org_id:
-        # API returns ID, but Ansible model uses name
-        org_name = context.manager.lookup_resource_name("organization", org_id)
+    # API returns organization ID, but Ansible model uses name
+    # Use the actual resource data to get the name
+    org_name = api_data.get("organization_name")  # Gateway includes related object names
     
     return AnsibleTeam(
         id=api_data.get("id"),
         name=api_data.get("name"),
-        organization=org_name,  # ✅ Resolved from ID → name here
+        organization=org_name,  # ✅ Resolved from API response
         description=api_data.get("description"),
         # ⚠️ DON'T FORGET: If you add field to from_ansible_data(),
         # also add to from_api() or idempotency breaks!
@@ -1264,7 +1263,7 @@ def run_in_subprocess():
 ansible-playbook tests/integration/test.yml
 
 # Test direct mode (fallback)
-AAP_CONNECTION_MODE=direct ansible-playbook tests/integration/test.yml
+CONNECTION_MODE=http-direct ansible-playbook tests/integration/test.yml
 ```
 
 **Checklist:**
@@ -1385,7 +1384,7 @@ pytest tests/integration/targets/users_test/ -v
 ```bash
 # Both must work
 ansible-playbook test.yml
-AAP_CONNECTION_MODE=direct ansible-playbook test.yml
+CONNECTION_MODE=http-direct ansible-playbook test.yml
 ```
 
 #### Vault Testing
