@@ -239,8 +239,8 @@ class DynamicClassLoader:
         ansible_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_name}")
         AnsibleClass = getattr(ansible_mod, f"Ansible{pascal}")
 
-        # Load API model and mixin: api/v<N>/<module_name>.py
-        api_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.v{best_version}.{module_name}")
+        # Load API model and mixin: api/{service}/v<N>/<module_name>.py
+        api_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.{service}.v{best_version}.{module_name}")
         APIClass = getattr(api_mod, f"API{pascal}_v{best_version}")
         MixinClass = getattr(api_mod, f"{pascal}TransformMixin_v{best_version}")
 

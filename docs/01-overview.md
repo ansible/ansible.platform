@@ -93,7 +93,7 @@ Maintains the AAP Gateway API and its versioned OpenAPI specifications. Needs ne
 Gateway API versions to be supported in the collection with minimum friction.
 
 **What they care about:**
-- New API version = new `api/v<N>/` directory with updated dataclasses and mixins
+- New API version = new `api/{service}/v<N>/` directory with updated dataclasses and mixins
 - Registry auto-discovers the new version on startup
 - Old playbooks continue to work via version fallback
 - Stable Ansible-facing interface never broken by API changes
@@ -268,4 +268,4 @@ All of the above, plus:
 | Molecule mock scenario | Feature developer / QE | 30–60 minutes |
 | Integration test run + fix failures | Feature developer / QE | 30–90 minutes |
 | Add new API version for existing plugin | Framework developer | 30–60 minutes |
-| Add new API version globally (new `api/v<N>/` directory) | Framework developer | 1–2 hours |
+| Add new API version globally (new `api/{service}/v<N>/` directory) | Framework developer | 1–2 hours |

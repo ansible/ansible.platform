@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import BaseAPIClient
+from ..platform.base_client import DEFAULT_API_VERSIONS, BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -458,6 +458,64 @@ class PlatformService(BaseAPIClient):
             return "1"
         return supported[0]
 
+    def _detect_service_version(self, service: str) -> str:
+        """
+        Detect API version for a specific service by probing its API root.
+
+        Probes /api/{service}/ for an X-API-Version header or current_version
+        field, falling back to DEFAULT_API_VERSIONS only when detection fails.
+        """
+        if service == "gateway":
+            return self._detect_api_version()
+
+        requests = _get_requests()
+        import re
+
+        supported = self.registry.get_supported_versions(service)
+        if not supported:
+            return DEFAULT_API_VERSIONS.get(service, "1")
+
+        try:
+            root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+            logger.debug("PlatformService: probing service version at %s", root_url)
+            response = self.session.get(root_url, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+
+            raw = response.headers.get("X-API-Version", "").lstrip("v")
+            if raw and raw in supported:
+                logger.info("PlatformService: %s API version detected (header): v%s", service, raw)
+                return raw
+            if raw:
+                major = raw.split(".")[0]
+                if major in supported:
+                    logger.info("PlatformService: %s API version detected (header major): v%s", service, major)
+                    return major
+
+            if response.headers.get("Content-Type", "").startswith("application/json"):
+                try:
+                    body = response.json()
+                    if "current_version" in body:
+                        cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                        cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
+                        if cv_raw in supported:
+                            logger.info("PlatformService: %s API version detected (body): v%s", service, cv_raw)
+                            return cv_raw
+                        cv_major = cv_raw.split(".")[0]
+                        if cv_major in supported:
+                            logger.info("PlatformService: %s API version detected (body major): v%s", service, cv_major)
+                            return cv_major
+                except (ValueError, KeyError, AttributeError) as exc:
+                    logger.debug("PlatformService: %s body parse error: %s", service, exc)
+
+        except requests.RequestException as e:
+            logger.debug("PlatformService: %s version probe failed (%s), using default", service, e)
+        except Exception as e:
+            logger.debug("PlatformService: %s version probe unexpected error (%s), using default", service, e)
+
+        fallback = DEFAULT_API_VERSIONS.get(service, supported[0] if supported else "1")
+        logger.warning("PlatformService: %s version detection failed, defaulting to v%s", service, fallback)
+        return fallback
+
     def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
         """
         Build full URL for an endpoint.
@@ -553,7 +611,7 @@ class PlatformService(BaseAPIClient):
             logger.error("Operation %s on %s failed: %s", operation, module_name, e, exc_info=True)
             raise
 
-    def _create_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _create_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Create resource with transformation.
 
@@ -582,7 +640,7 @@ class PlatformService(BaseAPIClient):
 
         return {"changed": True}
 
-    def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _update_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Update resource with transformation.
 
@@ -779,7 +837,7 @@ class PlatformService(BaseAPIClient):
                 result[key] = r
         return result
 
-    def _delete_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _delete_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Delete resource.
 
@@ -818,7 +876,7 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return {"changed": True, "id": resource_id}
 
-    def _find_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Find resource by identifier.
 
@@ -939,7 +997,7 @@ class PlatformService(BaseAPIClient):
 
         return asdict(ansible_instance)
 
-    def _execute_operations(self, operations: Dict, api_data: Any, context: dict, required_for: str = None, fields_to_null: set = None) -> dict:
+    def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None, fields_to_null: set = None) -> dict:
         """
         Execute potentially multiple API endpoint operations.
 

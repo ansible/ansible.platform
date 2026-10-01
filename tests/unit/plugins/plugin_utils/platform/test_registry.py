@@ -41,6 +41,8 @@ def test_discover_versions_populates_services_and_module_versions():
         assert sorted(registry.module_versions["user"]) == ["1", "2"]
         assert registry.module_versions["org"] == ["2"]
 
+        assert registry.module_service["user"] == "gateway"
+        assert registry.module_service["org"] == "gateway"
         assert registry.get_service_for_module("user") == "gateway"
         assert registry.get_service_for_module("org") == "gateway"
     finally:
@@ -120,3 +122,64 @@ def test_find_best_version_closest_lower():
         assert registry.find_best_version("2.1", "user") == "2"
     finally:
         shutil.rmtree(api_root, ignore_errors=True)
+
+
+def test_version_like_dir_at_service_level_treated_as_service():
+    """A directory like api/v3/ is treated as a service named 'v3', not a version."""
+    api_root = Path(tempfile.mkdtemp())
+    try:
+        (api_root / "v3" / "v1").mkdir(parents=True)
+        (api_root / "v3" / "v1" / "widget.py").write_text("# stub\n")
+
+        registry = APIVersionRegistry(api_base_path=str(api_root))
+
+        assert "v3" in registry.get_services()
+        assert registry.get_service_for_module("widget") == "v3"
+        assert registry.get_supported_versions("v3") == ["1"]
+    finally:
+        shutil.rmtree(api_root, ignore_errors=True)
+
+
+def test_get_api_version_allows_reprobe_after_transient_failure():
+    """Transient detection failure returns fallback but does not permanently cache it."""
+    from unittest.mock import MagicMock
+
+    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import (
+        DEFAULT_API_VERSIONS,
+        BaseAPIClient,
+    )
+
+    class _ConcreteClient(BaseAPIClient):
+        def _detect_api_version(self):
+            return "1"
+
+        def _authenticate(self):
+            pass
+
+        def execute(self, operation, module_name, ansible_data_dict):
+            pass
+
+    client = _ConcreteClient.__new__(_ConcreteClient)
+    client.api_versions = {}
+    client.registry = MagicMock()
+    client.registry.get_supported_versions.return_value = ["2"]
+
+    call_count = 0
+
+    def _detect(service):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ConnectionError("transient failure")
+        return "2"
+
+    client._detect_service_version = _detect
+
+    # First call: detection fails, returns fallback
+    version1 = client.get_api_version("controller")
+    assert version1 == DEFAULT_API_VERSIONS.get("controller", "1")
+
+    # Second call: detection succeeds, returns probed version
+    version2 = client.get_api_version("controller")
+    assert version2 == "2"
+    assert client.api_versions["controller"] == "2"
