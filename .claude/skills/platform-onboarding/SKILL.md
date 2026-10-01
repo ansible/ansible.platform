@@ -204,7 +204,7 @@ Then have them find:
 > "Where does the AnsibleTeam dataclass live? Where is its v1 API counterpart?"
 
 Expected: `plugins/plugin_utils/ansible_models/team.py` and
-`plugins/plugin_utils/api/v1/team.py`.
+`plugins/plugin_utils/api/gateway/v1/team.py`.
 
 ---
 
@@ -221,7 +221,7 @@ Also read `references/cheatsheet.md` from this skill for a condensed summary.
 |---|------|-----------|
 | 1 | `plugins/modules/<resource>.py` | Yes — DOCUMENTATION scaffold |
 | 2 | `plugins/plugin_utils/ansible_models/<resource>.py` | Yes — AnsibleFoo dataclass |
-| 3 | `plugins/plugin_utils/api/v1/<resource>.py` | Partial — skeleton + manual mixin |
+| 3 | `plugins/plugin_utils/api/{service}/v1/<resource>.py` | Partial — skeleton + manual mixin |
 | 4 | `plugins/action/<resource>.py` | Yes — ActionModule skeleton |
 | 5 | `tests/integration/targets/<resource>s_test/` | Scaffold — manual completion |
 | 6 | `extensions/molecule/<resource>_mock/` | Manual |

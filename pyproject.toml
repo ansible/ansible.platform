@@ -29,8 +29,7 @@ ignore = ["E203"]
 # F821: AnsibleXxx classes are imported inside from_api() function bodies
 # (local imports) and used as string annotations — ruff can't see them at
 # module scope. Proper fix is TYPE_CHECKING guards; suppressed for now.
-"plugins/plugin_utils/api/v1/*" = ["F821"]
-"plugins/plugin_utils/api/v2/*" = ["F821"]
+"plugins/plugin_utils/api/*/v*/*" = ["F821"]
 
 [tool.ruff.format]
 skip-magic-trailing-comma = false

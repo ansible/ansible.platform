@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
-from ...resource_type_map import (
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
+from ....resource_type_map import (
     ASSIGNMENT_TYPE_PATH_MAP,
     CONTROLLER_NON_ORG_TYPES,
     GATEWAY_ORG_TYPES,
@@ -298,7 +298,7 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
+        from ....ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
 
         return AnsibleRoleTeamAssignment(
             role_definition=str(api_data.get("role_definition", "")),

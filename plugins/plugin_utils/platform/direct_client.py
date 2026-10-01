@@ -96,7 +96,6 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Defer authentication and version detection until first request
         # This prevents HTTP requests during worker process initialization
-        self.api_version = None  # Will be set on first request
         self._authenticated = False
         logger.info("DirectHTTPClient: Initialized (authentication deferred until first request)")
 
@@ -120,7 +119,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
 
-        supported = self.registry.get_supported_versions()
+        supported = self.registry.get_supported_versions("gateway")
 
         def _hdr_version(resp) -> str:
             """Extract API version from X-API-Version header; return '' if absent."""
@@ -209,6 +208,66 @@ class DirectHTTPClient(BaseAPIClient):
         if "1" in supported:
             return "1"
         return supported[0]
+
+    def _detect_service_version(self, service: str) -> str:
+        """
+        Detect API version for a specific service by probing its API root.
+
+        Probes /api/{service}/ for an X-API-Version header or current_version
+        field, falling back to DEFAULT_API_VERSIONS only when detection fails.
+        """
+        if service == "gateway":
+            return self._detect_api_version()
+
+        from .base_client import DEFAULT_API_VERSIONS
+
+        supported = self.registry.get_supported_versions(service)
+        if not supported:
+            return DEFAULT_API_VERSIONS.get(service, "1")
+
+        try:
+            root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+            logger.debug("DirectHTTPClient: probing service version at %s", root_url)
+            response = self.session.open(
+                "GET",
+                root_url,
+                timeout=self.request_timeout,
+                **self._ansible_tls_kwargs(),
+            )
+
+            headers = getattr(response, "headers", {})
+            raw = (headers.get("X-API-Version", "") if hasattr(headers, "get") else "").lstrip("v")
+            if raw and raw in supported:
+                logger.info("DirectHTTPClient: %s API version detected (header): v%s", service, raw)
+                return raw
+            if raw:
+                major = raw.split(".")[0]
+                if major in supported:
+                    logger.info("DirectHTTPClient: %s API version detected (header major): v%s", service, major)
+                    return major
+
+            try:
+                body_bytes = response.read()
+                body = json.loads(body_bytes) if body_bytes else {}
+                if "current_version" in body:
+                    cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                    cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
+                    if cv_raw in supported:
+                        logger.info("DirectHTTPClient: %s API version detected (body): v%s", service, cv_raw)
+                        return cv_raw
+                    cv_major = cv_raw.split(".")[0]
+                    if cv_major in supported:
+                        logger.info("DirectHTTPClient: %s API version detected (body major): v%s", service, cv_major)
+                        return cv_major
+            except Exception as exc:
+                logger.debug("DirectHTTPClient: %s body parse error: %s", service, exc)
+
+        except Exception as e:
+            logger.debug("DirectHTTPClient: %s version probe failed (%s), using default", service, e)
+
+        fallback = DEFAULT_API_VERSIONS.get(service, supported[0] if supported else "1")
+        logger.warning("DirectHTTPClient: %s version detection failed, defaulting to v%s", service, fallback)
+        return fallback
 
     def _authenticate(self) -> None:
         """
@@ -485,7 +544,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway"):
         """
         Resolve a resource name to ID by GET list with filter.
         Compatible with PlatformService.lookup_resource_id interface.
@@ -495,6 +554,7 @@ class DirectHTTPClient(BaseAPIClient):
             endpoint: API resource endpoint name (e.g. 'authenticators', 'service_clusters')
             lookup_field: Field to filter on (e.g. 'name')
             lookup_value: Value to look up
+            service: Service to route the lookup through (e.g. 'gateway', 'controller')
 
         Returns:
             Resource ID (int) or None
@@ -504,20 +564,17 @@ class DirectHTTPClient(BaseAPIClient):
         if str(lookup_value).isdigit():
             return int(lookup_value)
 
-        cache_key = f"lookup:{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        # Detect API version if not done yet
-        if self.api_version is None:
-            try:
-                self.api_version = self._detect_api_version()
-            except Exception:
-                self.api_version = "1"
-            self.session.headers.update({"X-API-Version": str(self.api_version)})
+        svc_version = self.get_api_version(service)
 
-        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
-        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        if "X-API-Version" not in (self.session.headers or {}):
+            gw_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gw_version)})
+
+        api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
@@ -650,18 +707,19 @@ class DirectHTTPClient(BaseAPIClient):
                 self._last_auth_error = e
                 raise
 
-        # Lazy initialization: Detect API version on first request
-        if self.api_version is None:
-            try:
-                self.api_version = self._detect_api_version()
-                logger.info("DirectHTTPClient: API version detected: v%s", self.api_version)
-            except Exception as e:
-                logger.warning("DirectHTTPClient: Version detection failed: %s, defaulting to v1", e)
-                self.api_version = "1"
-            self.session.headers.update({"X-API-Version": str(self.api_version)})
+        # Resolve this module's service and detect its API version lazily
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+        service_version = self.get_api_version(service)
+
+        # Ensure gateway version header is set (for gateway auth/routing)
+        if "X-API-Version" not in (self.session.headers or {}):
+            gw_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gw_version)})
 
         # Load version-appropriate classes (shared layer)
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
@@ -670,7 +728,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
+            manager=self,
+            session=self.session,
+            cache=self.cache,
+            api_version=service_version,
+            service=service,
+            operation=operation,
+            include_nulls_for_update=include_nulls,
         )
 
         # Execute operation (shared CRUD logic)
