@@ -6,25 +6,28 @@ __metaclass__ = type
 class AAPServiceKey(AAPObject):
     API_ENDPOINT_NAME = "service_keys"
     ITEM_TYPE = "service_key"
+    DEPRECATED_CREATION_FIELDS = {
+        'service_cluster': "The 'service_cluster' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+        'secret': "The 'secret' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+        'secret_length': "The 'secret_length' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+        'mark_previous_inactive': (
+            "The 'mark_previous_inactive' parameter is deprecated because Gateway no longer permits creating service keys through its API."
+        ),
+        'algorithm': "The 'algorithm' parameter is deprecated because Gateway no longer permits creating service keys through its API.",
+    }
 
     def __init__(self, module, params=None, **kwargs):
         super().__init__(module, params, **kwargs)
-        self.service_cluster = None
 
     def manage(self, **kwargs):
-        if self.present() and self.params.get('service_cluster') is not None:
-            self.get_service_cluster()
-
+        if self.present() or self.enforced():
+            self.warn_deprecated_creation_fields()
         super().manage(**kwargs)
 
-    def get_service_cluster(self):
-        from ..module_utils.aap_service_cluster import AAPServiceCluster
-
-        cluster_params = {self.module.IDENTITY_FIELDS['service_clusters']: self.params.get('service_cluster'), "state": self.STATE_EXISTS}
-
-        self.service_cluster = AAPServiceCluster(module=self.module, params=cluster_params)
-
-        self.service_cluster.manage(auto_exit=False, fail_when_not_exists=True)
+    def warn_deprecated_creation_fields(self):
+        for field, message in self.DEPRECATED_CREATION_FIELDS.items():
+            if self.params.get(field) is not None:
+                self.module.deprecate(msg=message, version='4.0.0', collection_name='ansible.platform')
 
     def unique_field(self):
         return self.module.IDENTITY_FIELDS['service_keys']
@@ -36,24 +39,3 @@ class AAPServiceKey(AAPObject):
         is_active = self.params.get('is_active')
         if is_active is not None:
             self.new_fields['is_active'] = is_active
-
-        if self.service_cluster:
-            service_cluster_id = (self.service_cluster.data or {}).get('id')
-            if service_cluster_id is not None:
-                self.new_fields['service_cluster'] = service_cluster_id
-
-        algorithm = self.params.get('algorithm')
-        if algorithm is not None:
-            self.new_fields['algorithm'] = algorithm
-
-        secret = self.params.get('secret')
-        if secret is not None:
-            self.new_fields['secret'] = secret
-
-        secret_length = self.params.get('secret_length')
-        if secret_length is not None:
-            self.new_fields['secret_length'] = secret_length
-
-        mark_previous_inactive = self.params.get('mark_previous_inactive')
-        if mark_previous_inactive is not None:
-            self.new_fields['mark_previous_inactive'] = mark_previous_inactive
