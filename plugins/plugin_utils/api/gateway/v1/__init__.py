@@ -1,1 +1,1 @@
-"""API v1 implementations."""
+"""Gateway API v1 implementations."""

@@ -80,7 +80,7 @@ class BaseAPIClient(ABC):
             except Exception:
                 fallback = DEFAULT_API_VERSIONS.get(service, "1")
                 logger.warning("Version detection failed for %s, defaulting to v%s", service, fallback)
-                self.api_versions[service] = fallback
+                return fallback
         return self.api_versions[service]
 
     @property
