@@ -1,14 +1,21 @@
 ---
+
 - name: Generate a test ID
   ansible.builtin.set_fact:
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Preset vars
+# The service-key API no longer creates keys. This test owns a fixed service
+# cluster and uses the management command to seed its fixed fixture key.
+- name: Generate a missing service key name
   ansible.builtin.set_fact:
-    name_prefix: "GW-Collection-Test-ServiceKeys-{{ test_id }}"
+    test_service_key_name: "{{ test_service_key_name }}"
+    non_existent_service_key_name: "{{ test_service_key_name }}-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  vars:
+    test_service_key_name: "GW-Collection-Test-Service-Key"
+    test_service_cluster_name: "GW-Collection-Test-Service-Cluster"
 
-- name: Run Test
+- name: Run service key edit-only tests
   module_defaults:
     group/ansible.platform.gateway:
       gateway_hostname: "{{ gateway_hostname }}"
@@ -17,347 +24,169 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    # Pre-cleanup: remove leftovers from prior failed runs
-    - name: Pre-cleanup service keys by name
-      ansible.platform.service_key:
-        name: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ name_prefix }}-Key 1"
-        - "{{ name_prefix }}-Key 2"
-        - "{{ name_prefix }}-Key 3"
-        - "{{ name_prefix }}-Key 4"
-        - "{{ name_prefix }}-Key 5"
-      failed_when: false
-
-    - name: Pre-cleanup service cluster - Automation Controller
-      ansible.platform.service_cluster:
-        name: "Automation Controller"
-        state: absent
-      failed_when: false
-
-    - name: Pre-cleanup service cluster - Automation Hub
-      ansible.platform.service_cluster:
-        name: "Automation Hub"
-        state: absent
-      failed_when: false
-
-    - name: Pre-cleanup service cluster - Event Driven Automation
-      ansible.platform.service_cluster:
-        name: "Event Driven Automation"
-        state: absent
-      failed_when: false
-
-    - name: Pre-cleanup service type - controller
-      ansible.platform.service_type:
-        name: "{{ test_id }}controller"
-        state: absent
-      failed_when: false
-
-    - name: Pre-cleanup service type - hub
-      ansible.platform.service_type:
-        name: "{{ test_id }}hub"
-        state: absent
-      failed_when: false
-
-    - name: Pre-cleanup service type - eda
-      ansible.platform.service_type:
-        name: "{{ test_id }}eda"
-        state: absent
-      failed_when: false
-
-    # <Service Clusters> ----------------------------
-    - name: Create Controller Service Type
+    - name: Create a Service Type
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
         ping_url: "/api/ping/"
         login_path: "/api/login/"
         logout_path: "/api/logout/"
         service_index_path: "/api/service-index/"
-      register: controller_st
+      register: service_type
 
-    - name: Create Controller Service Cluster
+    - name: Create Service Cluster
       ansible.platform.service_cluster:
-        name: "Automation Controller"
-        service_type: "{{ controller_st.service_type.id }}"
-      register: controller_sc
+        name: "{{ test_id }}-Automation-Controller"
+        service_type: "{{ service_type.id }}"
+        health_check_interval_seconds: 1162
+        dns_discovery_type: LOGICAL_DNS
+        dns_lookup_family: V4_ONLY
+      register: service_cluster
 
-    - name: Create Hub Service Type
-      ansible.platform.service_type:
-        name: "{{ test_id }}hub"
-        ping_url: "/api/ping/"
-        login_path: "/api/login/"
-        logout_path: "/api/logout/"
-        service_index_path: "/api/service-index/"
-      register: hub_st
+    - name: Look up the fixture service key
+      ansible.builtin.set_fact:
+        fixture_service_keys: >-
+          {{ query(
+               'ansible.platform.gateway_api',
+               'service_keys',
+               query_params={'name': test_service_key_name},
+               **connection_info
+             ) }}
 
-    - name: Create Hub Service Cluster
-      ansible.platform.service_cluster:
-        name: Automation Hub
-        service_type: "{{ hub_st.service_type.id }}"
-      register: hub_sc
+    - name: Create the fixture service key if it does not exist
+      when: fixture_service_keys | length == 0
+      block:
+        - name: Attempt to create the mock service key if needed
+          ansible.builtin.command:
+            cmd: "docker exec -i aap_gw_1 aap-gateway-manage shell"
+            stdin: |
+              from aap_gateway_api.models import ServiceCluster, ServiceKey;
+              service_cluster = ServiceCluster.objects.get(id='{{ service_cluster.id }}')
+              created = not ServiceKey.objects.filter(name='{{ test_service_key_name }}').exists()
+              if created:
+                  service_cluster.generate_key(name='{{ test_service_key_name }}', mark_previous_inactive=False)
+              print("Key created" if created else "Key already exists")
+          register: created_service_key
+          changed_when: "'Key created' in created_service_key.stdout"
+          connection: local
+          delegate_to: localhost
 
-    - name: Create EDA Service Type
-      ansible.platform.service_type:
-        name: "{{ test_id }}eda"
-        ping_url: "/api/ping/"
-        login_path: "/api/login/"
-        logout_path: "/api/logout/"
-        service_index_path: "/api/service-index/"
-      register: eda_st
+      rescue:
+        - name: Fail if the mock service key was not created or we couldn't create it
+          ansible.builtin.fail:
+            msg: >-
+              The key {{ test_service_key_name }} did not exist and couldn't be created automatically.
+              You will need to create it manually.
 
-    - name: "Create EDA Service Cluster"
-      ansible.platform.service_cluster:
-        name: Event Driven Automation
-        service_type: "{{ eda_st.service_type.id }}"
-      register: eda_sc
-    # </Service Clusters> ----------------------------
-
-    # <Service Keys> ----------------------------
-    - name: Create Service Key 1 with check mode
+    - name: Verify the fixture service key exists
       ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        is_active: true
-        service_cluster: "{{ controller_sc.service_cluster.id }}"
-        algorithm: HS384
-        secret: "gateway-secret"
-        mark_previous_inactive: false
-      check_mode: true
-
-    - name: Search for Service Key 1
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname }}/api/gateway/v1/service_keys/?name={{ (name_prefix + '-Key 1') | urlencode }}"
-        method: GET
-        url_username: "{{ gateway_username }}"
-        url_password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | default(false) }}"
-        status_code: [200]
-      delegate_to: localhost
-      register: service_key_search
-
-    - name: Assert that Service Key 1 does not exist
-      ansible.builtin.assert:
-        that:
-          - service_key_search.json.count == 0
-        fail_msg: "Service Key '{{ name_prefix }}-Key 1' exists in the system!"
-
-    - name: Create Service Key 1
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        is_active: true
-        service_cluster: "{{ controller_sc.service_cluster.id }}"
-        algorithm: HS384
-        secret: "gateway-secret"
-        mark_previous_inactive: false
-      register: service_key1
-
-    - name: Assert that we created service key 1
-      ansible.builtin.assert:
-        that:
-          - service_key1 is changed
-
-    - name: Re-run Service Key 1 with the same raw secret (idempotency)
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        is_active: true
-        service_cluster: "{{ controller_sc.service_cluster.id }}"
-        algorithm: HS384
-        secret: "gateway-secret"
-        mark_previous_inactive: false
-      register: rerun_service_key1_with_secret
-
-    - name: Assert that re-run with secret does not change the system
-      ansible.builtin.assert:
-        that:
-          - rerun_service_key1_with_secret is not changed
-
-    # We have to take out the secret because its encrypted
-    - name: Recreate Service Key 1
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        is_active: true
-        service_cluster: "{{ controller_sc.service_cluster.id }}"
-        algorithm: HS384
-        mark_previous_inactive: false
-      register: recreate_service_key1
-
-    - name: Assert that recreate does not change the system
-      ansible.builtin.assert:
-        that:
-          - recreate_service_key1 is not changed
-
-    - name: Create Service Key 2
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 2"
-        service_cluster: "{{ hub_sc.service_cluster.name }}"
-        secret: "gateway-secret"
-        mark_previous_inactive: true
-      register: service_key2
-
-    - name: Assert that we created service key 2
-      ansible.builtin.assert:
-        that:
-          - service_key2 is changed
-
-    - name: Create Service Key 3
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 3"
-        is_active: false
-        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller
-        mark_previous_inactive: false
-      register: service_key3
-
-    - name: Assert that we created service key 3
-      ansible.builtin.assert:
-        that:
-          - service_key3 is changed
-
-    - name: Create Service Key 4
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 4"
-        service_cluster: "{{ eda_sc.service_cluster.id }}"  # EDA
-        mark_previous_inactive: false
-      register: service_key4
-
-    - name: Assert that we created service key 4
-      ansible.builtin.assert:
-        that:
-          - service_key4 is changed
-
-    - name: Create Service Key 5
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 5"
-        service_cluster: "{{ controller_sc.service_cluster.id }}"  # Controller, have to set others as inactive
-        mark_previous_inactive: true
-      register: service_key5
-
-    - name: Assert that we created service key 5
-      ansible.builtin.assert:
-        that:
-          - service_key5 is changed
-
-    - name: Deactivate a key
-      ansible.platform.service_key:
-        name: "{{ service_key2.service_key.name }}"
-        is_active: false
-      register: change_service_key2
-
-    - name: Assert that we changed the existing key
-      ansible.builtin.assert:
-        that:
-          - change_service_key2 is changed
-          - change_service_key2.service_key.id == service_key2.service_key.id
-
-    - name: See if a key exists
-      ansible.platform.service_key:
-        name: "{{ service_key3.service_key.id }}"
+        name: "{{ test_service_key_name }}"
         state: exists
-      register: exists_service_key3
+      register: service_key
 
-    - name: Assert that exists does not change the system
+    - name: Assert the fixture service key exists
       ansible.builtin.assert:
         that:
-          - exists_service_key3 is not changed
+          - service_key.exists
 
-    - name: Rename a key
+    - name: Set the service key is_active to true to ensure starting state
       ansible.platform.service_key:
-        name: "{{ service_key4.service_key.id }}"
-        new_name: "{{ service_key4.service_key.id }}-New"
-      register: rename_service_key4
+        name: "{{ test_service_key_name }}"
+        is_active: true
 
-    - name: Assert that the rename changed an existing service key
+    - name: Verify an unchanged service key is idempotent
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: true
+      register: unchanged_service_key
+
+    - name: Assert the unchanged service key was not modified
       ansible.builtin.assert:
         that:
-          - rename_service_key4 is changed
-          - rename_service_key4.service_key.id == service_key4.service_key.id
+          - unchanged_service_key is not changed
 
-    - name: Delete a non-existing service key
+    - name: Warn and ignore deprecated service key creation fields
       ansible.platform.service_key:
-        name: "{{ name_prefix }}-DNE"
+        name: "{{ test_service_key_name }}"
+        is_active: true
+        service_cluster: gateway
+        secret: ignored-secret
+        secret_length: 32
+        mark_previous_inactive: true
+        algorithm: HS256
+      register: deprecated_service_key_fields
+
+    - name: Assert deprecated creation fields are ignored
+      ansible.builtin.assert:
+        that:
+          - deprecated_service_key_fields is not changed
+          - deprecated_service_key_fields.deprecations | length == 5
+
+    - name: Verify check mode detects a service key update
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: false
+      check_mode: true
+      register: planned_service_key_update
+
+    - name: Assert check mode would modify the service key
+      ansible.builtin.assert:
+        that:
+          - planned_service_key_update is changed
+
+    - name: Update the service key active state
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: false
+      register: updated_service_key
+
+    - name: Assert the service key was updated
+      ansible.builtin.assert:
+        that:
+          - updated_service_key is changed
+
+    - name: Attempt to create a missing service key
+      ansible.platform.service_key:
+        name: "{{ non_existent_service_key_name }}"
+        is_active: true
+      register: missing_service_key
+      ignore_errors: true
+
+    - name: Assert Gateway reports why creation of a missing service key failed
+      ansible.builtin.assert:
+        that:
+          - missing_service_key is failed
+          - "'detail' in missing_service_key.msg"
+
+    - name: Delete a non-existent service key
+      ansible.platform.service_key:
+        name: "{{ non_existent_service_key_name }}"
         state: absent
-      register: delete
+      register: deleted_non_existent_service_key
 
-    - name: Assert that delete of non-existent dies not change the system
+    - name: Assert deletion of a non-existent service key didn't fail
       ansible.builtin.assert:
         that:
-          - delete is not changed
+          - deleted_non_existent_service_key is not changed
 
-    - name: Delete an actual service key
+    - name: Delete the mock service key
       ansible.platform.service_key:
-        name: "{{ service_key5.service_key.id }}"
+        name: "{{ test_service_key_name }}"
         state: absent
-      register: delete
+      register: deleted_service_key
 
-    - name: Assert that the delete changed the system
+    - name: Assert deletion of the mock service key worked
       ansible.builtin.assert:
         that:
-          - delete is changed
+          - deleted_service_key is changed
 
   always:
-    - name: Delete Service Key 1
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 1"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Key 2
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 2"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Key 3
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 3"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Key 4
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 4"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Key 5
-      ansible.platform.service_key:
-        name: "{{ name_prefix }}-Key 5"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Cluster - Automation Controller
+    - name: Delete the Service Cluster
       ansible.platform.service_cluster:
-        name: "Automation Controller"
+        name: "{{ test_id }}-Automation-Controller"
         state: absent
-      failed_when: false
 
-    - name: Delete Service Cluster - Automation Hub
-      ansible.platform.service_cluster:
-        name: "Automation Hub"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Cluster - Event Driven Automation
-      ansible.platform.service_cluster:
-        name: "Event Driven Automation"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Type - controller
+    - name: Ddelete the Service Type
       ansible.platform.service_type:
         name: "{{ test_id }}controller"
         state: absent
-      failed_when: false
-
-    - name: Delete Service Type - hub
-      ansible.platform.service_type:
-        name: "{{ test_id }}hub"
-        state: absent
-      failed_when: false
-
-    - name: Delete Service Type - eda
-      ansible.platform.service_type:
-        name: "{{ test_id }}eda"
-        state: absent
-      failed_when: false
 ...
