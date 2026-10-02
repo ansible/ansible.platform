@@ -111,14 +111,14 @@ EXAMPLES = """
     http_port: "Port 8080"
     service_cluster: "Automation Hub"
     is_service_https: true
-    service_path: '/api/gateway/v1/'
+    service_path: '/api/galaxy/'
     service_port: 8000
     order: 100
 
 - name: Update service
   ansible.platform.service:
     name: Hub API
-    service_path: '/api/gateway/v2/'
+    service_path: '/api/galaxy/'
 
 - name: Check service
   ansible.platform.service:
