@@ -129,7 +129,7 @@ def main():
     # Check any of the settings to see if anything needs to be updated
     needs_update = False
     for a_setting in new_settings:
-        if a_setting not in existing_settings or existing_settings[a_setting] != new_settings[a_setting]:
+        if a_setting not in existing_settings or str(existing_settings[a_setting]) != str(new_settings[a_setting]):
             # At least one thing is different so we need to patch
             needs_update = True
             json_output["old_values"][a_setting] = existing_settings[a_setting]
