@@ -282,7 +282,7 @@ class Store:
                 self.orgs_by_name[org["name"]] = org["id"]
 
         # Seed feature flags with runtime-toggleable flags
-        ff_store = self._resources.get("feature_flags")
+        ff_store = self._resources.get(("gateway", "feature_flags"))
         if ff_store and not ff_store._items:
             flags = [
                 {
