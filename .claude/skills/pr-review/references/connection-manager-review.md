@@ -534,7 +534,7 @@ def lookup_resource_id(self, endpoint, lookup_field, lookup_value):
 
 - [ ] **URL parameters properly encoded** (use urlencode or _build_url)
 - [ ] **Handles not found** (0 results → clear error)
-- [ ] **Handles multiple matches** (current implementation takes first match - acceptable for most resources)
+- [ ] **Handles multiple matches** (raises error for ambiguous results; first-match only if resource contract explicitly supports it)
 - [ ] **Handles special characters in names** (& = ? # etc.)
 - [ ] Lookup works for all resource types
 - [ ] Caching works (if implemented)

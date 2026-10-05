@@ -60,15 +60,32 @@ for wf_file in list(Path(".github/workflows").glob("*.yml")) + list(Path(".githu
     # Check for secret usage
     has_secrets = "secrets." in content
     
-    # Check for authorization gates
-    has_label_gate = "safe to test" in content or "github.event.label.name" in content
-    has_member_check = "author_association" in content or "MEMBER" in content
+    # Parse YAML to check actual workflow logic (not just comments)
+    import yaml
+    with open(wf_file) as f:
+        wf = yaml.safe_load(f)
     
-    if has_pr and has_secrets and not (has_label_gate and has_member_check):
+    # Check authorization gates in actual job conditions (not comments)
+    has_label_gate = False
+    has_member_check = False
+    
+    for job_name, job in wf.get("jobs", {}).items():
+        job_if = job.get("if", "")
+        if "github.event.label.name == 'safe to test'" in job_if:
+            has_label_gate = True
+        if "author_association" in job_if or "MEMBER" in job_if:
+            has_member_check = True
+    
+    if has_pr and has_secrets and not (has_label_gate or has_member_check):
         print(f"❌ DANGER: {wf_file} exposes secrets to fork PRs without proper gate!")
     
-    if has_pr_target and ("head.sha" in content or "head_sha" in content):
-        print(f"⚠️ WARNING: {wf_file} checks out PR code with pull_request_target")
+    # Check for PR code checkout with secrets (including head.ref)
+    if has_pr_target:
+        for job_name, job in wf.get("jobs", {}).items():
+            for step in job.get("steps", []):
+                checkout_ref = step.get("with", {}).get("ref", "")
+                if "head.sha" in checkout_ref or "head_sha" in checkout_ref or "head.ref" in checkout_ref:
+                    print(f"⚠️ WARNING: {wf_file} checks out PR code with pull_request_target")
 
 EOF
 
@@ -389,15 +406,28 @@ for wf_file in list(Path(".github/workflows").glob("*.yml")) + list(Path(".githu
     elif isinstance(triggers, dict):
         has_pr = "pull_request" in triggers
     
-    # Check secret usage and gates
-    has_secrets = "secrets." in content
-    has_gate = "safe to test" in content or "author_association" in content
+    # Check secret usage in actual job definitions (not comments)
+    has_secrets = False
+    has_gate = False
+    
+    for job_name, job in wf.get("jobs", {}).items():
+        # Check if job uses secrets in env or with
+        for step in job.get("steps", []):
+            step_env = str(step.get("env", {}))
+            step_with = str(step.get("with", {}))
+            if "secrets." in step_env or "secrets." in step_with:
+                has_secrets = True
+        
+        # Check job-level conditions for gates (not comments)
+        job_if = job.get("if", "")
+        if "github.event.label.name == 'safe to test'" in job_if or "author_association" in job_if:
+            has_gate = True
     
     if has_pr and has_secrets:
         if not has_gate:
             print(f"❌ DANGER: {wf_file} exposes secrets to pull_request without gate!")
         else:
-            print(f"✅ OK: {wf_file} has pull_request with gate")
+            print(f"✅ OK: {wf_file} has pull_request with gate (verified in job conditions)")
 
 EOF
 ```

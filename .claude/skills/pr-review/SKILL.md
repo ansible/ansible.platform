@@ -97,10 +97,18 @@ export AAP_PASSWORD=your-pass
 make collection-test CONNECTION_MODE=http-persistent
 \`\`\`
 
-Confirm and I'll apply the label.
+**⚠️ SECURITY CHECK before applying label:**
+- [ ] Verify PR does NOT modify `.github/workflows/integration.yml` or any scripts run with repository tokens
+- [ ] Verify PR does NOT modify `tools/scripts/get_aap_gateway_and_dab.py` (runs with AAP_GATEWAY_REPO_TOKEN)
+- [ ] Review ALL Python files in PR - no token access, credential logging, or network exfiltration
+- [ ] If PR modifies credential-handling code, require workflow_dispatch with explicit commit SHA instead
+
+**Only apply "safe to test" label if all security checks pass.**
+
+Confirm security verified and I'll apply the label.
 ```
 
-**Wait for contributor response before applying label.**
+**Wait for contributor response AND security verification before applying label.**
 
 ### 6. Monitor Integration Tests
 

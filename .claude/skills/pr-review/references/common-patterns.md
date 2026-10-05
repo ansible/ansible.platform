@@ -58,7 +58,7 @@ for f in "${REQUIRED_FILES[@]}"; do
     echo "✅ $f"
   else
     echo "❌ Missing REQUIRED: $f"
-    ((MISSING_COUNT++))
+    ((++MISSING_COUNT))
   fi
 done
 

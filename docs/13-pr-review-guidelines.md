@@ -945,8 +945,8 @@ jobs:
 For integration tests requiring secrets, use a manual, maintainer-controlled approach that does NOT execute PR code:
 
 ```yaml
-# Maintainer manually runs integration tests AFTER reviewing the PR
-# This is a workflow dispatch that maintainers trigger manually
+# ⚠️ NOTE: This workflow STILL EXECUTES PR CODE with secrets
+# Maintainer must approve the EXACT COMMIT SHA before running
 on:
   workflow_dispatch:
     inputs:
@@ -954,53 +954,89 @@ on:
         description: 'PR number to test'
         required: true
         type: number
+      commit_sha:
+        description: 'Exact commit SHA reviewed and approved'
+        required: true
+        type: string
 
 jobs:
   integration:
-    # Manual approval required before execution
-    environment: CI
+    environment: CI  # Requires environment approval
     steps:
-      # Maintainer has already reviewed the PR code
       - uses: actions/checkout@v4
         with:
           ref: refs/pull/${{ inputs.pr_number }}/merge
-      - env:
+      
+      # CRITICAL: Verify checked-out SHA matches approved SHA
+      - name: Verify approved commit
+        run: |
+          ACTUAL_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "${{ inputs.commit_sha }}" ]; then
+            echo "ERROR: PR was updated after approval"
+            echo "Approved: ${{ inputs.commit_sha }}"
+            echo "Actual: $ACTUAL_SHA"
+            exit 1
+          fi
+      
+      - name: Run integration tests
+        env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
         run: ansible-playbook tests/integration/playbook.yml
 ```
 
-**Why this is safer:**
-- **workflow_dispatch**: Requires explicit maintainer action
-- **Manual review**: Maintainer reviews ALL code before running
-- **No automatic execution**: PR cannot trigger this workflow
+**Security model:**
+- **workflow_dispatch**: Requires explicit maintainer action (no auto-trigger)
+- **commit_sha input**: Maintainer records reviewed commit SHA
+- **SHA verification**: Fails if PR updated after approval
+- ⚠️ **Still runs PR code**: This workflow executes code from the PR with secrets
 
 **⚠️ IF using pull_request_target: Bind approval to exact commit**
 
 If you must use `pull_request_target` with PR code execution, bind secret access to the reviewed commit SHA:
 
 ```yaml
-# SAFER: Only run when label ADDED (not just present) + auto-remove label
+# SAFER: Bind approval to exact commit SHA + verify before secret access
 on:
   pull_request_target:
     types: [labeled]
 
 jobs:
   integration:
-    # ✅ REQUIRED: Check label.name (only runs when label ADDED, not on later events)
-    # ❌ WRONG: contains(labels.*.name, 'safe to test') - runs on ANY label event!
     if: github.event.label.name == 'safe to test'
     steps:
+      - name: Get approved commit SHA from label timestamp
+        id: get_sha
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // When label is added, the PR head.sha is what was reviewed
+            // Store it for verification
+            const prData = context.payload.pull_request;
+            return prData.head.sha;
+      
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+      
+      # CRITICAL: Verify PR wasn't updated between label add and workflow start
+      - name: Verify commit SHA matches approval
+        run: |
+          APPROVED_SHA="${{ steps.get_sha.outputs.result }}"
+          CURRENT_SHA="${{ github.event.pull_request.head.sha }}"
+          if [ "$APPROVED_SHA" != "$CURRENT_SHA" ]; then
+            echo "ERROR: PR was updated after 'safe to test' label was added"
+            echo "Approved SHA: $APPROVED_SHA"
+            echo "Current SHA: $CURRENT_SHA"
+            echo "Maintainer must re-review and re-add label"
+            exit 1
+          fi
+      
       - name: Run tests
         env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
         run: ansible-playbook tests/integration/
       
-      # CRITICAL: Remove label after test to invalidate approval
-      # If PR is updated, maintainer must re-review and re-add label
-      - name: Remove safe-to-test label
+      - name: Remove safe-to-test label (invalidate approval)
         if: always()
         uses: actions/github-script@v7
         with:
@@ -1013,7 +1049,13 @@ jobs:
             });
 ```
 
-**Why label removal is critical:** If PR is updated after approval, label presence would allow re-execution with new unreviewed code. Removing label forces maintainer to re-review.
+**Security model:**
+- **Label timing**: Only runs when label.name == 'safe to test' (label ADDED, not present)
+- **SHA verification**: Fails if PR head changed between label add and workflow start
+- **Label removal**: Approval invalidated after test, must re-review if PR updated
+- ⚠️ **Still runs PR code**: Even with these protections, this executes untrusted code with secrets
+
+**IMPORTANT:** Label can be added, PR updated before workflow starts, bypassing review. For maximum security, use workflow_dispatch with explicit commit SHA input.
 
 **Rule 2: Secrets in env vars, not inline**
 

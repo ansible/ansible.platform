@@ -216,10 +216,10 @@ def test_vault_credentials_converted_to_strings():
 
 **Checklist:**
 
-- [ ] **Preferred:** Unit test or Molecule test (always acceptable)
-- [ ] **Live AAP required:** Integration test can be deferred to follow-up PR only if bug cannot be reproduced without live AAP instance
-- [ ] If integration test added, references Jira issue
-- [ ] Test covers specific bug condition
+- [ ] **Preferred:** Unit test or Molecule test (always acceptable - BLOCKING requirement)
+- [ ] **Live AAP required:** If bug cannot be reproduced without live AAP instance, current PR is EXEMPT from blocking regression test requirement. Integration test must be added in follow-up PR with Jira ticket.
+- [ ] If integration test added in current PR, references Jira issue
+- [ ] Test covers specific bug condition and would have failed before fix
 
 ### 2. Verify Test Adequacy
 
