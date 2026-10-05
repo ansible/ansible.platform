@@ -35,7 +35,7 @@ git diff origin/devel --name-only | grep -E 'plugins/connection/|plugins/plugin_
 | `plugins/action/<resource>.py` | ✅ | ActionModule class |
 | `plugins/plugin_utils/ansible_models/<resource>.py` | ✅ | Ansible dataclass |
 | `plugins/plugin_utils/api/v1/<resource>.py` | ✅ | API model + mixin |
-| `tests/integration/` | ✅ | Integration tests (scaffold generated) |
+| `tests/integration/targets/<resource>s_test/` | ✅ | Integration test scaffold (directory + meta/main.yml required; tasks can be minimal) |
 | `extensions/molecule/` | ⚠️ Recommended | Molecule mock scenario |
 | `tests/unit/` tests | ⚠️ Optional | Unit tests (only if complex transforms) |
 
@@ -138,8 +138,8 @@ def from_ansible_data(cls, ansible_instance, context):
 @classmethod
 def from_api(cls, api_data, context):
     # ⚠️  NOTE: from_api receives data as-is from API
-    # For FK fields, API returns IDs. Ansible models should store these as IDs during from_api,
-    # and resolve names during to_api. Reverse lookup is not typically performed.
+    # For FK fields, API returns IDs. from_api() must resolve IDs to names.
+    # Ansible models store reference names, not IDs.
     
     return AnsibleFoo(
         id=api_data.get("id"),
@@ -209,10 +209,25 @@ organization=api_data.get("organization")  # Breaks idempotency!
 **Checklist:**
 - [ ] Tests pass: `molecule test -s <resource>_mock`
 
-#### Integration Tests (Optional - Can Defer)
+#### Integration Tests
 
 **Location:** `tests/integration/targets/<resource>s_test/`
-Can be added in follow-up PR if molecule tests are comprehensive.
+
+**Requirements:**
+- ✅ **Directory structure required** (for collection completeness test)
+- ✅ **meta/main.yml required** (dependencies declaration)
+- ⚠️ **Comprehensive test tasks optional** (can be deferred to follow-up PR if molecule tests are comprehensive)
+
+**Minimal acceptable scaffold:**
+```yaml
+# tests/integration/targets/<resource>s_test/meta/main.yml
+dependencies: []
+
+# tests/integration/targets/<resource>s_test/tasks/main.yml
+- name: Placeholder for future integration tests
+  debug:
+    msg: "Integration tests can be added in follow-up PR"
+```
 
 ---
 

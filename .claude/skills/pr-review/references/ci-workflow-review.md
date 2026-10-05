@@ -319,13 +319,14 @@ on:
 
 jobs:
   integration:
-    # CRITICAL: Gate on "safe to test" label - maintainer must review BEFORE label
-    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
+    # CRITICAL: Only run when "safe to test" is ADDED (not just present)
+    # This prevents re-running after PR is updated with new code
+    if: github.event.label.name == 'safe to test'
     runs-on: ubuntu-latest
     environment: CI  # Optional: Require environment approval
     
     steps:
-      # Check out PR code (head.sha) - ONLY safe because of label gate above
+      # Check out PR code (head.sha) - ONLY safe because label was JUST added
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -339,14 +340,27 @@ jobs:
         run: |
           # Safe because:
           # 1. Maintainer reviewed PR before applying "safe to test" label
-          # 2. Label check gates job execution
+          # 2. Only runs when label is ADDED (not on later label events)
           # 3. PR cannot modify workflow file that runs this
           ansible-playbook tests/integration/playbook.yml
+      
+      - name: Remove label after test (invalidate approval)
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'safe to test'
+            });
 ```
 
 **Security model:**
 - **pull_request_target** = workflow runs from base branch (cannot be modified by PR)
-- **Label gate** = maintainer review required before testing
+- **Label gate** = `github.event.label.name == 'safe to test'` (only runs when label ADDED, not on later events)
+- **Label removal** = approval invalidated after each run, must re-review if PR updated
 - **head.sha checkout** = test actual PR changes (not base branch)
 - **allow-unsafe-pr-checkout** = explicit acknowledgment of risk
 

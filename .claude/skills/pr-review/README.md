@@ -6,7 +6,7 @@ Comprehensive PR review workflow for ansible.platform collection maintainers.
 
 ```
 pr-review/
-├── skill.md                          # Main skill file (ENTRY POINT)
+├── SKILL.md                          # Main skill file (ENTRY POINT)
 ├── README.md                         # This file
 └── references/
     ├── feature-review.md             # Feature PR detailed checklist
@@ -23,7 +23,7 @@ pr-review/
 
 ## Workflow Overview
 
-The main skill file (`skill.md`) routes to appropriate reference guides:
+The main skill file (`SKILL.md`) routes to appropriate reference guides:
 
 ### Step 1: Pre-Merge CI Checks (BEFORE safe-to-test)
 - Collection completeness test

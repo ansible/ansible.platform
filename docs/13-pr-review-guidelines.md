@@ -974,29 +974,46 @@ jobs:
 - **Manual review**: Maintainer reviews ALL code before running
 - **No automatic execution**: PR cannot trigger this workflow
 
-**❌ AVOID: pull_request_target with head.sha checkout**
+**⚠️ IF using pull_request_target: Bind approval to exact commit**
 
-Even with label gates, this pattern exposes secrets to code from the PR:
+If you must use `pull_request_target` with PR code execution, bind secret access to the reviewed commit SHA:
 
 ```yaml
-# RISKY: Even with gates, PR code executes with secrets
+# SAFER: Only run when label ADDED (not just present) + auto-remove label
 on:
   pull_request_target:
     types: [labeled]
 
 jobs:
   integration:
-    if: contains(github.event.pull_request.labels.*.name, 'safe to test')
+    # ✅ REQUIRED: Check label.name (only runs when label ADDED, not on later events)
+    # ❌ WRONG: contains(labels.*.name, 'safe to test') - runs on ANY label event!
+    if: github.event.label.name == 'safe to test'
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}  # PR code runs with secrets!
-      - env:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Run tests
+        env:
           AAP_PASSWORD: ${{ secrets.AAP_PASSWORD }}
-        run: ansible-playbook tests/integration/  # Executes untrusted code
+        run: ansible-playbook tests/integration/
+      
+      # CRITICAL: Remove label after test to invalidate approval
+      # If PR is updated, maintainer must re-review and re-add label
+      - name: Remove safe-to-test label
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'safe to test'
+            });
 ```
 
-**Why this is risky:** The label gate helps, but PR code still executes with access to secrets. Prefer workflow_dispatch or secret-free pull_request triggers.
+**Why label removal is critical:** If PR is updated after approval, label presence would allow re-execution with new unreviewed code. Removing label forces maintainer to re-review.
 
 **Rule 2: Secrets in env vars, not inline**
 
@@ -1275,30 +1292,37 @@ CONNECTION_MODE=http-direct ansible-playbook tests/integration/test.yml
 
 #### 4. Subprocess Spawning Security
 
-**CRITICAL: Vault credentials must be converted to str()**
+**CRITICAL: Keep credentials out of command-line arguments**
 
-**❌ BUG:**
+**❌ INSECURE - Credentials in argv (visible in process list):**
 
 ```python
 cmd = [
     sys.executable,
-    gateway_config.password,  # TypeError if vaulted!
+    "--password", str(gateway_config.password),  # ❌ Visible to ps/top!
 ]
+subprocess.Popen(cmd)
 ```
 
-**✅ FIX:**
+**✅ SECURE - Credentials via environment variables:**
 
 ```python
-cmd = [
-    sys.executable,
-    str(gateway_config.password) if gateway_config.password else "",
-]
+# Convert vault credentials to str() and pass via env
+env = os.environ.copy()
+if gateway_config.password:
+    env["AAP_PASSWORD"] = str(gateway_config.password)  # ✅ Not in argv
+if gateway_config.username:
+    env["AAP_USERNAME"] = str(gateway_config.username)
+
+cmd = [sys.executable, "-m", "my_script"]
+subprocess.Popen(cmd, env=env)
 ```
 
 **Checklist:**
 
+- [ ] **Credentials passed via env vars, NOT argv**
+- [ ] Vault credentials converted to str() before use
 - [ ] All cmd arguments are str/bytes/Path
-- [ ] Vault credentials → str()
 - [ ] None values handled
 - [ ] No shell=True (injection risk)
 - [ ] Process cleanup on error
@@ -1374,9 +1398,13 @@ def test_vault_credentials():
 **MUST test 3+ modules:**
 
 ```bash
-pytest tests/integration/targets/organizations_test/ -v
-pytest tests/integration/targets/teams_test/ -v
-pytest tests/integration/targets/users_test/ -v
+# Integration tests are YAML tasks, use ansible-test (not pytest!)
+ansible-test integration organizations_test teams_test users_test --docker
+
+# Or test individually
+ansible-test integration organizations_test --docker
+ansible-test integration teams_test --docker
+ansible-test integration users_test --docker
 ```
 
 #### Connection Mode Testing
@@ -1625,7 +1653,7 @@ molecule test -s team_mock
 
 ```bash
 # Requires live AAP instance + safe to test label
-pytest tests/integration/targets/teams_test/ -v
+ansible-test integration teams_test --docker
 ```
 
 ---

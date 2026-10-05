@@ -216,9 +216,10 @@ def test_vault_credentials_converted_to_strings():
 
 **Checklist:**
 
-- [ ] Integration test can be deferred to follow-up PR
-- [ ] If added, references Jira issue
-- [ ] Tests specific bug condition
+- [ ] **Preferred:** Unit test or Molecule test (always acceptable)
+- [ ] **Live AAP required:** Integration test can be deferred to follow-up PR only if bug cannot be reproduced without live AAP instance
+- [ ] If integration test added, references Jira issue
+- [ ] Test covers specific bug condition
 
 ### 2. Verify Test Adequacy
 
@@ -566,6 +567,8 @@ return result["data"]  # KeyError if error response
 # Handle errors
 try:
     result = api_client.get(url)
+    if "error" in result:
+        raise APIError(result["error"])
     return result.get("data", [])
 except APIError as e:
     module.fail_json(msg=f"API error: {e}")
