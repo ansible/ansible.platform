@@ -232,7 +232,7 @@ class ResourceSpec:
             "constructed_inventories": "constructed_inventory",
             "settings": "settings",
             "activations": "rulebook_activation",
-            "activation-instances": "activation_instance",
+            "activation_instances": "activation_instance",
         }
         tag_clean = tag.replace("-", "_")
         if tag_clean in _SINGULAR:

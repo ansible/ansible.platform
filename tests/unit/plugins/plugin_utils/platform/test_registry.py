@@ -145,13 +145,15 @@ def test_get_api_version_allows_reprobe_after_transient_failure():
     from unittest.mock import MagicMock
 
     from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import (
-        DEFAULT_API_VERSIONS,
         BaseAPIClient,
     )
 
     class _ConcreteClient(BaseAPIClient):
         def _detect_api_version(self):
             return "1"
+
+        def _probe_service_root(self, service):
+            raise ConnectionError("not reachable")
 
         def _authenticate(self):
             pass
@@ -163,6 +165,7 @@ def test_get_api_version_allows_reprobe_after_transient_failure():
     client.api_versions = {}
     client.registry = MagicMock()
     client.registry.get_supported_versions.return_value = ["2"]
+    client.registry.get_latest_version.return_value = "2"
 
     call_count = 0
 
@@ -175,11 +178,12 @@ def test_get_api_version_allows_reprobe_after_transient_failure():
 
     client._detect_service_version = _detect
 
-    # First call: detection fails, returns fallback
+    # First call: detection fails, returns registry fallback (not cached)
     version1 = client.get_api_version("controller")
-    assert version1 == DEFAULT_API_VERSIONS.get("controller", "1")
+    assert version1 == "2"
+    assert "controller" not in client.api_versions
 
-    # Second call: detection succeeds, returns probed version
+    # Second call: detection succeeds, returns probed version (now cached)
     version2 = client.get_api_version("controller")
     assert version2 == "2"
     assert client.api_versions["controller"] == "2"

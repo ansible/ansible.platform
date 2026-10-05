@@ -209,65 +209,23 @@ class DirectHTTPClient(BaseAPIClient):
             return "1"
         return supported[0]
 
-    def _detect_service_version(self, service: str) -> str:
-        """
-        Detect API version for a specific service by probing its API root.
-
-        Probes /api/{service}/ for an X-API-Version header or current_version
-        field, falling back to DEFAULT_API_VERSIONS only when detection fails.
-        """
-        if service == "gateway":
-            return self._detect_api_version()
-
-        from .base_client import DEFAULT_API_VERSIONS
-
-        supported = self.registry.get_supported_versions(service)
-        if not supported:
-            return DEFAULT_API_VERSIONS.get(service, "1")
-
-        try:
-            root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
-            logger.debug("DirectHTTPClient: probing service version at %s", root_url)
-            response = self.session.open(
-                "GET",
-                root_url,
-                timeout=self.request_timeout,
-                **self._ansible_tls_kwargs(),
-            )
-
-            headers = getattr(response, "headers", {})
-            raw = (headers.get("X-API-Version", "") if hasattr(headers, "get") else "").lstrip("v")
-            if raw and raw in supported:
-                logger.info("DirectHTTPClient: %s API version detected (header): v%s", service, raw)
-                return raw
-            if raw:
-                major = raw.split(".")[0]
-                if major in supported:
-                    logger.info("DirectHTTPClient: %s API version detected (header major): v%s", service, major)
-                    return major
-
-            try:
-                body_bytes = response.read()
-                body = json.loads(body_bytes) if body_bytes else {}
-                if "current_version" in body:
-                    cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
-                    cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
-                    if cv_raw in supported:
-                        logger.info("DirectHTTPClient: %s API version detected (body): v%s", service, cv_raw)
-                        return cv_raw
-                    cv_major = cv_raw.split(".")[0]
-                    if cv_major in supported:
-                        logger.info("DirectHTTPClient: %s API version detected (body major): v%s", service, cv_major)
-                        return cv_major
-            except Exception as exc:
-                logger.debug("DirectHTTPClient: %s body parse error: %s", service, exc)
-
-        except Exception as e:
-            logger.debug("DirectHTTPClient: %s version probe failed (%s), using default", service, e)
-
-        fallback = DEFAULT_API_VERSIONS.get(service, supported[0] if supported else "1")
-        logger.warning("DirectHTTPClient: %s version detection failed, defaulting to v%s", service, fallback)
-        return fallback
+    def _probe_service_root(self, service):
+        root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+        logger.debug("DirectHTTPClient: probing service version at %s", root_url)
+        response = self.session.open(
+            "GET",
+            root_url,
+            timeout=self.request_timeout,
+            **self._ansible_tls_kwargs(),
+        )
+        headers = getattr(response, "headers", {})
+        if not hasattr(headers, "get"):
+            headers = {}
+        body = None
+        body_bytes = response.read()
+        if body_bytes:
+            body = json.loads(body_bytes)
+        return headers, body
 
     def _authenticate(self) -> None:
         """
@@ -518,25 +476,28 @@ class DirectHTTPClient(BaseAPIClient):
             logger.error("Re-authentication failed: %s", e)
             return False
 
-    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
+    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None, *, service: str = None, api_version: str = None) -> str:
         """
         Build full URL from endpoint.
 
         Args:
             endpoint: API endpoint (e.g., '/api/gateway/v1/users/')
             query_params: Optional query parameters
+            service: Service name for relative-path prefix (default: gateway)
+            api_version: API version for relative-path prefix
 
         Returns:
             Full URL
         """
-        # Ensure endpoint starts with /
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
+        if not endpoint.startswith("/api/"):
+            svc = service or "gateway"
+            ver = api_version or self.get_api_version(svc)
+            endpoint = f"/api/{svc}/v{ver}{endpoint}"
 
-        # Build base URL
         url = f"{self.base_url}{endpoint}"
 
-        # Add query parameters if provided
         if query_params:
             from urllib.parse import urlencode
 
@@ -870,7 +831,7 @@ class DirectHTTPClient(BaseAPIClient):
             raise ValueError(f"Delete operation not defined for {mixin_class.__name__}")
 
         # Build URL
-        url = self._build_url(delete_op.path.format(id=resource_id))
+        url = self._build_url(delete_op.path.format(id=resource_id), service=context.service, api_version=context.api_version)
 
         # Execute delete
         _response = self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
@@ -894,7 +855,7 @@ class DirectHTTPClient(BaseAPIClient):
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
-            url = self._build_url(get_op.path)
+            url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             with self._lock:
                 self._http_request_count += 1
             response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
@@ -935,7 +896,7 @@ class DirectHTTPClient(BaseAPIClient):
         # instead of a list-filter, which would find nothing.
         if get_op and lookup_value is not None and str(lookup_value).strip().isdigit():
             try:
-                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())))
+                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())), service=context.service, api_version=context.api_version)
                 logger.info("DirectHTTPClient: ID-based lookup URL for %s: %s", mixin_class.__name__, id_url)
                 with self._lock:
                     self._http_request_count += 1
@@ -981,7 +942,7 @@ class DirectHTTPClient(BaseAPIClient):
         if composite_params:
             query_params.update(composite_params)
         # Build URL with query parameter(s)
-        url = self._build_url(list_op.path, query_params)
+        url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)
         logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
         # Execute list request
         logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
@@ -1051,7 +1012,7 @@ class DirectHTTPClient(BaseAPIClient):
                     if param_value:
                         url = url.replace(f"{{{param}}}", str(param_value))
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
-            url = self._build_url(url)
+            url = self._build_url(url, service=context.service, api_version=context.api_version)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
             # Prepare request data; include "" on update so enforced can clear e.g. email
             request_data = {}

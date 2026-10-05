@@ -115,8 +115,8 @@ class APIVersionRegistry:
                         self.module_versions[module_name] = []
                     self.module_versions[module_name].append(version_str)
 
-            for module_name in self.module_versions:
-                self.module_versions[module_name].sort(key=version.parse)
+        for module_name in self.module_versions:
+            self.module_versions[module_name].sort(key=version.parse)
 
         logger.info(
             "Discovered services: %s",

@@ -95,12 +95,12 @@ class TestAPIVersionRegistry:
         """Registry discovers all module files from api/ directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create fake api/gateway/v1/ and api/gateway/v2/ directories
-            os.makedirs(os.path.join(tmpdir, "api", "v1"))
-            os.makedirs(os.path.join(tmpdir, "api", "v2"))
+            os.makedirs(os.path.join(tmpdir, "api", "gateway", "v1"))
+            os.makedirs(os.path.join(tmpdir, "api", "gateway", "v2"))
 
             # Create fake module files
-            open(os.path.join(tmpdir, "api", "v1", "user.py"), "w").close()
-            open(os.path.join(tmpdir, "api", "v2", "user.py"), "w").close()
+            open(os.path.join(tmpdir, "api", "gateway", "v1", "user.py"), "w").close()
+            open(os.path.join(tmpdir, "api", "gateway", "v2", "user.py"), "w").close()
 
             registry = APIVersionRegistry(api_dir=tmpdir)
             modules = registry.discover_modules()

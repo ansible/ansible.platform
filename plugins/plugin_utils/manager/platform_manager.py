@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 if TYPE_CHECKING:
     import requests
 
-from ..platform.base_client import DEFAULT_API_VERSIONS, BaseAPIClient
+from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -458,65 +458,19 @@ class PlatformService(BaseAPIClient):
             return "1"
         return supported[0]
 
-    def _detect_service_version(self, service: str) -> str:
-        """
-        Detect API version for a specific service by probing its API root.
-
-        Probes /api/{service}/ for an X-API-Version header or current_version
-        field, falling back to DEFAULT_API_VERSIONS only when detection fails.
-        """
-        if service == "gateway":
-            return self._detect_api_version()
-
+    def _probe_service_root(self, service):
         requests = _get_requests()
-        import re
+        root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+        logger.debug("PlatformService: probing service version at %s", root_url)
+        response = self.session.get(root_url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        headers = dict(response.headers)
+        body = None
+        if response.headers.get("Content-Type", "").startswith("application/json"):
+            body = response.json()
+        return headers, body
 
-        supported = self.registry.get_supported_versions(service)
-        if not supported:
-            return DEFAULT_API_VERSIONS.get(service, "1")
-
-        try:
-            root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
-            logger.debug("PlatformService: probing service version at %s", root_url)
-            response = self.session.get(root_url, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
-
-            raw = response.headers.get("X-API-Version", "").lstrip("v")
-            if raw and raw in supported:
-                logger.info("PlatformService: %s API version detected (header): v%s", service, raw)
-                return raw
-            if raw:
-                major = raw.split(".")[0]
-                if major in supported:
-                    logger.info("PlatformService: %s API version detected (header major): v%s", service, major)
-                    return major
-
-            if response.headers.get("Content-Type", "").startswith("application/json"):
-                try:
-                    body = response.json()
-                    if "current_version" in body:
-                        cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
-                        cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
-                        if cv_raw in supported:
-                            logger.info("PlatformService: %s API version detected (body): v%s", service, cv_raw)
-                            return cv_raw
-                        cv_major = cv_raw.split(".")[0]
-                        if cv_major in supported:
-                            logger.info("PlatformService: %s API version detected (body major): v%s", service, cv_major)
-                            return cv_major
-                except (ValueError, KeyError, AttributeError) as exc:
-                    logger.debug("PlatformService: %s body parse error: %s", service, exc)
-
-        except requests.RequestException as e:
-            logger.debug("PlatformService: %s version probe failed (%s), using default", service, e)
-        except Exception as e:
-            logger.debug("PlatformService: %s version probe unexpected error (%s), using default", service, e)
-
-        fallback = DEFAULT_API_VERSIONS.get(service, supported[0] if supported else "1")
-        logger.warning("PlatformService: %s version detection failed, defaulting to v%s", service, fallback)
-        return fallback
-
-    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
+    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None, *, service: str = None, api_version: str = None) -> str:
         """
         Build full URL for an endpoint.
 
@@ -530,7 +484,9 @@ class PlatformService(BaseAPIClient):
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
         if not endpoint.startswith("/api/"):
-            endpoint = f"/api/gateway/v{self.api_version}{endpoint}"
+            svc = service or "gateway"
+            ver = api_version or self.get_api_version(svc)
+            endpoint = f"/api/{svc}/v{ver}{endpoint}"
         if not endpoint.endswith("/") and "?" not in endpoint:
             endpoint = f"{endpoint}/"
 
@@ -870,7 +826,7 @@ class PlatformService(BaseAPIClient):
                 if param == "id":
                     path = path.replace(f"{{{param}}}", str(resource_id))
 
-        url = self._build_url(path)
+        url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
@@ -901,7 +857,7 @@ class PlatformService(BaseAPIClient):
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
-            url = self._build_url(get_op.path)
+            url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
@@ -936,7 +892,7 @@ class PlatformService(BaseAPIClient):
         if resolved_id:
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
-            url = self._build_url(get_op.path.replace("{id}", str(resolved_id)))
+            url = self._build_url(get_op.path.replace("{id}", str(resolved_id)), service=context.service, api_version=context.api_version)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
@@ -968,7 +924,7 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            url = self._build_url(list_op.path, query_params=query_params)
+            url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
             logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
@@ -985,7 +941,7 @@ class PlatformService(BaseAPIClient):
             # full_resource_lookup=True, follow up with a GET-by-ID so that
             # idempotency comparisons use the complete stored resource state.
             if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
-                full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])))
+                full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])), service=context.service, api_version=context.api_version)
                 logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
                 full_response = self.session.get(full_url, timeout=self.request_timeout, verify=self.requests_verify)
                 if full_response.ok:
@@ -1055,7 +1011,7 @@ class PlatformService(BaseAPIClient):
                     elif param == "id" and "id" in api_data_dict:
                         path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
 
-            url = self._build_url(path)
+            url = self._build_url(path, service=context.service, api_version=context.api_version)
 
             logger.debug("Calling %s %s", endpoint_op.method, url)
 
