@@ -299,7 +299,13 @@ class ResourceSpec:
         """Detect API version from spec paths (e.g. /api/v2/ -> '2', /api/gateway/v1/ -> '1')."""
         path = self.list_path or self.detail_path or ""
         match = re.search(r"/v(\d+)/", path)
-        return match.group(1) if match else "1"
+        if not match:
+            raise ValueError(
+                f"Cannot detect API version from paths (list={self.list_path!r}, "
+                f"detail={self.detail_path!r}). Expected a /vN/ segment. "
+                f"Check the OpenAPI spec or pass --service to ensure paths are resolved."
+            )
+        return match.group(1)
 
     def summary(self) -> str:
         lines = [
