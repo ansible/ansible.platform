@@ -1,0 +1,98 @@
+---
+- name: Converge — mock Gateway serves the Controller API prefix
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    mock_auth: "Basic bW9jazptb2Nr"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Controller API version discovery (no auth)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/"
+        method: GET
+        return_content: true
+        status_code: 200
+      register: controller_root
+      vars:
+        ansible_connection: local
+
+    - name: Assert Controller version discovery reports the controller prefix
+      ansible.builtin.assert:
+        that:
+          - "'/api/controller/' in controller_root.json.current_version"
+        fail_msg: "Expected controller prefix in version discovery. Got: {{ controller_root.json }}"
+      vars:
+        ansible_connection: local
+
+    - name: Ping Controller API prefix (authenticated)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/ping/"
+        method: GET
+        headers:
+          Authorization: "{{ mock_auth }}"
+        return_content: true
+        status_code: 200
+      register: controller_ping
+      vars:
+        ansible_connection: local
+
+    - name: Assert Controller ping reports a version
+      ansible.builtin.assert:
+        that:
+          - controller_ping.json.version is defined
+        fail_msg: "Controller ping should report a version. Got: {{ controller_ping.json }}"
+      vars:
+        ansible_connection: local
+
+    - name: Ping Gateway API prefix still works (no regression)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/gateway/v1/ping/"
+        method: GET
+        headers:
+          Authorization: "{{ mock_auth }}"
+        return_content: true
+        status_code: 200
+      register: gateway_ping
+      vars:
+        ansible_connection: local
+
+    - name: Assert Gateway ping reports a version
+      ansible.builtin.assert:
+        that:
+          - gateway_ping.json.version is defined
+        fail_msg: "Gateway ping should report a version. Got: {{ gateway_ping.json }}"
+      vars:
+        ansible_connection: local
+
+    - name: An unsupported service prefix must still 404
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/ping/"
+        method: GET
+        headers:
+          Authorization: "{{ mock_auth }}"
+        status_code: 404
+      register: eda_ping
+      vars:
+        ansible_connection: local
+
+    - name: Assert unsupported service prefix was rejected
+      ansible.builtin.assert:
+        that:
+          - eda_ping.status == 404
+        fail_msg: "Unsupported service prefix should 404. Got status: {{ eda_ping.status }}"
+      vars:
+        ansible_connection: local
+...
