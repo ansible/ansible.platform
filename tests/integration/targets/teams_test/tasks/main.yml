@@ -4,7 +4,7 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Preset vars
+- name: Preset some vars
   ansible.builtin.set_fact:
     gateway_user_default_password: change-me
     name_prefix: GW-Collection-Test-Team-{{ test_id }}
