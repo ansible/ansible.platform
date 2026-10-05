@@ -15,6 +15,7 @@ from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
+
 class BaseAPIClient(ABC):
     """
     Abstract base class for platform API clients.
@@ -146,9 +147,7 @@ class BaseAPIClient(ABC):
 
         if body is not None:
             if not isinstance(body, dict):
-                raise ValueError(
-                    f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}"
-                )
+                raise ValueError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
             if "current_version" in body:
                 cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
                 cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")

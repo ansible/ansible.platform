@@ -201,13 +201,10 @@ class DirectHTTPClient(BaseAPIClient):
         except Exception as e:
             logger.warning("DirectHTTPClient: tier-2 detection failed (%s)", e)
 
-        # ── Tier 3: safe default ───────────────────────────────────────────
+        # ── Tier 3: raise so get_api_version() returns uncached fallback ──
         if not supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-        logger.warning("DirectHTTPClient: version detection failed — defaulting to v1")
-        if "1" in supported:
-            return "1"
-        return supported[0]
+        raise RuntimeError("DirectHTTPClient: all gateway version detection tiers failed")
 
     def _probe_service_root(self, service):
         root_url = f"{self.base_url.rstrip('/')}/api/{service}/"

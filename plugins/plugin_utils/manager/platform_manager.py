@@ -450,16 +450,12 @@ class PlatformService(BaseAPIClient):
         except Exception as e:
             logger.warning("PlatformService: tier-2 unexpected error: %s", e)
 
-        # ── Tier 3: safe default ───────────────────────────────────────────
+        # ── Tier 3: raise so get_api_version() returns uncached fallback ──
         if not supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-        logger.warning("PlatformService: version detection failed — defaulting to v1")
-        if "1" in supported:
-            return "1"
-        return supported[0]
+        raise RuntimeError("PlatformService: all gateway version detection tiers failed")
 
     def _probe_service_root(self, service):
-        requests = _get_requests()
         root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
         logger.debug("PlatformService: probing service version at %s", root_url)
         response = self.session.get(root_url, timeout=self.request_timeout, verify=self.requests_verify)
@@ -1161,9 +1157,7 @@ class PlatformService(BaseAPIClient):
         cache_key = f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
         if cache_key in self.cache:
             return self.cache[cache_key]
-        svc_version = self.get_api_version(service)
-        full_endpoint = f"/api/{service}/v{svc_version}/{endpoint}"
-        url = self._build_url(full_endpoint, query_params={lookup_field: lookup_value})
+        url = self._build_url(f"/{endpoint}", query_params={lookup_field: lookup_value}, service=service)
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         results = response.json().get("results", [])

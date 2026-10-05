@@ -173,7 +173,7 @@ self.module_versions = {
 ### Key method: `find_best_version`
 
 ```python
-def find_best_version(self, requested_version: str, module_name: str) -> Optional[str]:
+def find_best_version(self, requested_version: str, module_name: str, service: Optional[str] = None) -> Optional[str]:
     available = self.module_versions.get(module_name, [])
     if not available:
         return None
