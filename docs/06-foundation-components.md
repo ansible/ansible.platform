@@ -225,11 +225,15 @@ class DynamicClassLoader:
     def load_classes_for_module(self, module_name: str, api_version: str) -> Tuple[Type, Type, Type]:
         """Return (AnsibleClass, APIClass, MixinClass) for the given module and version."""
 
-        best_version = self.registry.find_best_version(api_version, module_name)
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+
+        best_version = self.registry.find_best_version(api_version, module_name, service)
         if best_version is None:
             raise ValueError(f"No compatible API version found for module '{module_name}'")
 
-        cache_key = f"{module_name}_{best_version}"
+        cache_key = f"{service}_{module_name}_{best_version}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
