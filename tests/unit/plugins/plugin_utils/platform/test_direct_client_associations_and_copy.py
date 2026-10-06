@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import json
 import unittest
 from unittest.mock import MagicMock
+from urllib.error import HTTPError
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
@@ -20,6 +21,7 @@ def _client(base_url="https://gw.example.com"):
     client.base_url = base_url
     client.cache = {}
     client.lookup_resource_id = MagicMock()
+    client.search_api = MagicMock()
     return client
 
 
@@ -36,10 +38,9 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_associates_and_disassociates_to_reconcile(self):
         self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-a": 3}[value]
-        get_resp = _http_resp(body={"results": [{"id": 1}, {"id": 2}]})
+        self.client.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
 
         with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
-            mock_request.return_value = get_resp
             changed = self.client.manage_associations(
                 "/api/controller/v2/job_templates",
                 42,
@@ -57,11 +58,24 @@ class TestManageAssociations(unittest.TestCase):
         self.assertIn({"id": 2, "disassociate": True}, payloads)
 
     def test_no_change_when_already_in_sync(self):
-        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"results": [{"id": 1}]})) as mock_request:
+        self.client.search_api.return_value = {"results": [{"id": 1}]}
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
             changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [1], "credentials", "name")
 
         self.assertFalse(changed)
-        self.assertEqual(mock_request.call_count, 1)
+        mock_request.assert_not_called()
+
+    def test_current_associations_are_paginated(self):
+        """Regression test: associations beyond page 1 must not be treated as absent."""
+        self.client.search_api.return_value = {"results": [{"id": i} for i in range(1, 31)]}
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+            changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", list(range(1, 31)), "credentials", "name")
+
+        self.assertFalse(changed)
+        mock_request.assert_not_called()
+        self.client.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
 
 
 class TestManageSubResource(unittest.TestCase):
@@ -81,6 +95,18 @@ class TestManageSubResource(unittest.TestCase):
         mock_request.assert_called_once_with(
             "DELETE", "https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", operation="delete_sub_resource", resource="survey_spec"
         )
+
+    def test_empty_dict_delete_404_is_not_changed(self):
+        not_found = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 404, "Not Found", {}, None)
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=not_found):
+            changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
+        self.assertFalse(changed)
+
+    def test_empty_dict_delete_non_404_error_propagates(self):
+        server_error = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 500, "Server Error", {}, None)
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=server_error):
+            with self.assertRaises(HTTPError):
+                self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
 
     def test_same_data_is_noop(self):
         spec = {"name": "survey"}

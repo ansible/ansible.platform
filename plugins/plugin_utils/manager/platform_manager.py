@@ -1190,10 +1190,13 @@ class PlatformService(BaseAPIClient):
             int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
         }
 
-        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
-        response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.requests_verify)
-        response.raise_for_status()
-        current_ids = {item["id"] for item in response.json().get("results", [])}
+        # Follow pagination so associations beyond the first page aren't silently
+        # treated as absent (which would re-associate them and skip disassociating
+        # ones that should be removed).
+        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
+        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
+        current_ids = {item["id"] for item in current_data.get("results", [])}
+        assoc_url = self._build_url(assoc_path)
 
         changed = False
         for rid in desired_ids - current_ids:
