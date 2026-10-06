@@ -582,13 +582,13 @@ class DirectHTTPClient(BaseAPIClient):
             int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
         }
 
-        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
-        response = self._make_request("GET", assoc_url, operation="list_associations", resource=association_field)
-        try:
-            current_data = json.loads(response.read())
-        except Exception:
-            current_data = {}
+        # Follow pagination so associations beyond the first page aren't silently
+        # treated as absent (which would re-associate them and skip disassociating
+        # ones that should be removed).
+        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
+        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        assoc_url = self._build_url(assoc_path)
 
         changed = False
         for rid in desired_ids - current_ids:
@@ -614,17 +614,15 @@ class DirectHTTPClient(BaseAPIClient):
         if data == {}:
             try:
                 self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
-            except Exception as e:
-                if getattr(e, "code", None) == 404:
+            except HTTPError as he:
+                # Ansible's Request.open() raises HTTPError for 4xx/5xx responses.
+                if he.code == 404:
                     return False
                 raise
             return True
 
         response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
-        try:
-            current = json.loads(response.read())
-        except Exception:
-            current = {}
+        current = json.loads(response.read())
         if current == data:
             return False
 
@@ -646,20 +644,14 @@ class DirectHTTPClient(BaseAPIClient):
         else:
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
-            try:
-                results = json.loads(response.read()).get("results", [])
-            except Exception:
-                results = []
+            results = json.loads(response.read()).get("results", [])
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
 
         copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
-        try:
-            return json.loads(response.read())
-        except Exception:
-            return {}
+        return json.loads(response.read())
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

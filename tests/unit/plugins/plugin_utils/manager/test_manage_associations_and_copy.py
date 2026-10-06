@@ -24,6 +24,7 @@ def _service(base_url="https://gw.example.com"):
     service.verify_ssl = True
     service.ca_bundle = None
     service.lookup_resource_id = MagicMock()
+    service.search_api = MagicMock()
     return service
 
 
@@ -40,7 +41,7 @@ class TestManageAssociations(unittest.TestCase):
         self.svc = _service()
 
     def test_associates_and_disassociates_to_reconcile(self):
-        self.svc.session.get.return_value = _resp(json_data={"results": [{"id": 1}, {"id": 2}]})
+        self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
         self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-a": 3}[value]
 
         changed = self.svc.manage_associations(
@@ -61,7 +62,7 @@ class TestManageAssociations(unittest.TestCase):
         self.assertIn({"id": 2, "disassociate": True}, payloads)
 
     def test_no_change_when_already_in_sync(self):
-        self.svc.session.get.return_value = _resp(json_data={"results": [{"id": 1}]})
+        self.svc.search_api.return_value = {"results": [{"id": 1}]}
 
         changed = self.svc.manage_associations(
             "/api/controller/v2/job_templates",
@@ -76,11 +77,24 @@ class TestManageAssociations(unittest.TestCase):
         self.svc.session.post.assert_not_called()
 
     def test_numeric_desired_items_skip_lookup(self):
-        self.svc.session.get.return_value = _resp(json_data={"results": []})
+        self.svc.search_api.return_value = {"results": []}
 
         self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
 
         self.svc.lookup_resource_id.assert_not_called()
+
+    def test_current_associations_are_paginated(self):
+        """Regression test: associations beyond page 1 must not be treated as absent."""
+        # 30 existing associations (ids 1-30), spanning what would be 2 pages at page_size=25.
+        self.svc.search_api.return_value = {"results": [{"id": i} for i in range(1, 31)]}
+
+        changed = self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", list(range(1, 31)), "credentials", "name")
+
+        # All 30 are already associated and desired — nothing to do, and crucially no
+        # disassociate calls for ids that would have been invisible without pagination.
+        self.assertFalse(changed)
+        self.svc.session.post.assert_not_called()
+        self.svc.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
 
 
 class TestManageSubResource(unittest.TestCase):
