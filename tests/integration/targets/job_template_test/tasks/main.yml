@@ -130,12 +130,16 @@
           - copied_job_template is changed
           - copied_job_template.job_template.name == name_prefix + "-Test-JobTemplate-Copy"
 
+  always:
     - name: Delete the copied job template
       ansible.platform.job_template:
         name: "{{ name_prefix }}-Test-JobTemplate-Copy"
         state: absent
+      when: >-
+        copied_job_template is defined
+        and "job_template" in copied_job_template
+        and "name" in copied_job_template.job_template
 
-  always:
     - name: Delete job_template
       ansible.platform.job_template:
         name: "{{ created_job_template.job_template.name }}"

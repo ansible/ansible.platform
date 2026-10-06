@@ -118,6 +118,29 @@ class TestAssociationReconciliation(unittest.TestCase):
         self.assertEqual(call_args.args[0], BASE_PATH)
         self.assertEqual(sorted(call_args.args[3]), ["Local", "Vault"])
 
+    def test_credential_and_vault_credential_surface_deprecation_warnings(self):
+        action = _action({"name": "Ping", "credential": "Local", "vault_credential": "Vault", "state": "present"})
+        manager = MagicMock()
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "failed": False, "id": 5}):
+            action._client = manager
+            result = action.run(task_vars={})
+
+        deprecated_params = {d["msg"] for d in result["deprecations"]}
+        self.assertEqual(len(result["deprecations"]), 2)
+        self.assertTrue(any("'credential'" in msg for msg in deprecated_params))
+        self.assertTrue(any("'vault_credential'" in msg for msg in deprecated_params))
+
+    def test_no_deprecation_warnings_when_only_credentials_used(self):
+        action = _action({"name": "Ping", "credentials": ["Local"], "state": "present"})
+        manager = MagicMock()
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "failed": False, "id": 5}):
+            action._client = manager
+            result = action.run(task_vars={})
+
+        self.assertNotIn("deprecations", result)
+
 
 class TestCheckMode(unittest.TestCase):
     def test_check_mode_never_calls_manage_associations(self):
