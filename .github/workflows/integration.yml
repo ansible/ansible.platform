@@ -56,6 +56,9 @@ jobs:
       - name: Expose collection checkout to aap-gateway build
         run: ln -s "${{ github.workspace }}/ansible-platform" "${{ github.workspace }}/aap-gateway/ansible.platform"
 
+      - name: Install podman-compose
+        run: pip3 install 'podman-compose>=1.6.0'
+
       - name: Build the image
         run: make docker-compose-build
         working-directory: aap-gateway
@@ -93,7 +96,7 @@ jobs:
         working-directory: ansible-platform
 
       - name: Dump the container logs on failure
-        run: docker compose -f tools/generated/docker-compose.yml logs
+        run: podman-compose -f tools/generated/compose.yml logs
         working-directory: aap-gateway
         if: failure()
 
@@ -134,6 +137,9 @@ jobs:
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
         working-directory: ansible-platform
+
+      - name: Install podman-compose
+        run: pip3 install 'podman-compose>=1.6.0'
 
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
@@ -180,6 +186,9 @@ jobs:
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
         working-directory: ansible-platform
+
+      - name: Install podman-compose
+        run: pip3 install 'podman-compose>=1.6.0'
 
       - name: Start the dev environment
         run: COMPOSE_UP_OPTS='-d' make docker-compose
