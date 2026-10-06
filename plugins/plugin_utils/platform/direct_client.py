@@ -219,9 +219,11 @@ class DirectHTTPClient(BaseAPIClient):
         if not hasattr(headers, "get"):
             headers = {}
         body = None
-        body_bytes = response.read()
-        if body_bytes:
-            body = json.loads(body_bytes)
+        content_type = headers.get("Content-Type", "") if headers else ""
+        if content_type.startswith("application/json"):
+            body_bytes = response.read()
+            if body_bytes:
+                body = json.loads(body_bytes)
         return headers, body
 
     def _authenticate(self) -> None:
