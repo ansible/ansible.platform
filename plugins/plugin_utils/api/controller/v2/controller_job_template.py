@@ -253,13 +253,38 @@ class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
             except ValueError:
                 extra_vars = None
 
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        cache = getattr(context, "cache", None) if isinstance(context, TransformContext) else context.get("cache")
+        service = getattr(context, "service", "controller") if isinstance(context, TransformContext) else context.get("service", "controller")
+        api_version = getattr(context, "api_version", None) if isinstance(context, TransformContext) else context.get("api_version")
+
+        def _resolve_fk_name(endpoint: str, resource_id: Optional[int]) -> Optional[str]:
+            # FK fields are Optional[str] (names) on AnsibleControllerJobTemplate, so the
+            # raw int id from the API must be resolved back to a name here. Returning the
+            # raw id instead would break _should_update()'s comparison (it diffs this
+            # from_api() output against the user-supplied name, a str-vs-int mismatch that
+            # always reports "changed") as well as round-trip output.
+            if resource_id is None or manager is None:
+                return None
+            cache_key = f"id:{service}:{endpoint}:{resource_id}"
+            if cache is not None and cache_key in cache:
+                return cache[cache_key]
+            try:
+                result = manager.search_api(f"/api/{service}/v{api_version}/{endpoint}/{resource_id}/")
+                name = result.get("name")
+            except Exception:
+                name = None
+            if name is not None and cache is not None:
+                cache[cache_key] = name
+            return name
+
         kwargs = {field: api_data.get(field) for field in _SCALAR_FIELDS}
         return AnsibleControllerJobTemplate(
             name=api_data.get("name"),
-            inventory=api_data.get("inventory"),
-            project=api_data.get("project"),
-            execution_environment=api_data.get("execution_environment"),
-            webhook_credential=api_data.get("webhook_credential"),
+            inventory=_resolve_fk_name("inventories", api_data.get("inventory")),
+            project=_resolve_fk_name("projects", api_data.get("project")),
+            execution_environment=_resolve_fk_name("execution_environments", api_data.get("execution_environment")),
+            webhook_credential=_resolve_fk_name("credentials", api_data.get("webhook_credential")),
             extra_vars=extra_vars,
             id=api_data.get("id"),
             created=api_data.get("created"),

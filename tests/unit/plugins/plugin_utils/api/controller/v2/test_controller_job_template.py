@@ -135,7 +135,14 @@ class TestProjectResolution(unittest.TestCase):
 
 
 class TestFromApi(unittest.TestCase):
-    def test_round_trips_scalar_and_fk_fields(self):
+    def test_round_trips_scalar_fields_and_resolves_fk_ids_to_names(self):
+        manager = MagicMock()
+        manager.search_api.side_effect = lambda path: {
+            "/api/controller/v2/inventories/10/": {"name": "Local"},
+            "/api/controller/v2/projects/20/": {"name": "Demo"},
+            "/api/controller/v2/execution_environments/30/": {"name": "EE"},
+            "/api/controller/v2/credentials/40/": {"name": "Webhook Cred"},
+        }[path]
         api_data = {
             "id": 5,
             "name": "Ping",
@@ -150,17 +157,46 @@ class TestFromApi(unittest.TestCase):
             "url": "/api/controller/v2/job_templates/5/",
         }
 
-        result = ControllerJobTemplateTransformMixin_v2.from_api(api_data, _context("find"))
+        result = ControllerJobTemplateTransformMixin_v2.from_api(api_data, _context("find", manager=manager))
 
         self.assertEqual(result.id, 5)
         self.assertEqual(result.name, "Ping")
-        self.assertEqual(result.inventory, 10)
-        self.assertEqual(result.project, 20)
-        self.assertEqual(result.execution_environment, 30)
-        self.assertEqual(result.webhook_credential, 40)
+        # FK fields must come back as names (str), matching the Optional[str] dataclass
+        # fields and the user-supplied input — returning raw ids here would make
+        # _should_update() compare a name against an int and always report "changed".
+        self.assertEqual(result.inventory, "Local")
+        self.assertEqual(result.project, "Demo")
+        self.assertEqual(result.execution_environment, "EE")
+        self.assertEqual(result.webhook_credential, "Webhook Cred")
         self.assertEqual(result.extra_vars, {"foo": "bar"})
         self.assertEqual(result.created, "2026-01-01T00:00:00Z")
         self.assertEqual(result.url, "/api/controller/v2/job_templates/5/")
+
+    def test_fk_name_resolution_is_cached(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {"name": "Local"}
+        context = _context("find", manager=manager)
+
+        ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, context)
+        ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping2", "inventory": 10}, context)
+
+        manager.search_api.assert_called_once_with("/api/controller/v2/inventories/10/")
+
+    def test_fk_lookup_failure_falls_back_to_none_rather_than_raising(self):
+        manager = MagicMock()
+        manager.search_api.side_effect = ValueError("not found")
+
+        result = ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
+
+        self.assertIsNone(result.inventory)
+
+    def test_null_fk_id_skips_lookup(self):
+        manager = MagicMock()
+
+        result = ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping"}, _context("find", manager=manager))
+
+        self.assertIsNone(result.inventory)
+        manager.search_api.assert_not_called()
 
     def test_non_json_extra_vars_falls_back_to_none(self):
         result = ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping", "extra_vars": "not json"}, _context("find"))

@@ -12,7 +12,7 @@
 
 - name: Run Test
   module_defaults:
-    group/ansible.platform.gateway:
+    group/ansible.platform.controller:
       gateway_hostname: "{{ gateway_hostname }}"
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
