@@ -24,74 +24,18 @@ Review checklist for CI, GitHub Actions, and workflow changes.
 3. ✅ **Permissions** - Follow least-privilege principle
 
 **Quick secret protection check:**
+
+**Use the validation script:**
 ```bash
-# Does workflow use secrets AND run on pull_request?
-# Parse YAML to check both inline and block forms, handle both .yml and .yaml
-python3 << 'EOF'
-import yaml
-from pathlib import Path
-
-# Scan both .yml and .yaml extensions
-for wf_file in list(Path(".github/workflows").glob("*.yml")) + list(Path(".github/workflows").glob("*.yaml")):
-    with open(wf_file) as f:
-        wf = yaml.safe_load(f)
-        content = wf_file.read_text()
-    
-    # PyYAML converts unquoted 'on' to boolean True in YAML 1.1
-    # Check both 'on' and True keys
-    triggers = wf.get("on") or wf.get(True) or {}
-    has_pr = False
-    has_pr_target = False
-    
-    # Handle all trigger forms: scalar, list, and mapping
-    if isinstance(triggers, str):
-        # Scalar: on: pull_request
-        has_pr = triggers == "pull_request"
-        has_pr_target = triggers == "pull_request_target"
-    elif isinstance(triggers, list):
-        # List: on: [pull_request, push]
-        has_pr = "pull_request" in triggers
-        has_pr_target = "pull_request_target" in triggers
-    elif isinstance(triggers, dict):
-        # Mapping: on:\n  pull_request:\n    types: [labeled]
-        has_pr = "pull_request" in triggers
-        has_pr_target = "pull_request_target" in triggers
-    
-    # Check for secret usage
-    has_secrets = "secrets." in content
-    
-    # Parse YAML to check actual workflow logic (not just comments)
-    import yaml
-    with open(wf_file) as f:
-        wf = yaml.safe_load(f)
-    
-    # Check authorization gates in actual job conditions (not comments)
-    has_label_gate = False
-    has_member_check = False
-    
-    for job_name, job in wf.get("jobs", {}).items():
-        job_if = job.get("if", "")
-        if "github.event.label.name == 'safe to test'" in job_if:
-            has_label_gate = True
-        if "author_association" in job_if or "MEMBER" in job_if:
-            has_member_check = True
-    
-    if has_pr and has_secrets and not (has_label_gate or has_member_check):
-        print(f"❌ DANGER: {wf_file} exposes secrets to fork PRs without proper gate!")
-    
-    # Check for PR code checkout with secrets (including head.ref)
-    if has_pr_target:
-        for job_name, job in wf.get("jobs", {}).items():
-            for step in job.get("steps", []):
-                checkout_ref = step.get("with", {}).get("ref", "")
-                if "head.sha" in checkout_ref or "head_sha" in checkout_ref or "head.ref" in checkout_ref:
-                    print(f"⚠️ WARNING: {wf_file} checks out PR code with pull_request_target")
-
-EOF
-
-# Verify label-gated workflows exist (check both extensions)
-ls .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null | xargs grep -l "safe to test"
+python3 .claude/skills/pr-review/scripts/check_workflow_secrets.py
 ```
+
+**Script checks:**
+- Workflows using `secrets.` with `pull_request` trigger
+- Missing authorization gates (label or member checks)
+- `pull_request_target` checking out PR code (dangerous!)
+
+**See:** `.claude/skills/pr-review/scripts/check_workflow_secrets.py` for implementation details
 
 ---
 

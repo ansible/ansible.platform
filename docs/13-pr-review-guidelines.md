@@ -50,15 +50,51 @@ Comprehensive guidelines for reviewing pull requests in the ansible.platform col
 
 ### Priority Checks
 
-| Priority | Check | Blocker? |
-|----------|-------|----------|
-| 🔴 Critical | Collection completeness test | YES |
-| 🔴 Critical | Unit tests | YES |
-| 🔴 Critical | Sanity tests | YES |
-| 🔴 Critical | Connection/manager changes (if applicable) | YES |
-| 🟡 Important | Changelog fragment | YES (if code changes) |
-| 🟡 Important | Jira reference | YES (if bugfix) |
-| 🟢 Optional | Integration tests | NO (can defer) |
+| Priority | Check | Blocker? | Notes |
+|----------|-------|----------|-------|
+| 🔴 Critical | Collection completeness test | YES | - |
+| 🔴 Critical | Unit tests | YES | - |
+| 🔴 Critical | Sanity tests | YES | - |
+| 🔴 Critical | Connection/manager changes | YES | If applicable |
+| 🔴 Critical | Integration tests | YES* | *See integration test policy below |
+| 🟡 Important | Changelog fragment | YES | If code changes |
+| 🟡 Important | Jira reference | YES | If bugfix |
+
+### Integration Test Policy
+
+**Integration tests are BLOCKING with the following exceptions:**
+
+Integration test failures **ARE BLOCKING** for:
+- ✅ Reproducible failures (fails on multiple runs)
+- ✅ Assertion errors (expected != actual)
+- ✅ Resource creation failures (validation errors from AAP)
+- ✅ Any failure in modified code path
+
+Integration test failures are **NOT BLOCKING** for:
+
+1. **Transient Infrastructure Failures:**
+   - AAP unreachable (connection timeout, network issues)
+   - AAP service restart during test run
+   - DNS/TLS handshake failures
+   - **Action:** Re-run once. If passes on retry → NOT BLOCKING
+
+2. **Known AAP Bugs:**
+   - AAP API bug affecting test (with JIRA reference)
+   - AAP version mismatch (testing v2.7, PR targets v2.8)
+   - **Action:** Document in PR, skip affected test → NOT BLOCKING
+
+3. **Test Infrastructure Issues:**
+   - Test credentials expired
+   - Test organization/resources deleted externally
+   - Test environment configuration issues
+   - **Action:** Fix infrastructure, re-run → NOT BLOCKING
+
+**Re-run transient failures:**
+```bash
+gh run rerun <RUN_ID> --repo ansible/ansible.platform --failed
+```
+
+**Decision criteria:** Maintainer uses judgment to distinguish real bugs from transient failures. When in doubt, re-run. Reproducible failures across 2+ runs are always blocking.
 
 ---
 

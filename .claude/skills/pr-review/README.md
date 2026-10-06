@@ -8,11 +8,17 @@ Comprehensive PR review workflow for ansible.platform collection maintainers.
 pr-review/
 ├── SKILL.md                          # Main skill file (ENTRY POINT)
 ├── README.md                         # This file
+├── scripts/                          # Reusable validation scripts
+│   ├── check_workflow_secrets.py    # Workflow security scanner
+│   ├── check_seven_file_pattern.sh  # Seven-file pattern validator
+│   ├── check_jira_reference.sh      # JIRA reference extractor
+│   └── README.md                    # Script documentation
 └── references/
-    ├── feature-review.md             # Feature PR detailed checklist
-    ├── bugfix-review.md              # Bugfix PR detailed checklist
-    ├── ci-workflow-review.md         # CI/workflow PR checklist
-    └── connection-manager-review.md  # Core infrastructure (CRITICAL)
+    ├── common-patterns.md           # SHARED validation patterns (ALL PR types)
+    ├── feature-review.md            # Feature PR detailed checklist
+    ├── bugfix-review.md             # Bugfix PR detailed checklist
+    ├── ci-workflow-review.md        # CI/workflow PR checklist
+    └── connection-manager-review.md # Core infrastructure (CRITICAL)
 ```
 
 ## Usage
@@ -44,6 +50,30 @@ The main skill file (`SKILL.md`) routes to appropriate reference guides:
 - Re-run transient failures
 
 ## Reference Guides
+
+### common-patterns.md (SHARED) ⭐
+
+**Use for:** ALL PR types - contains shared validation patterns
+
+**Covers:**
+- Pre-merge CI checks (completeness, unit tests, sanity, linting)
+- Changelog fragment validation
+- JIRA reference validation  
+- Integration test policy (blocking vs non-blocking)
+- Seven-file pattern validation
+- Security review patterns
+- Code quality checks
+- Anti-patterns to flag
+- Response templates
+
+**Why critical:** Eliminates duplication across review guides. Single source of truth for validation commands and blockers. Referenced by all other review guides.
+
+**Scripts:**
+- `scripts/check_workflow_secrets.py` - Workflow security
+- `scripts/check_seven_file_pattern.sh` - Module completeness
+- `scripts/check_jira_reference.sh` - JIRA extraction
+
+---
 
 ### connection-manager-review.md ⚠️ CRITICAL
 **Use for:** Changes to connection plugin, manager process, RPC layer, base clients

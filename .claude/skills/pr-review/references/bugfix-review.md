@@ -30,6 +30,22 @@ git diff origin/devel --name-only | grep -E \
 
 ---
 
+## Pre-Merge CI Checks
+
+**ALL bugfix PRs must pass standard CI checks before `safe to test` label.**
+
+**See:** `common-patterns.md` § Pre-Merge CI Checks (REQUIRED FOR ALL PRs) for:
+- Collection completeness test
+- Unit tests
+- Sanity tests
+- Linting (Ruff, Yamllint)
+- Changelog fragment
+- Integration test policy
+
+**Additional bugfix-specific requirement:** JIRA reference (see below)
+
+---
+
 ## Jira Issue Verification
 
 ### 1. Check Jira Reference in PR Title
@@ -45,9 +61,13 @@ or
 AAP-12345: Fix description  
 ```
 
-**Validation:**
+**Validation script:**
 ```bash
-# Extract Jira issue from PR title
+.claude/skills/pr-review/scripts/check_jira_reference.sh <PR_NUMBER>
+```
+
+**Manual check:**
+```bash
 gh pr view <PR_NUMBER> --repo ansible/ansible.platform --json title \
   --jq '.title' | grep -oE 'AAP-[0-9]+'
 ```

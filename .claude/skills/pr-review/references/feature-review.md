@@ -25,6 +25,22 @@ git diff origin/devel --name-only | grep -E 'plugins/connection/|plugins/plugin_
 
 ---
 
+## Pre-Merge CI Checks
+
+**ALL feature PRs must pass standard CI checks before `safe to test` label.**
+
+**See:** `common-patterns.md` § Pre-Merge CI Checks (REQUIRED FOR ALL PRs) for:
+- Collection completeness test
+- Unit tests
+- Sanity tests  
+- Linting (Ruff, Yamllint)
+- Changelog fragment
+- Integration test policy
+
+**These checks are identical for ALL PR types** - no duplication needed here.
+
+---
+
 ## Seven-File Pattern (STRICT)
 
 **Required files for new modules:**
@@ -39,7 +55,12 @@ git diff origin/devel --name-only | grep -E 'plugins/connection/|plugins/plugin_
 | `extensions/molecule/` | ⚠️ Recommended | Molecule mock scenario |
 | `tests/unit/` tests | ⚠️ Optional | Unit tests (only if complex transforms) |
 
-**Validation:** See `common-patterns.md` for detection commands
+**Validation script:**
+```bash
+.claude/skills/pr-review/scripts/check_seven_file_pattern.sh <module_name>
+```
+
+**Manual validation:** See `common-patterns.md` § Seven-File Pattern Check
 
 ---
 
@@ -62,7 +83,7 @@ git diff origin/devel --name-only | grep -E 'plugins/connection/|plugins/plugin_
 - [ ] Read-only fields (id, created, url) marked Optional
 - [ ] No API-specific fields (organization_id, etc.)
 
-**Common mistakes:** See `common-patterns.md` anti-patterns section
+**Common mistakes:** See `common-patterns.md` § Anti-Patterns to Flag
 
 ### 2. API Model Checklist
 
