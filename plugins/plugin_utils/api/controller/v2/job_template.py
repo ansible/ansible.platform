@@ -2,9 +2,12 @@
 API v2 JobTemplate dataclass and transform mixin.
 
 Handles transformations between Ansible format and Controller API v2 format.
-Association fields (credentials, labels, notification templates, instance
-groups), copy_from, and survey_spec are not part of core CRUD and are added
-in a follow-up PR.
+Association fields, copy_from, and survey_spec are handled by the action
+plugin's post-CRUD reconciliation (Pattern C), not by this transform mixin.
+
+BASE_PATH is defined here (not in the action plugin) so that
+tools/check_action_plugin_invariants.sh's hardcoded-API-URL scan — which only
+inspects plugins/action/ — doesn't need an exemption for the literal string.
 """
 
 import json
@@ -16,6 +19,8 @@ from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
+
+BASE_PATH = "/api/controller/v2/job_templates"
 
 _SCALAR_FIELDS = (
     "description",
@@ -192,14 +197,14 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         writable_fields = list(_WRITABLE_FIELDS)
         return {
             "create": EndpointOperation(
-                path="/api/controller/v2/job_templates/",
+                path=f"{BASE_PATH}/",
                 method="POST",
                 fields=writable_fields,
                 required_for="create",
                 order=1,
             ),
             "update": EndpointOperation(
-                path="/api/controller/v2/job_templates/{id}/",
+                path=f"{BASE_PATH}/{{id}}/",
                 method="PATCH",
                 fields=writable_fields,
                 path_params=["id"],
@@ -207,7 +212,7 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 order=1,
             ),
             "delete": EndpointOperation(
-                path="/api/controller/v2/job_templates/{id}/",
+                path=f"{BASE_PATH}/{{id}}/",
                 method="DELETE",
                 fields=[],
                 path_params=["id"],
@@ -215,7 +220,7 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 order=1,
             ),
             "get": EndpointOperation(
-                path="/api/controller/v2/job_templates/{id}/",
+                path=f"{BASE_PATH}/{{id}}/",
                 method="GET",
                 fields=[],
                 path_params=["id"],
@@ -223,7 +228,7 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 order=1,
             ),
             "list": EndpointOperation(
-                path="/api/controller/v2/job_templates/",
+                path=f"{BASE_PATH}/",
                 method="GET",
                 fields=[],
                 required_for="find",

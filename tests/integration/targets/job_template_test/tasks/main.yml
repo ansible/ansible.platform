@@ -66,6 +66,75 @@
         that:
           - exists_check.exists
 
+    - name: Set a survey spec
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate"
+        survey_enabled: true
+        survey_spec:
+          name: ""
+          description: ""
+          spec:
+            - question_name: "Test question"
+              variable: test_var
+              type: text
+              required: false
+        state: present
+      register: survey_set
+
+    - name: Assert survey set changed
+      ansible.builtin.assert:
+        that:
+          - survey_set is changed
+
+    - name: Re-apply the same survey spec (expect no change)
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate"
+        survey_spec:
+          name: ""
+          description: ""
+          spec:
+            - question_name: "Test question"
+              variable: test_var
+              type: text
+              required: false
+        state: present
+      register: survey_reapply
+
+    - name: Assert survey re-apply did not change
+      ansible.builtin.assert:
+        that:
+          - survey_reapply is not changed
+
+    - name: Clear the survey spec
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate"
+        survey_spec: {}
+        state: present
+      register: survey_cleared
+
+    - name: Assert survey clear changed
+      ansible.builtin.assert:
+        that:
+          - survey_cleared is changed
+
+    - name: Copy the job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate-Copy"
+        copy_from: "{{ name_prefix }}-Test-JobTemplate"
+        state: present
+      register: copied_job_template
+
+    - name: Assert copy created a new job template
+      ansible.builtin.assert:
+        that:
+          - copied_job_template is changed
+          - copied_job_template.job_template.name == name_prefix + "-Test-JobTemplate-Copy"
+
+    - name: Delete the copied job template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate-Copy"
+        state: absent
+
   always:
     - name: Delete job_template
       ansible.platform.job_template:

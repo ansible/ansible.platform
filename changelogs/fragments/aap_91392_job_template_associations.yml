@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - job_template - add ``credentials``, ``labels``, ``instance_groups``, ``notification_templates_started``, ``notification_templates_success``, ``notification_templates_error``, ``copy_from``, and ``survey_spec``, along with the deprecated ``credential``/``vault_credential`` aliases, completing the migration from the legacy ``awx.awx``/``ansible.controller`` ``job_template`` module (https://issues.redhat.com/browse/AAP-91392).
+...
