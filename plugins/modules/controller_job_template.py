@@ -86,7 +86,6 @@ options:
       description: Name or ID of the execution environment to use for the job template.
     host_config_key:
       type: str
-      no_log: false
       description: Allow provisioning callbacks using this host config key.
     ask_scm_branch_on_launch:
       type: bool
@@ -202,6 +201,7 @@ EXAMPLES = """
   ansible.platform.controller_job_template:
     name: Ping
     state: exists
+...
 """
 
 RETURN = """
@@ -209,4 +209,5 @@ controller_job_template:
   description: The job template resource data.
   returned: always
   type: dict
+...
 """
