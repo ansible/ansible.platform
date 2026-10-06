@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Check GitHub workflows for secret exposure vulnerabilities.
 
@@ -79,7 +78,7 @@ def check_workflow_secret_exposure():
         # Check 1: pull_request + secrets without proper gate
         if has_pr and has_secrets and not (has_label_gate or has_member_check):
             print(f"❌ DANGER: {wf_file.name} exposes secrets to fork PRs without proper gate!")
-            print(f"   → Add label gate: if: github.event.label.name == 'safe to test'")
+            print("   → Add label gate: if: github.event.label.name == 'safe to test'")
             print(f"   → Or member check: if: github.event.pull_request.author_association == 'MEMBER'")
             issues_found = True
 
@@ -91,7 +90,7 @@ def check_workflow_secret_exposure():
                     if "head.sha" in checkout_ref or "head_sha" in checkout_ref or "head.ref" in checkout_ref:
                         print(f"⚠️  WARNING: {wf_file.name} checks out PR code with pull_request_target")
                         print(f"   Job: {job_name}")
-                        print(f"   → This allows PR code to access GITHUB_TOKEN with write permissions")
+                        print("   → This allows PR code to access GITHUB_TOKEN with write permissions")
                         issues_found = True
 
     if not issues_found:
