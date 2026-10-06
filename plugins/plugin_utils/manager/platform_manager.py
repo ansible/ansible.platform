@@ -1253,6 +1253,28 @@ class PlatformService(BaseAPIClient):
                 response.raise_for_status()
             except _get_requests().exceptions.HTTPError as e:
                 raise ValueError(f"Failed to disassociate {association_field} ID {rid}: {e}") from e
+        Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
+        current associations, and associates/disassociates to reconcile. Used by Pattern C
+        action plugins for post-CRUD association management.
+        """
+        self.record_activity()
+        desired_ids = {
+            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
+        }
+
+        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
+        response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        current_ids = {item["id"] for item in response.json().get("results", [])}
+
+        changed = False
+        for rid in desired_ids - current_ids:
+            response = self.session.post(assoc_url, json={"id": rid, "associate": True}, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            changed = True
+        for rid in current_ids - desired_ids:
+            response = self.session.post(assoc_url, json={"id": rid, "disassociate": True}, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
             changed = True
         return changed
 
@@ -1268,6 +1290,10 @@ class PlatformService(BaseAPIClient):
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
         what the declarative create/update flow covers.
+        Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
+
+        data is None: no-op. data == {}: DELETE the sub-resource. Otherwise: GET current
+        state, compare, POST only if different.
         """
         if data is None:
             return False
