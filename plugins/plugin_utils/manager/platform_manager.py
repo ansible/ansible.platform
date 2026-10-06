@@ -1228,6 +1228,9 @@ class PlatformService(BaseAPIClient):
         Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
         current associations, and associates/disassociates to reconcile. Used by Pattern C
         action plugins for post-CRUD association management.
+        Intended for Pattern C action plugins (custom orchestration run(), see
+        docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
+        what the declarative create/update flow covers.
         """
         self.record_activity()
         desired_ids = {
@@ -1267,8 +1270,14 @@ class PlatformService(BaseAPIClient):
         what the declarative create/update flow covers.
         Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
-        data is None: no-op. data == {}: DELETE the sub-resource. Otherwise: GET current
-        state, compare, POST only if different.
+        Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
+        rather than writing bespoke get/compare/post logic per resource. data is None:
+        no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
+        POST only if different.
+
+        Intended for Pattern C action plugins (custom orchestration run(), see
+        docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
+        what the declarative create/update flow covers.
         """
         if data is None:
             return False
