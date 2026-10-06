@@ -57,7 +57,7 @@
       block:
         - name: Attempt to create the mock service key if needed
           ansible.builtin.command:
-            cmd: "docker exec -i aap_gw_1 aap-gateway-manage shell"
+            cmd: "podman exec -i aap_gw_1 aap-gateway-manage shell"
             stdin: |
               from aap_gateway_api.models import ServiceCluster, ServiceKey;
               service_cluster = ServiceCluster.objects.get(id='{{ service_cluster.id }}')
