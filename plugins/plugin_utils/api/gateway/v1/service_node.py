@@ -6,8 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class ServiceNodeTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleServiceNode":
-        from ...ansible_models.service_node import AnsibleServiceNode
+        from ....ansible_models.service_node import AnsibleServiceNode
 
         sc = api_data.get("service_cluster")
         return AnsibleServiceNode(

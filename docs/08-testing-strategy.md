@@ -94,7 +94,7 @@ class TestAPIVersionRegistry:
     def test_discover_modules_finds_all_versions(self):
         """Registry discovers all module files from api/ directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create fake api/v1/ and api/v2/ directories
+            # Create fake api/gateway/v1/ and api/gateway/v2/ directories
             os.makedirs(os.path.join(tmpdir, "api", "v1"))
             os.makedirs(os.path.join(tmpdir, "api", "v2"))
 

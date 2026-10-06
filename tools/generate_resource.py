@@ -15,7 +15,7 @@ Usage (from the collection root):
         [--dry-run]
 
 For each resource tag the generator creates (unless the file already exists):
-    plugins/plugin_utils/api/v1/{resource}.py          – TransformMixin + API dataclass
+    plugins/plugin_utils/api/{service}/v1/{resource}.py – TransformMixin + API dataclass
     plugins/plugin_utils/ansible_models/{resource}.py  – AnsibleModel dataclass
     plugins/modules/{resource}.py                      – Module with DOCUMENTATION
     plugins/action/{resource}.py                       – Action plugin
@@ -290,7 +290,7 @@ def _py_type_hint(meta: Dict[str, Any]) -> str:
 
 
 def gen_api_v1(res: ResourceSpec) -> str:
-    """Generate plugins/plugin_utils/api/v1/{resource}.py"""
+    """Generate plugins/plugin_utils/api/{service}/v1/{resource}.py"""
 
     # Build fields list for EndpointOperation
     fields_str = ", ".join(f'"{f}"' for f in res.writable_fields)
@@ -877,7 +877,7 @@ def collect_files(res: ResourceSpec, collection_root: str) -> List[FileSpec]:
     """Return list of (relative_path, content) for all files to generate."""
     files: List[FileSpec] = [
         (
-            f"plugins/plugin_utils/api/v1/{res.name}.py",
+            f"plugins/plugin_utils/api/gateway/v1/{res.name}.py",
             gen_api_v1(res),
         ),
         (
