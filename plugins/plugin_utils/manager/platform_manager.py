@@ -1168,6 +1168,98 @@ class PlatformService(BaseAPIClient):
             self.cache[cache_key] = rid
         return rid
 
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        service: str = "gateway",
+    ) -> bool:
+        """
+        Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
+
+        Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
+        current associations, and associates/disassociates to reconcile. Used by Pattern C
+        action plugins for post-CRUD association management.
+        """
+        self.record_activity()
+        desired_ids = {
+            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
+        }
+
+        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
+        response = self.session.get(assoc_url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        current_ids = {item["id"] for item in response.json().get("results", [])}
+
+        changed = False
+        for rid in desired_ids - current_ids:
+            response = self.session.post(assoc_url, json={"id": rid, "associate": True}, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            changed = True
+        for rid in current_ids - desired_ids:
+            response = self.session.post(assoc_url, json={"id": rid, "disassociate": True}, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            changed = True
+        return changed
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+        """
+        Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
+
+        data is None: no-op. data == {}: DELETE the sub-resource. Otherwise: GET current
+        state, compare, POST only if different.
+        """
+        if data is None:
+            return False
+        self.record_activity()
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+
+        if data == {}:
+            response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return True
+
+        current_response = self.session.get(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
+        current_response.raise_for_status()
+        if current_response.json() == data:
+            return False
+
+        response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        return True
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
+        """
+        Copy a resource via its /copy/ sub-endpoint.
+
+        Resolves source_name_or_id to an ID via a direct GET+filter against
+        copy_endpoint_path (not self.execute(), since the caller may not have a fully
+        populated Ansible dataclass instance at copy time), then POSTs {name: new_name}
+        to {copy_endpoint_path}/{source_id}/copy/.
+        """
+        self.record_activity()
+        if str(source_name_or_id).isdigit():
+            source_id = int(source_name_or_id)
+        else:
+            lookup_url = self._build_url(copy_endpoint_path, query_params={"name": source_name_or_id}, service=service)
+            response = self.session.get(lookup_url, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            if not results:
+                raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
+            source_id = results[0]["id"]
+
+        copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
+        response = self.session.post(copy_url, json={"name": new_name}, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        return response.json()
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.

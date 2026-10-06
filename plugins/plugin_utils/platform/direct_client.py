@@ -554,6 +554,113 @@ class DirectHTTPClient(BaseAPIClient):
             self.cache[cache_key] = rid
         return rid
 
+    def _ensure_authenticated(self) -> None:
+        """Lazy-authenticate, for SDK methods that may be called before execute()."""
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        service: str = "gateway",
+    ) -> bool:
+        """
+        Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
+
+        Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
+        current associations, and associates/disassociates to reconcile. Used by Pattern C
+        action plugins for post-CRUD association management.
+        """
+        self._ensure_authenticated()
+        desired_ids = {
+            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
+        }
+
+        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
+        response = self._make_request("GET", assoc_url, operation="list_associations", resource=association_field)
+        try:
+            current_data = json.loads(response.read())
+        except Exception:
+            current_data = {}
+        current_ids = {item["id"] for item in current_data.get("results", [])}
+
+        changed = False
+        for rid in desired_ids - current_ids:
+            self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
+            changed = True
+        for rid in current_ids - desired_ids:
+            self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
+            changed = True
+        return changed
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+        """
+        Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
+
+        data is None: no-op. data == {}: DELETE the sub-resource. Otherwise: GET current
+        state, compare, POST only if different.
+        """
+        if data is None:
+            return False
+        self._ensure_authenticated()
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+
+        if data == {}:
+            try:
+                self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
+            except Exception as e:
+                if getattr(e, "code", None) == 404:
+                    return False
+                raise
+            return True
+
+        response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
+        try:
+            current = json.loads(response.read())
+        except Exception:
+            current = {}
+        if current == data:
+            return False
+
+        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
+        return True
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
+        """
+        Copy a resource via its /copy/ sub-endpoint.
+
+        Resolves source_name_or_id to an ID via a direct GET+filter against
+        copy_endpoint_path (not self.execute(), since the caller may not have a fully
+        populated Ansible dataclass instance at copy time), then POSTs {name: new_name}
+        to {copy_endpoint_path}/{source_id}/copy/.
+        """
+        self._ensure_authenticated()
+        if str(source_name_or_id).isdigit():
+            source_id = int(source_name_or_id)
+        else:
+            lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
+            response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
+            try:
+                results = json.loads(response.read()).get("results", [])
+            except Exception:
+                results = []
+            if not results:
+                raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
+            source_id = results[0]["id"]
+
+        copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
+        response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
+        try:
+            return json.loads(response.read())
+        except Exception:
+            return {}
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.

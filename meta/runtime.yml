@@ -24,4 +24,5 @@ action_groups:
     - token
     - ui_plugin_route
     - user
+  controller: []
 ...

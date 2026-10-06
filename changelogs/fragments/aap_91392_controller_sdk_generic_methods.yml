@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - api - add generic SDK methods ``manage_associations``, ``manage_sub_resource``, and ``copy_resource`` to the platform manager/direct-HTTP clients, and add the ``controller`` action group, laying the groundwork for migrating Controller resources from ``awx_collection`` (https://issues.redhat.com/browse/AAP-91392).
+...
