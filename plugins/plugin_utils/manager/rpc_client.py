@@ -113,6 +113,27 @@ class ManagerRPCClient:
         """
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service)
 
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        service: str = "gateway",
+    ) -> bool:
+        """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
+        return self.service_proxy.manage_associations(base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service)
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+        """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
+        """Copy a resource via the manager process. See PlatformService.copy_resource()."""
+        return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
+
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.
