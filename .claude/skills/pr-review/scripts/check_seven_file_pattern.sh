@@ -70,9 +70,9 @@ done
 
 echo ""
 echo "=== SUMMARY ==="
-if [ $MISSING_COUNT -eq 0 ]; then
+if [ "$MISSING_COUNT" -eq 0 ]; then
     echo "✅ All required files present"
-    if [ $MISSING_RECOMMENDED -gt 0 ]; then
+    if [ "$MISSING_RECOMMENDED" -gt 0 ]; then
         echo "⚠️  ${MISSING_RECOMMENDED} recommended file(s) missing (non-blocking)"
     fi
     exit 0

@@ -16,6 +16,7 @@ Exit codes:
 
 import sys
 from pathlib import Path
+
 import yaml
 
 
@@ -79,7 +80,7 @@ def check_workflow_secret_exposure():
         if has_pr and has_secrets and not (has_label_gate or has_member_check):
             print(f"❌ DANGER: {wf_file.name} exposes secrets to fork PRs without proper gate!")
             print("   → Add label gate: if: github.event.label.name == 'safe to test'")
-            print(f"   → Or member check: if: github.event.pull_request.author_association == 'MEMBER'")
+            print("   → Or member check: if: github.event.pull_request.author_association == 'MEMBER'")
             issues_found = True
 
         # Check 2: pull_request_target with PR code checkout
