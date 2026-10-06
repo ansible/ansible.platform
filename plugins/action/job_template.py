@@ -23,6 +23,15 @@ _ASSOC_MAP = {
 
 _SERVICE = "controller"
 
+# Deprecated field -> (message, version). Surfaced manually in run() below rather than
+# via BaseResourceActionPlugin's automatic _DEPRECATED_FIELDS handling, since credential/
+# vault_credential are popped from self._task.args before super().run() (and its
+# _prepare_action()) ever sees them.
+_DEPRECATIONS = {
+    "credential": ("The 'credential' parameter is deprecated, use 'credentials' instead.", "4.0.0"),
+    "vault_credential": ("The 'vault_credential' parameter is deprecated, use 'credentials' instead.", "4.0.0"),
+}
+
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "job_template"
@@ -54,14 +63,19 @@ class ActionModule(BaseResourceActionPlugin):
         # Legacy credential/vault_credential aliases fold into credentials.
         credential = self._task.args.pop("credential", None)
         vault_credential = self._task.args.pop("vault_credential", None)
+        deprecations = []
         if credential or vault_credential:
             credentials = association_data.get("credentials")
             if credentials is None:
                 credentials = []
             if vault_credential:
                 credentials.append(vault_credential)
+                msg, version = _DEPRECATIONS["vault_credential"]
+                deprecations.append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
             if credential:
                 credentials.append(credential)
+                msg, version = _DEPRECATIONS["credential"]
+                deprecations.append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
             association_data["credentials"] = credentials
 
         name = self._task.args.get("name")
@@ -86,6 +100,8 @@ class ActionModule(BaseResourceActionPlugin):
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
+        if deprecations:
+            result.setdefault("deprecations", []).extend(deprecations)
         if result.get("failed") or state in ("absent", "exists"):
             return result
 
