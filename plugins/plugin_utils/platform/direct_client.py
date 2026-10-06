@@ -640,13 +640,13 @@ class DirectHTTPClient(BaseAPIClient):
             int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
         }
 
-        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
-        response = self._make_request("GET", assoc_url, operation="list_associations", resource=association_field)
-        try:
-            current_data = json.loads(response.read())
-        except Exception:
-            current_data = {}
+        # Follow pagination so associations beyond the first page aren't silently
+        # treated as absent (which would re-associate them and skip disassociating
+        # ones that should be removed).
+        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
+        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        assoc_url = self._build_url(assoc_path)
 
         changed = False
         for rid in desired_ids - current_ids:
@@ -692,6 +692,9 @@ class DirectHTTPClient(BaseAPIClient):
                 if he.code == 404:
             except Exception as e:
                 if getattr(e, "code", None) == 404:
+            except HTTPError as he:
+                # Ansible's Request.open() raises HTTPError for 4xx/5xx responses.
+                if he.code == 404:
                     return False
                 raise
             return True

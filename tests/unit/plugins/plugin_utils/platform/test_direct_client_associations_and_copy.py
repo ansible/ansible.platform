@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import json
 import unittest
 from unittest.mock import MagicMock
+from urllib.error import HTTPError
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
@@ -27,6 +28,7 @@ def _client(base_url="https://gw.example.com"):
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
     client.lookup_resource_id = MagicMock()
+    client.search_api = MagicMock()
     return client
 
 
@@ -49,7 +51,6 @@ class TestManageAssociations(unittest.TestCase):
         get_resp = _http_resp(body={"results": [{"id": 1}, {"id": 2}]})
 
         with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
-            mock_request.return_value = get_resp
             changed = self.client.manage_associations(
                 "/api/controller/v2/job_templates",
                 42,
@@ -192,7 +193,18 @@ class TestManageAssociations(unittest.TestCase):
             changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [1], "credentials", "name")
 
         self.assertFalse(changed)
-        self.assertEqual(mock_request.call_count, 1)
+        mock_request.assert_not_called()
+
+    def test_current_associations_are_paginated(self):
+        """Regression test: associations beyond page 1 must not be treated as absent."""
+        self.client.search_api.return_value = {"results": [{"id": i} for i in range(1, 31)]}
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+            changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", list(range(1, 31)), "credentials", "name")
+
+        self.assertFalse(changed)
+        mock_request.assert_not_called()
+        self.client.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
 
 
 class TestManageSubResource(unittest.TestCase):
@@ -215,6 +227,7 @@ class TestManageSubResource(unittest.TestCase):
 
     def test_empty_dict_delete_404_is_not_changed(self):
         not_found = APIError("API request failed: HTTP 404", operation="delete_sub_resource", resource="survey_spec", status_code=404)
+        not_found = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 404, "Not Found", {}, None)
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=not_found):
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
@@ -223,6 +236,9 @@ class TestManageSubResource(unittest.TestCase):
         server_error = APIError("API request failed: HTTP 500", operation="delete_sub_resource", resource="survey_spec", status_code=500)
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=server_error):
             with self.assertRaises(APIError):
+        server_error = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 500, "Server Error", {}, None)
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=server_error):
+            with self.assertRaises(HTTPError):
                 self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
 
     def test_same_data_is_noop(self):
