@@ -101,9 +101,9 @@ class PlatformService(BaseAPIClient):
             self._last_auth_error = e
             # Continue anyway - some operations might work without auth
 
-        self.api_version = self._detect_api_version()
-        self.session.headers.update({"X-API-Version": str(self.api_version)})
-        logger.info("PlatformService initialized with API v%s", self.api_version)
+        gw_version = self.get_api_version("gateway")
+        self.session.headers.update({"X-API-Version": str(gw_version)})
+        logger.info("PlatformService initialized with API v%s", gw_version)
 
         self._http_request_count = 0
         self._tls_handshake_count = 1  # 1 handshake when session is created
