@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 
@@ -85,6 +86,7 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_no_change_when_already_in_sync(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}]}
+        self.svc.session.get.return_value = _resp(json_data={"results": [{"id": 1}]})
 
         changed = self.svc.manage_associations(
             "/api/controller/v2/job_templates",
@@ -100,6 +102,7 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_numeric_desired_items_skip_lookup(self):
         self.svc.search_api.return_value = {"results": []}
+        self.svc.session.get.return_value = _resp(json_data={"results": []})
 
         self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
 

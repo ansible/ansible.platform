@@ -26,6 +26,7 @@ def _client(base_url="https://gw.example.com"):
     client.session.headers = {}
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
+    client.lookup_resource_id = MagicMock()
     return client
 
 
@@ -45,6 +46,10 @@ class TestManageAssociations(unittest.TestCase):
         self.client.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
 
         with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+        get_resp = _http_resp(body={"results": [{"id": 1}, {"id": 2}]})
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+            mock_request.return_value = get_resp
             changed = self.client.manage_associations(
                 "/api/controller/v2/job_templates",
                 42,
@@ -205,6 +210,11 @@ class TestManageAssociations(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
             with self.assertRaises(json.JSONDecodeError):
                 self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"results": [{"id": 1}]})) as mock_request:
+            changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [1], "credentials", "name")
+
+        self.assertFalse(changed)
+        self.assertEqual(mock_request.call_count, 1)
 
     def test_extra_query_params_passed_to_lookup(self):
         self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"my-label": 7}[value]
