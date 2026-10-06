@@ -631,6 +631,29 @@ class DirectHTTPClient(BaseAPIClient):
                     status_code=e.status_code,
                     response_body=e.response_body,
                 ) from e
+        Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
+        current associations, and associates/disassociates to reconcile. Used by Pattern C
+        action plugins for post-CRUD association management.
+        """
+        self._ensure_authenticated()
+        desired_ids = {
+            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
+        }
+
+        assoc_url = self._build_url(f"{base_path}/{resource_id}/{association_field}/")
+        response = self._make_request("GET", assoc_url, operation="list_associations", resource=association_field)
+        try:
+            current_data = json.loads(response.read())
+        except Exception:
+            current_data = {}
+        current_ids = {item["id"] for item in current_data.get("results", [])}
+
+        changed = False
+        for rid in desired_ids - current_ids:
+            self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
+            changed = True
+        for rid in current_ids - desired_ids:
+            self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
             changed = True
         return changed
 
@@ -646,6 +669,10 @@ class DirectHTTPClient(BaseAPIClient):
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
         what the declarative create/update flow covers.
+        Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
+
+        data is None: no-op. data == {}: DELETE the sub-resource. Otherwise: GET current
+        state, compare, POST only if different.
         """
         if data is None:
             return False
@@ -663,12 +690,18 @@ class DirectHTTPClient(BaseAPIClient):
             except HTTPError as he:
                 # Retain handling for callers that surface Request.open() errors directly.
                 if he.code == 404:
+            except Exception as e:
+                if getattr(e, "code", None) == 404:
                     return False
                 raise
             return True
 
         response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
         current = json.loads(response.read())
+        try:
+            current = json.loads(response.read())
+        except Exception:
+            current = {}
         if current == data:
             return False
 
@@ -691,6 +724,10 @@ class DirectHTTPClient(BaseAPIClient):
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
             results = json.loads(response.read()).get("results", [])
+            try:
+                results = json.loads(response.read()).get("results", [])
+            except Exception:
+                results = []
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
@@ -698,6 +735,10 @@ class DirectHTTPClient(BaseAPIClient):
         copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
         return json.loads(response.read())
+        try:
+            return json.loads(response.read())
+        except Exception:
+            return {}
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
