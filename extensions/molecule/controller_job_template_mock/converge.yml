@@ -13,6 +13,12 @@
       delay: 5
       until: health.status == 200
 
+    - name: Ensure persistent manager marker directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0700"
+
     - name: Keep the persistent manager alive across Molecule phases
       ansible.builtin.file:
         path: /tmp/ap/.survive
