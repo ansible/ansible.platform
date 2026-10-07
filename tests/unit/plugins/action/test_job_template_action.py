@@ -177,10 +177,26 @@ class TestCheckMode(unittest.TestCase):
         self.assertTrue(result["changed"])
 
 
+class TestForeignKeyComparison(unittest.TestCase):
+    def test_numeric_fk_and_organization_do_not_trigger_update_when_unchanged(self):
+        action = _action({"name": "Ping"})
+        action._client = MagicMock()
+        action._client.search_api.return_value = {"name": "Mock Inventory"}
+
+        changed = action._should_update(
+            {"name": "Ping", "inventory": "5101", "organization": "Default"},
+            {"name": "Ping", "inventory": "Mock Inventory", "organization": None},
+        )
+
+        self.assertFalse(changed)
+        action._client.search_api.assert_called_once_with("/api/controller/v2/inventories/5101/")
+
+
 class TestCopyFrom(unittest.TestCase):
     def test_copy_from_calls_copy_resource_before_crud(self):
         action = _action({"name": "Ping copy", "copy_from": "Ping", "state": "present"})
         manager = MagicMock()
+        manager.search_api.return_value = {"results": []}
 
         with patch.object(ActionBase, "run", return_value={}):
             with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
@@ -189,6 +205,19 @@ class TestCopyFrom(unittest.TestCase):
 
         manager.copy_resource.assert_called_once_with("job_template", "Ping", "Ping copy", BASE_PATH, service="controller")
         self.assertTrue(result["changed"])
+
+    def test_copy_from_does_not_copy_existing_destination(self):
+        action = _action({"name": "Ping copy", "copy_from": "Ping", "state": "present"})
+        manager = MagicMock()
+        manager.search_api.return_value = {"results": [{"id": 9, "name": "Ping copy"}]}
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "failed": False, "id": 9}):
+                    result = action.run(task_vars={})
+
+        manager.copy_resource.assert_not_called()
+        self.assertFalse(result["changed"])
 
     def test_copy_from_skipped_when_state_absent(self):
         action = _action({"name": "Ping copy", "copy_from": "Ping", "state": "absent"})

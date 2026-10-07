@@ -51,11 +51,27 @@ class ActionModule(BaseResourceActionPlugin):
         | set(_ASSOC_MAP)
     )
 
+    def _should_update(self, desired_data, current_data):
+        """Compare user-facing FK names or IDs without treating organization as a JT field."""
+        desired = dict(desired_data)
+        desired.pop("organization", None)
+        for field, endpoint in (
+            ("inventory", "inventories"),
+            ("project", "projects"),
+            ("execution_environment", "execution_environments"),
+            ("webhook_credential", "credentials"),
+        ):
+            value = desired.get(field)
+            if value is not None and str(value).isdigit() and current_data.get(field) is not None:
+                resource = self._client.search_api(f"{BASE_PATH.rsplit('/', 1)[0]}/{endpoint}/{value}/")
+                desired[field] = resource.get("name", value)
+        return super()._should_update(desired, current_data)
+
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
 
-        # Pop extra fields before CRUD — they aren't AnsibleControllerJobTemplate fields.
+        # Pop extra fields before CRUD — they aren't AnsibleJobTemplate fields.
         copy_from = self._task.args.pop("copy_from", None)
         survey_spec = self._task.args.pop("survey_spec", None)
         association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
@@ -89,17 +105,23 @@ class ActionModule(BaseResourceActionPlugin):
         # awx_collection job_template module's copy_from.
         # Never actually copy under check_mode — the subsequent CRUD call still runs and
         # (not finding a resource under the target name) reports a simulated create.
+        copied = False
         if copy_from and state not in ("absent", "exists") and not check_mode:
             try:
                 super(BaseResourceActionPlugin, self).run(tmp, task_vars)
                 self._task_vars = task_vars
                 manager, facts_to_set = self._get_or_spawn_manager(task_vars)
                 self._client = manager
-                manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
+                existing = manager.search_api(BASE_PATH, query_params={"name": name})
+                if not any(item.get("name") == name for item in existing.get("results", [])):
+                    manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
+                    copied = True
             except Exception as exc:
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
+        if copied:
+            result["changed"] = True
         if deprecations:
             result.setdefault("deprecations", []).extend(deprecations)
         if result.get("failed") or state in ("absent", "exists"):

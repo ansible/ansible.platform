@@ -133,6 +133,10 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
     ) -> "APIJobTemplate_v2":
         api_data: Dict[str, Any] = {}
 
+        resource_id = getattr(ansible_instance, "id", None)
+        if resource_id is not None:
+            api_data["id"] = resource_id
+
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
         service = getattr(context, "service", "controller") if isinstance(context, TransformContext) else context.get("service", "controller")
@@ -189,6 +193,16 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 api_data["project"] = results[0]["id"]
             else:
                 api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
+
+        # PlatformService merges missing update fields from its Ansible-facing
+        # current state. Preserve wire-format IDs and JSON for fields omitted
+        # by the task so that merge cannot send names or dicts back to Controller.
+        if op == "update" and resource_id is not None and manager is not None:
+            current = manager.search_api(f"{BASE_PATH}/{resource_id}/")
+            if isinstance(current, dict):
+                for field in ("inventory", "project", "execution_environment", "webhook_credential", "extra_vars"):
+                    if field not in api_data and current.get(field) is not None:
+                        api_data[field] = current[field]
 
         return APIJobTemplate_v2(**api_data)
 

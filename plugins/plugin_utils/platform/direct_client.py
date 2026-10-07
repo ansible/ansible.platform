@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -539,11 +539,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
 
-        try:
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-        except Exception:
-            response_data = {}
+        response_data = json.loads(response.read())
 
         results = response_data.get("results", [])
         if not results:
@@ -711,12 +707,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         url = self._build_url(api_path, query_params)
         response = self._make_request("GET", url, operation="search", resource=endpoint)
-
-        try:
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-        except Exception:
-            response_data = {}
+        response_data = json.loads(response.read())
 
         if not return_all:
             return response_data
@@ -724,13 +715,9 @@ class DirectHTTPClient(BaseAPIClient):
         # Pagination: follow 'next' links
         all_results = list(response_data.get("results", []))
         while response_data.get("next") and len(all_results) < max_objects:
-            next_url = response_data["next"]
+            next_url = urljoin(self.base_url, response_data["next"])
             response = self._make_request("GET", next_url, operation="search", resource=endpoint)
-            try:
-                response_body = response.read()
-                response_data = json.loads(response_body) if response_body else {}
-            except Exception:
-                break
+            response_data = json.loads(response.read())
             all_results.extend(response_data.get("results", []))
 
         response_data["results"] = all_results[:max_objects]

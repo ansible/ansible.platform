@@ -20,6 +20,7 @@ def _client(base_url="https://gw.example.com"):
     client._authenticated = True
     client.base_url = base_url
     client.cache = {}
+    client.api_versions = {"gateway": "2"}
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
     return client
@@ -92,6 +93,27 @@ class TestManageAssociations(unittest.TestCase):
             resource="credentials",
             json={"id": 5, "associate": True},
         )
+
+    def test_search_api_follows_relative_next_link(self):
+        self.client.api_version = "2"
+        pages = [
+            _http_resp(body={"count": 3, "next": "/api/controller/v2/job_templates/42/labels/?page=2", "results": [{"id": 1}, {"id": 2}]}),
+            _http_resp(body={"count": 3, "next": None, "results": [{"id": 3}]}),
+        ]
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=pages) as mock_request:
+            result = DirectHTTPClient.search_api(self.client, "/api/controller/v2/job_templates/42/labels/", return_all=True)
+
+        self.assertEqual([item["id"] for item in result["results"]], [1, 2, 3])
+        self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com/api/controller/v2/job_templates/42/labels/?page=2")
+
+    def test_invalid_association_response_is_not_treated_as_empty(self):
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client)
+        response = _http_resp()
+        response.read.return_value = b"not json"
+
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
+            with self.assertRaises(json.JSONDecodeError):
+                self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
 
 
 class TestManageSubResource(unittest.TestCase):
