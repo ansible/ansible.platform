@@ -4,7 +4,10 @@ import os
 from sys import exit
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-modules_that_need_development = []
+# CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
+modules_without_live_integration = {
+    "job_templates": "Controller requires a routed service; job_template_mock runs in Molecule CI",
+}
 tests_to_ignore = ["lookup_test", "setup_gateway", "users_examples_test", "backward_compat_26_test", "ssl_env_forwarding_test", "vault_credentials_test"]
 
 
@@ -38,8 +41,8 @@ exit_code = 0
 if missing_tests:
     print("Missing a test for the following plugins:")
     for test_name in missing_tests:
-        if test_name in modules_that_need_development:
-            print(f"    {test_name} [OK, needs development]")
+        if test_name in modules_without_live_integration:
+            print(f"    {test_name} [OK, {modules_without_live_integration[test_name]}]")
         else:
             print(f"    {test_name}")
             exit_code = 1

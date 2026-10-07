@@ -539,11 +539,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
 
-        try:
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-        except Exception:
-            response_data = {}
+        response_data = json.loads(response.read())
 
         results = response_data.get("results", [])
         if not results:
@@ -716,7 +712,6 @@ class DirectHTTPClient(BaseAPIClient):
 
         url = self._build_url(api_path, query_params)
         response = self._make_request("GET", url, operation="search", resource=endpoint)
-
         try:
             response_body = response.read()
             response_data = json.loads(response_body) if response_body else {}
