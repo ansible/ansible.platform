@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - job_template - add job_template module migrated from awx.awx/ansible.controller
+    for managing job templates via the Controller API (ansible/ansible.platform#228).
+...
