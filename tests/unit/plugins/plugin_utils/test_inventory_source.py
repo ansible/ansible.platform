@@ -17,7 +17,10 @@ if _COLLECTIONS_PARENT not in sys.path:
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory_source import AnsibleInventorySource  # noqa: E402
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory_source import (  # noqa: E402
+<<<<<<< HEAD
     APIInventorySource_v2,
+=======
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
     InventorySourceTransformMixin_v2,
 )
 
@@ -189,6 +192,7 @@ class TestInventorySourceTransform(unittest.TestCase):
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
 
+<<<<<<< HEAD
     def test_get_find_list_query_params_with_inventory(self):
         api_data = APIInventorySource_v2(name="src", inventory=42)
         params = InventorySourceTransformMixin_v2.get_find_list_query_params(api_data)
@@ -199,6 +203,8 @@ class TestInventorySourceTransform(unittest.TestCase):
         params = InventorySourceTransformMixin_v2.get_find_list_query_params(api_data)
         self.assertEqual(params, {})
 
+=======
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
 
 if __name__ == "__main__":
     unittest.main()

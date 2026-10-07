@@ -11,8 +11,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
+<<<<<<< HEAD
 import yaml
 
+=======
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
@@ -67,7 +70,11 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         )
 
         if op == "create":
+<<<<<<< HEAD
             api_data["name"] = name
+=======
+            api_data["name"] = name or new_name
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
         elif op == "update":
             if new_name is not None:
                 api_data["name"] = new_name
@@ -134,7 +141,11 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         # source_vars: already normalized to JSON string by __post_init__
         source_vars = getattr(ansible_instance, "source_vars", None)
         if source_vars is not None:
+<<<<<<< HEAD
             api_data["source_vars"] = json.dumps(source_vars, sort_keys=True) if isinstance(source_vars, dict) else source_vars
+=======
+            api_data["source_vars"] = json.dumps(source_vars) if isinstance(source_vars, dict) else source_vars
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
 
         # Read-only from API (for building URL in execute)
         for field in ("id",):
@@ -214,6 +225,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+<<<<<<< HEAD
     def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
         inventory_id = getattr(api_data, "inventory", None)
         if inventory_id is not None:
@@ -239,6 +251,8 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         return val
 
     @classmethod
+=======
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
     def from_api(
         cls,
         api_data: Dict[str, Any],
@@ -255,7 +269,11 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
             description=api_data.get("description"),
             source=api_data.get("source"),
             source_path=api_data.get("source_path"),
+<<<<<<< HEAD
             source_vars=cls._normalize_vars(api_data.get("source_vars")),
+=======
+            source_vars=api_data.get("source_vars"),
+>>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
             enabled_var=api_data.get("enabled_var"),
             enabled_value=api_data.get("enabled_value"),
             host_filter=api_data.get("host_filter"),
