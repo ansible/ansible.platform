@@ -45,6 +45,7 @@ execution invariants** — to understand personas, phases, and quality gates.
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map (all 22 modules), identity categories, API quirks, platform-specific challenges, version strategy |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
 | 12 | [12-api-landscape.md](12-api-landscape.md) | Feature devs | **NEW**: Multi-service architecture (Gateway, EDA, Controller), resource overlap, naming conflicts, spec selection guide |
+| 13 | [13-pr-review-guidelines.md](13-pr-review-guidelines.md) | Maintainers / reviewers | PR review process, pre-merge CI checks, feature/bugfix/CI review checklists, security patterns, testing requirements |
 
 ---
 
