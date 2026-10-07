@@ -94,15 +94,15 @@ class TestAPIVersionRegistry:
     def test_discover_modules_finds_all_versions(self):
         """Registry discovers all module files from api/ directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create fake api/v1/ and api/v2/ directories
-            os.makedirs(os.path.join(tmpdir, "api", "v1"))
-            os.makedirs(os.path.join(tmpdir, "api", "v2"))
+            # Create fake api/gateway/v1/ and api/gateway/v2/ directories
+            os.makedirs(os.path.join(tmpdir, "api", "gateway", "v1"))
+            os.makedirs(os.path.join(tmpdir, "api", "gateway", "v2"))
 
             # Create fake module files
-            open(os.path.join(tmpdir, "api", "v1", "user.py"), "w").close()
-            open(os.path.join(tmpdir, "api", "v2", "user.py"), "w").close()
+            open(os.path.join(tmpdir, "api", "gateway", "v1", "user.py"), "w").close()
+            open(os.path.join(tmpdir, "api", "gateway", "v2", "user.py"), "w").close()
 
-            registry = APIVersionRegistry(api_dir=tmpdir)
+            registry = APIVersionRegistry(api_base_path=os.path.join(tmpdir, "api"))
             modules = registry.discover_modules()
 
             assert "user" in modules
@@ -120,10 +120,10 @@ class TestAPIVersionRegistry:
     def test_raises_when_module_has_no_versions(self):
         """ValueError raised for module with zero versions."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            os.makedirs(os.path.join(tmpdir, "api", "v1"))
+            os.makedirs(os.path.join(tmpdir, "api", "gateway", "v1"))
             # Create no modules in the directory
 
-            registry = APIVersionRegistry(api_dir=tmpdir)
+            registry = APIVersionRegistry(api_base_path=os.path.join(tmpdir, "api"))
             with pytest.raises(ValueError, match="no versions available"):
                 registry.get_loader("nonexistent_module", api_version="1")
 

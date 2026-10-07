@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
@@ -161,7 +161,7 @@ class TokenTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.token import AnsibleToken
+        from ....ansible_models.token import AnsibleToken
 
         return AnsibleToken(
             description=api_data.get("description"),
