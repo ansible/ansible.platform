@@ -27,7 +27,7 @@ PLURALIZED="${MODULE_NAME}s"  # Simple pluralization (most cases)
 REQUIRED_FILES=(
     "plugins/modules/${MODULE_NAME}.py"
     "plugins/plugin_utils/ansible_models/${MODULE_NAME}.py"
-    "plugins/plugin_utils/api/gateway/v1/${MODULE_NAME}.py"
+    "plugins/plugin_utils/api/v1/${MODULE_NAME}.py"
     "plugins/action/${MODULE_NAME}.py"
     "tests/integration/targets/${PLURALIZED}_test/tasks/main.yml"
     "tests/integration/targets/${PLURALIZED}_test/meta/main.yml"
@@ -36,7 +36,7 @@ REQUIRED_FILES=(
 # Recommended files
 RECOMMENDED_FILES=(
     "extensions/molecule/${MODULE_NAME}_mock/"
-    "tests/unit/plugins/plugin_utils/api/gateway/v1/test_${MODULE_NAME}.py"
+    "tests/unit/plugins/plugin_utils/api/v1/test_${MODULE_NAME}.py"
 )
 
 # Track failures
@@ -52,7 +52,7 @@ for file in "${REQUIRED_FILES[@]}"; do
         echo "✅ $file"
     else
         echo "❌ MISSING REQUIRED: $file"
-        ((MISSING_COUNT++))
+        ((++MISSING_COUNT))
     fi
 done
 
@@ -64,7 +64,7 @@ for file in "${RECOMMENDED_FILES[@]}"; do
         echo "✅ $file"
     else
         echo "⚠️  Missing (recommended): $file"
-        ((MISSING_RECOMMENDED++))
+        ((++MISSING_RECOMMENDED))
     fi
 done
 

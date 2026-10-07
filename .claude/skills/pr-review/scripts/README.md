@@ -40,7 +40,7 @@ python3 .claude/skills/pr-review/scripts/check_workflow_secrets.py
 **Checks:**
 - Module file: `plugins/modules/<resource>.py`
 - Ansible model: `plugins/plugin_utils/ansible_models/<resource>.py`
-- API model: `plugins/plugin_utils/api/gateway/v1/<resource>.py`
+- API model: `plugins/plugin_utils/api/v1/<resource>.py`
 - Action plugin: `plugins/action/<resource>.py`
 - Integration test: `tests/integration/targets/<resource>s_test/`
 - Molecule mock: `extensions/molecule/<resource>_mock/` (recommended)
