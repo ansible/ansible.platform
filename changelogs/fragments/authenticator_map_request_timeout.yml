@@ -1,5 +1,5 @@
 ---
 
 bugfixes:
-  - authenticator_map - set the ``aap_request_timeout`` examples to 10 seconds; 
-    using 0 can fail with ``URLError <urlopen error [Errno 115] Operation now in progress>``.
+  - authenticator_map - set the ``aap_request_timeout`` examples to 25 seconds; 
+    using 0 will fail with ``URLError <urlopen error [Errno 115] Operation now in progress>``.
