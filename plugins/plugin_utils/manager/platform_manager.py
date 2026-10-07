@@ -101,9 +101,9 @@ class PlatformService(BaseAPIClient):
             self._last_auth_error = e
             # Continue anyway - some operations might work without auth
 
-        self.api_version = self._detect_api_version()
-        self.session.headers.update({"X-API-Version": str(self.api_version)})
-        logger.info("PlatformService initialized with API v%s", self.api_version)
+        gw_version = self.get_api_version("gateway")
+        self.session.headers.update({"X-API-Version": str(gw_version)})
+        logger.info("PlatformService initialized with API v%s", gw_version)
 
         self._http_request_count = 0
         self._tls_handshake_count = 1  # 1 handshake when session is created
@@ -359,7 +359,7 @@ class PlatformService(BaseAPIClient):
         import sys
         from pathlib import Path
 
-        supported = self.registry.get_supported_versions()
+        supported = self.registry.get_supported_versions("gateway")
 
         _error_log_path = None
         try:
@@ -450,15 +450,23 @@ class PlatformService(BaseAPIClient):
         except Exception as e:
             logger.warning("PlatformService: tier-2 unexpected error: %s", e)
 
-        # ── Tier 3: safe default ───────────────────────────────────────────
+        # ── Tier 3: raise so get_api_version() returns uncached fallback ──
         if not supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-        logger.warning("PlatformService: version detection failed — defaulting to v1")
-        if "1" in supported:
-            return "1"
-        return supported[0]
+        raise RuntimeError("PlatformService: all gateway version detection tiers failed")
 
-    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
+    def _probe_service_root(self, service):
+        root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+        logger.debug("PlatformService: probing service version at %s", root_url)
+        response = self.session.get(root_url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        headers = dict(response.headers)
+        body = None
+        if response.headers.get("Content-Type", "").startswith("application/json"):
+            body = response.json()
+        return headers, body
+
+    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None, *, service: str = None, api_version: str = None) -> str:
         """
         Build full URL for an endpoint.
 
@@ -472,7 +480,9 @@ class PlatformService(BaseAPIClient):
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
         if not endpoint.startswith("/api/"):
-            endpoint = f"/api/gateway/v{self.api_version}{endpoint}"
+            svc = service or "gateway"
+            ver = api_version or self.get_api_version(svc)
+            endpoint = f"/api/{svc}/v{ver}{endpoint}"
         if not endpoint.endswith("/") and "?" not in endpoint:
             endpoint = f"{endpoint}/"
 
@@ -506,10 +516,21 @@ class PlatformService(BaseAPIClient):
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+        service_version = self.get_api_version(service)
+
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         ansible_instance = AnsibleClass(**ansible_data_dict)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
+            manager=self,
+            session=self.session,
+            cache=self.cache,
+            api_version=service_version,
+            service=service,
+            operation=operation,
+            include_nulls_for_update=include_nulls,
         )
 
         try:
@@ -542,7 +563,7 @@ class PlatformService(BaseAPIClient):
             logger.error("Operation %s on %s failed: %s", operation, module_name, e, exc_info=True)
             raise
 
-    def _create_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _create_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Create resource with transformation.
 
@@ -571,7 +592,7 @@ class PlatformService(BaseAPIClient):
 
         return {"changed": True}
 
-    def _update_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _update_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Update resource with transformation.
 
@@ -768,7 +789,7 @@ class PlatformService(BaseAPIClient):
                 result[key] = r
         return result
 
-    def _delete_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _delete_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Delete resource.
 
@@ -801,13 +822,13 @@ class PlatformService(BaseAPIClient):
                 if param == "id":
                     path = path.replace(f"{{{param}}}", str(resource_id))
 
-        url = self._build_url(path)
+        url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         return {"changed": True, "id": resource_id}
 
-    def _find_resource(self, ansible_data: Any, mixin_class: type, context: dict) -> dict:
+    def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """
         Find resource by identifier.
 
@@ -832,7 +853,7 @@ class PlatformService(BaseAPIClient):
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
-            url = self._build_url(get_op.path)
+            url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
@@ -867,7 +888,7 @@ class PlatformService(BaseAPIClient):
         if resolved_id:
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
-            url = self._build_url(get_op.path.replace("{id}", str(resolved_id)))
+            url = self._build_url(get_op.path.replace("{id}", str(resolved_id)), service=context.service, api_version=context.api_version)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             api_result = response.json()
@@ -899,7 +920,7 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            url = self._build_url(list_op.path, query_params=query_params)
+            url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
             logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
@@ -916,7 +937,7 @@ class PlatformService(BaseAPIClient):
             # full_resource_lookup=True, follow up with a GET-by-ID so that
             # idempotency comparisons use the complete stored resource state.
             if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
-                full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])))
+                full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])), service=context.service, api_version=context.api_version)
                 logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
                 full_response = self.session.get(full_url, timeout=self.request_timeout, verify=self.requests_verify)
                 if full_response.ok:
@@ -928,7 +949,7 @@ class PlatformService(BaseAPIClient):
 
         return asdict(ansible_instance)
 
-    def _execute_operations(self, operations: Dict, api_data: Any, context: dict, required_for: str = None, fields_to_null: set = None) -> dict:
+    def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None, fields_to_null: set = None) -> dict:
         """
         Execute potentially multiple API endpoint operations.
 
@@ -986,7 +1007,7 @@ class PlatformService(BaseAPIClient):
                     elif param == "id" and "id" in api_data_dict:
                         path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
 
-            url = self._build_url(path)
+            url = self._build_url(path, service=context.service, api_version=context.api_version)
 
             logger.debug("Calling %s %s", endpoint_op.method, url)
 
@@ -1123,7 +1144,7 @@ class PlatformService(BaseAPIClient):
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str) -> Optional[int]:
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway") -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
@@ -1133,10 +1154,10 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
-        cache_key = f"{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
         if cache_key in self.cache:
             return self.cache[cache_key]
-        url = self._build_url(endpoint, query_params={lookup_field: lookup_value})
+        url = self._build_url(f"/{endpoint}", query_params={lookup_field: lookup_value}, service=service)
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         results = response.json().get("results", [])

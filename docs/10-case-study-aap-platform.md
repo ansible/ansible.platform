@@ -326,7 +326,7 @@ manager = PlatformManager(idle_timeout=0)  # Never auto-terminate (debug only)
 changes or new endpoint paths. The collection must continue working across releases
 without requiring users to change their playbooks.
 
-**Solution**: Version-specific transform mixins in `api/v1/`, `api/v2/` directories.
+**Solution**: Version-specific transform mixins in `api/gateway/v1/`, `api/gateway/v2/` directories.
 The registry auto-detects the platform API version and routes to the correct mixin.
 The Ansible-facing interface (`AnsibleUser`, `AnsibleOrganization`, etc.) never changes.
 
@@ -397,7 +397,7 @@ This prevents stale data from the old type leaking into the new type's configura
 
 To support a new AAP release (e.g., 2.7) when its API changes ship:
 
-1. Create `plugins/plugin_utils/api/v2/` directory
+1. Create `plugins/plugin_utils/api/{service}/v2/` directory
 2. Copy existing v1 files as a starting point
 3. Update dataclasses and field mappings to match the 3.0 API
 4. Update mixin class names: `UserTransformMixin_v2` → `UserTransformMixin_v3`

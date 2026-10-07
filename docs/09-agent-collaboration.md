@@ -102,7 +102,7 @@ Before proceeding as a Feature Developer, the agent **MUST** check for foundatio
 
 - Collection root: `ansible_collections/ansible/platform/` or project-equivalent
 - Ansible models: `plugins/plugin_utils/ansible_models/`
-- API models: `plugins/plugin_utils/api/v1/`, `api/v2/`, etc.
+- API models: `plugins/plugin_utils/api/gateway/v1/`, `api/controller/v2/`, etc.
 - Docs: `docs/`
 
 ---
@@ -246,7 +246,7 @@ python tools/generate_resource.py \
 **Five files produced:**
 1. `plugins/modules/user.py` — DOCUMENTATION stub (module stub, no logic)
 2. `plugins/plugin_utils/ansible_models/user.py` — `AnsibleUser` dataclass
-3. `plugins/plugin_utils/api/v1/user.py` — `APIUser_v1` dataclass + `UserTransformMixin_v1` skeleton
+3. `plugins/plugin_utils/api/gateway/v1/user.py` — `APIUser_v1` dataclass + `UserTransformMixin_v1` skeleton
 4. `plugins/action/user.py` — `ActionModule(BaseResourceActionPlugin)` skeleton
 5. `tests/integration/test_user.yml` — integration test scaffold
 
@@ -273,7 +273,7 @@ python tools/generate_resource.py \
 
 #### Phase 4: Complete the Transform Mixin
 
-**Agent opens** the generated `plugins/plugin_utils/api/v1/{resource}.py` and fills in the skeleton.
+**Agent opens** the generated `plugins/plugin_utils/api/{service}/v1/{resource}.py` and fills in the skeleton.
 
 **What the generator produces (skeleton):**
 ```python

@@ -1,11 +1,11 @@
 """
-Validate all EndpointOperation declarations in api/v1/*.py against the
+Validate all EndpointOperation declarations in api/{service}/v<N>/*.py against the
 Gateway OpenAPI specification.
 
 Usage (from the collection root):
     python tools/validate_spec.py \\
         --spec ../aap-openapi-specs/2.6/gateway.json \\
-        [--api-dir plugins/plugin_utils/api/v1]
+        [--api-dir plugins/plugin_utils/api/gateway/v1]
 
 Exit codes:
     0  all checks passed
@@ -29,7 +29,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 
 class OperationRecord(NamedTuple):
-    module_file: str  # relative path to the api/v1 file
+    module_file: str  # relative path to the api/{service}/v<N> file
     class_name: str  # e.g. ServiceTransformMixin_v1
     op_name: str  # key in get_endpoint_operations dict (create/update/…)
     path: str  # declared path
@@ -100,7 +100,7 @@ def _extract_endpoint_operation(call_node: ast.Call, source_line: int) -> Option
 
 def extract_operations_from_file(filepath: str) -> List[OperationRecord]:
     """
-    Parse a single api/v1/*.py file and return all EndpointOperation records.
+    Parse a single api/{service}/v<N>/*.py file and return all EndpointOperation records.
     """
     with open(filepath, "r", encoding="utf-8") as fh:
         source = fh.read()
@@ -445,9 +445,9 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "--api-dir",
         default=os.path.join(
             os.path.dirname(__file__),
-            "../plugins/plugin_utils/api/v1",
+            "../plugins/plugin_utils/api/gateway/v1",
         ),
-        help="Directory containing api/v1/*.py transform files",
+        help="Directory containing api/{service}/v<N>/*.py transform files",
     )
     parser.add_argument(
         "--coverage",
@@ -476,7 +476,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     with open(spec_path, "r", encoding="utf-8") as fh:
         spec: Dict[str, Any] = json.load(fh)
 
-    # -- Find api/v1 dir --------------------------------------------------
+    # -- Find api/{service}/v<N> dir ----------------------------------------
     api_dir = os.path.abspath(args.api_dir)
     if not os.path.isdir(api_dir):
         print(f"ERROR: api-dir not found: {api_dir}", file=sys.stderr)

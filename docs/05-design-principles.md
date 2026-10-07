@@ -59,11 +59,11 @@ and support both in the action plugin for two release cycles.
 ## SECTION 3: Principle 3 — Transform Mixin Is the Only Resource-Specific Code
 
 **Rule**: All resource-specific business logic must live in the transform mixin
-(`plugins/plugin_utils/api/v<N>/<resource>.py`). Action plugins, the manager, and
+(`plugins/plugin_utils/api/{service}/v<N>/<resource>.py`). Action plugins, the manager, and
 the base classes must be resource-agnostic.
 
 **Why**: Centralising resource logic in the mixin makes it easy to find, test, and
-replace. It also makes version upgrades mechanical: add `api/v2/<resource>.py`,
+replace. It also makes version upgrades mechanical: add `api/{service}/v2/<resource>.py`,
 implement the new mixin, done. No framework code changes. No conditional branches
 scattered across the action plugin.
 
@@ -119,7 +119,7 @@ See [09-agent-collaboration.md](09-agent-collaboration.md) §10 for agent invari
 
 ## SECTION 4: Principle 4 — Registry Auto-Discovery
 
-**Rule**: New API versions are added by creating a new directory `plugins/plugin_utils/api/v<N>/`.
+**Rule**: New API versions are added by creating a new directory `plugins/plugin_utils/api/{service}/v<N>/`.
 No list of supported versions should ever be hardcoded in the framework.
 
 **Why**: Hardcoded version lists require framework changes for every API update. The
@@ -130,13 +130,15 @@ and implement the mixin.
 **Implementation**:
 ```python
 # registry.py — discovers versions by scanning filesystem
-for version_dir in Path(api_base_path).iterdir():
-    if version_dir.is_dir() and version_dir.name.startswith("v"):
-        version_num = version_dir.name[1:]  # 'v1' → '1'
-        # Load and register...
+for service_dir in Path(api_base_path).iterdir():
+    if service_dir.is_dir():
+        for version_dir in service_dir.iterdir():
+            if version_dir.is_dir() and version_dir.name.startswith("v"):
+                version_num = version_dir.name[1:]  # 'v1' → '1'
+                # Load and register...
 ```
 
-**Test**: To verify the registry works, add a new `api/v9/` directory with a stub mixin
+**Test**: To verify the registry works, add a new `api/{service}/v9/` directory with a stub mixin
 and confirm the framework loads it without any code changes.
 
 ---
@@ -431,7 +433,7 @@ behavior: if the config file accepts it, the env var must too.
 Before submitting any new platform action plugin, verify:
 
 - [ ] `AnsibleFoo` dataclass exists in `ansible_models/foo.py`
-- [ ] `APIFoo_v1` dataclass exists in `api/v1/foo.py`
+- [ ] `APIFoo_v1` dataclass exists in `api/{service}/v1/foo.py`
 - [ ] `FooTransformMixin_v1` implements all required protocol methods
 - [ ] Action plugin `ActionModule` extends `BaseResourceActionPlugin`
 - [ ] Module stub `plugins/modules/foo.py` has only `DOCUMENTATION` and `EXAMPLES`

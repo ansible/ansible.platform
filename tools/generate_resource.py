@@ -15,7 +15,7 @@ Usage (from the collection root):
         [--dry-run]
 
 For each resource tag the generator creates (unless the file already exists):
-    plugins/plugin_utils/api/v1/{resource}.py          – TransformMixin + API dataclass
+    plugins/plugin_utils/api/{service}/v{version}/{resource}.py – TransformMixin + API dataclass
     plugins/plugin_utils/ansible_models/{resource}.py  – AnsibleModel dataclass
     plugins/modules/{resource}.py                      – Module with DOCUMENTATION
     plugins/action/{resource}.py                       – Action plugin
@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from textwrap import indent
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -133,11 +134,6 @@ class ResourceSpec:
         self.tag = tag
         self.spec = spec
 
-        # snake_case resource name (e.g. "service_cluster")
-        self.name = tag.rstrip("s").replace("-", "_")  # crude singularization
-        # Proper Python class prefix (e.g. "ServiceCluster")
-        self.class_prefix = "".join(w.capitalize() for w in self.name.split("_"))
-
         # Service label for docs/comments (e.g. "gateway", "eda", "hub", "controller")
         # Auto-detected from the API path prefix if not explicitly provided.
         self._service_override = service
@@ -230,6 +226,41 @@ class ResourceSpec:
         # Derive service label from the API path prefix
         self.service_label = self._detect_service_label()
 
+        # snake_case resource name (e.g. "service_cluster")
+        _SINGULAR = {
+            "inventories": "inventory",
+            "constructed_inventories": "constructed_inventory",
+            "settings": "settings",
+            "activations": "rulebook_activation",
+            "activation_instances": "activation_instance",
+        }
+        tag_clean = tag.replace("-", "_")
+        if tag_clean in _SINGULAR:
+            raw_name = _SINGULAR[tag_clean]
+        elif tag_clean.endswith("s") and not tag_clean.endswith("ss"):
+            raw_name = tag_clean[:-1]
+        else:
+            raw_name = tag_clean
+
+        # Names that exist in multiple services and need a service prefix to
+        # avoid collisions (e.g. credential → controller_credential / eda_credential).
+        _NEEDS_SERVICE_PREFIX = {
+            "credential",
+            "credential_type",
+            "credential_input_source",
+            "project",
+            "settings",
+        }
+
+        _KNOWN_SERVICES = {"controller", "eda", "galaxy"}
+        if raw_name in _NEEDS_SERVICE_PREFIX and self.service_label in _KNOWN_SERVICES:
+            self.name = f"{self.service_label}_{raw_name}"
+        else:
+            self.name = raw_name
+
+        # Proper Python class prefix (e.g. "ServiceCluster")
+        self.class_prefix = "".join(w.capitalize() for w in self.name.split("_"))
+
     def _detect_service_label(self) -> str:
         """Detect the service type from the API path prefix or spec servers.
 
@@ -244,8 +275,8 @@ class ResourceSpec:
 
         _SERVICE_MAP = {
             "/api/gateway": "gateway",
-            "/api/eda": "EDA",
-            "/api/hub": "automation hub",
+            "/api/eda": "eda",
+            "/api/galaxy": "galaxy",
             "/api/controller": "controller",
         }
 
@@ -263,10 +294,24 @@ class ResourceSpec:
 
         return "platform"
 
+    @property
+    def api_version(self) -> str:
+        """Detect API version from spec paths (e.g. /api/v2/ -> '2', /api/gateway/v1/ -> '1')."""
+        path = self.list_path or self.detail_path or ""
+        match = re.search(r"/v(\d+)/", path)
+        if not match:
+            raise ValueError(
+                f"Cannot detect API version from paths (list={self.list_path!r}, "
+                f"detail={self.detail_path!r}). Expected a /vN/ segment. "
+                f"Check the OpenAPI spec or pass --service to ensure paths are resolved."
+            )
+        return match.group(1)
+
     def summary(self) -> str:
         lines = [
             f"Resource: {self.name} (tag={self.tag})",
             f"  service     : {self.service_label}",
+            f"  api_version : v{self.api_version}",
             f"  list_path   : {self.list_path}",
             f"  detail_path : {self.detail_path}",
             f"  CRUD        : create={self.has_create} update={self.has_update} delete={self.has_delete} list={self.has_list}",
@@ -289,8 +334,8 @@ def _py_type_hint(meta: Dict[str, Any]) -> str:
     return base
 
 
-def gen_api_v1(res: ResourceSpec) -> str:
-    """Generate plugins/plugin_utils/api/v1/{resource}.py"""
+def gen_api(res: ResourceSpec) -> str:
+    """Generate plugins/plugin_utils/api/{service}/v{version}/{resource}.py"""
 
     # Build fields list for EndpointOperation
     fields_str = ", ".join(f'"{f}"' for f in res.writable_fields)
@@ -377,7 +422,7 @@ def gen_api_v1(res: ResourceSpec) -> str:
 
     return f'''\
 """
-API v1 {res.class_prefix} dataclass and transform mixin.
+API v{res.api_version} {res.class_prefix} dataclass and transform mixin.
 
 Auto-generated by tools/generate_resource.py from the {res.service_label} OpenAPI spec.
 Review and customise before committing.
@@ -388,26 +433,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
-class API{res.class_prefix}_v1(BaseTransformMixin):
-    """API v1 representation of a {res.service_label} {res.name}."""
+class API{res.class_prefix}_v{res.api_version}(BaseTransformMixin):
+    """API v{res.api_version} representation of a {res.service_label} {res.name}."""
 
 {dc_body}
 
 
-class {res.class_prefix}TransformMixin_v1(BaseTransformMixin):
-    """Transform mixin for {res.class_prefix} API v1."""
+class {res.class_prefix}TransformMixin_v{res.api_version}(BaseTransformMixin):
+    """Transform mixin for {res.class_prefix} API v{res.api_version}."""
 
     @classmethod
     def from_ansible_data(
         cls,
         ansible_instance,
         context: Union[TransformContext, Dict[str, Any]],
-    ) -> "API{res.class_prefix}_v1":
+    ) -> "API{res.class_prefix}_v{res.api_version}":
         api_data: Dict[str, Any] = {{}}
 
         for field in (
@@ -422,7 +467,7 @@ class {res.class_prefix}TransformMixin_v1(BaseTransformMixin):
             if val is not None:
                 api_data[ro] = val
 
-        return API{res.class_prefix}_v1(**api_data)
+        return API{res.class_prefix}_v{res.api_version}(**api_data)
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
@@ -440,7 +485,7 @@ class {res.class_prefix}TransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.{res.name} import Ansible{res.class_prefix}
+        from ....ansible_models.{res.name} import Ansible{res.class_prefix}
 
         return Ansible{res.class_prefix}(
 {from_api_fields}
@@ -877,8 +922,8 @@ def collect_files(res: ResourceSpec, collection_root: str) -> List[FileSpec]:
     """Return list of (relative_path, content) for all files to generate."""
     files: List[FileSpec] = [
         (
-            f"plugins/plugin_utils/api/v1/{res.name}.py",
-            gen_api_v1(res),
+            f"plugins/plugin_utils/api/{res.service_label}/v{res.api_version}/{res.name}.py",
+            gen_api(res),
         ),
         (
             f"plugins/plugin_utils/ansible_models/{res.name}.py",
