@@ -1,0 +1,262 @@
+---
+- name: Prepare Controller mock scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Wait for mock Gateway
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+    - name: Keep the persistent manager alive across Molecule phases
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+
+- name: Exercise Controller job template through local connection
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: false
+  vars:
+    template_name: Molecule Controller JT Local
+    survey:
+      name: Mock survey
+      description: Mock survey
+      spec: []
+  tasks:
+    - name: Create a job template with named foreign keys
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        project: Mock Project
+        organization: Default
+        inventory: Mock Inventory
+        execution_environment: Mock EE
+        playbook: demo.yml
+        extra_vars:
+          answer: 42
+      register: created
+
+    - name: Assert creation and foreign-key round trip
+      ansible.builtin.assert:
+        that:
+          - created is changed
+          - created.controller_job_template.inventory == 'Mock Inventory'
+          - created.controller_job_template.project == 'Mock Project'
+
+    - name: Reapply the same template with an inventory ID
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        project: Mock Project
+        organization: Default
+        inventory: '5101'
+        execution_environment: Mock EE
+        playbook: demo.yml
+        extra_vars:
+          answer: 42
+      register: reapplied
+
+    - name: Assert core CRUD is idempotent with names and IDs
+      ansible.builtin.assert:
+        that: reapplied is not changed
+
+    - name: Set associations across a paginated label list
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        credentials:
+          - Mock Credential
+          - Mock Vault Credential
+        labels:
+          - Mock Label 1
+          - Mock Label 2
+          - Mock Label 3
+        instance_groups:
+          - Mock Instance Group
+        notification_templates_success:
+          - Mock Notification
+        notification_templates_error:
+          - Mock Notification
+      register: associated
+
+    - name: Assert associations changed
+      ansible.builtin.assert:
+        that: associated is changed
+
+    - name: Reapply associations without changing their order or membership
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        credentials:
+          - Mock Credential
+          - Mock Vault Credential
+        labels:
+          - Mock Label 3
+          - Mock Label 1
+          - Mock Label 2
+        instance_groups:
+          - Mock Instance Group
+        notification_templates_success:
+          - Mock Notification
+        notification_templates_error:
+          - Mock Notification
+      register: associations_reapplied
+
+    - name: Assert paginated associations are idempotent
+      ansible.builtin.assert:
+        that: associations_reapplied is not changed
+
+    - name: Remove one label and success notification only
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        labels:
+          - Mock Label 1
+          - Mock Label 2
+        notification_templates_success: []
+      register: associations_reduced
+
+    - name: Assert selective association removal changed
+      ansible.builtin.assert:
+        that: associations_reduced is changed
+
+    - name: Set a survey
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        survey_enabled: true
+        survey_spec: "{{ survey }}"
+      register: survey_set
+
+    - name: Reapply the same survey
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        survey_spec: "{{ survey }}"
+      register: survey_reapplied
+
+    - name: Assert survey update and idempotency
+      ansible.builtin.assert:
+        that:
+          - survey_set is changed
+          - survey_reapplied is not changed
+
+    - name: Clear the survey
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        survey_spec: {}
+      register: survey_cleared
+
+    - name: Clear the already absent survey
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        survey_spec: {}
+      register: survey_cleared_again
+
+    - name: Assert survey clearing is idempotent
+      ansible.builtin.assert:
+        that:
+          - survey_cleared is changed
+          - survey_cleared_again is not changed
+
+    - name: Copy the template
+      ansible.platform.controller_job_template:
+        name: Molecule Controller JT Copy
+        copy_from: "{{ template_name }}"
+      register: copied
+
+    - name: Reapply the copy request
+      ansible.platform.controller_job_template:
+        name: Molecule Controller JT Copy
+        copy_from: "{{ template_name }}"
+      register: copy_reapplied
+
+    - name: Assert copy only happens once
+      ansible.builtin.assert:
+        that:
+          - copied is changed
+          - copy_reapplied is not changed
+
+    - name: Preview association removal in check mode
+      ansible.platform.controller_job_template:
+        name: "{{ template_name }}"
+        labels: []
+      check_mode: true
+      register: association_preview
+
+    - name: Assert check mode reports a prospective change
+      ansible.builtin.assert:
+        that: association_preview is changed
+
+- name: Exercise Controller job template through direct HTTP connection
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    ansible_platform_use_persistent_connection: false
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: false
+  tasks:
+    - name: Create a direct HTTP template with a credential
+      ansible.platform.controller_job_template:
+        name: Molecule Controller JT Direct
+        credentials:
+          - Mock Credential
+      register: direct_created
+
+    - name: Reapply the direct HTTP template
+      ansible.platform.controller_job_template:
+        name: Molecule Controller JT Direct
+        credentials:
+          - Mock Credential
+      register: direct_reapplied
+
+    - name: Assert direct HTTP creation and idempotency
+      ansible.builtin.assert:
+        that:
+          - direct_created is changed
+          - direct_reapplied is not changed
+
+- name: Exercise Controller job template through persistent HTTP connection
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    ansible_platform_use_persistent_connection: true
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: false
+  tasks:
+    - name: Create a persistent HTTP template with a credential
+      ansible.platform.controller_job_template:
+        name: Molecule Controller JT Persistent
+        credentials:
+          - Mock Vault Credential
+      register: persistent_created
+
+    - name: Reapply the persistent HTTP template
+      ansible.platform.controller_job_template:
+        name: Molecule Controller JT Persistent
+        credentials:
+          - Mock Vault Credential
+      register: persistent_reapplied
+
+    - name: Assert persistent HTTP creation and idempotency
+      ansible.builtin.assert:
+        that:
+          - persistent_created is changed
+          - persistent_reapplied is not changed
+...
