@@ -88,9 +88,14 @@ def check_workflow_secret_exposure():
             for job_name, job in wf.get("jobs", {}).items():
                 for step in job.get("steps", []):
                     checkout_ref = step.get("with", {}).get("ref", "")
-                    if "head.sha" in checkout_ref or "head_sha" in checkout_ref or "head.ref" in checkout_ref:
+                    # Detect PR code references: head.sha, head_sha, head.ref, refs/pull/<num>/merge, refs/pull/<num>/head
+                    if any(pattern in checkout_ref for pattern in [
+                        "head.sha", "head_sha", "head.ref",
+                        "refs/pull/", "/merge", "/head"
+                    ]):
                         print(f"⚠️  WARNING: {wf_file.name} checks out PR code with pull_request_target")
                         print(f"   Job: {job_name}")
+                        print(f"   Ref: {checkout_ref}")
                         print("   → This allows PR code to access GITHUB_TOKEN with write permissions")
                         issues_found = True
 
