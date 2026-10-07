@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
 from ..platform.loader import DynamicClassLoader
-from ..platform.registry import APIVersionRegistry
+from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -48,13 +48,41 @@ class BaseAPIClient(ABC):
         self.registry = APIVersionRegistry()
         self.loader = DynamicClassLoader(self.registry)
 
-        # Shared: API version (detected during initialization)
-        self.api_version: Optional[str] = None
+        # Shared: Per-service API versions (detected lazily)
+        self.api_versions: Dict[str, str] = {}
 
         # Shared: Cache for lookups (org names ↔ IDs, etc.)
         self.cache: Dict[str, Any] = {}
 
         logger.info("BaseAPIClient initialized: base_url=%s, mode=%s", self.base_url, config.connection_mode)
+
+    @property
+    def api_version(self) -> Optional[str]:
+        """Gateway API version (backward-compatible accessor)."""
+        return self.api_versions.get(DEFAULT_SERVICE)
+
+    @api_version.setter
+    def api_version(self, value: Optional[str]) -> None:
+        if value is not None:
+            self.api_versions[DEFAULT_SERVICE] = value
+        else:
+            self.api_versions.pop(DEFAULT_SERVICE, None)
+
+    def get_api_version(self, service: str) -> str:
+        """Get detected API version for a service, detecting lazily if needed.
+
+        On transient failure the fallback is returned but NOT cached, so the
+        next call will retry detection instead of permanently using a guess.
+        """
+        if service not in self.api_versions:
+            try:
+                detected = self._detect_service_version(service)
+                self.api_versions[service] = detected
+            except Exception:
+                fallback = self.registry.get_latest_version(service) or "1"
+                logger.warning("Version detection failed for %s, defaulting to v%s", service, fallback)
+                return fallback
+        return self.api_versions[service]
 
     @property
     def requests_verify(self):
@@ -80,14 +108,71 @@ class BaseAPIClient(ABC):
     @abstractmethod
     def _detect_api_version(self) -> str:
         """
-        Detect API version from platform.
-
-        This is implemented differently by each mode:
-        - Standard mode: Direct HTTP request to /ping endpoint
-        - Experimental mode: Same, but cached in persistent process
+        Detect Gateway API version from platform.
 
         Returns:
             API version string (e.g., '1', '2')
+        """
+        pass
+
+    def _detect_service_version(self, service: str) -> str:
+        """
+        Detect API version for a specific service by probing its API root.
+
+        For gateway, delegates to _detect_api_version(). For other services,
+        probes /api/{service}/ via _probe_service_root() and parses the
+        X-API-Version header or current_version body field. Raises on any
+        failure so get_api_version() can return an uncached fallback.
+        """
+        if service == DEFAULT_SERVICE:
+            return self._detect_api_version()
+
+        import re
+
+        supported = self.registry.get_supported_versions(service)
+        if not supported:
+            raise RuntimeError(f"No API versions discovered for service '{service}'")
+
+        headers, body = self._probe_service_root(service)
+
+        raw = (headers.get("X-API-Version", "") or "").lstrip("v")
+        if raw and raw in supported:
+            logger.info("%s API version detected (header): v%s", service, raw)
+            return raw
+        if raw:
+            major = raw.split(".")[0]
+            if major in supported:
+                logger.info("%s API version detected (header major): v%s", service, major)
+                return major
+
+        if body is not None:
+            if not isinstance(body, dict):
+                raise ValueError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
+            if "current_version" in body:
+                cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
+                if cv_raw in supported:
+                    logger.info("%s API version detected (body): v%s", service, cv_raw)
+                    return cv_raw
+                cv_major = cv_raw.split(".")[0]
+                if cv_major in supported:
+                    logger.info("%s API version detected (body major): v%s", service, cv_major)
+                    return cv_major
+
+        raise RuntimeError(f"Could not detect API version for service '{service}' from probe response")
+
+    @abstractmethod
+    def _probe_service_root(self, service: str):
+        """
+        Probe /api/{service}/ and return the parsed response.
+
+        Returns:
+            Tuple of (headers_dict, body_dict_or_None). body is None when
+            the response is not JSON.
+
+        Raises:
+            On transport or HTTP errors — these must propagate so that
+            get_api_version() does not permanently cache a fallback.
         """
         pass
 

@@ -151,9 +151,9 @@ Scans `plugins/plugin_utils/api/` on startup and builds the version index. No ha
 
 On `__init__`, walks the `api/` directory:
 ```
-api/v1/user.py        → version '1', module 'user'
-api/v1/org.py         → version '1', module 'org'
-api/v2/user.py        → version '2', module 'user'
+api/gateway/v1/user.py    → service 'gateway', version '1', module 'user'
+api/gateway/v1/org.py     → service 'gateway', version '1', module 'org'
+api/gateway/v2/user.py    → service 'gateway', version '2', module 'user'
 ```
 
 Builds two indexes:
@@ -173,7 +173,7 @@ self.module_versions = {
 ### Key method: `find_best_version`
 
 ```python
-def find_best_version(self, requested_version: str, module_name: str) -> Optional[str]:
+def find_best_version(self, requested_version: str, module_name: str, service: Optional[str] = None) -> Optional[str]:
     available = self.module_versions.get(module_name, [])
     if not available:
         return None
@@ -225,11 +225,15 @@ class DynamicClassLoader:
     def load_classes_for_module(self, module_name: str, api_version: str) -> Tuple[Type, Type, Type]:
         """Return (AnsibleClass, APIClass, MixinClass) for the given module and version."""
 
-        best_version = self.registry.find_best_version(api_version, module_name)
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+
+        best_version = self.registry.find_best_version(api_version, module_name, service)
         if best_version is None:
             raise ValueError(f"No compatible API version found for module '{module_name}'")
 
-        cache_key = f"{module_name}_{best_version}"
+        cache_key = f"{service}_{module_name}_{best_version}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -239,8 +243,8 @@ class DynamicClassLoader:
         ansible_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.{module_name}")
         AnsibleClass = getattr(ansible_mod, f"Ansible{pascal}")
 
-        # Load API model and mixin: api/v<N>/<module_name>.py
-        api_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.v{best_version}.{module_name}")
+        # Load API model and mixin: api/{service}/v<N>/<module_name>.py
+        api_mod = importlib.import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.{service}.v{best_version}.{module_name}")
         APIClass = getattr(api_mod, f"API{pascal}_v{best_version}")
         MixinClass = getattr(api_mod, f"{pascal}TransformMixin_v{best_version}")
 
@@ -998,7 +1002,7 @@ pytest tests/unit/ -v
 ```python
 # tests/unit/plugins/plugin_utils/platform/test_registry.py
 with tmpdir.as_cwd():
-    # Create api/v1/user.py, api/v2/user.py, etc.
+    # Create api/gateway/v1/user.py, api/gateway/v2/user.py, etc.
     registry = APIVersionRegistry(api_dir=tmpdir / "api")
     assert registry.find_best_version("1", "user") == "1"
     assert registry.find_best_version("2", "user") == "2"

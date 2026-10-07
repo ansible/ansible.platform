@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
-from ...platform.base_transform import BaseTransformMixin
-from ...platform.types import EndpointOperation, TransformContext
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
@@ -72,6 +72,6 @@ class SettingsTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ...ansible_models.settings import AnsibleSettings
+        from ....ansible_models.settings import AnsibleSettings
 
         return AnsibleSettings(settings=api_data)

@@ -11,34 +11,60 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry
 
 
 def _make_fake_api_root():
-    """Create a temporary api/ directory with v1 and v2 module stubs."""
+    """Create a temporary api/ directory with service-scoped version stubs."""
     root = Path(tempfile.mkdtemp())
-    (root / "v1").mkdir()
-    (root / "v2").mkdir()
-    (root / "v1" / "user.py").write_text("# stub\n")
-    (root / "v2" / "user.py").write_text("# stub\n")
-    (root / "v2" / "org.py").write_text("# stub\n")
+    (root / "gateway" / "v1").mkdir(parents=True)
+    (root / "gateway" / "v2").mkdir(parents=True)
+    (root / "gateway" / "v1" / "user.py").write_text("# stub\n")
+    (root / "gateway" / "v2" / "user.py").write_text("# stub\n")
+    (root / "gateway" / "v2" / "org.py").write_text("# stub\n")
     # Dirs/files that should be ignored by discovery
-    (root / "v2" / "__init__.py").write_text("# init\n")
-    (root / "v2" / "generated").write_text("# not a .py, ignored by glob anyway\n")
+    (root / "gateway" / "v2" / "__init__.py").write_text("# init\n")
+    (root / "gateway" / "v2" / "generated").write_text("# not a .py, ignored by glob anyway\n")
     return root
 
 
-def test_discover_versions_populates_versions_and_module_versions():
-    """Discovery (run in __init__) populates versions and module_versions from filesystem."""
+def test_discover_versions_populates_services_and_module_versions():
+    """Discovery (run in __init__) populates services and module_versions from filesystem."""
     api_root = _make_fake_api_root()
     try:
         registry = APIVersionRegistry(api_base_path=str(api_root))
 
-        assert "1" in registry.versions
-        assert "2" in registry.versions
-        assert registry.versions["1"] == ["user"]
-        assert sorted(registry.versions["2"]) == ["org", "user"]
+        assert "gateway" in registry.services
+        assert "1" in registry.services["gateway"]
+        assert "2" in registry.services["gateway"]
+        assert registry.services["gateway"]["1"] == ["user"]
+        assert sorted(registry.services["gateway"]["2"]) == ["org", "user"]
 
         assert "user" in registry.module_versions
         assert "org" in registry.module_versions
         assert sorted(registry.module_versions["user"]) == ["1", "2"]
         assert registry.module_versions["org"] == ["2"]
+
+        assert registry.module_service["user"] == "gateway"
+        assert registry.module_service["org"] == "gateway"
+        assert registry.get_service_for_module("user") == "gateway"
+        assert registry.get_service_for_module("org") == "gateway"
+    finally:
+        shutil.rmtree(api_root, ignore_errors=True)
+
+
+def test_discover_multi_service():
+    """Discovery finds modules across multiple services."""
+    api_root = Path(tempfile.mkdtemp())
+    try:
+        (api_root / "gateway" / "v1").mkdir(parents=True)
+        (api_root / "controller" / "v2").mkdir(parents=True)
+        (api_root / "gateway" / "v1" / "user.py").write_text("# stub\n")
+        (api_root / "controller" / "v2" / "job_template.py").write_text("# stub\n")
+
+        registry = APIVersionRegistry(api_base_path=str(api_root))
+
+        assert registry.get_service_for_module("user") == "gateway"
+        assert registry.get_service_for_module("job_template") == "controller"
+        assert registry.get_supported_versions("gateway") == ["1"]
+        assert registry.get_supported_versions("controller") == ["2"]
+        assert sorted(registry.get_services()) == ["controller", "gateway"]
     finally:
         shutil.rmtree(api_root, ignore_errors=True)
 
@@ -68,6 +94,25 @@ def test_find_best_version_unknown_module_returns_none():
         shutil.rmtree(api_root, ignore_errors=True)
 
 
+def test_module_name_collision_across_services_raises():
+    """Discovery raises ValueError when two services define the same module name."""
+    api_root = Path(tempfile.mkdtemp())
+    try:
+        (api_root / "gateway" / "v1").mkdir(parents=True)
+        (api_root / "controller" / "v2").mkdir(parents=True)
+        (api_root / "gateway" / "v1" / "user.py").write_text("# stub\n")
+        (api_root / "controller" / "v2" / "user.py").write_text("# stub\n")
+
+        try:
+            APIVersionRegistry(api_base_path=str(api_root))
+            assert False, "Expected ValueError for module name collision"
+        except ValueError as exc:
+            assert "user" in str(exc)
+            assert "gateway" in str(exc) or "controller" in str(exc)
+    finally:
+        shutil.rmtree(api_root, ignore_errors=True)
+
+
 def test_find_best_version_closest_lower():
     """find_best_version returns closest lower version when exact match missing."""
     api_root = _make_fake_api_root()
@@ -77,3 +122,68 @@ def test_find_best_version_closest_lower():
         assert registry.find_best_version("2.1", "user") == "2"
     finally:
         shutil.rmtree(api_root, ignore_errors=True)
+
+
+def test_version_like_dir_at_service_level_treated_as_service():
+    """A directory like api/v3/ is treated as a service named 'v3', not a version."""
+    api_root = Path(tempfile.mkdtemp())
+    try:
+        (api_root / "v3" / "v1").mkdir(parents=True)
+        (api_root / "v3" / "v1" / "widget.py").write_text("# stub\n")
+
+        registry = APIVersionRegistry(api_base_path=str(api_root))
+
+        assert "v3" in registry.get_services()
+        assert registry.get_service_for_module("widget") == "v3"
+        assert registry.get_supported_versions("v3") == ["1"]
+    finally:
+        shutil.rmtree(api_root, ignore_errors=True)
+
+
+def test_get_api_version_allows_reprobe_after_transient_failure():
+    """Transient detection failure returns fallback but does not permanently cache it."""
+    from unittest.mock import MagicMock
+
+    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import (
+        BaseAPIClient,
+    )
+
+    class _ConcreteClient(BaseAPIClient):
+        def _detect_api_version(self):
+            return "1"
+
+        def _probe_service_root(self, service):
+            raise ConnectionError("not reachable")
+
+        def _authenticate(self):
+            pass
+
+        def execute(self, operation, module_name, ansible_data_dict):
+            pass
+
+    client = _ConcreteClient.__new__(_ConcreteClient)
+    client.api_versions = {}
+    client.registry = MagicMock()
+    client.registry.get_supported_versions.return_value = ["2"]
+    client.registry.get_latest_version.return_value = "2"
+
+    call_count = 0
+
+    def _detect(service):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ConnectionError("transient failure")
+        return "2"
+
+    client._detect_service_version = _detect
+
+    # First call: detection fails, returns registry fallback (not cached)
+    version1 = client.get_api_version("controller")
+    assert version1 == "2"
+    assert "controller" not in client.api_versions
+
+    # Second call: detection succeeds, returns probed version (now cached)
+    version2 = client.get_api_version("controller")
+    assert version2 == "2"
+    assert client.api_versions["controller"] == "2"

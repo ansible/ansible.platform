@@ -14,7 +14,7 @@ if _COLLECTIONS_PARENT not in sys.path:
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.service_key import (  # noqa: E402
     AnsibleServiceKey,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.v1.service_key import (  # noqa: E402
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.service_key import (  # noqa: E402
     ServiceKeyTransformMixin_v1,
 )
 
