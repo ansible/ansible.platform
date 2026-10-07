@@ -90,7 +90,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_1
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -113,7 +113,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_2
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -136,7 +136,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_3
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -159,7 +159,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_4
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -182,7 +182,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_5
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -205,7 +205,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_6
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -228,7 +228,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_7
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -251,7 +251,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_8
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 
@@ -274,7 +274,7 @@ EXAMPLES = """
     aap_password: sample_password
     aap_username: sample_username_9
     aap_token: sample_token
-    aap_request_timeout: 0
+    aap_request_timeout: 25
     aap_validate_certs: false
     state: present
 ...
