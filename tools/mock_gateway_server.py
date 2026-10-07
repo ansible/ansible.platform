@@ -296,6 +296,16 @@ class Store:
                 self.orgs_by_id[org["id"]] = org
                 self.orgs_by_name[org["name"]] = org["id"]
 
+        # Seed settings
+        with self._settings_lock:
+            if not self._settings:
+                self._settings = {
+                    "RUNTIME_FEATURE_FLAGS": "True",
+                    "SESSION_COOKIE_AGE": 1800,
+                    "MAX_PAGE_SIZE": 200,
+                    "REMOTE_HOST_HEADERS": [],
+                }
+
         # Seed feature flags with runtime-toggleable flags
         ff_store = self._resources.get(("gateway", "feature_flags"))
         if ff_store and not ff_store._items:
@@ -377,16 +387,6 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
-
-        # Seed settings
-        with self._settings_lock:
-            if not self._settings:
-                self._settings = {
-                    "RUNTIME_FEATURE_FLAGS": "True",
-                    "SESSION_COOKIE_AGE": 1800,
-                    "MAX_PAGE_SIZE": 200,
-                    "REMOTE_HOST_HEADERS": [],
-                }
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
