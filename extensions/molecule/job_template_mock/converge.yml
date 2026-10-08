@@ -43,7 +43,7 @@
       spec: []
   tasks:
     - name: Create a job template with named foreign keys
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         project: Mock Project
         organization: Default
@@ -58,11 +58,11 @@
       ansible.builtin.assert:
         that:
           - created is changed
-          - created.controller_job_template.inventory == 'Mock Inventory'
-          - created.controller_job_template.project == 'Mock Project'
+          - created.job_template.inventory == 'Mock Inventory'
+          - created.job_template.project == 'Mock Project'
 
     - name: Reapply the same template with an inventory ID
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         project: Mock Project
         organization: Default
@@ -78,7 +78,7 @@
         that: reapplied is not changed
 
     - name: Set associations across a paginated label list
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         credentials:
           - Mock Credential
@@ -100,7 +100,7 @@
         that: associated is changed
 
     - name: Reapply associations without changing their order or membership
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         credentials:
           - Mock Credential
@@ -122,7 +122,7 @@
         that: associations_reapplied is not changed
 
     - name: Remove one label and success notification only
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         labels:
           - Mock Label 1
@@ -135,14 +135,14 @@
         that: associations_reduced is changed
 
     - name: Set a survey
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         survey_enabled: true
         survey_spec: "{{ survey }}"
       register: survey_set
 
     - name: Reapply the same survey
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         survey_spec: "{{ survey }}"
       register: survey_reapplied
@@ -154,13 +154,13 @@
           - survey_reapplied is not changed
 
     - name: Clear the survey
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         survey_spec: {}
       register: survey_cleared
 
     - name: Clear the already absent survey
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         survey_spec: {}
       register: survey_cleared_again
@@ -172,13 +172,13 @@
           - survey_cleared_again is not changed
 
     - name: Copy the template
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Copy
         copy_from: "{{ template_name }}"
       register: copied
 
     - name: Reapply the copy request
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Copy
         copy_from: "{{ template_name }}"
       register: copy_reapplied
@@ -190,7 +190,7 @@
           - copy_reapplied is not changed
 
     - name: Preview association removal in check mode
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ template_name }}"
         labels: []
       check_mode: true
@@ -214,14 +214,14 @@
       gateway_validate_certs: false
   tasks:
     - name: Create a direct HTTP template with a credential
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Direct
         credentials:
           - Mock Credential
       register: direct_created
 
     - name: Reapply the direct HTTP template
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Direct
         credentials:
           - Mock Credential
@@ -247,14 +247,14 @@
       gateway_validate_certs: false
   tasks:
     - name: Create a persistent HTTP template with a credential
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Persistent
         credentials:
           - Mock Vault Credential
       register: persistent_created
 
     - name: Reapply the persistent HTTP template
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Persistent
         credentials:
           - Mock Vault Credential
