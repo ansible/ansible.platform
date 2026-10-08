@@ -1,0 +1,12 @@
+---
+- name: Cleanup — controller_ping_mock (nothing to clean up, no resources created)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: No-op
+      ansible.builtin.debug:
+        msg: "controller_ping_mock creates no state (routing/plumbing check only); nothing to clean up."
+      vars:
+        ansible_connection: local
+...
