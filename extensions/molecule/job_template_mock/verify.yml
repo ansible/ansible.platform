@@ -11,19 +11,19 @@
       gateway_validate_certs: false
   tasks:
     - name: Find the local template
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Local
         state: exists
       register: local_template
 
     - name: Find the copied template
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: Molecule Controller JT Copy
         state: exists
       register: copied_template
 
     - name: Find the direct and persistent templates
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ item }}"
         state: exists
       loop:
@@ -52,7 +52,7 @@
         that:
           - local_template.exists
           - copied_template.exists
-          - copied_template.controller_job_template.project == 'Mock Project'
+          - copied_template.job_template.project == 'Mock Project'
           - raw_source.json.project == 5201
           - raw_copy.json.project == 5201
           - connection_templates.results | map(attribute='exists') | list == [true, true]
