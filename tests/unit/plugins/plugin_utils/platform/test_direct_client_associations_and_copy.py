@@ -77,6 +77,22 @@ class TestManageAssociations(unittest.TestCase):
         mock_request.assert_not_called()
         self.client.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
 
+    def test_relative_association_path_uses_requested_service(self):
+        self.client.get_api_version = MagicMock(return_value="2")
+        self.client.search_api.return_value = {"results": []}
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+            self.client.manage_associations("job_templates", 42, "credentials", [5], "credentials", "name", service="controller")
+
+        self.client.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
+        mock_request.assert_called_once_with(
+            "POST",
+            "https://gw.example.com/api/controller/v2/job_templates/42/credentials/",
+            operation="associate",
+            resource="credentials",
+            json={"id": 5, "associate": True},
+        )
+
 
 class TestManageSubResource(unittest.TestCase):
     def setUp(self):
