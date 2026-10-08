@@ -83,16 +83,18 @@ collection-lint: collection-install
 ##   local            (default) – ephemeral DirectHTTPClient, one per task
 ##   http-direct      – ansible.platform.http plugin, DirectHTTPClient, one per task
 ##   http-persistent  – ansible.platform.http plugin, shared ManagerRPCClient process
+## Set GATEWAY_HOSTNAME to override the gateway URL (default: https://localhost:8443)
 ANSIBLE_TEST_INTEGRATION_VENV := --venv
 ifneq ($(ANSIBLE_TEST_INTEGRATION_NO_VENV),)
 ANSIBLE_TEST_INTEGRATION_VENV :=
 endif
 CONNECTION_MODE ?= local
+GATEWAY_HOSTNAME ?= https://localhost:8443
 
 _write_integration_config:
 	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
-	@printf 'gateway_password: %s\nconnection_mode: %s\n' \
-		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
+	@printf 'gateway_hostname: %s\ngateway_password: %s\nconnection_mode: %s\n' \
+		'$(GATEWAY_HOSTNAME)' '$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
 		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
