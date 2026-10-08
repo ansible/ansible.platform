@@ -706,6 +706,10 @@ class DirectHTTPClient(BaseAPIClient):
             except HTTPError as he:
                 # Ansible's Request.open() raises HTTPError for 4xx/5xx responses.
                 if he.code == 404:
+            except APIError as e:
+                # _make_request() converts non-401 HTTPErrors to APIError before they
+                # reach the caller, so catch that here rather than HTTPError.
+                if e.status_code == 404:
                     return False
                 raise
             return True
@@ -819,6 +823,12 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
+        while response_data.get("next") and len(all_results) < max_objects:
+            next_url = response_data["next"]
+            response = self._make_request("GET", next_url, operation="search", resource=endpoint)
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
+            all_results.extend(response_data.get("results", []))
 
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
