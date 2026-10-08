@@ -83,6 +83,20 @@ class TestManageAssociations(unittest.TestCase):
 
         self.svc.lookup_resource_id.assert_not_called()
 
+    def test_relative_association_path_uses_requested_service(self):
+        self.svc.get_api_version = MagicMock(return_value="2")
+        self.svc.search_api.return_value = {"results": []}
+
+        self.svc.manage_associations("job_templates", 42, "credentials", [5], "credentials", "name", service="controller")
+
+        self.svc.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
+        self.svc.session.post.assert_called_once_with(
+            "https://gw.example.com/api/controller/v2/job_templates/42/credentials/",
+            json={"id": 5, "associate": True},
+            timeout=30,
+            verify=True,
+        )
+
     def test_current_associations_are_paginated(self):
         """Regression test: associations beyond page 1 must not be treated as absent."""
         # 30 existing associations (ids 1-30), spanning what would be 2 pages at page_size=25.

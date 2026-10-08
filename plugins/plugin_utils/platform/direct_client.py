@@ -591,9 +591,11 @@ class DirectHTTPClient(BaseAPIClient):
         # treated as absent (which would re-associate them and skip disassociating
         # ones that should be removed).
         assoc_path = f"{base_path}/{resource_id}/{association_field}/"
+        if not assoc_path.startswith("/api/"):
+            assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
-        assoc_url = self._build_url(assoc_path)
+        assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
         for rid in desired_ids - current_ids:
