@@ -1,5 +1,5 @@
 ---
-# Integration tests for ansible.platform.controller_job_template
+# Integration tests for ansible.platform.job_template
 
 - name: Generate a test ID
   ansible.builtin.set_fact:
@@ -19,8 +19,8 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    - name: Create controller_job_template
-      ansible.platform.controller_job_template:
+    - name: Create job_template
+      ansible.platform.job_template:
         name: "{{ name_prefix }}-Test-JobTemplate"
         state: present
       register: created_job_template
@@ -29,10 +29,10 @@
       ansible.builtin.assert:
         that:
           - created_job_template is changed
-          - created_job_template.controller_job_template.name is defined
+          - created_job_template.job_template.name is defined
 
     - name: Check idempotency (re-apply, expect no change)
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ name_prefix }}-Test-JobTemplate"
         state: present
       register: idempotent_job_template
@@ -43,7 +43,7 @@
           - idempotent_job_template is not changed
 
     - name: Update description
-      ansible.platform.controller_job_template:
+      ansible.platform.job_template:
         name: "{{ name_prefix }}-Test-JobTemplate"
         description: Updated via integration test
         state: present
@@ -53,11 +53,11 @@
       ansible.builtin.assert:
         that:
           - updated_job_template is changed
-          - updated_job_template.controller_job_template.description == "Updated via integration test"
+          - updated_job_template.job_template.description == "Updated via integration test"
 
     - name: Check exists returns true
-      ansible.platform.controller_job_template:
-        name: "{{ created_job_template.controller_job_template.name }}"
+      ansible.platform.job_template:
+        name: "{{ created_job_template.job_template.name }}"
         state: exists
       register: exists_check
 
@@ -67,12 +67,12 @@
           - exists_check.exists
 
   always:
-    - name: Delete controller_job_template
-      ansible.platform.controller_job_template:
-        name: "{{ created_job_template.controller_job_template.name }}"
+    - name: Delete job_template
+      ansible.platform.job_template:
+        name: "{{ created_job_template.job_template.name }}"
         state: absent
       when: >-
         created_job_template is defined
-        and "controller_job_template" in created_job_template
-        and "name" in created_job_template.controller_job_template
+        and "job_template" in created_job_template
+        and "name" in created_job_template.job_template
 ...

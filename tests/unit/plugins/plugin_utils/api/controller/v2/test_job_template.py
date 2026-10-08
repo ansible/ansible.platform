@@ -8,8 +8,8 @@ from __future__ import absolute_import, division, print_function
 import unittest
 from unittest.mock import MagicMock
 
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_job_template import AnsibleControllerJobTemplate
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_job_template import ControllerJobTemplateTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleControllerJobTemplate
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import ControllerJobTemplateTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 __metaclass__ = type

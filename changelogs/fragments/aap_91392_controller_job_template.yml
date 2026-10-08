@@ -1,4 +1,0 @@
----
-minor_changes:
-  - controller_job_template - add new module to create, update, or delete Controller job templates, migrated from the legacy ``awx.awx``/``ansible.controller`` ``job_template`` module. Association fields (``credentials``, ``labels``, notification templates, ``instance_groups``), ``copy_from``, and ``survey_spec`` are not yet supported and will be added in a follow-up release (https://issues.redhat.com/browse/AAP-91392).
-...

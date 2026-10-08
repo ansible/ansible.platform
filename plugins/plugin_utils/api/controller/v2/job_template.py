@@ -241,7 +241,7 @@ class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ....ansible_models.controller_job_template import AnsibleControllerJobTemplate
+        from ....ansible_models.job_template import AnsibleControllerJobTemplate
 
         extra_vars = None
         raw_extra = api_data.get("extra_vars")

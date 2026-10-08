@@ -10,7 +10,7 @@ __metaclass__ = type
 
 DOCUMENTATION = """
 ---
-module: controller_job_template
+module: job_template
 author: Red Hat (@RedHatOfficial)
 short_description: Manage a controller job template.
 description:
@@ -177,7 +177,7 @@ seealso:
 
 EXAMPLES = """
 - name: Create a job template
-  ansible.platform.controller_job_template:
+  ansible.platform.job_template:
     name: Ping
     job_type: run
     organization: Default
@@ -187,25 +187,25 @@ EXAMPLES = """
     state: present
 
 - name: Rename a job template
-  ansible.platform.controller_job_template:
+  ansible.platform.job_template:
     name: Ping
     new_name: Ping check
     state: present
 
 - name: Delete a job template
-  ansible.platform.controller_job_template:
+  ansible.platform.job_template:
     name: Ping check
     state: absent
 
 - name: Check whether a job template exists
-  ansible.platform.controller_job_template:
+  ansible.platform.job_template:
     name: Ping
     state: exists
 ...
 """
 
 RETURN = """
-controller_job_template:
+job_template:
   description: The job template resource data.
   returned: always
   type: dict
