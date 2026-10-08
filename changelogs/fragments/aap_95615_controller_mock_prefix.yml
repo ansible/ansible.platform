@@ -1,0 +1,8 @@
+---
+trivial:
+  - Add Controller API prefix support (``/api/controller/vN/``) to the mock Gateway
+    server used by Molecule mock tests, alongside the existing ``/api/gateway/vN/``
+    prefix, and add a ``controller_ping_mock`` scenario proving it works. Lays the
+    groundwork for Molecule mock scenarios covering ported ``awx_collection``
+    (Controller) resources (https://issues.redhat.com/browse/AAP-95615).
+...
