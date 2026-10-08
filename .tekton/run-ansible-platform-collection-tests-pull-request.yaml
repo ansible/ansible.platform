@@ -2,7 +2,7 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: ansible-platform-collection-integration-tests-pull-request
+  name: ansible-platform-ansible-platform-collection-tests-pull-request
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/{{repo_owner}}/{{repo_name}}?rev={{revision}}
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
@@ -28,9 +28,9 @@ spec:
     resolver: bundles
     params:
       - name: name
-        value: collection-integration-tests
+        value: ansible-platform-collection-tests
       - name: bundle
-        value: quay.io/aap-ci/tekton-catalog/pipeline/test/collection-integration-tests:0.1
+        value: quay.io/aap-ci/tekton-catalog/pipeline/test/ansible-platform-collection-tests:0.1
       - name: kind
         value: pipeline
       - name: secret
