@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 import json
 import unittest
 from unittest.mock import MagicMock
-from urllib.error import HTTPError
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
@@ -292,7 +291,7 @@ class TestManageSubResource(unittest.TestCase):
             with self.assertRaises(APIError):
         server_error = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 500, "Server Error", {}, None)
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=server_error):
-            with self.assertRaises(HTTPError):
+            with self.assertRaises(APIError):
                 self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
 
     def test_same_data_is_noop(self):
@@ -354,6 +353,7 @@ class TestSearchApi(unittest.TestCase):
         self.client.base_url = "https://gw.example.com"
         self.client.api_versions = {}
         self.client.api_version = "2"
+        self.client.api_versions = {"gateway": "2"}
         self.client.cache = {}
 
     def _bad_json_response(self):
