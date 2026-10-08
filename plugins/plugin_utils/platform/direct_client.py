@@ -719,6 +719,10 @@ class DirectHTTPClient(BaseAPIClient):
             except HTTPError as he:
                 # Ansible's Request.open() raises HTTPError for 4xx/5xx responses.
                 if he.code == 404:
+            except APIError as e:
+                # _make_request() converts non-401 HTTPErrors to APIError before they
+                # reach the caller, so catch that here rather than HTTPError.
+                if e.status_code == 404:
                     return False
                 raise
             return True
