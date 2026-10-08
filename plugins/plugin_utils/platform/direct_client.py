@@ -627,9 +627,10 @@ class DirectHTTPClient(BaseAPIClient):
         if data == {}:
             try:
                 self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
-            except HTTPError as he:
-                # Ansible's Request.open() raises HTTPError for 4xx/5xx responses.
-                if he.code == 404:
+            except APIError as e:
+                # _make_request() converts non-401 HTTPErrors to APIError before they
+                # reach the caller, so catch that here rather than HTTPError.
+                if e.status_code == 404:
                     return False
                 raise
             return True
@@ -716,6 +717,12 @@ class DirectHTTPClient(BaseAPIClient):
             response_body = response.read()
             response_data = json.loads(response_body) if response_body else {}
         except Exception:
+            # Callers with return_all=True (e.g. manage_associations) diff this
+            # result's "results" against desired state to decide what to
+            # associate/disassociate — silently treating a parse failure as an
+            # empty page would make that diff wrong. Fail loudly instead.
+            if return_all:
+                raise
             response_data = {}
 
         if not return_all:
@@ -726,11 +733,8 @@ class DirectHTTPClient(BaseAPIClient):
         while response_data.get("next") and len(all_results) < max_objects:
             next_url = response_data["next"]
             response = self._make_request("GET", next_url, operation="search", resource=endpoint)
-            try:
-                response_body = response.read()
-                response_data = json.loads(response_body) if response_body else {}
-            except Exception:
-                break
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
             all_results.extend(response_data.get("results", []))
 
         response_data["results"] = all_results[:max_objects]
