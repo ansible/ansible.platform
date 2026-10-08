@@ -1,5 +1,5 @@
 """
-API v2 ControllerJobTemplate dataclass and transform mixin.
+API v2 JobTemplate dataclass and transform mixin.
 
 Handles transformations between Ansible format and Controller API v2 format.
 Association fields (credentials, labels, notification templates, instance
@@ -62,7 +62,7 @@ _WRITABLE_FIELDS = ("name",) + _SCALAR_FIELDS + ("inventory", "project", "execut
 
 
 @dataclass
-class APIControllerJobTemplate_v2(BaseTransformMixin):
+class APIJobTemplate_v2(BaseTransformMixin):
     """API v2 representation of a controller job template."""
 
     name: Optional[str] = None
@@ -117,15 +117,15 @@ class APIControllerJobTemplate_v2(BaseTransformMixin):
     url: Optional[str] = None
 
 
-class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
-    """Transform mixin for ControllerJobTemplate API v2."""
+class JobTemplateTransformMixin_v2(BaseTransformMixin):
+    """Transform mixin for JobTemplate API v2."""
 
     @classmethod
     def from_ansible_data(
         cls,
         ansible_instance,
         context: Union[TransformContext, Dict[str, Any]],
-    ) -> "APIControllerJobTemplate_v2":
+    ) -> "APIJobTemplate_v2":
         api_data: Dict[str, Any] = {}
 
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
@@ -185,7 +185,7 @@ class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
             else:
                 api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
 
-        return APIControllerJobTemplate_v2(**api_data)
+        return APIJobTemplate_v2(**api_data)
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
@@ -241,7 +241,7 @@ class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
         api_data: Dict[str, Any],
         context: Union[TransformContext, Dict[str, Any]],
     ):
-        from ....ansible_models.job_template import AnsibleControllerJobTemplate
+        from ....ansible_models.job_template import AnsibleJobTemplate
 
         extra_vars = None
         raw_extra = api_data.get("extra_vars")
@@ -259,7 +259,7 @@ class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
         api_version = getattr(context, "api_version", None) if isinstance(context, TransformContext) else context.get("api_version")
 
         def _resolve_fk_name(endpoint: str, resource_id: Optional[int]) -> Optional[str]:
-            # FK fields are Optional[str] (names) on AnsibleControllerJobTemplate, so the
+            # FK fields are Optional[str] (names) on AnsibleJobTemplate, so the
             # raw int id from the API must be resolved back to a name here. Returning the
             # raw id instead would break _should_update()'s comparison (it diffs this
             # from_api() output against the user-supplied name, a str-vs-int mismatch that
@@ -279,7 +279,7 @@ class ControllerJobTemplateTransformMixin_v2(BaseTransformMixin):
             return name
 
         kwargs = {field: api_data.get(field) for field in _SCALAR_FIELDS}
-        return AnsibleControllerJobTemplate(
+        return AnsibleJobTemplate(
             name=api_data.get("name"),
             inventory=_resolve_fk_name("inventories", api_data.get("inventory")),
             project=_resolve_fk_name("projects", api_data.get("project")),

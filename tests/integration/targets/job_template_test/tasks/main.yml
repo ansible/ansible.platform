@@ -8,7 +8,7 @@
 
 - name: Preset vars
   ansible.builtin.set_fact:
-    name_prefix: "AAP-Collection-Test-ControllerJobTemplate-{{ test_id }}"
+    name_prefix: "AAP-Collection-Test-JobTemplate-{{ test_id }}"
 
 - name: Run Test
   module_defaults:

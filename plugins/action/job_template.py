@@ -8,9 +8,9 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleControllerJobTemplate
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleJobTemplate
 
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "job_template"
-    MODEL_CLASS = AnsibleControllerJobTemplate
+    MODEL_CLASS = AnsibleJobTemplate

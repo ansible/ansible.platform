@@ -1,15 +1,15 @@
 # (c) 2026 Red Hat Inc.
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Unit tests for the ControllerJobTemplate transform mixin (core CRUD, no associations yet)."""
+"""Unit tests for the JobTemplate transform mixin (core CRUD, no associations yet)."""
 
 from __future__ import absolute_import, division, print_function
 
 import unittest
 from unittest.mock import MagicMock
 
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleControllerJobTemplate
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import ControllerJobTemplateTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleJobTemplate
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import JobTemplateTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 __metaclass__ = type
@@ -29,9 +29,9 @@ def _context(operation, manager=None):
 class TestFromAnsibleDataCreate(unittest.TestCase):
     def test_create_uses_name_and_scalar_fields(self):
         manager = MagicMock()
-        instance = AnsibleControllerJobTemplate(name="Ping", job_type="run", playbook="ping.yml", forks=5)
+        instance = AnsibleJobTemplate(name="Ping", job_type="run", playbook="ping.yml", forks=5)
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
         self.assertEqual(api_data.name, "Ping")
         self.assertEqual(api_data.job_type, "run")
@@ -40,9 +40,9 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
 
     def test_extra_vars_dict_is_json_encoded(self):
         manager = MagicMock()
-        instance = AnsibleControllerJobTemplate(name="Ping", extra_vars={"foo": "bar"})
+        instance = AnsibleJobTemplate(name="Ping", extra_vars={"foo": "bar"})
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
         self.assertEqual(api_data.extra_vars, '{"foo": "bar"}')
 
@@ -54,9 +54,9 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
             ("credentials", "Webhook Cred"): 30,
         }[(endpoint, value)]
 
-        instance = AnsibleControllerJobTemplate(name="Ping", inventory="Local", execution_environment="EE", webhook_credential="Webhook Cred")
+        instance = AnsibleJobTemplate(name="Ping", inventory="Local", execution_environment="EE", webhook_credential="Webhook Cred")
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
         self.assertEqual(api_data.inventory, 10)
         self.assertEqual(api_data.execution_environment, 20)
@@ -68,25 +68,25 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
 class TestFromAnsibleDataUpdate(unittest.TestCase):
     def test_new_name_is_sent_as_name(self):
         manager = MagicMock()
-        instance = AnsibleControllerJobTemplate(name="Ping", new_name="Ping Renamed", id=5)
+        instance = AnsibleJobTemplate(name="Ping", new_name="Ping Renamed", id=5)
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
 
         self.assertEqual(api_data.name, "Ping Renamed")
 
     def test_plain_name_is_echoed_back(self):
         manager = MagicMock()
-        instance = AnsibleControllerJobTemplate(name="Ping", id=5)
+        instance = AnsibleJobTemplate(name="Ping", id=5)
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
 
         self.assertEqual(api_data.name, "Ping")
 
     def test_numeric_name_used_for_lookup_only_not_echoed(self):
         manager = MagicMock()
-        instance = AnsibleControllerJobTemplate(name="1001", id=1001)
+        instance = AnsibleJobTemplate(name="1001", id=1001)
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
 
         self.assertIsNone(api_data.name)
 
@@ -94,9 +94,9 @@ class TestFromAnsibleDataUpdate(unittest.TestCase):
 class TestProjectResolution(unittest.TestCase):
     def test_numeric_project_passthrough(self):
         manager = MagicMock()
-        instance = AnsibleControllerJobTemplate(name="Ping", project="7")
+        instance = AnsibleJobTemplate(name="Ping", project="7")
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
         self.assertEqual(api_data.project, 7)
         manager.lookup_resource_id.assert_not_called()
@@ -105,9 +105,9 @@ class TestProjectResolution(unittest.TestCase):
     def test_project_without_organization_uses_plain_lookup(self):
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 42
-        instance = AnsibleControllerJobTemplate(name="Ping", project="Demo")
+        instance = AnsibleJobTemplate(name="Ping", project="Demo")
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
         self.assertEqual(api_data.project, 42)
         manager.lookup_resource_id.assert_called_once_with("projects", "name", "Demo", service="controller")
@@ -116,9 +116,9 @@ class TestProjectResolution(unittest.TestCase):
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 99  # organization id
         manager.search_api.return_value = {"results": [{"id": 55, "name": "Demo"}]}
-        instance = AnsibleControllerJobTemplate(name="Ping", project="Demo", organization="Default")
+        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
 
-        api_data = ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
         manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
         manager.search_api.assert_called_once_with("/api/controller/v2/projects/", query_params={"name": "Demo", "organization": 99})
@@ -128,10 +128,10 @@ class TestProjectResolution(unittest.TestCase):
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 99
         manager.search_api.return_value = {"results": []}
-        instance = AnsibleControllerJobTemplate(name="Ping", project="Missing", organization="Default")
+        instance = AnsibleJobTemplate(name="Ping", project="Missing", organization="Default")
 
         with self.assertRaises(ValueError):
-            ControllerJobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
 
 class TestFromApi(unittest.TestCase):
@@ -157,7 +157,7 @@ class TestFromApi(unittest.TestCase):
             "url": "/api/controller/v2/job_templates/5/",
         }
 
-        result = ControllerJobTemplateTransformMixin_v2.from_api(api_data, _context("find", manager=manager))
+        result = JobTemplateTransformMixin_v2.from_api(api_data, _context("find", manager=manager))
 
         self.assertEqual(result.id, 5)
         self.assertEqual(result.name, "Ping")
@@ -177,8 +177,8 @@ class TestFromApi(unittest.TestCase):
         manager.search_api.return_value = {"name": "Local"}
         context = _context("find", manager=manager)
 
-        ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, context)
-        ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping2", "inventory": 10}, context)
+        JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, context)
+        JobTemplateTransformMixin_v2.from_api({"name": "Ping2", "inventory": 10}, context)
 
         manager.search_api.assert_called_once_with("/api/controller/v2/inventories/10/")
 
@@ -186,33 +186,33 @@ class TestFromApi(unittest.TestCase):
         manager = MagicMock()
         manager.search_api.side_effect = ValueError("not found")
 
-        result = ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
+        result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
 
         self.assertIsNone(result.inventory)
 
     def test_null_fk_id_skips_lookup(self):
         manager = MagicMock()
 
-        result = ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping"}, _context("find", manager=manager))
+        result = JobTemplateTransformMixin_v2.from_api({"name": "Ping"}, _context("find", manager=manager))
 
         self.assertIsNone(result.inventory)
         manager.search_api.assert_not_called()
 
     def test_non_json_extra_vars_falls_back_to_none(self):
-        result = ControllerJobTemplateTransformMixin_v2.from_api({"name": "Ping", "extra_vars": "not json"}, _context("find"))
+        result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "extra_vars": "not json"}, _context("find"))
         self.assertIsNone(result.extra_vars)
 
 
 class TestEndpointOperations(unittest.TestCase):
     def test_paths_include_controller_service_segment(self):
-        operations = ControllerJobTemplateTransformMixin_v2.get_endpoint_operations()
+        operations = JobTemplateTransformMixin_v2.get_endpoint_operations()
         self.assertEqual(operations["create"].path, "/api/controller/v2/job_templates/")
         self.assertEqual(operations["update"].path, "/api/controller/v2/job_templates/{id}/")
         self.assertEqual(operations["delete"].path, "/api/controller/v2/job_templates/{id}/")
         self.assertEqual(operations["list"].path, "/api/controller/v2/job_templates/")
 
     def test_lookup_field_is_name(self):
-        self.assertEqual(ControllerJobTemplateTransformMixin_v2.get_lookup_field(), "name")
+        self.assertEqual(JobTemplateTransformMixin_v2.get_lookup_field(), "name")
 
 
 if __name__ == "__main__":

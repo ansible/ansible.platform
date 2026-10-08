@@ -1,5 +1,5 @@
 """
-Ansible ControllerJobTemplate dataclass - user-facing stable interface.
+Ansible JobTemplate dataclass - user-facing stable interface.
 
 This dataclass represents the job template as seen by Ansible playbooks.
 Field names and types remain stable across API versions. Association fields
@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 
 @dataclass
-class AnsibleControllerJobTemplate:
+class AnsibleJobTemplate:
     """Ansible representation of a controller job template."""
 
     # Required / identity
