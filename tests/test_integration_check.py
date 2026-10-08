@@ -5,9 +5,7 @@ from sys import exit
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 # CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
-modules_without_live_integration = {
-    "job_templates": "Controller requires a routed service; job_template_mock runs in Molecule CI",
-}
+modules_without_live_integration = {}
 tests_to_ignore = ["lookup_test", "setup_gateway", "users_examples_test", "backward_compat_26_test", "ssl_env_forwarding_test", "vault_credentials_test"]
 
 
