@@ -71,3 +71,8 @@ class AnsibleJobTemplate:
     created: Optional[str] = None
     modified: Optional[str] = None
     url: Optional[str] = None
+    # Internal API IDs let the manager preserve FK values in partial updates.
+    inventory_id: Optional[int] = None
+    project_id: Optional[int] = None
+    execution_environment_id: Optional[int] = None
+    webhook_credential_id: Optional[int] = None

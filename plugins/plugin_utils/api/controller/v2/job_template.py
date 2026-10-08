@@ -126,6 +126,13 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for JobTemplate API v2."""
 
     @classmethod
+    def get_update_value_from_current_data(cls, field: str, current_data: Dict[str, Any]) -> Any:
+        """Use raw API IDs when the manager preserves related fields for a PATCH."""
+        if field in {"inventory", "project", "execution_environment", "webhook_credential"}:
+            return current_data.get(f"{field}_id", current_data.get(field))
+        return current_data.get(field)
+
+    @classmethod
     def from_ansible_data(
         cls,
         ansible_instance,
@@ -174,6 +181,10 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         webhook_credential = getattr(ansible_instance, "webhook_credential", None)
         if webhook_credential is not None:
             api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, service=service)
+
+        resource_id = getattr(ansible_instance, "id", None)
+        if resource_id is not None:
+            api_data["id"] = resource_id
 
         # project: organization (Gateway-owned, see docs/12-api-landscape.md) disambiguates
         # between same-named projects in different orgs, matching the legacy awx_collection
@@ -306,6 +317,10 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
             webhook_credential=_resolve_fk_name("credentials", api_data.get("webhook_credential")),
             extra_vars=extra_vars,
             id=api_data.get("id"),
+            inventory_id=api_data.get("inventory"),
+            project_id=api_data.get("project"),
+            execution_environment_id=api_data.get("execution_environment"),
+            webhook_credential_id=api_data.get("webhook_credential"),
             created=api_data.get("created"),
             modified=api_data.get("modified"),
             url=api_data.get("url"),
