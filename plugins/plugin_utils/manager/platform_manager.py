@@ -636,8 +636,11 @@ class PlatformService(BaseAPIClient):
         if update_op and current_data:
             current_dict = current_data if isinstance(current_data, dict) else current_data
             for field in getattr(update_op, "fields", []) or []:
-                if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
-                    setattr(api_data, field, current_dict[field])
+                current_value = current_dict.get(field)
+                if hasattr(mixin_class, "get_update_value_from_current_data"):
+                    current_value = mixin_class.get_update_value_from_current_data(field, current_dict)
+                if getattr(api_data, field, None) is None and current_value is not None:
+                    setattr(api_data, field, current_value)
 
         # After the merge, let the mixin declare which fields must be sent as
         # null to clear server-side values that are incompatible with the new
