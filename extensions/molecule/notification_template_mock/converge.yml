@@ -1,0 +1,52 @@
+---
+- name: Health
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - ansible.builtin.uri:
+        url: "http://127.0.0.1:8000/health"
+        status_code: 200
+      retries: 12
+      delay: 5
+      register: h
+      until: h.status == 200
+      vars:
+        ansible_connection: local
+    - ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+    - ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+- name: Converge
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - ansible.platform.notification_template:
+        name: "Molecule NT"
+        organization: "1"
+        notification_type: webhook
+        notification_configuration:
+          url: "https://x.com/wh"
+          http_method: "POST"
+      register: r
+      vars:
+        ansible_connection: local
+    - assert:
+        that: r is changed
+      vars:
+        ansible_connection: local
+...

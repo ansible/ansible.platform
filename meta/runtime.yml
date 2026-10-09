@@ -24,5 +24,8 @@ action_groups:
     - token
     - ui_plugin_route
     - user
-  controller: []
+  controller:
+    - notification_template
+  controller:
+    - controller_credential
 ...

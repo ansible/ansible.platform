@@ -1,0 +1,23 @@
+---
+- name: Cleanup
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - ansible.platform.notification_template:
+        name: "Molecule NT"
+        organization: "1"
+        state: absent
+        gateway_hostname: "http://127.0.0.1:8000"
+        gateway_username: "mock"
+        gateway_password: "testpass"
+        gateway_validate_certs: false
+      failed_when: false
+      vars:
+        ansible_connection: local
+    - ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
