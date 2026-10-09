@@ -1,0 +1,171 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — instance (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    instance_hostname_local: "molecule-test-exec-local.example.com"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create instance (connection local)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_local }}"
+        node_type: execution
+        enabled: true
+        capacity_adjustment: 0.5
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.instance.id is defined
+          - create_result_local.instance.hostname == instance_hostname_local
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_local }}"
+        node_type: execution
+        enabled: true
+        capacity_adjustment: 0.5
+        state: present
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+      vars:
+        ansible_connection: local
+
+    - name: Update instance capacity (connection local)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_local }}"
+        capacity_adjustment: 0.8
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+      vars:
+        ansible_connection: local
+
+- name: Converge — instance (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    instance_hostname_http_direct: "molecule-test-exec-direct.example.com"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create instance (http direct)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_http_direct }}"
+        node_type: hop
+        enabled: true
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.instance.id is defined
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_http_direct }}"
+        node_type: hop
+        enabled: true
+        state: present
+      register: idem_result_http_direct
+
+    - name: Assert idempotent (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+
+- name: Converge — instance (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    instance_hostname_http_persistent: "molecule-test-exec-persistent.example.com"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create instance (http persistent)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_http_persistent }}"
+        node_type: execution
+        enabled: true
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.instance.id is defined
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_http_persistent }}"
+        node_type: execution
+        enabled: true
+        state: present
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+...
