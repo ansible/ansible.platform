@@ -1,0 +1,36 @@
+---
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Get subscriptions with invalid credentials (should fail)
+      ansible.platform.subscriptions:
+        username: "invalid_user"
+        password: "invalid_pass"
+      register: sub_result
+      ignore_errors: true
+
+    - name: Assert invalid credentials produce an error
+      ansible.builtin.assert:
+        that:
+          - sub_result is failed
+
+    - name: Verify mutually exclusive parameters
+      ansible.platform.subscriptions:
+        username: "test_user"
+        password: "test_pass"
+        client_id: "test_client_id"
+        client_secret: "test_secret"
+      register: mutex_result
+      ignore_errors: true
+
+    - name: Assert mutually exclusive error
+      ansible.builtin.assert:
+        that:
+          - mutex_result is failed
+...
