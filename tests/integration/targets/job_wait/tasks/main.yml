@@ -1,0 +1,74 @@
+---
+- name: Generate a test ID
+  set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Check module fails with correct msg for nonexistent job
+  ansible.platform.job_wait:
+    job_id: 99999999
+  register: result
+  ignore_errors: true
+
+- assert:
+    that:
+      - result is failed
+      - "'not found' in result.msg or 'does not exist' in result.msg or '99999999' in result.msg"
+
+- name: Launch Demo Job Template via URI (get template ID)
+  ansible.builtin.uri:
+    url: "{{ aap_hostname }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: "{{ aap_validate_certs | default(false) }}"
+    force_basic_auth: true
+    method: GET
+  register: jt_lookup
+
+- name: Extract template ID
+  set_fact:
+    demo_jt_id: "{{ jt_lookup.json.results[0].id }}"
+
+- name: Launch Demo Job Template via URI
+  ansible.builtin.uri:
+    url: "{{ aap_hostname }}/api/controller/v2/job_templates/{{ demo_jt_id }}/launch/"
+    user: "{{ aap_username }}"
+    password: "{{ aap_password }}"
+    validate_certs: "{{ aap_validate_certs | default(false) }}"
+    force_basic_auth: true
+    method: POST
+    body_format: json
+    body: "{}"
+    status_code:
+      - 201
+  register: launched_job
+
+- assert:
+    that:
+      - launched_job.status == 201
+      - launched_job.json.id is defined
+
+- name: Wait for the Job to finish
+  ansible.platform.job_wait:
+    job_id: "{{ launched_job.json.id }}"
+    timeout: 120
+  register: wait_results
+
+- assert:
+    that:
+      - wait_results is successful
+      - "'elapsed' in wait_results"
+      - "'id' in wait_results"
+      - "'status' in wait_results"
+      - wait_results.status == "successful"
+
+- name: Wait for already-finished job (should return immediately)
+  ansible.platform.job_wait:
+    job_id: "{{ launched_job.json.id }}"
+    timeout: 10
+  register: wait_results_again
+
+- assert:
+    that:
+      - wait_results_again is successful
+      - wait_results_again.status == "successful"
