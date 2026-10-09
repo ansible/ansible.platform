@@ -1,0 +1,66 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    wf_jt_name: "Approval-Test-WF-{{ test_id }}"
+    approval_node_name: "Approval-Node-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # --- Test check_mode ---
+    - name: Approve with check mode (should not fail)
+      ansible.platform.workflow_approval:
+        workflow_job_id: 9999
+        name: "{{ approval_node_name }}"
+        action: approve
+      check_mode: true
+      register: check_result
+
+    - name: Assert check mode returns changed
+      ansible.builtin.assert:
+        that:
+          - check_result is changed
+          - check_result.workflow_approval.action == "approve"
+
+    # --- Test deny with check_mode ---
+    - name: Deny with check mode (should not fail)
+      ansible.platform.workflow_approval:
+        workflow_job_id: 9999
+        name: "{{ approval_node_name }}"
+        action: deny
+      check_mode: true
+      register: deny_check_result
+
+    - name: Assert deny check mode returns changed
+      ansible.builtin.assert:
+        that:
+          - deny_check_result is changed
+          - deny_check_result.workflow_approval.action == "deny"
+
+    # --- Test timeout behavior ---
+    - name: Test timeout waiting for nonexistent approval node
+      ansible.platform.workflow_approval:
+        workflow_job_id: 9999999
+        name: "nonexistent-approval-node"
+        action: approve
+        timeout: 2
+        interval: 1
+      register: timeout_result
+      ignore_errors: true
+
+    - name: Assert timeout produces failure
+      ansible.builtin.assert:
+        that:
+          - timeout_result is failed
+          - "'Timed out' in timeout_result.msg or 'not found' in timeout_result.msg | lower or timeout_result.msg | length > 0"
