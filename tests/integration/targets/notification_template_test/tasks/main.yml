@@ -1,0 +1,26 @@
+---
+- ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+- ansible.builtin.set_fact:
+    np: "Test-NT-{{ test_id }}"
+- block:
+    - ansible.platform.notification_template:
+        name: "{{ np }}"
+        organization: "Default"
+        notification_type: webhook
+        notification_configuration:
+          url: "https://x.com"
+          http_method: "POST"
+          headers: {}
+        state: present
+      register: c
+    - assert:
+        that: c is changed
+  always:
+    - ansible.platform.notification_template:
+        name: "{{ np }}"
+        organization: "Default"
+        state: absent
+      failed_when: false
+...
