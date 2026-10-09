@@ -1,0 +1,61 @@
+---
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <JobList> -------------------
+    - name: List all jobs (default - first page)
+      ansible.platform.job_list: {}
+      register: all_jobs
+
+    - name: Assert job list returns expected structure
+      ansible.builtin.assert:
+        that:
+          - all_jobs is not changed
+          - all_jobs is not failed
+          - "'count' in all_jobs"
+          - "'results' in all_jobs"
+          - all_jobs.results is iterable
+
+    - name: List jobs with status filter (successful)
+      ansible.platform.job_list:
+        status: successful
+      register: successful_jobs
+
+    - name: Assert successful jobs filter works
+      ansible.builtin.assert:
+        that:
+          - successful_jobs is not changed
+          - successful_jobs is not failed
+          - "'count' in successful_jobs"
+          - "'results' in successful_jobs"
+
+    - name: List jobs with all_pages enabled
+      ansible.platform.job_list:
+        all_pages: true
+      register: all_pages_jobs
+
+    - name: Assert all_pages returns results
+      ansible.builtin.assert:
+        that:
+          - all_pages_jobs is not changed
+          - all_pages_jobs is not failed
+          - "'results' in all_pages_jobs"
+
+    - name: List jobs with a query filter
+      ansible.platform.job_list:
+        query:
+          order_by: "-id"
+      register: queried_jobs
+
+    - name: Assert query filter returns expected structure
+      ansible.builtin.assert:
+        that:
+          - queried_jobs is not changed
+          - queried_jobs is not failed
+          - "'results' in queried_jobs"
