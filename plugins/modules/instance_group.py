@@ -20,7 +20,7 @@ short_description: Manage Controller instance groups
 description:
   - Create, update, or delete instance groups on Ansible Automation Platform Controller.
   - Instance groups can be regular or container groups (with Kubernetes/OpenShift).
-  - The C(instances) association endpoint is planned for a follow-up PR.
+  - Supports associating instances (nodes) to the group via the C(instances) field.
 version_added: "2.8.0"
 
 options:
@@ -80,6 +80,13 @@ options:
       - A custom Kubernetes or OpenShift Pod specification.
     type: str
 
+  instances:
+    description:
+      - List of instance hostnames or IDs to associate with this instance group.
+      - The association is synced — instances not in the list will be disassociated.
+    type: list
+    elements: str
+
 seealso:
   - module: ansible.controller.instance_group
   - module: awx.awx.instance_group
@@ -115,6 +122,13 @@ EXAMPLES = """
   ansible.platform.instance_group:
     name: "My Instance Group"
     new_name: "Production Group"
+
+- name: Associate instances to an instance group
+  ansible.platform.instance_group:
+    name: "My Instance Group"
+    instances:
+      - "node1.example.com"
+      - "node2.example.com"
 
 - name: Delete an instance group
   ansible.platform.instance_group:
