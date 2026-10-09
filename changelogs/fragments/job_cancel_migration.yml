@@ -1,0 +1,2 @@
+minor_changes:
+  - job_cancel - Migrated from awx.awx/ansible.controller collection. Cancel a Controller job via the platform SDK (https://github.com/ansible/ansible.platform).

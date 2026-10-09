@@ -1,5 +1,5 @@
 """
-Ansible ControllerJobCancel dataclass - user-facing stable interface.
+Ansible JobCancel dataclass - user-facing stable interface.
 
 This dataclass represents the controller job cancel request as seen by Ansible playbooks.
 Field names and types remain stable across API versions.
@@ -10,7 +10,7 @@ from typing import Optional
 
 
 @dataclass
-class AnsibleControllerJobCancel:
+class AnsibleJobCancel:
     """
     Ansible representation of a controller job cancel request.
 

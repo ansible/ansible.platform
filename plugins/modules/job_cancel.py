@@ -6,7 +6,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # This module is implemented as an action plugin.
-# See plugins/action/controller_job_cancel.py for the implementation.
+# See plugins/action/job_cancel.py for the implementation.
 
 from __future__ import absolute_import, division, print_function
 
@@ -14,7 +14,7 @@ __metaclass__ = type
 
 DOCUMENTATION = """
 ---
-module: controller_job_cancel
+module: job_cancel
 author: Red Hat (@RedHatOfficial)
 short_description: Cancel an Automation Controller job.
 description:
@@ -42,11 +42,11 @@ extends_documentation_fragment:
 
 EXAMPLES = """
 - name: Cancel a running job
-  ansible.platform.controller_job_cancel:
+  ansible.platform.job_cancel:
     job_id: 123
 
 - name: Cancel a job and fail if it is not running
-  ansible.platform.controller_job_cancel:
+  ansible.platform.job_cancel:
     job_id: 456
     fail_if_not_running: true
 """

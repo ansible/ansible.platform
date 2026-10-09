@@ -4,7 +4,7 @@
 # Copyright: (c) 2025, Red Hat
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Action plugin for controller_job_cancel module.
+"""Action plugin for job_cancel module.
 
 Cancels a Controller job by POSTing to its /cancel/ sub-endpoint.
 Already-finished jobs are a safe no-op (changed=False) unless
@@ -19,12 +19,12 @@ from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_job_cancel import AnsibleControllerJobCancel
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_cancel import AnsibleJobCancel
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME = "controller_job_cancel"
-    MODEL_CLASS = AnsibleControllerJobCancel
+    MODULE_NAME = "job_cancel"
+    MODEL_CLASS = AnsibleJobCancel
     LOOKUP_FIELD = "job_id"
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:

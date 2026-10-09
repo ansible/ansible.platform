@@ -1,5 +1,5 @@
 """
-API v2 ControllerJobCancel dataclass and transform mixin.
+API v2 JobCancel dataclass and transform mixin.
 
 Handles transformations between Ansible format and Controller API v2 format.
 This is a minimal mixin for the cancel operation (Shape 4) -- the actual
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class APIControllerJobCancel_v2(BaseTransformMixin):
+class APIJobCancel_v2(BaseTransformMixin):
     """
     API v2 representation of a controller job cancel request.
     """
@@ -28,18 +28,18 @@ class APIControllerJobCancel_v2(BaseTransformMixin):
     id: Optional[int] = None
 
 
-class ControllerJobCancelTransformMixin_v2(BaseTransformMixin):
+class JobCancelTransformMixin_v2(BaseTransformMixin):
     """
-    Transform mixin for ControllerJobCancel API v2.
+    Transform mixin for JobCancel API v2.
 
     This is a minimal mixin -- cancel operations bypass the standard
     CRUD endpoint operations and use cancel_resource() directly.
     """
 
     @classmethod
-    def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIControllerJobCancel_v2":
+    def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIJobCancel_v2":
         """Create API instance from Ansible dataclass."""
-        return APIControllerJobCancel_v2(
+        return APIJobCancel_v2(
             job_id=getattr(ansible_instance, "job_id", None),
             fail_if_not_running=getattr(ansible_instance, "fail_if_not_running", False),
             id=getattr(ansible_instance, "id", None),
@@ -75,11 +75,11 @@ class ControllerJobCancelTransformMixin_v2(BaseTransformMixin):
         return "job_id"
 
     @classmethod
-    def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleControllerJobCancel":
+    def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleJobCancel":
         """Transform from API format to Ansible format."""
-        from ....ansible_models.controller_job_cancel import AnsibleControllerJobCancel
+        from ....ansible_models.job_cancel import AnsibleJobCancel
 
-        return AnsibleControllerJobCancel(
+        return AnsibleJobCancel(
             job_id=api_data.get("id", 0),
             id=api_data.get("id"),
         )
