@@ -1,15 +1,15 @@
 # (c) 2025 Red Hat Inc.
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Unit tests for the controller_bulk_host_create action plugin."""
+"""Unit tests for the bulk_host_create action plugin."""
 
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ansible_collections.ansible.platform.plugins.action.controller_bulk_host_create import ActionModule
+from ansible_collections.ansible.platform.plugins.action.bulk_host_create import ActionModule
 
 
-class TestControllerBulkHostCreateAction(unittest.TestCase):
+class TestBulkHostCreateAction(unittest.TestCase):
     def _make_action(self, check_mode=False):
         action = ActionModule.__new__(ActionModule)
         action._task = MagicMock()

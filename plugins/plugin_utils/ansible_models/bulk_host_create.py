@@ -10,7 +10,7 @@ from typing import List, Optional
 
 
 @dataclass
-class AnsibleControllerBulkHostCreate:
+class AnsibleBulkHostCreate:
     """
     Ansible representation of a bulk host create request.
 
