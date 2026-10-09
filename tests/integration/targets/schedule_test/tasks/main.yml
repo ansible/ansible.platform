@@ -1,0 +1,55 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Schedule-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Create schedule
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test schedule"
+        unified_job_template: "Demo Job Template"
+        rrule: "DTSTART:20261007T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+        enabled: true
+        state: present
+      register: created
+
+    - name: Assert creation
+      ansible.builtin.assert:
+        that:
+          - created is changed
+          - created.schedule.id is defined
+
+    - name: Idempotency
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test schedule"
+        unified_job_template: "Demo Job Template"
+        rrule: "DTSTART:20261007T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+        enabled: true
+        state: present
+      register: idem
+
+    - name: Assert idempotent
+      ansible.builtin.assert:
+        that: idem is not changed
+
+  always:
+    - name: Delete schedule
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...
