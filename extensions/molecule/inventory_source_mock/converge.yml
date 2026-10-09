@@ -97,6 +97,50 @@
       vars:
         ansible_connection: local
 
+    - name: Add notification template associations (connection local)
+      ansible.platform.inventory_source:
+        name: "{{ is_name_local }}"
+        inventory: "1"
+        source: ec2
+        notification_templates_started:
+          - "Slack Start Notification"
+        notification_templates_success:
+          - "Email Success Notification"
+        notification_templates_error:
+          - "PagerDuty Error Notification"
+          - "Slack Error Notification"
+      register: assoc_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert associations changed (connection local)
+      ansible.builtin.assert:
+        that: assoc_result_local is changed
+      vars:
+        ansible_connection: local
+
+    - name: Re-run same associations for idempotency (connection local)
+      ansible.platform.inventory_source:
+        name: "{{ is_name_local }}"
+        inventory: "1"
+        source: ec2
+        notification_templates_started:
+          - "Slack Start Notification"
+        notification_templates_success:
+          - "Email Success Notification"
+        notification_templates_error:
+          - "PagerDuty Error Notification"
+          - "Slack Error Notification"
+      register: assoc_idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert associations idempotent (connection local)
+      ansible.builtin.assert:
+        that: assoc_idem_result_local is not changed
+      vars:
+        ansible_connection: local
+
 - name: Converge — inventory_source (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http

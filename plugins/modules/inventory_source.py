@@ -20,7 +20,7 @@ short_description: Manage Controller inventory sources
 description:
   - Create, update, or delete inventory sources on Ansible Automation Platform Controller.
   - Inventory sources define how hosts are imported from external systems.
-  - Notification template associations are planned for a follow-up PR.
+  - Supports notification template associations for sync start, success, and error events.
 version_added: "2.8.0"
 
 options:
@@ -146,6 +146,27 @@ options:
       - Inventory source SCM branch. Project must have branch override enabled.
     type: str
 
+  notification_templates_started:
+    description:
+      - List of notification templates to trigger on inventory sync start.
+      - Accepts names or IDs.
+    type: list
+    elements: str
+
+  notification_templates_success:
+    description:
+      - List of notification templates to trigger on inventory sync success.
+      - Accepts names or IDs.
+    type: list
+    elements: str
+
+  notification_templates_error:
+    description:
+      - List of notification templates to trigger on inventory sync error.
+      - Accepts names or IDs.
+    type: list
+    elements: str
+
 seealso:
   - module: ansible.controller.inventory_source
   - module: awx.awx.inventory_source
@@ -175,6 +196,18 @@ EXAMPLES = """
     source: scm
     source_project: "My Project"
     source_path: "inventories/hosts.yml"
+
+- name: Add notification templates to an inventory source
+  ansible.platform.inventory_source:
+    name: "ec2-source"
+    inventory: "Production Inventory"
+    notification_templates_started:
+      - "Slack Start Notification"
+    notification_templates_success:
+      - "Email Success Notification"
+    notification_templates_error:
+      - "PagerDuty Error Notification"
+      - "Slack Error Notification"
 
 - name: Delete an inventory source
   ansible.platform.inventory_source:

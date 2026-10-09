@@ -6,8 +6,8 @@ Field names and types remain stable across API versions.
 """
 
 import json
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -39,6 +39,11 @@ class AnsibleInventorySource:
     source_project: Optional[str] = None
     scm_branch: Optional[str] = None
     state: str = "present"
+
+    # Association fields (not sent to API directly, handled by action plugin)
+    notification_templates_started: Optional[List[str]] = field(default=None)
+    notification_templates_success: Optional[List[str]] = field(default=None)
+    notification_templates_error: Optional[List[str]] = field(default=None)
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None
