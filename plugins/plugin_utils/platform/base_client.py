@@ -15,6 +15,18 @@ from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_WAIT_TIMEOUT = 3600.0
+DEFAULT_WAIT_INTERVAL = 10.0
+TERMINAL_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
+
+
+class WaitTimeoutError(Exception):
+    """Raised when wait_for_completion exceeds the configured timeout."""
+
+    def __init__(self, message, last_result=None):
+        super().__init__(message)
+        self.last_result = last_result or {}
+
 
 class BaseAPIClient(ABC):
     """
