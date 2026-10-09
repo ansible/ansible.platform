@@ -1,0 +1,166 @@
+---
+# Integration tests for ansible.platform.host
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Host-{{ test_id }}"
+    ctrl_inventory_name: "AAP-Collection-Test-Host-{{ test_id }}-Inventory"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Look up Default organization in Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_default_org
+      ignore_errors: true
+      delegate_to: localhost
+
+    - name: Set Controller org ID fact
+      ansible.builtin.set_fact:
+        ctrl_org_id: "{{ ctrl_default_org.json.results[0].id }}"
+      when: ctrl_default_org is not failed and ctrl_default_org.json.count > 0
+
+    - name: Assert Default organization exists
+      ansible.builtin.assert:
+        that:
+          - ctrl_org_id is defined
+        fail_msg: "Controller organization 'Default' was not found."
+
+    - name: Create Controller inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ctrl_inventory_name }}"
+          organization: "{{ ctrl_org_id }}"
+        status_code: [200, 201]
+      register: ctrl_inventory
+      delegate_to: localhost
+
+    - name: Create host
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test host"
+        inventory: "{{ ctrl_inventory_name }}"
+        enabled: true
+        variables:
+          ansible_host: "192.168.1.100"
+        state: present
+      register: created_host
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_host is changed
+          - created_host.host.name is defined
+          - created_host.host.id is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test host"
+        inventory: "{{ ctrl_inventory_name }}"
+        enabled: true
+        variables:
+          ansible_host: "192.168.1.100"
+        state: present
+      register: idempotent_host
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_host is not changed
+
+    - name: Update host description
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test host"
+        inventory: "{{ ctrl_inventory_name }}"
+      register: updated_host
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_host is changed
+
+    - name: Check exists returns true
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test"
+        inventory: "{{ ctrl_inventory_name }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+    - name: Rename host
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+        inventory: "{{ ctrl_inventory_name }}"
+      register: renamed_host
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_host is changed
+
+  always:
+    - name: Delete host (renamed)
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Renamed"
+        inventory: "{{ ctrl_inventory_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete host (original name, in case rename failed)
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Test"
+        inventory: "{{ ctrl_inventory_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete Controller inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ ctrl_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - ctrl_inventory is defined
+        - ctrl_inventory is not failed
+        - ctrl_inventory is not skipped
+        - ctrl_inventory.json.id is defined
+      register: ctrl_inventory_delete
+      failed_when:
+        - ctrl_inventory_delete.failed is defined and ctrl_inventory_delete.failed
+        - ctrl_inventory_delete.status | default(0) not in [202, 204, 404]
+      delegate_to: localhost
+...
