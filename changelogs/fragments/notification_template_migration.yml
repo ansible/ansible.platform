@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - notification_template - migrate notification_template module from awx_collection for managing Controller notification templates (https://issues.redhat.com/browse/AAP-95864).
