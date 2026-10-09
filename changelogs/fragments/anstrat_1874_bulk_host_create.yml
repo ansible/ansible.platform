@@ -1,4 +1,0 @@
----
-minor_changes:
-  - bulk_host_create - migrate ``bulk_host_create`` module from ``awx_collection`` for bulk host creation in Controller inventories (https://issues.redhat.com/browse/ANSTRAT-1874).
-...
