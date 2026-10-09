@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - workflow_job_template - migrate workflow_job_template module from awx_collection for managing Controller workflow job templates (https://issues.redhat.com/browse/AAP-95871).

@@ -265,6 +265,17 @@ class Store:
         # alphabetically so Molecule tests catch order-sensitivity regressions.
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
+        # Controller resources
+        controller_defs: List[tuple] = [
+            ("workflow_job_templates", ["name"], 6000),
+        ]
+        for endpoint, required, start_id in controller_defs:
+            self._resources[("controller", endpoint)] = GenericResource(
+                resource_name=endpoint,
+                required_fields=required,
+                start_id=start_id,
+            )
+
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
         return self._resources.get((service, name))
 
