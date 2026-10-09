@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class APIJobCancel_v2(BaseTransformMixin):
     """
-    API v2 representation of a controller job cancel request.
+    API v2 representation of a job cancel request.
     """
 
     job_id: Optional[int] = None
@@ -47,7 +47,7 @@ class JobCancelTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
-        """Define API endpoints for controller job cancel operations.
+        """Define API endpoints for job cancel operations.
 
         Cancel uses a POST to /cancel/ sub-endpoint rather than standard CRUD.
         The list endpoint is used only for finding/validating the job exists.
