@@ -22,7 +22,7 @@ jobs:
       # conftest.py walks up 4 levels from the collection root to reach the
       # workspace root (which contains ansible_collections/), matching the
       # same structure used in local development.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: ansible_collections/ansible/platform
 
