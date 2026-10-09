@@ -1,0 +1,60 @@
+---
+# Integration tests for ansible.platform.label
+# Note: labels cannot be deleted via the API.
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Label-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create label
+      ansible.platform.label:
+        name: "{{ name_prefix }}-Test"
+        organization: "Default"
+        state: present
+      register: created_label
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_label is changed
+          - created_label.label.name is defined
+          - created_label.label.id is defined
+
+    - name: Check idempotency
+      ansible.platform.label:
+        name: "{{ name_prefix }}-Test"
+        organization: "Default"
+        state: present
+      register: idempotent_label
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_label is not changed
+
+    - name: Check exists
+      ansible.platform.label:
+        name: "{{ name_prefix }}-Test"
+        organization: "Default"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+...
