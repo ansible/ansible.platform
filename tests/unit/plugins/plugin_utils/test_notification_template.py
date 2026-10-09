@@ -9,8 +9,8 @@ _CP = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.par
 if _CP not in sys.path:
     sys.path.insert(0, _CP)
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.notification_template import AnsibleNotificationTemplate  # noqa: E402
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.notification_template import (
-    NotificationTemplateTransformMixin_v2,  # noqa: E402
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.notification_template import (  # noqa: E402
+    NotificationTemplateTransformMixin_v2,
 )
 
 
