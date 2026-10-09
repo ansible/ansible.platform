@@ -1,0 +1,31 @@
+---
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: List all jobs
+      ansible.platform.job_list:
+      register: all_jobs
+
+    - name: Assert job list returns results
+      ansible.builtin.assert:
+        that:
+          - all_jobs is not failed
+          - "'results' in all_jobs"
+          - "'count' in all_jobs"
+
+    - name: List jobs with status filter
+      ansible.platform.job_list:
+        status: successful
+      register: successful_jobs
+
+    - name: Assert filtered list works
+      ansible.builtin.assert:
+        that:
+          - successful_jobs is not failed
+...
