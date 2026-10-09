@@ -33,4 +33,5 @@ action_groups:
     - label
     - inventory_source
     - controller_job_list
+    - job_list
 ...
