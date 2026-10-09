@@ -627,10 +627,14 @@ class DirectHTTPClient(BaseAPIClient):
         if data == {}:
             try:
                 self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
-            except APIError as e:
-                # _make_request() converts non-401 HTTPErrors to APIError before they
-                # reach the caller, so catch that here rather than HTTPError.
-                if e.status_code == 404:
+            except APIError as err:
+                # _make_request translates HTTPError responses into APIError.
+                if err.status_code == 404:
+                    return False
+                raise
+            except HTTPError as he:
+                # Retain handling for callers that surface Request.open() errors directly.
+                if he.code == 404:
                     return False
                 raise
             return True

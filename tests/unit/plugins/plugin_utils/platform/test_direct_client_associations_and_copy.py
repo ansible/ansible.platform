@@ -181,7 +181,8 @@ class TestSearchApi(unittest.TestCase):
         self.client = DirectHTTPClient.__new__(DirectHTTPClient)
         self.client._authenticated = True
         self.client.base_url = "https://gw.example.com"
-        self.client.api_versions = {"gateway": "2"}
+        self.client.api_versions = {}
+        self.client.api_version = "2"
         self.client.cache = {}
 
     def _bad_json_response(self):
@@ -200,6 +201,22 @@ class TestSearchApi(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=self._bad_json_response()):
             result = self.client.search_api("/api/controller/v2/job_templates/42/credentials/")
         self.assertEqual(result, {})
+
+    def test_return_all_resolves_relative_next_link(self):
+        first_page = _http_resp(
+            body={
+                "count": 2,
+                "next": "/api/controller/v2/job_templates/42/credentials/?page=2",
+                "results": [{"id": 1}],
+            }
+        )
+        second_page = _http_resp(body={"count": 2, "next": None, "results": [{"id": 2}]})
+
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[first_page, second_page]) as mock_request:
+            result = self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True)
+
+        self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com/api/controller/v2/job_templates/42/credentials/?page=2")
+        self.assertEqual(result["results"], [{"id": 1}, {"id": 2}])
 
 
 if __name__ == "__main__":
