@@ -1,0 +1,53 @@
+---
+- name: Launch a Job Template
+  ansible.platform.job_launch:
+    job_template: "Demo Job Template"
+  register: job
+
+- assert:
+    that:
+      - "job is changed"
+
+- name: Cancel the job
+  ansible.platform.job_cancel:
+    job_id: "{{ job.id }}"
+  register: results
+
+- assert:
+    that:
+      - results is changed
+
+- name: Cancel an already canceled job (assert failure)
+  ansible.platform.job_cancel:
+    job_id: "{{ job.id }}"
+    fail_if_not_running: true
+  register: results
+  ignore_errors: true
+  until: results is failed
+  retries: 6
+  delay: 5
+
+- assert:
+    that:
+      - results is failed
+      - "'Job is not running' in results.msg"
+
+- name: Cancel an already canceled job without fail_if_not_running
+  ansible.platform.job_cancel:
+    job_id: "{{ job.id }}"
+  register: results
+
+- assert:
+    that:
+      - results is not changed
+
+- name: Cancel a non-existent job
+  ansible.platform.job_cancel:
+    job_id: 9999999999
+  register: result
+  ignore_errors: true
+
+- assert:
+    that:
+      - result is failed
+      - "'Unable to find job' in result.msg or 'not found' in result.msg | lower"
