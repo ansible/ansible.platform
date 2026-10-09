@@ -33,4 +33,5 @@ action_groups:
     - label
     - inventory_source
     - job_list
+    - group
 ...

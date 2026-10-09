@@ -12,6 +12,7 @@ exclude_paths:
   - 'extensions/molecule/users_mock/inventory.yml'
   - 'extensions/molecule/controller_credential_type_mock/inventory.yml'
   - 'extensions/molecule/credential_input_source_mock/inventory.yml'
+  - 'extensions/molecule/group_mock/inventory.yml'
   - 'extensions/molecule/host_mock/inventory.yml'
   - 'extensions/molecule/instance_group_mock/inventory.yml'
   - 'extensions/molecule/inventory_source_mock/inventory.yml'
