@@ -1,0 +1,81 @@
+---
+- name: Cleanup — delete execution_environment (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ee_name_local: "Molecule Test EE Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete execution environment (connection local)
+      ansible.platform.execution_environment:
+        name: "{{ ee_name_local }}"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete execution_environment (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    ee_name_http_direct: "Molecule Test EE HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete execution environment (http direct)
+      ansible.platform.execution_environment:
+        name: "{{ ee_name_http_direct }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete execution_environment (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    ee_name_http_persistent: "Molecule Test EE HTTP Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete execution environment (http persistent)
+      ansible.platform.execution_environment:
+        name: "{{ ee_name_http_persistent }}"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

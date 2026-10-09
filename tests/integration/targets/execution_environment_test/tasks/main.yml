@@ -1,0 +1,81 @@
+---
+# Integration tests for ansible.platform.execution_environment
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-EE-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create execution environment
+      ansible.platform.execution_environment:
+        name: "{{ name_prefix }}-Test"
+        image: "quay.io/ansible/awx-ee:latest"
+        description: "Integration test EE"
+        pull: missing
+        state: present
+      register: created_ee
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_ee is changed
+          - created_ee.execution_environment.name is defined
+          - created_ee.execution_environment.id is defined
+
+    - name: Check idempotency
+      ansible.platform.execution_environment:
+        name: "{{ name_prefix }}-Test"
+        image: "quay.io/ansible/awx-ee:latest"
+        description: "Integration test EE"
+        pull: missing
+        state: present
+      register: idempotent_ee
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_ee is not changed
+
+    - name: Update description
+      ansible.platform.execution_environment:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test EE"
+        image: "quay.io/ansible/awx-ee:latest"
+      register: updated_ee
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_ee is changed
+
+    - name: Check exists
+      ansible.platform.execution_environment:
+        name: "{{ name_prefix }}-Test"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete execution environment
+      ansible.platform.execution_environment:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...
