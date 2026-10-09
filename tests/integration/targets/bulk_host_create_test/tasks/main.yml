@@ -1,0 +1,53 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    bulk_inv_name: "Platform-Collection-Test-BulkHostCreate-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Bulk host create with multiple hosts
+      ansible.platform.bulk_host_create:
+        inventory: "{{ bulk_inv_name }}"
+        hosts:
+          - name: "host1-{{ test_id }}.example.com"
+            description: "Test host 1"
+            variables:
+              ansible_host: "192.168.1.1"
+              env: test
+          - name: "host2-{{ test_id }}.example.com"
+            description: "Test host 2"
+            enabled: false
+          - name: "host3-{{ test_id }}.example.com"
+      register: bulk_result
+
+    - name: Assert bulk host create succeeded
+      ansible.builtin.assert:
+        that:
+          - bulk_result is changed
+          - bulk_result is not failed
+
+    - name: Bulk host create with check mode
+      ansible.platform.bulk_host_create:
+        inventory: "{{ bulk_inv_name }}"
+        hosts:
+          - name: "check-mode-host-{{ test_id }}.example.com"
+      check_mode: true
+      register: check_result
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_result is changed
+          - check_result is not failed
