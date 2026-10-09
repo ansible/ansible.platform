@@ -1,5 +1,5 @@
 """
-API v2 Controller Workflow Approval dataclass and transform mixin.
+API v2 Workflow Approval dataclass and transform mixin.
 
 Handles transformations between Ansible format and Controller API v2 format
 for workflow approval operations (approve/deny).
@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class APIControllerWorkflowApproval_v2(BaseTransformMixin):
+class APIWorkflowApproval_v2(BaseTransformMixin):
     """
-    API v2 representation of a controller workflow approval action.
+    API v2 representation of a workflow approval action.
     """
 
     workflow_job_id: Optional[int] = None
@@ -36,9 +36,9 @@ class APIControllerWorkflowApproval_v2(BaseTransformMixin):
     id: Optional[int] = None
 
 
-class ControllerWorkflowApprovalTransformMixin_v2(BaseTransformMixin):
+class WorkflowApprovalTransformMixin_v2(BaseTransformMixin):
     """
-    Transform mixin for Controller Workflow Approval API v2.
+    Transform mixin for Workflow Approval API v2.
 
     This is a non-CRUD module. The transform mixin provides minimal
     endpoint definitions for registry discovery. The actual workflow
@@ -46,9 +46,9 @@ class ControllerWorkflowApprovalTransformMixin_v2(BaseTransformMixin):
     """
 
     @classmethod
-    def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIControllerWorkflowApproval_v2":
+    def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIWorkflowApproval_v2":
         """Create API instance from Ansible dataclass."""
-        return APIControllerWorkflowApproval_v2(
+        return APIWorkflowApproval_v2(
             workflow_job_id=getattr(ansible_instance, "workflow_job_id", None),
             name=getattr(ansible_instance, "name", None),
             action=getattr(ansible_instance, "action", None),
@@ -88,13 +88,13 @@ class ControllerWorkflowApprovalTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
-    def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleControllerWorkflowApproval":
+    def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleWorkflowApproval":
         """Transform from API format to Ansible format."""
-        from ....ansible_models.controller_workflow_approval import (
-            AnsibleControllerWorkflowApproval,
+        from ....ansible_models.workflow_approval import (
+            AnsibleWorkflowApproval,
         )
 
-        return AnsibleControllerWorkflowApproval(
+        return AnsibleWorkflowApproval(
             workflow_job_id=api_data.get("workflow_job_id", 0),
             name=api_data.get("name", ""),
             action=api_data.get("action", "approve"),

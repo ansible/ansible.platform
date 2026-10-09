@@ -1,5 +1,5 @@
 ---
 minor_changes:
-  - controller_workflow_approval - new module migrated from awx.awx/ansible.controller
+  - workflow_approval - new module migrated from awx.awx/ansible.controller
     to manage workflow approval nodes (approve/deny) via the platform SDK
     (https://issues.redhat.com/browse/ANSTRAT-1874).

@@ -4,7 +4,7 @@
 # (c) 2025, Ansible Platform Collection Contributors
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Action plugin for controller_workflow_approval.
+"""Action plugin for workflow_approval.
 
 Waits for a workflow approval node to become pending, then approves or denies it.
 This is a non-CRUD action plugin that uses search_api() for polling and
@@ -23,14 +23,14 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import (
     BaseResourceActionPlugin,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_workflow_approval import (
-    AnsibleControllerWorkflowApproval,
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_approval import (
+    AnsibleWorkflowApproval,
 )
 
 
 class ActionModule(BaseResourceActionPlugin):
-    MODULE_NAME = "controller_workflow_approval"
-    MODEL_CLASS = AnsibleControllerWorkflowApproval
+    MODULE_NAME = "workflow_approval"
+    MODEL_CLASS = AnsibleWorkflowApproval
 
     def run(self, tmp=None, task_vars=None):
         """Wait for an approval node and approve or deny it.
@@ -83,7 +83,7 @@ class ActionModule(BaseResourceActionPlugin):
                         query_params={"job__name": name},
                     )
                 except Exception as poll_exc:
-                    self._display.vvv("controller_workflow_approval: poll error: %s" % poll_exc)
+                    self._display.vvv("workflow_approval: poll error: %s" % poll_exc)
                     time.sleep(interval)
                     continue
 
@@ -127,7 +127,7 @@ class ActionModule(BaseResourceActionPlugin):
             # ---- POST approve or deny ---------------------------------------
             action_url = "%s%s/" % (related_job, action)
 
-            self._display.vvv("controller_workflow_approval: POSTing to %s" % action_url)
+            self._display.vvv("workflow_approval: POSTing to %s" % action_url)
 
             manager.direct_request("POST", action_url)
 
