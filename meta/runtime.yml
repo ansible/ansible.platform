@@ -30,4 +30,5 @@ action_groups:
     - credential_input_source
     - host
     - instance_group
+    - schedule
 ...
