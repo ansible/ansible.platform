@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -554,6 +554,119 @@ class DirectHTTPClient(BaseAPIClient):
             self.cache[cache_key] = rid
         return rid
 
+    def _ensure_authenticated(self) -> None:
+        """Lazy-authenticate, for SDK methods that may be called before execute()."""
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        service: str = "gateway",
+    ) -> bool:
+        """
+        Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
+
+        Generic across any resource with a list-style association sub-endpoint (credentials,
+        instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
+        resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
+        current associations, and associates/disassociates to reconcile.
+
+        Intended for Pattern C action plugins (custom orchestration run(), see
+        docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
+        what the declarative create/update flow covers.
+        """
+        self._ensure_authenticated()
+        desired_ids = {
+            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
+        }
+
+        # Follow pagination so associations beyond the first page aren't silently
+        # treated as absent (which would re-associate them and skip disassociating
+        # ones that should be removed).
+        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
+        if not assoc_path.startswith("/api/"):
+            assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
+        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
+        current_ids = {item["id"] for item in current_data.get("results", [])}
+        assoc_url = self._build_url(assoc_path, service=service)
+
+        changed = False
+        for rid in desired_ids - current_ids:
+            self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
+            changed = True
+        for rid in current_ids - desired_ids:
+            self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
+            changed = True
+        return changed
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+        """
+        Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
+
+        Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
+        rather than writing bespoke get/compare/post logic per resource. data is None:
+        no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
+        POST only if different.
+
+        Intended for Pattern C action plugins (custom orchestration run(), see
+        docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
+        what the declarative create/update flow covers.
+        """
+        if data is None:
+            return False
+        self._ensure_authenticated()
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+
+        if data == {}:
+            try:
+                self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
+            except APIError as e:
+                # _make_request() converts non-401 HTTPErrors to APIError before they
+                # reach the caller, so catch that here rather than HTTPError.
+                if e.status_code == 404:
+                    return False
+                raise
+            return True
+
+        response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
+        current = json.loads(response.read())
+        if current == data:
+            return False
+
+        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
+        return True
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
+        """
+        Copy a resource via its /copy/ sub-endpoint.
+
+        Resolves source_name_or_id to an ID via a direct GET+filter against
+        copy_endpoint_path (not self.execute(), since the caller may not have a fully
+        populated Ansible dataclass instance at copy time), then POSTs {name: new_name}
+        to {copy_endpoint_path}/{source_id}/copy/.
+        """
+        self._ensure_authenticated()
+        if str(source_name_or_id).isdigit():
+            source_id = int(source_name_or_id)
+        else:
+            lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
+            response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
+            results = json.loads(response.read()).get("results", [])
+            if not results:
+                raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
+            source_id = results[0]["id"]
+
+        copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
+        response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
+        return json.loads(response.read())
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
@@ -604,6 +717,12 @@ class DirectHTTPClient(BaseAPIClient):
             response_body = response.read()
             response_data = json.loads(response_body) if response_body else {}
         except Exception:
+            # Callers with return_all=True (e.g. manage_associations) diff this
+            # result's "results" against desired state to decide what to
+            # associate/disassociate — silently treating a parse failure as an
+            # empty page would make that diff wrong. Fail loudly instead.
+            if return_all:
+                raise
             response_data = {}
 
         if not return_all:
@@ -612,13 +731,12 @@ class DirectHTTPClient(BaseAPIClient):
         # Pagination: follow 'next' links
         all_results = list(response_data.get("results", []))
         while response_data.get("next") and len(all_results) < max_objects:
-            next_url = response_data["next"]
+            # AAP components may return pagination links as relative paths.
+            # Request.open() requires an absolute URL, so resolve against the gateway.
+            next_url = urljoin(self.base_url, response_data["next"])
             response = self._make_request("GET", next_url, operation="search", resource=endpoint)
-            try:
-                response_body = response.read()
-                response_data = json.loads(response_body) if response_body else {}
-            except Exception:
-                break
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
             all_results.extend(response_data.get("results", []))
 
         response_data["results"] = all_results[:max_objects]
