@@ -1,4 +1,0 @@
----
-minor_changes:
-  - controller_subscriptions - migrate subscriptions module from awx.awx / ansible.controller to ansible.platform with controller_ prefix (singleton pattern).
-...

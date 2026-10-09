@@ -10,7 +10,7 @@ __metaclass__ = type
 
 DOCUMENTATION = """
 ---
-module: controller_subscriptions
+module: subscriptions
 author: "Ansible Platform Collection Contributors"
 short_description: Get available subscriptions from Automation Controller.
 description:
@@ -18,6 +18,9 @@ description:
       Red Hat credentials (username/password or service-account client_id/client_secret).
     - The credentials you supply are stored by Controller for future use in
       retrieving renewal or expanded subscriptions.
+seealso:
+    - module: ansible.controller.subscriptions
+    - module: awx.awx.subscriptions
 options:
     username:
       description:
@@ -53,17 +56,17 @@ extends_documentation_fragment: ansible.platform.auth
 
 EXAMPLES = """
 - name: Get subscriptions with service account credentials
-  ansible.platform.controller_subscriptions:
+  ansible.platform.subscriptions:
     client_id: "00000000-0000-0000-0000-000000000000"
     client_secret: "your-client-secret-here"
 
 - name: Get subscriptions with username and password
-  ansible.platform.controller_subscriptions:
+  ansible.platform.subscriptions:
     username: "my_username"
     password: "my_password"
 
 - name: Get subscriptions with a filter
-  ansible.platform.controller_subscriptions:
+  ansible.platform.subscriptions:
     client_id: "00000000-0000-0000-0000-000000000000"
     client_secret: "your-client-secret-here"
     filters:
