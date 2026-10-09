@@ -1,0 +1,43 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Workflow-Approval-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Exercise workflow approval actions
+      ansible.builtin.include_tasks: exercise_approval.yml
+      loop:
+        - action: approve
+          expected_status: successful
+        - action: deny
+          expected_status: failed
+      loop_control:
+        loop_var: approval_case
+
+    - name: Wait for a non-existent workflow approval
+      ansible.platform.workflow_approval:
+        workflow_job_id: 999999999
+        name: "{{ name_prefix }}-Missing"
+        timeout: 3
+        interval: 1
+      register: approval_timeout
+      failed_when: false
+
+    - name: Assert missing workflow approval times out
+      ansible.builtin.assert:
+        that:
+          - approval_timeout.msg is search("Timed out waiting for approval node")
+          - approval_timeout is not changed
+...
