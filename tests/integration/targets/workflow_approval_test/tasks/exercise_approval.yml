@@ -1,0 +1,163 @@
+---
+- name: Set names for the approval workflow
+  ansible.builtin.set_fact:
+    approval_workflow_name: "{{ name_prefix }}-{{ approval_case.action }}-Workflow"
+    approval_node_name: "{{ name_prefix }}-{{ approval_case.action }}-Approval"
+
+- name: Create approval workflow template
+  block:
+    - name: Create workflow job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ approval_workflow_name }}"
+        status_code: [200, 201]
+      register: approval_workflow
+      delegate_to: localhost
+
+    - name: Create workflow node
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ approval_workflow.json.id }}/workflow_nodes/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          identifier: "{{ approval_workflow_name }}-node"
+        status_code: [200, 201]
+      register: workflow_node
+      delegate_to: localhost
+
+    - name: Create workflow approval template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}{{ workflow_node.json.related.create_approval_template }}"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ approval_node_name }}"
+          description: "Integration test approval"
+          timeout: 0
+        status_code: [200, 201]
+      register: approval_template
+      delegate_to: localhost
+
+    - name: Launch workflow job
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ approval_workflow.json.id }}/launch/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body: {}
+        status_code: [200, 201]
+      register: launched_workflow
+      delegate_to: localhost
+
+    - name: Resolve workflow approval
+      ansible.platform.workflow_approval:
+        workflow_job_id: "{{ launched_workflow.json.id }}"
+        name: "{{ approval_node_name }}"
+        action: "{{ approval_case.action }}"
+        timeout: 60
+        interval: 1
+      register: approval_result
+
+    - name: Assert workflow approval action succeeded
+      ansible.builtin.assert:
+        that:
+          - approval_result is changed
+          - approval_result is not failed
+          - approval_result.msg is search(approval_case.action)
+
+    - name: Read resolved workflow approval node
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{ launched_workflow.json.id }}/workflow_nodes/?job__name={{ approval_node_name }}"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: resolved_node
+      delegate_to: localhost
+      until:
+        - resolved_node.json.results | length > 0
+        - resolved_node.json.results[0].summary_fields.job.status == approval_case.expected_status
+      retries: 15
+      delay: 1
+
+    - name: Assert workflow approval has the expected status
+      ansible.builtin.assert:
+        that:
+          - resolved_node.json.results | length > 0
+          - resolved_node.json.results[0].summary_fields.job.status == approval_case.expected_status
+
+    - name: Wait for workflow job to finish
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{ launched_workflow.json.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: finished_workflow
+      delegate_to: localhost
+      until: finished_workflow.json.status == approval_case.expected_status
+      retries: 15
+      delay: 1
+
+  always:
+    - name: Delete workflow job
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{ launched_workflow.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204]
+      when: launched_workflow is defined and launched_workflow.json.id is defined
+      delegate_to: localhost
+      failed_when: false
+
+    - name: Delete approval workflow template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ approval_workflow.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204]
+      when: approval_workflow is defined and approval_workflow.json.id is defined
+      delegate_to: localhost
+      failed_when: false
+
+    - name: Delete approval template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_approval_templates/{{ approval_template.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204]
+      when: approval_template is defined and approval_template.json.id is defined
+      delegate_to: localhost
+      failed_when: false
+...
