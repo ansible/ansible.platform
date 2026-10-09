@@ -8,9 +8,9 @@ from __future__ import absolute_import, division, print_function
 import json
 import unittest
 from unittest.mock import MagicMock
-from urllib.error import HTTPError
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
 __metaclass__ = type
 
@@ -113,15 +113,15 @@ class TestManageSubResource(unittest.TestCase):
         )
 
     def test_empty_dict_delete_404_is_not_changed(self):
-        not_found = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 404, "Not Found", {}, None)
+        not_found = APIError("API request failed: HTTP 404", operation="delete_sub_resource", resource="survey_spec", status_code=404)
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=not_found):
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
 
     def test_empty_dict_delete_non_404_error_propagates(self):
-        server_error = HTTPError("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", 500, "Server Error", {}, None)
+        server_error = APIError("API request failed: HTTP 500", operation="delete_sub_resource", resource="survey_spec", status_code=500)
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=server_error):
-            with self.assertRaises(HTTPError):
+            with self.assertRaises(APIError):
                 self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
 
     def test_same_data_is_noop(self):
@@ -174,6 +174,48 @@ class TestCopyResource(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"results": []})):
             with self.assertRaises(ValueError):
                 self.client.copy_resource("job_template", "missing", "copied", "/api/controller/v2/job_templates")
+
+
+class TestSearchApi(unittest.TestCase):
+    def setUp(self):
+        self.client = DirectHTTPClient.__new__(DirectHTTPClient)
+        self.client._authenticated = True
+        self.client.base_url = "https://gw.example.com"
+        self.client.api_version = "2"
+        self.client.cache = {}
+
+    def _bad_json_response(self):
+        resp = MagicMock()
+        resp.read.return_value = b"not json"
+        return resp
+
+    def test_return_all_propagates_json_parse_failure(self):
+        """manage_associations diffs this result against desired state, so a parse
+        failure must fail the operation rather than be mistaken for an empty page."""
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=self._bad_json_response()):
+            with self.assertRaises(json.JSONDecodeError):
+                self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True)
+
+    def test_non_return_all_still_swallows_json_parse_failure(self):
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=self._bad_json_response()):
+            result = self.client.search_api("/api/controller/v2/job_templates/42/credentials/")
+        self.assertEqual(result, {})
+
+    def test_return_all_resolves_relative_next_link(self):
+        first_page = _http_resp(
+            body={
+                "count": 2,
+                "next": "/api/controller/v2/job_templates/42/credentials/?page=2",
+                "results": [{"id": 1}],
+            }
+        )
+        second_page = _http_resp(body={"count": 2, "next": None, "results": [{"id": 2}]})
+
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[first_page, second_page]) as mock_request:
+            result = self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True)
+
+        self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com/api/controller/v2/job_templates/42/credentials/?page=2")
+        self.assertEqual(result["results"], [{"id": 1}, {"id": 2}])
 
 
 if __name__ == "__main__":
