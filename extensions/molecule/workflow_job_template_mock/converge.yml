@@ -1,0 +1,163 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — workflow_job_template (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    wjt_name_local: "Molecule Test WJT Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create workflow job template (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        description: "Created by Molecule workflow_job_template_mock (connection local)"
+      register: create_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - create_result_local is changed
+          - create_result_local.workflow_job_template.id is defined
+          - create_result_local.workflow_job_template.name == wjt_name_local
+      vars:
+        ansible_connection: local
+
+    - name: Run again idempotency (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        description: "Created by Molecule workflow_job_template_mock (connection local)"
+        state: present
+      register: idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent (connection local)
+      ansible.builtin.assert:
+        that: idem_result_local is not changed
+      vars:
+        ansible_connection: local
+
+    - name: Update description (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        description: "Updated by Molecule workflow_job_template_mock (connection local)"
+      register: update_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert update changed (connection local)
+      ansible.builtin.assert:
+        that: update_result_local is changed
+      vars:
+        ansible_connection: local
+
+- name: Converge — workflow_job_template (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    wjt_name_http_direct: "Molecule Test WJT HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create workflow job template (http direct)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_http_direct }}"
+        description: "Created by Molecule (http direct)"
+      register: create_result_http_direct
+
+    - name: Assert create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_direct is changed
+          - create_result_http_direct.workflow_job_template.id is defined
+
+    - name: Run again idempotency (http direct)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_http_direct }}"
+        description: "Created by Molecule (http direct)"
+        state: present
+      register: idem_result_http_direct
+
+    - name: Assert idempotent (http direct)
+      ansible.builtin.assert:
+        that: idem_result_http_direct is not changed
+
+- name: Converge — workflow_job_template (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    wjt_name_http_persistent: "Molecule Test WJT HTTP Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create workflow job template (http persistent)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_http_persistent }}"
+        description: "Created by Molecule (http persistent)"
+      register: create_result_http_persistent
+
+    - name: Assert create changed (http persistent)
+      ansible.builtin.assert:
+        that:
+          - create_result_http_persistent is changed
+          - create_result_http_persistent.workflow_job_template.id is defined
+
+    - name: Run again idempotency (http persistent)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_http_persistent }}"
+        description: "Created by Molecule (http persistent)"
+        state: present
+      register: idem_result_http_persistent
+
+    - name: Assert idempotent (http persistent)
+      ansible.builtin.assert:
+        that: idem_result_http_persistent is not changed
+...
