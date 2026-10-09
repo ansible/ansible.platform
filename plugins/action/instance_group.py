@@ -12,3 +12,30 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.in
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "instance_group"
     MODEL_CLASS = AnsibleInstanceGroup
+
+    _WRITE_ONLY_FIELDS = frozenset({"instances"})
+
+    def run(self, tmp=None, task_vars=None):
+        state = self._task.args.get("state", "present")
+
+        instances = self._task.args.pop("instances", None)
+
+        result = super().run(tmp, task_vars)
+        if result.get("failed"):
+            return result
+
+        resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
+
+        if resource_id and state not in ("absent", "deleted", "exists") and instances is not None:
+            if self._client.manage_associations(
+                "instance_groups",
+                resource_id,
+                "instances",
+                instances,
+                "instances",
+                "hostname",
+                service="controller",
+            ):
+                result["changed"] = True
+
+        return result
