@@ -1,0 +1,100 @@
+---
+# Integration tests for ansible.platform.inventory
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Inventory-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test inventory"
+        organization: "Default"
+        state: present
+      register: created_inv
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_inv is changed
+          - created_inv.inventory.name is defined
+          - created_inv.inventory.id is defined
+
+    - name: Check idempotency
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test inventory"
+        organization: "Default"
+        state: present
+      register: idempotent_inv
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_inv is not changed
+
+    - name: Update inventory description
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test inventory"
+        organization: "Default"
+      register: updated_inv
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_inv is changed
+
+    - name: Rename inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+      register: renamed_inv
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_inv is changed
+
+    - name: Check exists
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete inventory (renamed)
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+        state: absent
+      failed_when: false
+
+    - name: Delete inventory (original, in case rename failed)
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Test"
+        organization: "Default"
+        state: absent
+      failed_when: false
+...
