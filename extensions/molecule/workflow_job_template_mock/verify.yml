@@ -1,0 +1,38 @@
+---
+- name: Verify — workflow_job_template (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    wjt_name_local: "Molecule Test WJT Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Get workflow job template (state exists)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: exists_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert found
+      ansible.builtin.assert:
+        that:
+          - exists_result_local is not failed
+          - exists_result_local.get('exists') | default(false) | bool
+      vars:
+        ansible_connection: local
+
+    - name: Assert description updated
+      ansible.builtin.assert:
+        that: exists_result_local.workflow_job_template.description == "Updated by Molecule workflow_job_template_mock (connection local)"
+      vars:
+        ansible_connection: local
+...

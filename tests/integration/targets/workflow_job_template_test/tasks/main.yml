@@ -1,0 +1,80 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-WJT-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test workflow job template"
+        state: present
+      register: created_wjt
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_wjt is changed
+          - created_wjt.workflow_job_template.name is defined
+          - created_wjt.workflow_job_template.id is defined
+
+    - name: Check idempotency
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test workflow job template"
+        state: present
+      register: idempotent_wjt
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_wjt is not changed
+
+    - name: Rename workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+      register: renamed_wjt
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_wjt is changed
+
+    - name: Check exists
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Renamed"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete workflow job template (renamed)
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      failed_when: false
+
+    - name: Delete workflow job template (original, in case rename failed)
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...
