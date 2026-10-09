@@ -1276,6 +1276,50 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return response.json()
 
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint and return the created resource."""
+        self.record_activity()
+        url = self._build_url(launch_url, service=service)
+        response = self.session.post(url, json=payload, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        return response.json()
+
+    def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
+        """Poll a resource URL until it reaches a terminal status.
+
+        Raises WaitTimeoutError if the timeout is exceeded, with last_result
+        populated so the caller can still report the job's id/status.
+        """
+        import time
+
+        from ..platform.base_client import DEFAULT_WAIT_INTERVAL, DEFAULT_WAIT_TIMEOUT, TERMINAL_STATUSES, WaitTimeoutError
+
+        if timeout is None:
+            timeout = DEFAULT_WAIT_TIMEOUT
+        if interval is None:
+            interval = DEFAULT_WAIT_INTERVAL
+
+        self.record_activity()
+        url = self._build_url(resource_url, service=service)
+        start = time.monotonic()
+        last_result = {}
+
+        while True:
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            last_result = response.json()
+            self.record_activity()
+
+            status = last_result.get("status", "")
+            if status in TERMINAL_STATUSES:
+                return last_result
+
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
+            time.sleep(min(interval, max(0, timeout - elapsed)))
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
