@@ -6,6 +6,11 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
+- name: Set test credential names
+  ansible.builtin.set_fact:
+    target_credential_name: "CIS-Test-Target-{{ test_id }}"
+    source_credential_name: "CIS-Test-Vault-{{ test_id }}"
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.controller:
@@ -15,13 +20,104 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    - name: Look up Default organization in Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_default_org
+      delegate_to: localhost
+
+    - name: Assert Default organization exists
+      ansible.builtin.assert:
+        that:
+          - ctrl_default_org.json.count | int > 0
+        fail_msg: "Controller organization 'Default' was not found."
+
+    - name: Look up Machine credential type in Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_machine_credential_type
+      delegate_to: localhost
+
+    - name: Assert Machine credential type exists
+      ansible.builtin.assert:
+        that:
+          - ctrl_machine_credential_type.json.count | int > 0
+        fail_msg: "Controller Machine credential type was not found."
+
+    - name: Look up HashiCorp Vault Secret Lookup credential type
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?name=HashiCorp%20Vault%20Secret%20Lookup"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: ctrl_vault_credential_type
+      delegate_to: localhost
+
+    - name: Assert HashiCorp Vault Secret Lookup credential type exists
+      ansible.builtin.assert:
+        that:
+          - ctrl_vault_credential_type.json.count | int > 0
+        fail_msg: "Controller HashiCorp Vault Secret Lookup credential type was not found."
+
+    - name: Create target Machine credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ target_credential_name }}"
+          credential_type: "{{ ctrl_machine_credential_type.json.results[0].id }}"
+          organization: "{{ ctrl_default_org.json.results[0].id }}"
+          inputs:
+            username: "cis-test-user"
+        status_code: [200, 201]
+      register: ctrl_target_credential
+      delegate_to: localhost
+
+    - name: Create source Vault credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ source_credential_name }}"
+          credential_type: "{{ ctrl_vault_credential_type.json.results[0].id }}"
+          organization: "{{ ctrl_default_org.json.results[0].id }}"
+          inputs:
+            url: "https://vault.example.invalid"
+            token: "integration-test-token"
+            api_version: "v2"
+        status_code: [200, 201]
+      register: ctrl_source_credential
+      delegate_to: localhost
+
     - name: Create credential input source
       ansible.platform.credential_input_source:
         input_field_name: password
-        target_credential: "Demo Credential"
-        source_credential: "Vault Lookup"
+        target_credential: "{{ target_credential_name }}"
+        source_credential: "{{ source_credential_name }}"
         metadata:
-          path: "secret/data/test"
+          secret_path: "secret/data/test"
           secret_key: "password"
         state: present
       register: created_cis
@@ -35,10 +131,10 @@
     - name: Check idempotency
       ansible.platform.credential_input_source:
         input_field_name: password
-        target_credential: "Demo Credential"
-        source_credential: "Vault Lookup"
+        target_credential: "{{ target_credential_name }}"
+        source_credential: "{{ source_credential_name }}"
         metadata:
-          path: "secret/data/test"
+          secret_path: "secret/data/test"
           secret_key: "password"
         state: present
       register: idempotent_cis
@@ -51,7 +147,7 @@
     - name: Check exists
       ansible.platform.credential_input_source:
         input_field_name: password
-        target_credential: "Demo Credential"
+        target_credential: "{{ target_credential_name }}"
         state: exists
       register: exists_check
 
@@ -60,11 +156,67 @@
         that:
           - exists_check.exists
 
+    - name: Delete credential input source
+      ansible.platform.credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_credential_name }}"
+        state: absent
+      register: deleted_cis
+
+    - name: Assert credential input source was deleted
+      ansible.builtin.assert:
+        that:
+          - deleted_cis is changed
+
+    - name: Delete credential input source again
+      ansible.platform.credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_credential_name }}"
+        state: absent
+      register: deleted_cis_again
+
+    - name: Assert deleting absent credential input source is idempotent
+      ansible.builtin.assert:
+        that:
+          - deleted_cis_again is not changed
+
   always:
     - name: Delete credential input source
       ansible.platform.credential_input_source:
         input_field_name: password
-        target_credential: "Demo Credential"
+        target_credential: "{{ target_credential_name }}"
         state: absent
       failed_when: false
+
+    - name: Delete source Vault credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/{{ ctrl_source_credential.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - ctrl_source_credential is defined
+        - ctrl_source_credential is not failed
+        - ctrl_source_credential.json.id is defined
+      register: ctrl_source_credential_delete
+      delegate_to: localhost
+
+    - name: Delete target Machine credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/{{ ctrl_target_credential.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - ctrl_target_credential is defined
+        - ctrl_target_credential is not failed
+        - ctrl_target_credential.json.id is defined
+      register: ctrl_target_credential_delete
+      delegate_to: localhost
 ...
