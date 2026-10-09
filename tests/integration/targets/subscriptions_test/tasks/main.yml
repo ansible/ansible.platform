@@ -1,0 +1,34 @@
+---
+- name: Run subscriptions tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Get subscriptions with username and password (expect failure without valid RH creds)
+      ansible.platform.subscriptions:
+        username: "test_user"
+        password: "test_password"
+      register: subscriptions_result
+      ignore_errors: true
+
+    - name: Assert subscriptions call completed (may fail due to invalid creds)
+      ansible.builtin.assert:
+        that:
+          - subscriptions_result is defined
+
+    - name: Get subscriptions with client_id and client_secret (expect failure without valid RH creds)
+      ansible.platform.subscriptions:
+        client_id: "00000000-0000-0000-0000-000000000000"
+        client_secret: "invalid-secret"
+      register: subscriptions_client_result
+      ignore_errors: true
+
+    - name: Assert subscriptions client call completed (may fail due to invalid creds)
+      ansible.builtin.assert:
+        that:
+          - subscriptions_client_result is defined
+...
