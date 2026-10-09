@@ -1,0 +1,15 @@
+---
+# Labels cannot be deleted via the API. They are auto-cleaned when fully disassociated.
+# This cleanup is a no-op but included for Molecule scenario completeness.
+- name: Cleanup — labels (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
