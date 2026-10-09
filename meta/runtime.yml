@@ -27,4 +27,5 @@ action_groups:
   controller:
     - job_template
   controller: []
+    - controller_workflow_approval
 ...
