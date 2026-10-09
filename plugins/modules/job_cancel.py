@@ -38,6 +38,10 @@ options:
 
 extends_documentation_fragment:
   - ansible.platform.auth
+
+seealso:
+  - module: ansible.controller.job_cancel
+  - module: awx.awx.job_cancel
 """
 
 EXAMPLES = """
