@@ -1,0 +1,66 @@
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: platform-collection-tests-pull-request
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/{{repo_owner}}/{{repo_name}}?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: 'true'
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-event: "[pull_request]"
+    pipelinesascode.tekton.dev/on-target-branch: "[devel]"
+    pipelinesascode.tekton.dev/on-comment: "^/run-integration-tests$"
+    pipelinesascode.tekton.dev/on-path-change: "[plugins/**, extensions/**, tests/**, tools/**, .tekton/**]"
+    pipelinesascode.tekton.dev/target-namespace: ansible-ci-tenant
+  labels:
+    appstudio.openshift.io/application: '{{repo_owner}}'
+    appstudio.openshift.io/component: '{{repo_owner}}-{{repo_name}}'
+    pipelines.appstudio.openshift.io/type: build
+spec:
+  timeouts:
+    pipeline: "8h"
+    tasks: "7h"
+    finally: "1h"
+  pipelineRef:
+    resolver: bundles
+    params:
+      - name: name
+        value: ansible-platform-collection-tests
+      - name: bundle
+        value: quay.io/aap-ci/tekton-catalog/pipeline/test/ansible-platform-collection-tests:0.1@sha256:37d9ce1e16b1d44089013cca94cdfa7978ec836d4ed11a95546c2a85ea6bb9bd
+      - name: kind
+        value: pipeline
+      - name: secret
+        value: quay-aap-ci-viewer
+
+  taskRunTemplate:
+    serviceAccountName: konflux-integration-runner
+
+  params:
+    - name: git-url
+      value: "{{source_url}}"
+    - name: pipeline-github-org
+      value: "{{repo_owner}}"
+    - name: pipeline-github-repo
+      value: "{{repo_name}}"
+    - name: pipeline-github-target-branch
+      value: '{{target_branch}}'
+    - name: pipeline-github-pr-revision
+      value: "{{revision}}"
+    - name: pipeline-github-pr-number
+      value: "{{pull_request_number}}"
+    - name: oci-container-repo
+      value: "quay.io/aap-ci/pipeline-artifacts/ansible/ansible-platform"
+
+  workspaces:
+    - name: workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
