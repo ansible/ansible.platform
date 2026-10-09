@@ -6,7 +6,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # This module is implemented as an action plugin.
-# See plugins/action/controller_job_list.py for the implementation.
+# See plugins/action/job_list.py for the implementation.
 
 from __future__ import absolute_import, division, print_function
 
@@ -14,7 +14,7 @@ __metaclass__ = type
 
 DOCUMENTATION = """
 ---
-module: controller_job_list
+module: job_list
 author: Red Hat (@RedHatOfficial)
 short_description: List jobs from Automation Controller.
 description:
@@ -57,19 +57,19 @@ extends_documentation_fragment:
 
 EXAMPLES = """
 - name: List running jobs for the testing.yml playbook
-  ansible.platform.controller_job_list:
+  ansible.platform.job_list:
     status: running
     query: {"playbook": "testing.yml"}
   register: testing_jobs
 
 - name: List all failed jobs
-  ansible.platform.controller_job_list:
+  ansible.platform.job_list:
     status: failed
     all_pages: true
   register: failed_jobs
 
 - name: List a specific page of jobs
-  ansible.platform.controller_job_list:
+  ansible.platform.job_list:
     page: 3
   register: page_three
 """

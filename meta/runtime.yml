@@ -27,4 +27,5 @@ action_groups:
   controller:
     - job_template
     - controller_job_list
+    - job_list
 ...
