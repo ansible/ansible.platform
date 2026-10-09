@@ -22,6 +22,9 @@
     - name: Create job_template
       ansible.platform.job_template:
         name: "{{ name_prefix }}-Test-JobTemplate"
+        project: "Demo Project"
+        playbook: hello_world.yml
+        inventory: "Demo Inventory"
         state: present
       register: created_job_template
 
@@ -34,6 +37,9 @@
     - name: Check idempotency (re-apply, expect no change)
       ansible.platform.job_template:
         name: "{{ name_prefix }}-Test-JobTemplate"
+        project: "Demo Project"
+        playbook: hello_world.yml
+        inventory: "Demo Inventory"
         state: present
       register: idempotent_job_template
 
