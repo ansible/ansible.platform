@@ -5,7 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # This module is implemented as an action plugin.
-# See plugins/action/controller_workflow_approval.py for the implementation.
+# See plugins/action/workflow_approval.py for the implementation.
 
 from __future__ import absolute_import, division, print_function
 
@@ -13,7 +13,7 @@ __metaclass__ = type
 
 DOCUMENTATION = """
 ---
-module: controller_workflow_approval
+module: workflow_approval
 author: Red Hat (@RedHatOfficial)
 short_description: Approve or deny a workflow approval node
 description:
@@ -67,7 +67,7 @@ EXAMPLES = """
   register: workflow
 
 - name: Wait for approval node and approve
-  ansible.platform.controller_workflow_approval:
+  ansible.platform.workflow_approval:
     workflow_job_id: "{{ workflow.id }}"
     name: approval_jt_name
     interval: 5
@@ -75,7 +75,7 @@ EXAMPLES = """
     action: approve
 
 - name: Wait for approval node and deny
-  ansible.platform.controller_workflow_approval:
+  ansible.platform.workflow_approval:
     workflow_job_id: "{{ workflow.id }}"
     name: approval_jt_name
     interval: 5

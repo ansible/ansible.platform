@@ -1,10 +1,10 @@
 # (c) 2026 Red Hat Inc.
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""Unit tests for controller_workflow_approval module components.
+"""Unit tests for workflow_approval module components.
 
 Tests the Ansible dataclass, API dataclass, transform mixin, and registry
-discovery for the controller_workflow_approval module.
+discovery for the workflow_approval module.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -17,20 +17,20 @@ _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.p
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
 
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_workflow_approval import (  # noqa: E402
-    AnsibleControllerWorkflowApproval,
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_approval import (  # noqa: E402
+    AnsibleWorkflowApproval,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_workflow_approval import (  # noqa: E402
-    APIControllerWorkflowApproval_v2,
-    ControllerWorkflowApprovalTransformMixin_v2,
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_approval import (  # noqa: E402
+    APIWorkflowApproval_v2,
+    WorkflowApprovalTransformMixin_v2,
 )
 
 
-class TestAnsibleControllerWorkflowApprovalDataclass(unittest.TestCase):
+class TestAnsibleWorkflowApprovalDataclass(unittest.TestCase):
     """Tests for the stable Ansible-facing dataclass."""
 
     def test_defaults(self):
-        model = AnsibleControllerWorkflowApproval()
+        model = AnsibleWorkflowApproval()
         self.assertEqual(model.workflow_job_id, 0)
         self.assertEqual(model.name, "")
         self.assertEqual(model.action, "approve")
@@ -39,7 +39,7 @@ class TestAnsibleControllerWorkflowApprovalDataclass(unittest.TestCase):
         self.assertIsNone(model.id)
 
     def test_custom_values(self):
-        model = AnsibleControllerWorkflowApproval(
+        model = AnsibleWorkflowApproval(
             workflow_job_id=42,
             name="my_approval",
             action="deny",
@@ -53,11 +53,11 @@ class TestAnsibleControllerWorkflowApprovalDataclass(unittest.TestCase):
         self.assertEqual(model.timeout, 60)
 
 
-class TestAPIControllerWorkflowApprovalDataclass(unittest.TestCase):
+class TestAPIWorkflowApprovalDataclass(unittest.TestCase):
     """Tests for the API v2 dataclass."""
 
     def test_defaults(self):
-        api = APIControllerWorkflowApproval_v2()
+        api = APIWorkflowApproval_v2()
         self.assertIsNone(api.workflow_job_id)
         self.assertIsNone(api.name)
         self.assertIsNone(api.action)
@@ -66,11 +66,11 @@ class TestAPIControllerWorkflowApprovalDataclass(unittest.TestCase):
         self.assertIsNone(api.id)
 
 
-class TestControllerWorkflowApprovalTransformMixin(unittest.TestCase):
+class TestWorkflowApprovalTransformMixin(unittest.TestCase):
     """Tests for the transform mixin."""
 
     def test_from_ansible_data(self):
-        ansible_data = AnsibleControllerWorkflowApproval(
+        ansible_data = AnsibleWorkflowApproval(
             workflow_job_id=99,
             name="approval_node",
             action="approve",
@@ -78,7 +78,7 @@ class TestControllerWorkflowApprovalTransformMixin(unittest.TestCase):
             timeout=30,
         )
         context = {"operation": "find"}
-        api_data = ControllerWorkflowApprovalTransformMixin_v2.from_ansible_data(ansible_data, context)
+        api_data = WorkflowApprovalTransformMixin_v2.from_ansible_data(ansible_data, context)
         self.assertEqual(api_data.workflow_job_id, 99)
         self.assertEqual(api_data.name, "approval_node")
         self.assertEqual(api_data.action, "approve")
@@ -86,7 +86,7 @@ class TestControllerWorkflowApprovalTransformMixin(unittest.TestCase):
         self.assertEqual(api_data.timeout, 30)
 
     def test_get_endpoint_operations_has_list_and_get(self):
-        ops = ControllerWorkflowApprovalTransformMixin_v2.get_endpoint_operations()
+        ops = WorkflowApprovalTransformMixin_v2.get_endpoint_operations()
         self.assertIn("list", ops)
         self.assertIn("get", ops)
         self.assertEqual(ops["list"].path, "/api/controller/v2/workflow_approvals/")
@@ -95,7 +95,7 @@ class TestControllerWorkflowApprovalTransformMixin(unittest.TestCase):
         self.assertEqual(ops["get"].method, "GET")
 
     def test_get_lookup_field(self):
-        self.assertEqual(ControllerWorkflowApprovalTransformMixin_v2.get_lookup_field(), "name")
+        self.assertEqual(WorkflowApprovalTransformMixin_v2.get_lookup_field(), "name")
 
     def test_from_api(self):
         api_response = {
@@ -105,8 +105,8 @@ class TestControllerWorkflowApprovalTransformMixin(unittest.TestCase):
             "action": "deny",
         }
         context = {"operation": "find"}
-        ansible_instance = ControllerWorkflowApprovalTransformMixin_v2.from_api(api_response, context)
-        self.assertIsInstance(ansible_instance, AnsibleControllerWorkflowApproval)
+        ansible_instance = WorkflowApprovalTransformMixin_v2.from_api(api_response, context)
+        self.assertIsInstance(ansible_instance, AnsibleWorkflowApproval)
         self.assertEqual(ansible_instance.id, 123)
         self.assertEqual(ansible_instance.name, "approval_node")
         self.assertEqual(ansible_instance.workflow_job_id, 42)
@@ -121,7 +121,7 @@ class TestRegistryDiscovery(unittest.TestCase):
         )
 
         registry = APIVersionRegistry()
-        service = registry.get_service_for_module("controller_workflow_approval")
+        service = registry.get_service_for_module("workflow_approval")
         self.assertEqual(service, "controller")
 
     def test_module_supports_version_2(self):
@@ -130,7 +130,7 @@ class TestRegistryDiscovery(unittest.TestCase):
         )
 
         registry = APIVersionRegistry()
-        self.assertTrue(registry.module_supports_version("controller_workflow_approval", "2"))
+        self.assertTrue(registry.module_supports_version("workflow_approval", "2"))
 
     def test_loader_can_load_classes(self):
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader import (
@@ -142,10 +142,10 @@ class TestRegistryDiscovery(unittest.TestCase):
 
         registry = APIVersionRegistry()
         loader = DynamicClassLoader(registry)
-        ansible_cls, api_cls, mixin_cls = loader.load_classes_for_module("controller_workflow_approval", "2")
-        self.assertEqual(ansible_cls.__name__, "AnsibleControllerWorkflowApproval")
-        self.assertEqual(api_cls.__name__, "APIControllerWorkflowApproval_v2")
-        self.assertEqual(mixin_cls.__name__, "ControllerWorkflowApprovalTransformMixin_v2")
+        ansible_cls, api_cls, mixin_cls = loader.load_classes_for_module("workflow_approval", "2")
+        self.assertEqual(ansible_cls.__name__, "AnsibleWorkflowApproval")
+        self.assertEqual(api_cls.__name__, "APIWorkflowApproval_v2")
+        self.assertEqual(mixin_cls.__name__, "WorkflowApprovalTransformMixin_v2")
 
 
 class TestModuleDocumentation(unittest.TestCase):
@@ -153,12 +153,12 @@ class TestModuleDocumentation(unittest.TestCase):
 
     def test_documentation_is_parseable(self):
         import yaml
-        from ansible_collections.ansible.platform.plugins.modules.controller_workflow_approval import (
+        from ansible_collections.ansible.platform.plugins.modules.workflow_approval import (
             DOCUMENTATION,
         )
 
         doc = yaml.safe_load(DOCUMENTATION)
-        self.assertEqual(doc["module"], "controller_workflow_approval")
+        self.assertEqual(doc["module"], "workflow_approval")
         self.assertIn("workflow_job_id", doc["options"])
         self.assertIn("name", doc["options"])
         self.assertIn("action", doc["options"])
@@ -167,7 +167,7 @@ class TestModuleDocumentation(unittest.TestCase):
 
     def test_action_choices(self):
         import yaml
-        from ansible_collections.ansible.platform.plugins.modules.controller_workflow_approval import (
+        from ansible_collections.ansible.platform.plugins.modules.workflow_approval import (
             DOCUMENTATION,
         )
 
@@ -178,7 +178,7 @@ class TestModuleDocumentation(unittest.TestCase):
 
     def test_extends_auth_fragment(self):
         import yaml
-        from ansible_collections.ansible.platform.plugins.modules.controller_workflow_approval import (
+        from ansible_collections.ansible.platform.plugins.modules.workflow_approval import (
             DOCUMENTATION,
         )
 
