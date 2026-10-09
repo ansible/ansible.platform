@@ -453,6 +453,24 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
+        # Seed hosts for Controller group association tests
+        host_store = self._resources.get(("controller", "hosts"))
+        if host_store and not host_store._items:
+            host_store.seed("2", [
+                {"id": 5701, "name": "web1.example.com", "inventory": 1},
+                {"id": 5702, "name": "web2.example.com", "inventory": 1},
+                {"id": 5703, "name": "db1.example.com", "inventory": 1},
+            ])
+
+        # Seed settings
+        with self._settings_lock:
+            if not self._settings:
+                self._settings = {
+                    "RUNTIME_FEATURE_FLAGS": "True",
+                    "SESSION_COOKIE_AGE": 1800,
+                    "MAX_PAGE_SIZE": 200,
+                    "REMOTE_HOST_HEADERS": [],
+                }
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -747,7 +765,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 .replace("notification_templates_success", "notification_templates")
                 .replace("notification_templates_error", "notification_templates")
             )
-            assoc_store = self.store.resource(service, assoc_endpoint)
+            assoc_store = self.store.resource(service, assoc_endpoint) or self.store.resource(service, resource_name)
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
                 return True
