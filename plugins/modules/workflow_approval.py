@@ -55,6 +55,10 @@ options:
     default: 10
     type: int
 
+seealso:
+  - module: ansible.controller.workflow_approval
+  - module: awx.awx.workflow_approval
+
 extends_documentation_fragment:
   - ansible.platform.auth
 """
