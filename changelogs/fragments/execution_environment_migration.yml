@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - execution_environment - migrate execution_environment module from awx_collection for managing Controller execution environments (https://issues.redhat.com/browse/AAP-95848).
