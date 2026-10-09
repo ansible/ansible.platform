@@ -1,0 +1,84 @@
+---
+# Integration tests for ansible.platform.inventory_source
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-InvSource-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test inventory source"
+        inventory: "Demo Inventory"
+        source: ec2
+        state: present
+      register: created_is
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_is is changed
+          - created_is.inventory_source.name is defined
+          - created_is.inventory_source.id is defined
+
+    - name: Check idempotency
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test inventory source"
+        inventory: "Demo Inventory"
+        source: ec2
+        state: present
+      register: idempotent_is
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_is is not changed
+
+    - name: Update description
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test inventory source"
+        inventory: "Demo Inventory"
+        source: ec2
+      register: updated_is
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_is is changed
+
+    - name: Check exists
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        state: absent
+      failed_when: false
+...
