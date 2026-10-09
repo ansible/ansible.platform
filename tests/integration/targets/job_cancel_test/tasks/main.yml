@@ -1,0 +1,21 @@
+---
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Cancel a non-existent job (should fail)
+      ansible.platform.job_cancel:
+        job_id: 999999999
+      register: cancel_result
+      ignore_errors: true
+
+    - name: Assert non-existent job produces error
+      ansible.builtin.assert:
+        that:
+          - cancel_result is failed
+...
