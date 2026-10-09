@@ -211,6 +211,35 @@ class BaseAPIClient(ABC):
         """
         pass
 
+    def approve_workflow_node(
+        self,
+        workflow_job_id: int,
+        node_name: str,
+        action: str = "approve",
+        timeout: int = 10,
+        interval: float = 1,
+    ) -> dict:
+        """
+        Wait for a workflow approval node to become pending, then approve or deny it.
+
+        Polls the workflow job's nodes endpoint until an approval node matching
+        node_name appears, then POSTs to the node's approve or deny sub-endpoint.
+
+        Args:
+            workflow_job_id: ID of the workflow job containing the approval node.
+            node_name: Name of the approval node to act on.
+            action: 'approve' or 'deny'.
+            timeout: Max seconds to wait for the approval node to appear.
+            interval: Seconds between poll attempts.
+
+        Returns:
+            dict with 'changed' key and node details.
+
+        Raises:
+            ValueError: If timeout expires or node not found.
+        """
+        raise NotImplementedError
+
     def lookup_organization_ids(self, names: list) -> list:
         """
         Lookup organization IDs from names (shared helper).

@@ -1276,6 +1276,53 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return response.json()
 
+    def approve_workflow_node(
+        self,
+        workflow_job_id: int,
+        node_name: str,
+        action: str = "approve",
+        timeout: int = 10,
+        interval: float = 1,
+    ) -> dict:
+        """Wait for a workflow approval node, then approve or deny it."""
+        self.record_activity()
+        service = "controller"
+        svc_version = self.get_api_version(service)
+        nodes_path = f"/api/{service}/v{svc_version}/workflow_jobs/{workflow_job_id}/workflow_nodes/"
+        nodes_url = self._build_url(nodes_path, query_params={"job__name": node_name}, service=service)
+
+        elapsed = 0.0
+        approval_node = None
+        while elapsed < timeout:
+            response = self._make_request("GET", nodes_url, operation="poll_workflow_node", resource="workflow_approval")
+            data = response.json()
+            results = data.get("results", [])
+            if results:
+                approval_node = results[0]
+                break
+            time.sleep(interval)
+            elapsed += interval
+
+        if approval_node is None:
+            raise ValueError("Timed out waiting for workflow approval node '%s' in workflow job %d (timeout=%ds)" % (node_name, workflow_job_id, timeout))
+
+        related = approval_node.get("related", {})
+        job_url = related.get("job")
+        if not job_url:
+            raise ValueError("Workflow node '%s' has no related job URL" % node_name)
+
+        action_url = self._build_url(f"{job_url}{action}/", service=service)
+        action_response = self._make_request("POST", action_url, operation=action, resource="workflow_approval")
+        changed = action_response.status_code in (200, 204)
+
+        return {
+            "changed": changed,
+            "workflow_job_id": workflow_job_id,
+            "node_name": node_name,
+            "action": action,
+            "approval_node_id": approval_node.get("id"),
+        }
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.

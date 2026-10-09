@@ -1,0 +1,2 @@
+minor_changes:
+  - workflow_approval - migrate workflow_approval module from awx_collection.

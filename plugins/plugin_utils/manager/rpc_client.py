@@ -134,6 +134,17 @@ class ManagerRPCClient:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
 
+    def approve_workflow_node(
+        self,
+        workflow_job_id: int,
+        node_name: str,
+        action: str = "approve",
+        timeout: int = 10,
+        interval: float = 1,
+    ) -> dict:
+        """Wait for a workflow approval node, then approve or deny it. See PlatformService.approve_workflow_node()."""
+        return self.service_proxy.approve_workflow_node(workflow_job_id, node_name, action, timeout, interval)
+
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.
