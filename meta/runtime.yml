@@ -35,4 +35,5 @@ action_groups:
     - job_list
     - group
     - controller_job_cancel
+    - job_cancel
 ...
