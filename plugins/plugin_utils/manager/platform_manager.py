@@ -1276,6 +1276,29 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return response.json()
 
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        self.record_activity()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
+        if response.status_code != 201:
+            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
+        return response.json()
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
