@@ -9,20 +9,20 @@ __metaclass__ = type
 import unittest
 from dataclasses import asdict
 
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_subscriptions import (
-    AnsibleControllerSubscriptions,
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.subscriptions import (
+    AnsibleSubscriptions,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_subscriptions import (
-    APIControllerSubscriptions_v2,
-    ControllerSubscriptionsTransformMixin_v2,
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.subscriptions import (
+    APISubscriptions_v2,
+    SubscriptionsTransformMixin_v2,
 )
 
 
-class TestAnsibleControllerSubscriptions(unittest.TestCase):
-    """Tests for the AnsibleControllerSubscriptions dataclass."""
+class TestAnsibleSubscriptions(unittest.TestCase):
+    """Tests for the AnsibleSubscriptions dataclass."""
 
     def test_defaults(self):
-        obj = AnsibleControllerSubscriptions()
+        obj = AnsibleSubscriptions()
         self.assertIsNone(obj.username)
         self.assertIsNone(obj.password)
         self.assertIsNone(obj.client_id)
@@ -31,17 +31,17 @@ class TestAnsibleControllerSubscriptions(unittest.TestCase):
         self.assertEqual(obj.subscriptions, [])
 
     def test_with_username_password(self):
-        obj = AnsibleControllerSubscriptions(username="admin", password="secret")
+        obj = AnsibleSubscriptions(username="admin", password="secret")
         self.assertEqual(obj.username, "admin")
         self.assertEqual(obj.password, "secret")
 
     def test_with_client_credentials(self):
-        obj = AnsibleControllerSubscriptions(client_id="my-id", client_secret="my-secret")
+        obj = AnsibleSubscriptions(client_id="my-id", client_secret="my-secret")
         self.assertEqual(obj.client_id, "my-id")
         self.assertEqual(obj.client_secret, "my-secret")
 
     def test_asdict(self):
-        obj = AnsibleControllerSubscriptions(username="admin", password="secret", filters={"product_name": "AAP"})
+        obj = AnsibleSubscriptions(username="admin", password="secret", filters={"product_name": "AAP"})
         d = asdict(obj)
         self.assertEqual(d["username"], "admin")
         self.assertEqual(d["password"], "secret")
@@ -50,18 +50,18 @@ class TestAnsibleControllerSubscriptions(unittest.TestCase):
         self.assertEqual(d["subscriptions"], [])
 
 
-class TestAPIControllerSubscriptions(unittest.TestCase):
+class TestAPISubscriptions(unittest.TestCase):
     """Tests for the API dataclass."""
 
     def test_defaults(self):
-        obj = APIControllerSubscriptions_v2()
+        obj = APISubscriptions_v2()
         self.assertIsNone(obj.subscriptions_username)
         self.assertIsNone(obj.subscriptions_password)
         self.assertIsNone(obj.subscriptions_client_id)
         self.assertIsNone(obj.subscriptions_client_secret)
 
     def test_with_username(self):
-        obj = APIControllerSubscriptions_v2(
+        obj = APISubscriptions_v2(
             subscriptions_username="admin",
             subscriptions_password="secret",
         )
@@ -69,35 +69,35 @@ class TestAPIControllerSubscriptions(unittest.TestCase):
         self.assertEqual(obj.subscriptions_password, "secret")
 
 
-class TestControllerSubscriptionsTransformMixin(unittest.TestCase):
+class TestSubscriptionsTransformMixin(unittest.TestCase):
     """Tests for the transform mixin."""
 
     def test_is_singleton(self):
-        self.assertTrue(ControllerSubscriptionsTransformMixin_v2.is_singleton)
+        self.assertTrue(SubscriptionsTransformMixin_v2.is_singleton)
 
     def test_get_lookup_field_empty(self):
-        self.assertEqual(ControllerSubscriptionsTransformMixin_v2.get_lookup_field(), "")
+        self.assertEqual(SubscriptionsTransformMixin_v2.get_lookup_field(), "")
 
     def test_endpoint_operations(self):
-        ops = ControllerSubscriptionsTransformMixin_v2.get_endpoint_operations()
+        ops = SubscriptionsTransformMixin_v2.get_endpoint_operations()
         self.assertIn("get", ops)
         get_op = ops["get"]
-        self.assertEqual(get_op.path, "/api/v2/config/subscriptions/")
+        self.assertEqual(get_op.path, "/api/controller/v2/config/subscriptions/")
         self.assertEqual(get_op.method, "POST")
         self.assertEqual(get_op.required_for, "find")
 
     def test_from_ansible_data_username(self):
-        ansible_obj = AnsibleControllerSubscriptions(username="admin", password="secret")
-        api_obj = ControllerSubscriptionsTransformMixin_v2.from_ansible_data(ansible_obj, {})
-        self.assertIsInstance(api_obj, APIControllerSubscriptions_v2)
+        ansible_obj = AnsibleSubscriptions(username="admin", password="secret")
+        api_obj = SubscriptionsTransformMixin_v2.from_ansible_data(ansible_obj, {})
+        self.assertIsInstance(api_obj, APISubscriptions_v2)
         self.assertEqual(api_obj.subscriptions_username, "admin")
         self.assertEqual(api_obj.subscriptions_password, "secret")
         self.assertIsNone(api_obj.subscriptions_client_id)
 
     def test_from_ansible_data_client_id(self):
-        ansible_obj = AnsibleControllerSubscriptions(client_id="cid", client_secret="csec")
-        api_obj = ControllerSubscriptionsTransformMixin_v2.from_ansible_data(ansible_obj, {})
-        self.assertIsInstance(api_obj, APIControllerSubscriptions_v2)
+        ansible_obj = AnsibleSubscriptions(client_id="cid", client_secret="csec")
+        api_obj = SubscriptionsTransformMixin_v2.from_ansible_data(ansible_obj, {})
+        self.assertIsInstance(api_obj, APISubscriptions_v2)
         self.assertEqual(api_obj.subscriptions_client_id, "cid")
         self.assertEqual(api_obj.subscriptions_client_secret, "csec")
         self.assertIsNone(api_obj.subscriptions_username)
@@ -107,20 +107,20 @@ class TestControllerSubscriptionsTransformMixin(unittest.TestCase):
             {"id": 1, "product_name": "AAP", "support_level": "Premium"},
             {"id": 2, "product_name": "AAP", "support_level": "Self-Support"},
         ]
-        result = ControllerSubscriptionsTransformMixin_v2.from_api(api_data, {})
-        self.assertIsInstance(result, AnsibleControllerSubscriptions)
+        result = SubscriptionsTransformMixin_v2.from_api(api_data, {})
+        self.assertIsInstance(result, AnsibleSubscriptions)
         self.assertEqual(len(result.subscriptions), 2)
         self.assertEqual(result.subscriptions[0]["product_name"], "AAP")
 
     def test_from_api_dict(self):
         api_data = {"id": 1, "product_name": "AAP"}
-        result = ControllerSubscriptionsTransformMixin_v2.from_api(api_data, {})
-        self.assertIsInstance(result, AnsibleControllerSubscriptions)
+        result = SubscriptionsTransformMixin_v2.from_api(api_data, {})
+        self.assertIsInstance(result, AnsibleSubscriptions)
         self.assertEqual(len(result.subscriptions), 1)
 
     def test_from_api_empty(self):
-        result = ControllerSubscriptionsTransformMixin_v2.from_api([], {})
-        self.assertIsInstance(result, AnsibleControllerSubscriptions)
+        result = SubscriptionsTransformMixin_v2.from_api([], {})
+        self.assertIsInstance(result, AnsibleSubscriptions)
         self.assertEqual(result.subscriptions, [])
 
 

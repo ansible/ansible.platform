@@ -5,7 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 """
-Action plugin for ansible.platform.controller_subscriptions module.
+Action plugin for ansible.platform.subscriptions module.
 
 Subscriptions is a singleton resource: manager.execute('find') posts credentials
 to the Controller API and returns the list of available subscriptions.
@@ -19,13 +19,13 @@ __metaclass__ = type
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_subscriptions import AnsibleControllerSubscriptions
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.subscriptions import AnsibleSubscriptions
 
 
 class ActionModule(BaseResourceActionPlugin):
-    """Action plugin for controller_subscriptions module."""
+    """Action plugin for subscriptions module."""
 
-    MODULE_NAME = "controller_subscriptions"
+    MODULE_NAME = "subscriptions"
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -41,7 +41,7 @@ class ActionModule(BaseResourceActionPlugin):
             if not argspec:
                 from ansible.errors import AnsibleError
 
-                raise AnsibleError("Could not load DOCUMENTATION for controller_subscriptions module")
+                raise AnsibleError("Could not load DOCUMENTATION for subscriptions module")
 
             module_args = self._task.args.copy()
             validated_input = self._validate_data(module_args, argspec, "input")
@@ -62,7 +62,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             # Build the ansible data for the manager
             ansible_data = asdict(
-                AnsibleControllerSubscriptions(
+                AnsibleSubscriptions(
                     username=username,
                     password=password,
                     client_id=client_id,
@@ -103,7 +103,7 @@ class ActionModule(BaseResourceActionPlugin):
         except Exception as e:
             import traceback
 
-            self._display.vvv("Error in controller_subscriptions action plugin: %s" % e)
+            self._display.vvv("Error in subscriptions action plugin: %s" % e)
             result["failed"] = True
             result["msg"] = str(e)
             if self._display.verbosity >= 3:
