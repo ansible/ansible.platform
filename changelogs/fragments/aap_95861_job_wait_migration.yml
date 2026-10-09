@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - job_wait - migrate ``job_wait`` module from ``awx_collection`` to wait for Controller jobs to complete via the platform SDK (https://issues.redhat.com/browse/AAP-95861).
+...
