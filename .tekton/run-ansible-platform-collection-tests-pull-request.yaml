@@ -52,6 +52,8 @@ spec:
       value: "{{revision}}"
     - name: pipeline-github-pr-number
       value: "{{pull_request_number}}"
+    - name: oci-container-repo
+      value: "quay.io/aap-ci/pipeline-artifacts/ansible/ansible-platform"
 
   workspaces:
     - name: workspace
