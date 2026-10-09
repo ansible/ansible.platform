@@ -20,7 +20,7 @@ short_description: Manage Controller inventory groups
 description:
   - Create, update, or delete inventory groups on Ansible Automation Platform Controller.
   - Groups belong to an inventory and can contain hosts and child groups.
-  - Association endpoints (hosts, children) are planned for a follow-up PR.
+  - Supports host and child group associations with optional preserve-existing behavior.
 version_added: "2.8.0"
 
 options:
@@ -52,6 +52,36 @@ options:
       - Accepts a YAML/JSON dictionary which will be serialized as a JSON string.
     type: dict
 
+  hosts:
+    description:
+      - List of host names or IDs that should be members of this group.
+    type: list
+    elements: str
+
+  children:
+    description:
+      - List of group names or IDs that should be nested as children of this group.
+    type: list
+    elements: str
+    aliases:
+      - groups
+
+  preserve_existing_hosts:
+    description:
+      - When true, only add new hosts without removing existing ones not in the list.
+      - When false, sync to exactly the specified list (add missing, remove extra).
+    type: bool
+    default: false
+
+  preserve_existing_children:
+    description:
+      - When true, only add new child groups without removing existing ones not in the list.
+      - When false, sync to exactly the specified list (add missing, remove extra).
+    type: bool
+    default: false
+    aliases:
+      - preserve_existing_groups
+
 seealso:
   - module: ansible.controller.group
   - module: awx.awx.group
@@ -78,6 +108,18 @@ EXAMPLES = """
     name: webservers
     new_name: web-servers
     inventory: "Production Inventory"
+
+- name: Add group with hosts and children
+  ansible.platform.group:
+    name: webservers
+    inventory: "Production Inventory"
+    hosts:
+      - web1.example.com
+      - web2.example.com
+    children:
+      - east-web
+      - west-web
+    preserve_existing_hosts: true
 
 - name: Delete a group
   ansible.platform.group:

@@ -6,8 +6,8 @@ Field names and types remain stable across API versions.
 """
 
 import json
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -23,6 +23,12 @@ class AnsibleGroup:
     description: Optional[str] = None
     variables: Optional[Any] = None
     state: str = "present"
+
+    # Association fields (handled by action plugin, not sent to API directly)
+    hosts: Optional[List[str]] = field(default=None)
+    children: Optional[List[str]] = field(default=None)
+    preserve_existing_hosts: bool = False
+    preserve_existing_children: bool = False
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None
