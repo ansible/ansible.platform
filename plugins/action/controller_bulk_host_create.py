@@ -13,10 +13,14 @@ __metaclass__ = type
 import json
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_bulk_host_create import (
+    AnsibleControllerBulkHostCreate,
+)
 
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "controller_bulk_host_create"
+    MODEL_CLASS = AnsibleControllerBulkHostCreate
 
     def run(self, tmp=None, task_vars=None):
         result = {}
