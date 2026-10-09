@@ -1387,6 +1387,20 @@ class PlatformService(BaseAPIClient):
             raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
 
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """Make a raw authenticated HTTP request and return parsed JSON."""
+        self.record_activity()
+        url = self._build_url(path)
+        kwargs = {}
+        if data is not None:
+            kwargs["json"] = data
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
+        try:
+            return response.json() if response.content else {}
+        except Exception:
+            logger.debug("direct_request: failed to parse response body for %s %s", method, path)
+            return {}
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.

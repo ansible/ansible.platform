@@ -161,6 +161,10 @@ class ManagerRPCClient:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
         return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
 
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """Make a raw authenticated HTTP request via the manager process."""
+        return self.service_proxy.direct_request(method, path, data)
+
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.
