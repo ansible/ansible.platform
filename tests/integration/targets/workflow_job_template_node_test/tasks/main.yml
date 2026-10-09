@@ -1,0 +1,82 @@
+---
+# Integration tests for ansible.platform.workflow_job_template_node
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    node_id: "test-node-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create workflow node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_id }}"
+        workflow_job_template: "Demo Workflow"
+        unified_job_template: "Demo Job Template"
+        all_parents_must_converge: false
+        state: present
+      register: created_node
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_node is changed
+          - created_node.workflow_job_template_node.id is defined
+
+    - name: Check idempotency
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_id }}"
+        workflow_job_template: "Demo Workflow"
+        unified_job_template: "Demo Job Template"
+        all_parents_must_converge: false
+        state: present
+      register: idempotent_node
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_node is not changed
+
+    - name: Update node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_id }}"
+        workflow_job_template: "Demo Workflow"
+        all_parents_must_converge: true
+      register: updated_node
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_node is changed
+
+    - name: Check exists
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_id }}"
+        workflow_job_template: "Demo Workflow"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete workflow node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_id }}"
+        workflow_job_template: "Demo Workflow"
+        state: absent
+      failed_when: false
+...
