@@ -1,0 +1,95 @@
+---
+# Integration tests for ansible.platform.instance_group
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-IG-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 10
+        max_forks: 50
+        state: present
+      register: created_ig
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_ig is changed
+          - created_ig.instance_group.name is defined
+          - created_ig.instance_group.id is defined
+
+    - name: Check idempotency
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 10
+        max_forks: 50
+        state: present
+      register: idempotent_ig
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_ig is not changed
+
+    - name: Update instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 20
+      register: updated_ig
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_ig is changed
+
+    - name: Rename instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+      register: renamed_ig
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_ig is changed
+
+    - name: Check exists
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete instance group (renamed)
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      failed_when: false
+
+    - name: Delete instance group (original, in case rename failed)
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...
