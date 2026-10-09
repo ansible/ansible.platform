@@ -1,0 +1,70 @@
+---
+# Integration tests for ansible.platform.credential_input_source
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create credential input source
+      ansible.platform.credential_input_source:
+        input_field_name: password
+        target_credential: "Demo Credential"
+        source_credential: "Vault Lookup"
+        metadata:
+          path: "secret/data/test"
+          secret_key: "password"
+        state: present
+      register: created_cis
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_cis is changed
+          - created_cis.credential_input_source.id is defined
+
+    - name: Check idempotency
+      ansible.platform.credential_input_source:
+        input_field_name: password
+        target_credential: "Demo Credential"
+        source_credential: "Vault Lookup"
+        metadata:
+          path: "secret/data/test"
+          secret_key: "password"
+        state: present
+      register: idempotent_cis
+
+    - name: Assert no change
+      ansible.builtin.assert:
+        that:
+          - idempotent_cis is not changed
+
+    - name: Check exists
+      ansible.platform.credential_input_source:
+        input_field_name: password
+        target_credential: "Demo Credential"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete credential input source
+      ansible.platform.credential_input_source:
+        input_field_name: password
+        target_credential: "Demo Credential"
+        state: absent
+      failed_when: false
+...
