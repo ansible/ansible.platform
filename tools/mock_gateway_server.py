@@ -311,6 +311,7 @@ class Store:
             ("groups", ["name", "inventory"], 6100),
             ("credential_types", ["name", "kind"], 6200),
             ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
+            ("schedules", ["name"], 6400),
         )
         for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
