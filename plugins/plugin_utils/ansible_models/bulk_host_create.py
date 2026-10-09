@@ -1,5 +1,5 @@
 """
-Ansible Controller Bulk Host Create dataclass - user-facing stable interface.
+Ansible Bulk Host Create dataclass - user-facing stable interface.
 
 This dataclass represents the bulk host create request as seen by Ansible playbooks.
 Field names and types remain stable across API versions.
