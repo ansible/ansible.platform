@@ -181,6 +181,7 @@ class TestSearchApi(unittest.TestCase):
         self.client = DirectHTTPClient.__new__(DirectHTTPClient)
         self.client._authenticated = True
         self.client.base_url = "https://gw.example.com"
+        self.client.api_versions = {}
         self.client.api_version = "2"
         self.client.cache = {}
 
