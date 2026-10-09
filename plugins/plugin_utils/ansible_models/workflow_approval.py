@@ -1,5 +1,5 @@
 """
-Ansible Controller Workflow Approval dataclass - user-facing stable interface.
+Ansible Workflow Approval dataclass - user-facing stable interface.
 
 This dataclass represents the workflow approval action as seen by Ansible playbooks.
 Field names and types remain stable across API versions.
@@ -10,9 +10,9 @@ from typing import Optional
 
 
 @dataclass
-class AnsibleControllerWorkflowApproval:
+class AnsibleWorkflowApproval:
     """
-    Ansible representation of a controller workflow approval action.
+    Ansible representation of a workflow approval action.
 
     This is the stable interface that playbooks interact with.
     Field names match the DOCUMENTATION and remain consistent
