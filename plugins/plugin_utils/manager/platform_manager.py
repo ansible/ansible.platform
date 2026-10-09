@@ -1276,6 +1276,33 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return response.json()
 
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """
+        Make a raw authenticated HTTP request and return parsed JSON.
+
+        Used by action plugins for non-standard endpoints (e.g. workflow
+        approval approve/deny sub-endpoints, settings/all/).
+
+        Args:
+            method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
+            path: API path (e.g. '/api/controller/v2/workflow_approvals/123/approve/')
+            data: Optional dict to JSON-encode as request body
+
+        Returns:
+            Parsed JSON response dict (empty dict on empty body)
+        """
+        self.record_activity()
+        url = self._build_url(path)
+        kwargs = {}
+        if data is not None:
+            kwargs["json"] = data
+
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
+        try:
+            return response.json() if response.content else {}
+        except Exception:
+            return {}
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
