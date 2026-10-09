@@ -1,5 +1,3 @@
----
-profile: production
 exclude_paths:
   - 'changelogs/'
   # base_action.py is an internal base class, not a user-facing action plugin
@@ -10,6 +8,7 @@ exclude_paths:
   - 'extensions/molecule/organization_mock/inventory.yml'
   - 'extensions/molecule/job_template_mock/inventory.yml'
   - 'extensions/molecule/users_mock/inventory.yml'
+<<<<<<< HEAD
   - 'extensions/molecule/controller_credential_type_mock/inventory.yml'
   - 'extensions/molecule/credential_input_source_mock/inventory.yml'
   - 'extensions/molecule/group_mock/inventory.yml'
@@ -17,5 +16,15 @@ exclude_paths:
   - 'extensions/molecule/instance_group_mock/inventory.yml'
   - 'extensions/molecule/inventory_source_mock/inventory.yml'
   - 'extensions/molecule/label_mock/inventory.yml'
+=======
+- changelogs/
+- plugins/action/base_action.py
+- extensions/molecule/default/inventory.yml
+- extensions/molecule/inventory.yml
+- extensions/molecule/organization_mock/inventory.yml
+- extensions/molecule/users_mock/inventory.yml
+- extensions/molecule/schedule_mock/inventory.yml
+profile: production
+>>>>>>> 6d40f2e ([AAP-95846] Migrate credential module from awx_collection as controller_credential)
 use_default_rules: true
 ...
