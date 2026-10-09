@@ -51,6 +51,10 @@ mutually_exclusive:
   - - page
     - all_pages
 
+seealso:
+  - module: ansible.controller.job_list
+  - module: awx.awx.job_list
+
 extends_documentation_fragment:
   - ansible.platform.auth
 """
