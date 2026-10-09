@@ -5,7 +5,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # This module is implemented as an action plugin.
-# See plugins/action/controller_bulk_host_create.py for the implementation.
+# See plugins/action/bulk_host_create.py for the implementation.
 
 from __future__ import absolute_import, division, print_function
 
@@ -13,7 +13,7 @@ __metaclass__ = type
 
 DOCUMENTATION = """
 ---
-module: controller_bulk_host_create
+module: bulk_host_create
 author: Red Hat (@RedHatOfficial)
 short_description: Bulk create hosts in Automation Controller
 description:
@@ -68,7 +68,7 @@ extends_documentation_fragment:
 
 EXAMPLES = """
 - name: Bulk create hosts in an inventory
-  ansible.platform.controller_bulk_host_create:
+  ansible.platform.bulk_host_create:
     inventory: "My Inventory"
     hosts:
       - name: host1.example.com
@@ -81,7 +81,7 @@ EXAMPLES = """
           ansible_host: 192.168.1.2
 
 - name: Bulk create hosts by inventory ID
-  ansible.platform.controller_bulk_host_create:
+  ansible.platform.bulk_host_create:
     inventory: "42"
     hosts:
       - name: web1.example.com

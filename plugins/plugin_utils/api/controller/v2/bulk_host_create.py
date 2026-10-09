@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class APIControllerBulkHostCreate_v2(BaseTransformMixin):
+class APIBulkHostCreate_v2(BaseTransformMixin):
     """
     API v2 representation of a bulk host create request.
     """
@@ -30,7 +30,7 @@ class APIControllerBulkHostCreate_v2(BaseTransformMixin):
     inventory: Optional[str] = None
 
 
-class ControllerBulkHostCreateTransformMixin_v2(BaseTransformMixin):
+class BulkHostCreateTransformMixin_v2(BaseTransformMixin):
     """
     Transform mixin for Controller Bulk Host Create API v2.
 
@@ -40,11 +40,9 @@ class ControllerBulkHostCreateTransformMixin_v2(BaseTransformMixin):
     """
 
     @classmethod
-    def from_ansible_data(
-        cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]
-    ) -> "APIControllerBulkHostCreate_v2":
+    def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIBulkHostCreate_v2":
         """Create API instance from Ansible dataclass."""
-        return APIControllerBulkHostCreate_v2(
+        return APIBulkHostCreate_v2(
             hosts=getattr(ansible_instance, "hosts", []),
             inventory=getattr(ansible_instance, "inventory", None),
         )
@@ -72,15 +70,13 @@ class ControllerBulkHostCreateTransformMixin_v2(BaseTransformMixin):
         return "inventory"
 
     @classmethod
-    def from_api(
-        cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]
-    ) -> "AnsibleControllerBulkHostCreate":
+    def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleBulkHostCreate":
         """Transform from API format to Ansible format."""
-        from ....ansible_models.controller_bulk_host_create import (
-            AnsibleControllerBulkHostCreate,
+        from ....ansible_models.bulk_host_create import (
+            AnsibleBulkHostCreate,
         )
 
-        return AnsibleControllerBulkHostCreate(
+        return AnsibleBulkHostCreate(
             hosts=api_data.get("hosts", []),
             inventory=api_data.get("inventory"),
         )

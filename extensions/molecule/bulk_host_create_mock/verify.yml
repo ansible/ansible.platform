@@ -1,5 +1,5 @@
 ---
-- name: Verify — controller_bulk_host_create results
+- name: Verify — bulk_host_create results
   hosts: localhost
   connection: local
   gather_facts: false
