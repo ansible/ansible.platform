@@ -1,0 +1,84 @@
+---
+# Cleanup: instances cannot be deleted via API — deprovision instead.
+# The mock server supports generic delete, so we use state=absent which
+# maps to node_state=deprovisioning via the action plugin.
+- name: Cleanup — deprovision instance (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    instance_hostname_local: "molecule-test-exec-local.example.com"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Deprovision instance (connection local)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_local }}"
+        node_state: deprovisioning
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — deprovision instance (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    instance_hostname_http_direct: "molecule-test-exec-direct.example.com"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Deprovision instance (http direct)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_http_direct }}"
+        node_state: deprovisioning
+      failed_when: false
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — deprovision instance (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    instance_hostname_http_persistent: "molecule-test-exec-persistent.example.com"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Deprovision instance (http persistent)
+      ansible.platform.instance:
+        hostname: "{{ instance_hostname_http_persistent }}"
+        node_state: deprovisioning
+      failed_when: false
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
