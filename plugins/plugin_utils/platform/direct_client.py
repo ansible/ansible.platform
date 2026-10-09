@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -731,7 +731,9 @@ class DirectHTTPClient(BaseAPIClient):
         # Pagination: follow 'next' links
         all_results = list(response_data.get("results", []))
         while response_data.get("next") and len(all_results) < max_objects:
-            next_url = response_data["next"]
+            # AAP components may return pagination links as relative paths.
+            # Request.open() requires an absolute URL, so resolve against the gateway.
+            next_url = urljoin(self.base_url, response_data["next"])
             response = self._make_request("GET", next_url, operation="search", resource=endpoint)
             response_body = response.read()
             response_data = json.loads(response_body) if response_body else {}
