@@ -1,4 +1,4 @@
-"""Unit tests for the controller_bulk_host_create module, dataclass, and transform mixin."""
+"""Unit tests for the bulk_host_create module, dataclass, and transform mixin."""
 
 import json
 from pathlib import Path
@@ -12,25 +12,25 @@ import yaml
 # ---------------------------------------------------------------------------
 
 
-class TestAnsibleControllerBulkHostCreate:
-    """Tests for the AnsibleControllerBulkHostCreate dataclass."""
+class TestAnsibleBulkHostCreate:
+    """Tests for the AnsibleBulkHostCreate dataclass."""
 
     def test_dataclass_defaults(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_bulk_host_create import (
-            AnsibleControllerBulkHostCreate,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
+            AnsibleBulkHostCreate,
         )
 
-        instance = AnsibleControllerBulkHostCreate()
+        instance = AnsibleBulkHostCreate()
         assert instance.hosts == []
         assert instance.inventory is None
 
     def test_dataclass_with_values(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_bulk_host_create import (
-            AnsibleControllerBulkHostCreate,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
+            AnsibleBulkHostCreate,
         )
 
         hosts = [{"name": "host1"}, {"name": "host2"}]
-        instance = AnsibleControllerBulkHostCreate(hosts=hosts, inventory="my_inv")
+        instance = AnsibleBulkHostCreate(hosts=hosts, inventory="my_inv")
         assert instance.hosts == hosts
         assert instance.inventory == "my_inv"
         assert len(instance.hosts) == 2
@@ -38,11 +38,11 @@ class TestAnsibleControllerBulkHostCreate:
     def test_dataclass_is_dataclass(self):
         from dataclasses import is_dataclass
 
-        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_bulk_host_create import (
-            AnsibleControllerBulkHostCreate,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
+            AnsibleBulkHostCreate,
         )
 
-        assert is_dataclass(AnsibleControllerBulkHostCreate)
+        assert is_dataclass(AnsibleBulkHostCreate)
 
 
 # ---------------------------------------------------------------------------
@@ -50,51 +50,51 @@ class TestAnsibleControllerBulkHostCreate:
 # ---------------------------------------------------------------------------
 
 
-class TestControllerBulkHostCreateTransformMixin:
+class TestBulkHostCreateTransformMixin:
     """Tests for the API v2 transform mixin."""
 
     def test_from_ansible_data(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_bulk_host_create import (
-            AnsibleControllerBulkHostCreate,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
+            AnsibleBulkHostCreate,
         )
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_bulk_host_create import (
-            ControllerBulkHostCreateTransformMixin_v2,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
+            BulkHostCreateTransformMixin_v2,
         )
 
-        ansible_data = AnsibleControllerBulkHostCreate(
+        ansible_data = AnsibleBulkHostCreate(
             hosts=[{"name": "h1"}, {"name": "h2"}],
             inventory="42",
         )
         context = MagicMock()
-        api_data = ControllerBulkHostCreateTransformMixin_v2.from_ansible_data(ansible_data, context)
+        api_data = BulkHostCreateTransformMixin_v2.from_ansible_data(ansible_data, context)
         assert api_data.hosts == [{"name": "h1"}, {"name": "h2"}]
         assert api_data.inventory == "42"
 
     def test_get_endpoint_operations_has_create(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_bulk_host_create import (
-            ControllerBulkHostCreateTransformMixin_v2,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
+            BulkHostCreateTransformMixin_v2,
         )
 
-        ops = ControllerBulkHostCreateTransformMixin_v2.get_endpoint_operations()
+        ops = BulkHostCreateTransformMixin_v2.get_endpoint_operations()
         assert "create" in ops
         assert ops["create"].method == "POST"
         assert "bulk/host_create" in ops["create"].path
 
     def test_get_lookup_field(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_bulk_host_create import (
-            ControllerBulkHostCreateTransformMixin_v2,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
+            BulkHostCreateTransformMixin_v2,
         )
 
-        assert ControllerBulkHostCreateTransformMixin_v2.get_lookup_field() == "inventory"
+        assert BulkHostCreateTransformMixin_v2.get_lookup_field() == "inventory"
 
     def test_from_api(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_bulk_host_create import (
-            ControllerBulkHostCreateTransformMixin_v2,
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
+            BulkHostCreateTransformMixin_v2,
         )
 
         api_data = {"hosts": [{"name": "h1"}], "inventory": "99"}
         context = MagicMock()
-        result = ControllerBulkHostCreateTransformMixin_v2.from_api(api_data, context)
+        result = BulkHostCreateTransformMixin_v2.from_api(api_data, context)
         assert result.hosts == [{"name": "h1"}]
         assert result.inventory == "99"
 
@@ -108,20 +108,20 @@ class TestModuleDocumentation:
     """Verify the module stub is importable and has valid DOCUMENTATION."""
 
     def test_documentation_is_parseable(self):
-        from ansible_collections.ansible.platform.plugins.modules import controller_bulk_host_create
+        from ansible_collections.ansible.platform.plugins.modules import bulk_host_create
 
-        doc = controller_bulk_host_create.DOCUMENTATION
+        doc = bulk_host_create.DOCUMENTATION
         parsed = yaml.safe_load(doc)
-        assert parsed["module"] == "controller_bulk_host_create"
+        assert parsed["module"] == "bulk_host_create"
         assert "hosts" in parsed["options"]
         assert "inventory" in parsed["options"]
         assert parsed["options"]["hosts"]["required"] is True
         assert parsed["options"]["inventory"]["required"] is True
 
     def test_extends_auth_fragment(self):
-        from ansible_collections.ansible.platform.plugins.modules import controller_bulk_host_create
+        from ansible_collections.ansible.platform.plugins.modules import bulk_host_create
 
-        doc = controller_bulk_host_create.DOCUMENTATION
+        doc = bulk_host_create.DOCUMENTATION
         parsed = yaml.safe_load(doc)
         fragments = parsed.get("extends_documentation_fragment", [])
         assert "ansible.platform.auth" in fragments
@@ -141,7 +141,7 @@ class TestRuntimeYml:
             runtime = yaml.safe_load(f)
 
         controller_group = runtime["action_groups"]["controller"]
-        assert "controller_bulk_host_create" in controller_group
+        assert "bulk_host_create" in controller_group
 
 
 # ---------------------------------------------------------------------------
@@ -153,12 +153,12 @@ class TestActionPluginModelClass:
     """Verify the action plugin has MODEL_CLASS set."""
 
     def test_model_class_is_set(self):
-        from ansible_collections.ansible.platform.plugins.action.controller_bulk_host_create import ActionModule
-        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_bulk_host_create import (
-            AnsibleControllerBulkHostCreate,
+        from ansible_collections.ansible.platform.plugins.action.bulk_host_create import ActionModule
+        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
+            AnsibleBulkHostCreate,
         )
 
-        assert ActionModule.MODEL_CLASS is AnsibleControllerBulkHostCreate
+        assert ActionModule.MODEL_CLASS is AnsibleBulkHostCreate
 
 
 # ---------------------------------------------------------------------------

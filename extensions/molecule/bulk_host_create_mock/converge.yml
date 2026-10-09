@@ -34,7 +34,7 @@
       vars:
         ansible_connection: local
 
-- name: Converge — controller_bulk_host_create (mock, connection local)
+- name: Converge — bulk_host_create (mock, connection local)
   hosts: localhost
   connection: local
   gather_facts: false
@@ -45,7 +45,7 @@
     gateway_validate_certs: false
   tasks:
     - name: Bulk create hosts (connection local)
-      ansible.platform.controller_bulk_host_create:
+      ansible.platform.bulk_host_create:
         inventory: "5001"
         hosts:
           - name: host1.example.com
@@ -68,7 +68,7 @@
         ansible_connection: local
 
     - name: Bulk create hosts in check_mode (connection local)
-      ansible.platform.controller_bulk_host_create:
+      ansible.platform.bulk_host_create:
         inventory: "Test Inventory"
         hosts:
           - name: checkmode_host.example.com
@@ -87,7 +87,7 @@
       vars:
         ansible_connection: local
 
-- name: Converge — controller_bulk_host_create (mock, http direct)
+- name: Converge — bulk_host_create (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http
   gather_facts: false
@@ -99,7 +99,7 @@
     ansible_platform_use_persistent_connection: false
   tasks:
     - name: Bulk create hosts (http direct)
-      ansible.platform.controller_bulk_host_create:
+      ansible.platform.bulk_host_create:
         inventory: "5001"
         hosts:
           - name: direct_host1.example.com

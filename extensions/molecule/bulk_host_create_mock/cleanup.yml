@@ -1,5 +1,5 @@
 ---
-- name: Cleanup — controller_bulk_host_create mock
+- name: Cleanup — bulk_host_create mock
   hosts: localhost
   connection: local
   gather_facts: false

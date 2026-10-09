@@ -25,5 +25,5 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
-    - controller_bulk_host_create
+    - bulk_host_create
 ...
