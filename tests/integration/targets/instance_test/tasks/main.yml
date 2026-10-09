@@ -1,0 +1,80 @@
+---
+# Integration tests for ansible.platform.instance
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=8') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    test_hostname: "claude-test-{{ test_id | lower }}.example.com"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create execution instance
+      ansible.platform.instance:
+        hostname: "{{ test_hostname }}"
+        node_type: execution
+        enabled: true
+        capacity_adjustment: 0.5
+        state: present
+      register: created_instance
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_instance is changed
+          - created_instance.instance.hostname is defined
+          - created_instance.instance.id is defined
+
+    - name: Check idempotency
+      ansible.platform.instance:
+        hostname: "{{ test_hostname }}"
+        node_type: execution
+        enabled: true
+        capacity_adjustment: 0.5
+        state: present
+      register: idempotent_instance
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_instance is not changed
+
+    - name: Update capacity adjustment
+      ansible.platform.instance:
+        hostname: "{{ test_hostname }}"
+        capacity_adjustment: 0.8
+      register: updated_instance
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_instance is changed
+
+    - name: Check exists
+      ansible.platform.instance:
+        hostname: "{{ test_hostname }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Deprovision test instance
+      ansible.platform.instance:
+        hostname: "{{ test_hostname }}"
+        state: absent
+      failed_when: false
+...
