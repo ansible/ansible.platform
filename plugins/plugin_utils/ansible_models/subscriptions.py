@@ -1,5 +1,5 @@
 """
-Ansible Controller Subscriptions dataclass - user-facing stable interface.
+Ansible Subscriptions dataclass - user-facing stable interface.
 
 Singleton resource: no id field, no state field.
 """
@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass
-class AnsibleControllerSubscriptions:
-    """Ansible representation of Controller subscriptions (singleton config)."""
+class AnsibleSubscriptions:
+    """Ansible representation of subscriptions (singleton config)."""
 
     # Input: Red Hat credentials (mutually exclusive pairs)
     username: Optional[str] = None

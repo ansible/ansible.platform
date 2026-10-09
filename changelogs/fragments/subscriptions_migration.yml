@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - subscriptions - migrate subscriptions module from awx.awx / ansible.controller to ansible.platform (singleton pattern) (https://issues.redhat.com/browse/ANSTRAT-1874).
+...
