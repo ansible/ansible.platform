@@ -1,0 +1,44 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Credential-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create credential
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test credential"
+        credential_type: "Machine"
+        organization: "Default"
+        inputs:
+          username: testuser
+        state: present
+      register: created
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created is changed
+          - created.controller_credential.id is defined
+
+  always:
+    - name: Delete credential
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Test"
+        credential_type: "Machine"
+        state: absent
+      failed_when: false
+...
