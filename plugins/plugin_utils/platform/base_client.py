@@ -225,6 +225,23 @@ class BaseAPIClient(ABC):
         # Implementation will be in the shared CRUD layer
         pass
 
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        raise NotImplementedError
+
     def lookup_organization_names(self, ids: list) -> list:
         """
         Lookup organization names from IDs (shared helper).

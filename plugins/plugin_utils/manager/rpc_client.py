@@ -134,6 +134,10 @@ class ManagerRPCClient:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
 
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
+        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
+
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.

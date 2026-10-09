@@ -1,0 +1,13 @@
+---
+- name: Cleanup — controller_bulk_host_create mock
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
