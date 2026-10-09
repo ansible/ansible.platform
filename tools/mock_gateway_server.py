@@ -265,6 +265,18 @@ class Store:
         # alphabetically so Molecule tests catch order-sensitivity regressions.
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
+        # Controller resources
+        controller_defs: List[tuple] = [
+            ("instance_groups", ["name"], 5200),
+            ("instances", ["hostname"], 7000),
+        ]
+        for endpoint, required, start_id in controller_defs:
+            self._resources[("controller", endpoint)] = GenericResource(
+                resource_name=endpoint,
+                required_fields=required,
+                start_id=start_id,
+            )
+
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
         return self._resources.get((service, name))
 
@@ -311,6 +323,14 @@ class Store:
                 },
             ]
             ff_store.seed("1", flags)
+
+        # Seed instances for Controller association tests
+        inst_store = self._resources.get(("controller", "instances"))
+        if inst_store and not inst_store._items:
+            inst_store.seed("2", [
+                {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
+                {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
+            ])
 
         # Seed settings
         with self._settings_lock:
