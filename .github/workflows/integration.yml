@@ -73,7 +73,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Install integration controller requirements
         run: pip install -r tests/integration/requirements.txt ansible-core
@@ -132,7 +132,7 @@ jobs:
       - name: Install python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.14
 
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt ansible-core
@@ -181,7 +181,7 @@ jobs:
       - name: Install python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.14
 
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt ansible-core

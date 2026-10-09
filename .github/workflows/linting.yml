@@ -35,7 +35,7 @@ jobs:
       - name: Install python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.14
 
       - name: Install requirements
         run: pip3.11 install -r requirements/requirements_dev.txt
@@ -97,7 +97,7 @@ jobs:
       - name: Install python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.14
 
       - name: Install requirements
         run: pip3.11 install --upgrade ansible
@@ -126,7 +126,7 @@ jobs:
       - name: Install python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.14
 
       - name: Install requirements
         run: pip3.11 install --upgrade ansible-lint
