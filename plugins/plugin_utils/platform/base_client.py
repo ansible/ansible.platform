@@ -211,6 +211,26 @@ class BaseAPIClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def wait_for_resource(self, base_path: str, resource_id: int, timeout: float = None, interval: float = None) -> dict:
+        """
+        Poll a resource until it reaches a terminal status or times out.
+
+        Args:
+            base_path: API path for the resource type (e.g. '/api/controller/v2/jobs')
+            resource_id: ID of the resource to poll
+            timeout: Maximum seconds to wait (default: DEFAULT_WAIT_TIMEOUT)
+            interval: Seconds between polls (default: DEFAULT_WAIT_INTERVAL)
+
+        Returns:
+            Resource data dict with at least id, status, elapsed, started, finished
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded (carries last_result)
+            ValueError: If resource is not found
+        """
+        pass
+
     def lookup_organization_ids(self, names: list) -> list:
         """
         Lookup organization IDs from names (shared helper).

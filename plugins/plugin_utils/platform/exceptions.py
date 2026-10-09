@@ -231,6 +231,37 @@ class TimeoutError(PlatformError):
             return "Operation timed out. Consider increasing gateway_request_timeout or check network/gateway performance."
 
 
+class WaitTimeoutError(TimeoutError):
+    """
+    Raised when polling a resource for completion exceeds the timeout.
+
+    Carries the last known resource state so callers can recover
+    partial information (e.g. job id, status) even on timeout.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        last_result: Optional[Dict[str, Any]] = None,
+        operation: Optional[str] = None,
+        resource: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        timeout_seconds: Optional[float] = None,
+    ):
+        super().__init__(message, operation, resource, details, timeout_seconds)
+        self.last_result = last_result or {}
+
+    def get_suggestion(self) -> str:
+        status = self.last_result.get("status", "unknown")
+        return f"Job wait timed out after {self.timeout_seconds}s. Last status: {status}. Increase timeout or check job health."
+
+
+DEFAULT_WAIT_TIMEOUT = 3600.0
+DEFAULT_WAIT_INTERVAL = 2.0
+TERMINAL_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
+FAILURE_STATUSES = frozenset({"failed", "error", "canceled"})
+
+
 def classify_exception(exception: Exception, operation: Optional[str] = None, resource: Optional[str] = None) -> PlatformError:
     """
     Classify a generic exception into platform error taxonomy.

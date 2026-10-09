@@ -1276,6 +1276,50 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return response.json()
 
+    def wait_for_resource(self, base_path: str, resource_id: int, timeout: float = None, interval: float = None) -> dict:
+        """Poll a resource until it reaches a terminal status or times out."""
+        from ..platform.exceptions import (
+            DEFAULT_WAIT_INTERVAL,
+            DEFAULT_WAIT_TIMEOUT,
+            FAILURE_STATUSES,
+            TERMINAL_STATUSES,
+            WaitTimeoutError,
+        )
+
+        self.record_activity()
+        if timeout is None:
+            timeout = DEFAULT_WAIT_TIMEOUT
+        if interval is None:
+            interval = DEFAULT_WAIT_INTERVAL
+
+        resource_url = self._build_url(f"{base_path}/{resource_id}/")
+        start = time.monotonic()
+        last_result = {}
+
+        while True:
+            self.record_activity()
+            response = self.session.get(resource_url, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            last_result = response.json()
+
+            status = last_result.get("status", "")
+            if status in TERMINAL_STATUSES:
+                if status in FAILURE_STATUSES:
+                    last_result["failed"] = True
+                return last_result
+
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise WaitTimeoutError(
+                    message="Timed out waiting for job %d (last status: %s)" % (resource_id, status),
+                    last_result=last_result,
+                    operation="wait",
+                    resource=base_path,
+                    timeout_seconds=timeout,
+                )
+
+            time.sleep(interval)
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.

@@ -134,6 +134,10 @@ class ManagerRPCClient:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
 
+    def wait_for_resource(self, base_path: str, resource_id: int, timeout: float = None, interval: float = None) -> dict:
+        """Poll a resource via the manager process. See PlatformService.wait_for_resource()."""
+        return self.service_proxy.wait_for_resource(base_path, resource_id, timeout, interval)
+
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.

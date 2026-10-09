@@ -667,6 +667,54 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
         return json.loads(response.read())
 
+    def wait_for_resource(self, base_path: str, resource_id: int, timeout: float = None, interval: float = None) -> dict:
+        """Poll a resource until it reaches a terminal status or times out."""
+        import time
+
+        from .exceptions import (
+            DEFAULT_WAIT_INTERVAL,
+            DEFAULT_WAIT_TIMEOUT,
+            FAILURE_STATUSES,
+            TERMINAL_STATUSES,
+            WaitTimeoutError,
+        )
+
+        self._ensure_authenticated()
+        if timeout is None:
+            timeout = DEFAULT_WAIT_TIMEOUT
+        if interval is None:
+            interval = DEFAULT_WAIT_INTERVAL
+
+        resource_url = self._build_url(f"{base_path}/{resource_id}/")
+        start = time.monotonic()
+        last_result = {}
+
+        while True:
+            response = self._make_request("GET", resource_url, operation="wait", resource=base_path)
+            try:
+                response_body = response.read()
+                last_result = json.loads(response_body) if response_body else {}
+            except Exception:
+                last_result = {}
+
+            status = last_result.get("status", "")
+            if status in TERMINAL_STATUSES:
+                if status in FAILURE_STATUSES:
+                    last_result["failed"] = True
+                return last_result
+
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise WaitTimeoutError(
+                    message="Timed out waiting for job %d (last status: %s)" % (resource_id, status),
+                    last_result=last_result,
+                    operation="wait",
+                    resource=base_path,
+                    timeout_seconds=timeout,
+                )
+
+            time.sleep(interval)
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
