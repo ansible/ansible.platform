@@ -284,6 +284,13 @@ class Store:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
             )
+        # Controller resources
+        self._resources[("controller", "inventories")] = GenericResource(
+            resource_name="inventories",
+            required_fields=["name"],
+            start_id=5000,
+            service="controller",
+        )
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
         return self._resources.get((service, name))
@@ -392,6 +399,22 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
+        # Seed Controller inventories
+        inv_store = self._resources.get(("controller", "inventories"))
+        if inv_store and not inv_store._items:
+            inv_store.seed("2", [
+                {"id": 5001, "name": "Test Inventory", "description": "Seeded inventory"},
+            ])
+
+        # Seed settings
+        with self._settings_lock:
+            if not self._settings:
+                self._settings = {
+                    "RUNTIME_FEATURE_FLAGS": "True",
+                    "SESSION_COOKIE_AGE": 1800,
+                    "MAX_PAGE_SIZE": 200,
+                    "REMOTE_HOST_HEADERS": [],
+                }
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -974,6 +997,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         self._send_json(404, {"detail": "Not Found"})
                     return
+
+        # ---- Controller bulk/host_create ----
+        if service == "controller" and resource == "bulk" and len(parts) >= 5 and parts[4] == "host_create" and self.command == "POST":
+            try:
+                payload = self._parse_json_body()
+                inv_id = payload.get("inventory")
+                hosts = payload.get("hosts", [])
+                if not inv_id or not hosts:
+                    self._send_json(400, {"detail": "inventory and hosts are required"})
+                    return
+                self._send_json(201, {"inventory": inv_id, "hosts": hosts})
+            except ValueError as e:
+                self._send_json(400, {"detail": str(e)})
+            return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:

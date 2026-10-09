@@ -26,4 +26,5 @@ action_groups:
     - user
   controller:
     - job_template
+    - controller_bulk_host_create
 ...
