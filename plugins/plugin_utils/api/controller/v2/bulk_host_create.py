@@ -1,5 +1,5 @@
 """
-API v2 Controller Bulk Host Create dataclass and transform mixin.
+API v2 Bulk Host Create dataclass and transform mixin.
 
 Handles transformations between Ansible format and Controller API v2 format
 for the bulk host create endpoint.
@@ -32,7 +32,7 @@ class APIBulkHostCreate_v2(BaseTransformMixin):
 
 class BulkHostCreateTransformMixin_v2(BaseTransformMixin):
     """
-    Transform mixin for Controller Bulk Host Create API v2.
+    Transform mixin for Bulk Host Create API v2.
 
     This is a minimal mixin for a bulk (Shape 5) module.
     The actual API call is handled by the SDK bulk_host_create() method
