@@ -2,7 +2,7 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: ansible-platform-ansible-platform-collection-tests-pull-request
+  name: platform-collection-tests-pull-request
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/{{repo_owner}}/{{repo_name}}?rev={{revision}}
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
