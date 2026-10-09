@@ -1,4 +1,0 @@
----
-minor_changes:
-  - controller_job_list - migrate ``job_list`` module from ``awx_collection`` as a read-only query module that lists Controller jobs via ``search_api()`` (https://issues.redhat.com/browse/ANSTRAT-1874).
-...

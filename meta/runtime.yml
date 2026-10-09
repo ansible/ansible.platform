@@ -25,5 +25,5 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
-    - controller_job_list
+    - job_list
 ...

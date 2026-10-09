@@ -1,4 +1,4 @@
-"""Unit tests for the controller_job_list action plugin."""
+"""Unit tests for the job_list action plugin."""
 
 from __future__ import absolute_import, division, print_function
 
@@ -6,7 +6,7 @@ __metaclass__ = type
 
 from unittest.mock import MagicMock, patch
 
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_job_list import (
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_list import (
     CONTROLLER_JOBS_ENDPOINT,
     build_query_params,
 )
@@ -74,13 +74,13 @@ class TestBuildQueryParams:
 # ---------------------------------------------------------------------------
 
 
-class TestControllerJobListAction:
-    """Tests for the controller_job_list action plugin."""
+class TestJobListAction:
+    """Tests for the job_list action plugin."""
 
     def _make_action_module(self, task_args):
         """Create a mock ActionModule instance for testing."""
         # Lazy import to avoid import-time failures in CI
-        from ansible_collections.ansible.platform.plugins.action.controller_job_list import ActionModule
+        from ansible_collections.ansible.platform.plugins.action.job_list import ActionModule
 
         action = ActionModule.__new__(ActionModule)
         action._display = MagicMock()
@@ -94,7 +94,7 @@ class TestControllerJobListAction:
         return action
 
     @patch.object(
-        __import__("ansible_collections.ansible.platform.plugins.action.controller_job_list", fromlist=["ActionModule"]).ActionModule,
+        __import__("ansible_collections.ansible.platform.plugins.action.job_list", fromlist=["ActionModule"]).ActionModule,
         "_prepare_action",
     )
     def test_successful_query(self, mock_prepare):
@@ -133,7 +133,7 @@ class TestControllerJobListAction:
         )
 
     @patch.object(
-        __import__("ansible_collections.ansible.platform.plugins.action.controller_job_list", fromlist=["ActionModule"]).ActionModule,
+        __import__("ansible_collections.ansible.platform.plugins.action.job_list", fromlist=["ActionModule"]).ActionModule,
         "_prepare_action",
     )
     def test_all_pages(self, mock_prepare):
@@ -167,7 +167,7 @@ class TestControllerJobListAction:
         )
 
     @patch.object(
-        __import__("ansible_collections.ansible.platform.plugins.action.controller_job_list", fromlist=["ActionModule"]).ActionModule,
+        __import__("ansible_collections.ansible.platform.plugins.action.job_list", fromlist=["ActionModule"]).ActionModule,
         "_prepare_action",
     )
     def test_with_query_dict(self, mock_prepare):
@@ -206,7 +206,7 @@ class TestControllerJobListAction:
         )
 
     @patch.object(
-        __import__("ansible_collections.ansible.platform.plugins.action.controller_job_list", fromlist=["ActionModule"]).ActionModule,
+        __import__("ansible_collections.ansible.platform.plugins.action.job_list", fromlist=["ActionModule"]).ActionModule,
         "_prepare_action",
     )
     def test_empty_results(self, mock_prepare):
@@ -236,7 +236,7 @@ class TestControllerJobListAction:
         assert result["results"] == []
 
     @patch.object(
-        __import__("ansible_collections.ansible.platform.plugins.action.controller_job_list", fromlist=["ActionModule"]).ActionModule,
+        __import__("ansible_collections.ansible.platform.plugins.action.job_list", fromlist=["ActionModule"]).ActionModule,
         "_prepare_action",
     )
     def test_api_error_sets_failed(self, mock_prepare):
@@ -260,7 +260,7 @@ class TestControllerJobListAction:
         assert "Connection refused" in result["msg"]
 
     @patch.object(
-        __import__("ansible_collections.ansible.platform.plugins.action.controller_job_list", fromlist=["ActionModule"]).ActionModule,
+        __import__("ansible_collections.ansible.platform.plugins.action.job_list", fromlist=["ActionModule"]).ActionModule,
         "_prepare_action",
     )
     def test_page_param(self, mock_prepare):

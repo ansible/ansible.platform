@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 
 @dataclass
-class AnsibleControllerJobList:
+class AnsibleJobList:
     """
     Ansible representation of a Controller job list query.
 
