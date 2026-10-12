@@ -64,6 +64,7 @@ seealso:
 
 extends_documentation_fragment:
   - ansible.platform.auth
+...
 """
 
 EXAMPLES = """
@@ -86,6 +87,7 @@ EXAMPLES = """
     hosts:
       - name: web1.example.com
       - name: web2.example.com
+...
 """
 
 RETURN = """
