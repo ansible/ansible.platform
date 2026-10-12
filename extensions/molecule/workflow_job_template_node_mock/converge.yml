@@ -129,6 +129,17 @@
       ansible.builtin.assert:
         that: idem_result_direct is not changed
 
+    - name: Update node (http direct)
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "1"
+        all_parents_must_converge: true
+      register: update_result_direct
+
+    - name: Assert update changed (http direct)
+      ansible.builtin.assert:
+        that: update_result_direct is changed
+
 - name: Converge — workflow_job_template_node (mock, http persistent)
   hosts: localhost
   connection: ansible.platform.http
@@ -163,4 +174,15 @@
     - name: Assert idempotent (http persistent)
       ansible.builtin.assert:
         that: idem_result_persistent is not changed
+
+    - name: Update node (http persistent)
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "1"
+        all_parents_must_converge: true
+      register: update_result_persistent
+
+    - name: Assert update changed (http persistent)
+      ansible.builtin.assert:
+        that: update_result_persistent is changed
 ...
