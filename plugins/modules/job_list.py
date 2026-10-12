@@ -38,6 +38,7 @@ options:
   all_pages:
     description:
       - Fetch all the pages and return a single result.
+      - Cannot be combined with C(page).
     type: bool
     default: false
 
@@ -46,10 +47,6 @@ options:
       - Additional query parameters used to filter the list of jobs.
       - "C({\\\"foo\\\":\\\"bar\\\"}) will be passed as C(?foo=bar)."
     type: dict
-
-mutually_exclusive:
-  - - page
-    - all_pages
 
 seealso:
   - module: ansible.controller.job_list
