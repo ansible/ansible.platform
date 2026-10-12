@@ -57,6 +57,7 @@ seealso:
 
 extends_documentation_fragment:
   - ansible.platform.auth
+...
 """
 
 EXAMPLES = """
@@ -76,6 +77,7 @@ EXAMPLES = """
   ansible.platform.job_list:
     page: 3
   register: page_three
+...
 """
 
 RETURN = """
