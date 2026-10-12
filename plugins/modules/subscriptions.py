@@ -11,7 +11,7 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: subscriptions
-author: "Ansible Platform Collection Contributors"
+author: Red Hat (@RedHatOfficial)
 short_description: Get available subscriptions from Automation Controller.
 description:
     - Retrieve subscriptions available to Automation Controller by providing
