@@ -456,9 +456,12 @@ class Store:
         # Seed Controller inventories
         inv_store = self._resources.get(("controller", "inventories"))
         if inv_store and not inv_store._items:
-            inv_store.seed("2", [
-                {"id": 5001, "name": "Test Inventory", "description": "Seeded inventory"},
-            ])
+            inv_store.seed(
+                "2",
+                [
+                    {"id": 5001, "name": "Test Inventory", "description": "Seeded inventory"},
+                ],
+            )
 
         # Seed settings
         with self._settings_lock:
