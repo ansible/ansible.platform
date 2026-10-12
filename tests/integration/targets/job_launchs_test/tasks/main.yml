@@ -1,0 +1,17 @@
+---
+# Demo Job Template is created by the standard Controller test installation.
+
+- name: Run job_launch against Demo Job Template
+  ansible.platform.job_launch:
+    name: Demo Job Template
+    wait: true
+    interval: 2
+    timeout: 300
+  register: launched_job
+
+- name: Assert the launched job completed successfully
+  ansible.builtin.assert:
+    that:
+      - launched_job is changed
+      - launched_job.id is defined
+      - launched_job.status == 'successful'
