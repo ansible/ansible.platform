@@ -9,7 +9,7 @@
   ansible.builtin.assert:
     that:
       - result is failed
-      - "'not found' in result.msg or 'does not exist' in result.msg or '99999999' in result.msg"
+      - "'could not be found' in result.msg"
 
 - name: Launch Demo Job Template via URI (get template ID)
   ansible.builtin.uri:
