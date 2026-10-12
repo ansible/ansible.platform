@@ -62,6 +62,27 @@ class TestManageAssociations(unittest.TestCase):
         self.assertIn({"id": 3, "associate": True}, payloads)
         self.assertIn({"id": 2, "disassociate": True}, payloads)
 
+    def test_preserve_existing_keeps_unrequested_associations(self):
+        self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
+        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-c": 3}[value]
+
+        changed = self.svc.manage_associations(
+            "/api/controller/v2/job_templates",
+            42,
+            "credentials",
+            ["cred-c"],
+            "credentials",
+            "name",
+            service="controller",
+            preserve_existing=True,
+        )
+
+        self.assertTrue(changed)
+        payloads = [call.kwargs["json"] for call in self.svc.session.post.call_args_list]
+        self.assertIn({"id": 3, "associate": True}, payloads)
+        self.assertNotIn({"id": 1, "disassociate": True}, payloads)
+        self.assertNotIn({"id": 2, "disassociate": True}, payloads)
+
     def test_no_change_when_already_in_sync(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}]}
 

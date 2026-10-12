@@ -47,12 +47,6 @@ class ActionModule(BaseResourceActionPlugin):
             for field, (lookup_ep, lookup_field) in _ASSOCIATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
-                    if preserve_flags.get(field, False):
-                        assoc_path = f"/api/controller/v2/groups/{resource_id}/{field}/"
-                        current_data = self._client.search_api(assoc_path, return_all=True)
-                        current_ids = [str(item["id"]) for item in current_data.get("results", [])]
-                        desired = list(desired) + current_ids
-
                     if self._client.manage_associations(
                         "groups",
                         resource_id,
@@ -61,6 +55,7 @@ class ActionModule(BaseResourceActionPlugin):
                         lookup_ep,
                         lookup_field,
                         service="controller",
+                        preserve_existing=preserve_flags.get(field, False),
                     ):
                         result["changed"] = True
 
