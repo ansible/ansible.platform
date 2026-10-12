@@ -285,6 +285,7 @@ class Store:
                 resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
         # Controller resources
         controller_defs: List[tuple] = [
+            ("credentials", ["name", "credential_type"], 5800),
             ("schedules", ["name"], 5900),
         ]
         for endpoint, required, start_id in controller_defs:
