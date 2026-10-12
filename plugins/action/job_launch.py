@@ -10,12 +10,12 @@ import json
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_launch import (
     CONTROLLER_JOB_ENDPOINT,
     CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
     CONTROLLER_JOB_TEMPLATES_ENDPOINT,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
 
 
 class ActionModule(BaseResourceActionPlugin):
