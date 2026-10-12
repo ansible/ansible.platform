@@ -7,7 +7,6 @@ __metaclass__ = type
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_list import (
     CONTROLLER_JOBS_ENDPOINT,
     build_query_params,
