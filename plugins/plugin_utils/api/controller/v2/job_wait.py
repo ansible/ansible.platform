@@ -14,6 +14,13 @@ from typing import Any, Dict, Optional, Union
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
+JOB_TYPE_ENDPOINT_MAP = {
+    "jobs": "/api/controller/v2/jobs/{id}/",
+    "project_updates": "/api/controller/v2/project_updates/{id}/",
+    "inventory_updates": "/api/controller/v2/inventory_updates/{id}/",
+    "workflow_jobs": "/api/controller/v2/workflow_jobs/{id}/",
+}
+
 
 @dataclass
 class APIJobWait_v2(BaseTransformMixin):
@@ -57,7 +64,7 @@ class JobWaitTransformMixin_v2(BaseTransformMixin):
         """Endpoint operations (minimal for non-CRUD module)."""
         return {
             "get": EndpointOperation(
-                path="/api/controller/v2/jobs/{id}/",
+                path=JOB_TYPE_ENDPOINT_MAP["jobs"],
                 method="GET",
                 fields=[],
                 path_params=["id"],

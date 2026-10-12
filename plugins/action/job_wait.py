@@ -21,14 +21,7 @@ __metaclass__ = type
 import time
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-
-# Map job_type parameter to the controller API endpoint path
-_JOB_TYPE_ENDPOINT_MAP = {
-    "jobs": "/api/controller/v2/jobs/{id}/",
-    "project_updates": "/api/controller/v2/project_updates/{id}/",
-    "inventory_updates": "/api/controller/v2/inventory_updates/{id}/",
-    "workflow_jobs": "/api/controller/v2/workflow_jobs/{id}/",
-}
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_wait import JOB_TYPE_ENDPOINT_MAP
 
 # Job statuses that indicate the job has completed
 _FINISHED_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
@@ -73,15 +66,15 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 2)
 
             # Validate job_type
-            if job_type not in _JOB_TYPE_ENDPOINT_MAP:
+            if job_type not in JOB_TYPE_ENDPOINT_MAP:
                 result["failed"] = True
                 result["msg"] = "Invalid job_type '%s'. Must be one of: %s" % (
                     job_type,
-                    ", ".join(sorted(_JOB_TYPE_ENDPOINT_MAP.keys())),
+                    ", ".join(sorted(JOB_TYPE_ENDPOINT_MAP.keys())),
                 )
                 return result
 
-            endpoint = _JOB_TYPE_ENDPOINT_MAP[job_type].format(id=job_id)
+            endpoint = JOB_TYPE_ENDPOINT_MAP[job_type].format(id=job_id)
 
             # First, verify the job exists
             try:
