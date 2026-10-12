@@ -90,10 +90,7 @@ class ActionModule(BaseResourceActionPlugin):
                 error_msg = str(e)
                 if "404" in error_msg or "not found" in error_msg.lower():
                     result["failed"] = True
-                    result["msg"] = (
-                        "Unable to wait, no %s %s found: The requested object could not be found."
-                        % (job_type.rstrip("s"), job_id)
-                    )
+                    result["msg"] = "Unable to wait, no %s %s found: The requested object could not be found." % (job_type.rstrip("s"), job_id)
                 else:
                     result["failed"] = True
                     result["msg"] = "Unable to wait for %s %s: %s" % (
@@ -105,10 +102,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             if not job_data or not job_data.get("id"):
                 result["failed"] = True
-                result["msg"] = (
-                    "Unable to wait, no %s %s found: The requested object could not be found."
-                    % (job_type.rstrip("s"), job_id)
-                )
+                result["msg"] = "Unable to wait, no %s %s found: The requested object could not be found." % (job_type.rstrip("s"), job_id)
                 return result
 
             # Poll until the job finishes or timeout
@@ -148,9 +142,7 @@ class ActionModule(BaseResourceActionPlugin):
                         result["failed"] = True
                         result["id"] = job_data.get("id")
                         result["status"] = status
-                        result["msg"] = (
-                            "Monitoring of %s %s aborted due to timeout." % (job_type.rstrip("s"), job_id)
-                        )
+                        result["msg"] = "Monitoring of %s %s aborted due to timeout." % (job_type.rstrip("s"), job_id)
                         return result
 
                 # Wait before polling again

@@ -41,6 +41,7 @@ options:
       type: str
 
 extends_documentation_fragment: ansible.platform.auth
+...
 """
 
 EXAMPLES = """
@@ -58,6 +59,7 @@ EXAMPLES = """
   ansible.platform.job_wait:
     job_id: "{{ workflow.id }}"
     job_type: "workflow_jobs"
+...
 """
 
 RETURN = """
