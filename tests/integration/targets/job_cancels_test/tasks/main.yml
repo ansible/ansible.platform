@@ -1,0 +1,72 @@
+---
+- name: Launch Demo Job Template for the cancellation test
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_job_template
+  delegate_to: localhost
+
+- name: Assert Demo Job Template is available
+  ansible.builtin.assert:
+    that:
+      - demo_job_template.json.results | length > 0
+
+- name: Launch the demo job
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ demo_job_template.json.results[0].id }}/launch/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body: {}
+    status_code: [201]
+  register: launched_job
+  delegate_to: localhost
+
+- name: Request cancellation immediately after launch
+  ansible.platform.job_cancel:
+    job_id: "{{ launched_job.json.id }}"
+  register: cancellation
+
+- name: Read the launched job until it reaches a terminal state
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/jobs/{{ launched_job.json.id }}/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: final_job
+  delegate_to: localhost
+  until: final_job.json.status in ['successful', 'failed', 'error', 'canceled']
+  retries: 60
+  delay: 2
+
+- name: Assert cancellation result matches the final job state
+  ansible.builtin.assert:
+    that:
+      - cancellation is not failed
+      - cancellation.id | int == launched_job.json.id | int
+      - (cancellation.changed and final_job.json.status == 'canceled') or (not cancellation.changed and final_job.json.status in ['successful', 'failed', 'error', 'canceled'])
+
+- name: Confirm strict handling fails for a completed job
+  ansible.platform.job_cancel:
+    job_id: "{{ launched_job.json.id }}"
+    fail_if_not_running: true
+  register: strict_cancellation
+  failed_when: false
+  when: not cancellation.changed
+
+- name: Assert strict handling rejects the completed job
+  ansible.builtin.assert:
+    that:
+      - strict_cancellation is failed
+  when: not cancellation.changed
