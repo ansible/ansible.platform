@@ -15,3 +15,4 @@
       - launched_job is changed
       - launched_job.id is defined
       - launched_job.status == 'successful'
+...
