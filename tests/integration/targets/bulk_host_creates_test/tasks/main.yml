@@ -68,3 +68,4 @@
       when: item.json.results | default([]) | length > 0
       delegate_to: localhost
       failed_when: false
+...
