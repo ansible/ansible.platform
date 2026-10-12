@@ -49,6 +49,7 @@ class TestGroupAssociations(unittest.TestCase):
             "hosts",
             "name",
             service="controller",
+            preserve_existing=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -79,6 +80,7 @@ class TestGroupAssociations(unittest.TestCase):
             "groups",
             "name",
             service="controller",
+            preserve_existing=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -98,22 +100,21 @@ class TestGroupAssociations(unittest.TestCase):
                 "preserve_existing_hosts": True,
             }
         )
-        action._client.search_api.return_value = {
-            "results": [{"id": 1, "name": "web1"}, {"id": 2, "name": "web2"}],
-        }
         action._client.manage_associations.return_value = True
 
         action.run(task_vars={})
 
-        action._client.search_api.assert_called_once_with(
-            "/api/controller/v2/groups/10/hosts/",
-            return_all=True,
+        action._client.search_api.assert_not_called()
+        action._client.manage_associations.assert_called_once_with(
+            "groups",
+            10,
+            "hosts",
+            ["web3"],
+            "hosts",
+            "name",
+            service="controller",
+            preserve_existing=True,
         )
-        call_args = action._client.manage_associations.call_args
-        desired = call_args.args[3]
-        self.assertIn("web3", desired)
-        self.assertIn("1", desired)
-        self.assertIn("2", desired)
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_preserve_false_does_full_sync(self, mock_super_run):
@@ -145,6 +146,7 @@ class TestGroupAssociations(unittest.TestCase):
             "hosts",
             "name",
             service="controller",
+            preserve_existing=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -186,7 +188,6 @@ class TestGroupAssociations(unittest.TestCase):
                 "preserve_existing_children": False,
             }
         )
-        action._client.search_api.return_value = {"results": []}
         action._client.manage_associations.return_value = False
 
         action.run(task_vars={})
