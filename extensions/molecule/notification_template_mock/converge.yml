@@ -4,7 +4,8 @@
   connection: local
   gather_facts: false
   tasks:
-    - ansible.builtin.uri:
+    - name: Wait for the mock Gateway health endpoint
+      ansible.builtin.uri:
         url: "http://127.0.0.1:8000/health"
         status_code: 200
       retries: 12
@@ -13,13 +14,15 @@
       until: h.status == 200
       vars:
         ansible_connection: local
-    - ansible.builtin.file:
+    - name: Create the temporary marker directory
+      ansible.builtin.file:
         path: /tmp/ap
         state: directory
         mode: "0755"
       vars:
         ansible_connection: local
-    - ansible.builtin.file:
+    - name: Create the temporary marker file
+      ansible.builtin.file:
         path: /tmp/ap/.survive
         state: touch
         mode: "0600"
@@ -35,7 +38,8 @@
     gateway_password: "testpass"
     gateway_validate_certs: false
   tasks:
-    - ansible.platform.notification_template:
+    - name: Create the test webhook notification template
+      ansible.platform.notification_template:
         name: "Molecule NT"
         organization: "1"
         notification_type: webhook
@@ -45,7 +49,8 @@
       register: r
       vars:
         ansible_connection: local
-    - assert:
+    - name: Assert the notification template was created
+      ansible.builtin.assert:
         that: r is changed
       vars:
         ansible_connection: local
