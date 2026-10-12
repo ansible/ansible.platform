@@ -15,7 +15,7 @@ tags:
   - infrastructure
 dependencies: {}
 
-repository: https://github.com/ansible
+repository: https://github.com/ansible/ansible.platform
 homepage: http://ansible.com/
 issues: https://access.redhat.com/support/
 
