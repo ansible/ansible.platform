@@ -26,6 +26,9 @@ def build_query_params(ansible_data: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict of query parameters for the Controller jobs API.
     """
+    if ansible_data.get("page") is not None and ansible_data.get("all_pages"):
+        raise ValueError("page and all_pages are mutually exclusive")
+
     params: Dict[str, Any] = {}
 
     status = ansible_data.get("status")

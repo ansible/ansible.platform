@@ -6,6 +6,8 @@ __metaclass__ = type
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_list import (
     CONTROLLER_JOBS_ENDPOINT,
     build_query_params,
@@ -64,6 +66,10 @@ class TestBuildQueryParams:
     def test_none_query_excluded(self):
         result = build_query_params({"query": None})
         assert result == {}
+
+    def test_page_and_all_pages_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="page and all_pages are mutually exclusive"):
+            build_query_params({"page": 2, "all_pages": True})
 
     def test_endpoint_constant(self):
         assert CONTROLLER_JOBS_ENDPOINT == "/api/controller/v2/jobs/"
