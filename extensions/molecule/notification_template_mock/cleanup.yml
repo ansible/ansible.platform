@@ -4,7 +4,8 @@
   connection: local
   gather_facts: false
   tasks:
-    - ansible.platform.notification_template:
+    - name: Remove the test notification template
+      ansible.platform.notification_template:
         name: "Molecule NT"
         organization: "1"
         state: absent
@@ -15,7 +16,8 @@
       failed_when: false
       vars:
         ansible_connection: local
-    - ansible.builtin.file:
+    - name: Remove the temporary marker file
+      ansible.builtin.file:
         path: /tmp/ap/.survive
         state: absent
       vars:

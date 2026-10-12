@@ -4,7 +4,8 @@
   connection: local
   gather_facts: false
   tasks:
-    - ansible.platform.notification_template:
+    - name: Check the test notification template exists
+      ansible.platform.notification_template:
         name: "Molecule NT"
         organization: "1"
         state: exists
@@ -15,7 +16,8 @@
       register: r
       vars:
         ansible_connection: local
-    - assert:
+    - name: Assert the notification template exists
+      ansible.builtin.assert:
         that: r.get('exists') | default(false) | bool
       vars:
         ansible_connection: local
