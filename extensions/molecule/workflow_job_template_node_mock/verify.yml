@@ -30,4 +30,54 @@
           - exists_result_local.get('exists') | default(false) | bool
       vars:
         ansible_connection: local
+
+- name: Verify — node created with http direct (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    node_identifier: "molecule-test-node-direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Get node (state exists, http direct)
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "1"
+        state: exists
+      register: exists_result_direct
+
+    - name: Assert node was found (http direct)
+      ansible.builtin.assert:
+        that:
+          - exists_result_direct is not failed
+          - exists_result_direct.get('exists') | default(false) | bool
+
+- name: Verify — node created with http persistent (mock)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    node_identifier: "molecule-test-node-persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Get node (state exists, http persistent)
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "1"
+        state: exists
+      register: exists_result_persistent
+
+    - name: Assert node was found (http persistent)
+      ansible.builtin.assert:
+        that:
+          - exists_result_persistent is not failed
+          - exists_result_persistent.get('exists') | default(false) | bool
 ...
