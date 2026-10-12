@@ -52,6 +52,7 @@ options:
       type: dict
       default: {}
 extends_documentation_fragment: ansible.platform.auth
+...
 """
 
 EXAMPLES = """
@@ -72,6 +73,7 @@ EXAMPLES = """
     filters:
       product_name: "Red Hat Ansible Automation Platform"
       support_level: "Self-Support"
+...
 """
 
 RETURN = """
