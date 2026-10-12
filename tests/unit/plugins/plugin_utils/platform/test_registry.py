@@ -161,6 +161,9 @@ def test_get_api_version_allows_reprobe_after_transient_failure():
         def execute(self, operation, module_name, ansible_data_dict):
             pass
 
+        def cancel_resource(self, resource_id, cancel_endpoint_path, fail_if_not_running=False, service="controller"):
+            return {}
+
     client = _ConcreteClient.__new__(_ConcreteClient)
     client.api_versions = {}
     client.registry = MagicMock()
