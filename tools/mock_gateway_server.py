@@ -476,12 +476,15 @@ class Store:
         # Seed notification templates for Controller association tests
         nt_store = self._resources.get(("controller", "notification_templates"))
         if nt_store and not nt_store._items:
-            nt_store.seed("2", [
-                {"id": 6001, "name": "Slack Start Notification", "notification_type": "slack"},
-                {"id": 6002, "name": "Email Success Notification", "notification_type": "email"},
-                {"id": 6003, "name": "PagerDuty Error Notification", "notification_type": "pagerduty"},
-                {"id": 6004, "name": "Slack Error Notification", "notification_type": "slack"},
-            ])
+            nt_store.seed(
+                "2",
+                [
+                    {"id": 6001, "name": "Slack Start Notification", "notification_type": "slack"},
+                    {"id": 6002, "name": "Email Success Notification", "notification_type": "email"},
+                    {"id": 6003, "name": "PagerDuty Error Notification", "notification_type": "pagerduty"},
+                    {"id": 6004, "name": "Slack Error Notification", "notification_type": "slack"},
+                ],
+            )
 
         # Seed settings
         with self._settings_lock:
@@ -780,9 +783,11 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 self._send_json(404, {"detail": "Not Found"})
                 return True
             assoc_field = parts[5]
-            assoc_endpoint = assoc_field.replace("notification_templates_started", "notification_templates").replace(
-                "notification_templates_success", "notification_templates"
-            ).replace("notification_templates_error", "notification_templates")
+            assoc_endpoint = (
+                assoc_field.replace("notification_templates_started", "notification_templates")
+                .replace("notification_templates_success", "notification_templates")
+                .replace("notification_templates_error", "notification_templates")
+            )
             assoc_store = self.store.resource(service, assoc_endpoint)
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
