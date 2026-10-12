@@ -23,9 +23,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "group"
     MODEL_CLASS = AnsibleGroup
 
-    _WRITE_ONLY_FIELDS = frozenset(
-        list(_ASSOCIATION_FIELDS) + list(_PRESERVE_FIELDS.values())
-    )
+    _WRITE_ONLY_FIELDS = frozenset(list(_ASSOCIATION_FIELDS) + list(_PRESERVE_FIELDS.values()))
 
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")

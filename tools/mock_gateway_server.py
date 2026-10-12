@@ -456,11 +456,14 @@ class Store:
         # Seed hosts for Controller group association tests
         host_store = self._resources.get(("controller", "hosts"))
         if host_store and not host_store._items:
-            host_store.seed("2", [
-                {"id": 5701, "name": "web1.example.com", "inventory": 1},
-                {"id": 5702, "name": "web2.example.com", "inventory": 1},
-                {"id": 5703, "name": "db1.example.com", "inventory": 1},
-            ])
+            host_store.seed(
+                "2",
+                [
+                    {"id": 5701, "name": "web1.example.com", "inventory": 1},
+                    {"id": 5702, "name": "web2.example.com", "inventory": 1},
+                    {"id": 5703, "name": "db1.example.com", "inventory": 1},
+                ],
+            )
 
         # Seed settings
         with self._settings_lock:
