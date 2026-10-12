@@ -51,6 +51,7 @@
           notification_type: webhook
           notification_configuration:
             url: https://example.invalid/
+            headers: {}
         status_code: [201]
       register: test_notification_template
       delegate_to: localhost
