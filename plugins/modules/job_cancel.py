@@ -42,6 +42,7 @@ extends_documentation_fragment:
 seealso:
   - module: ansible.controller.job_cancel
   - module: awx.awx.job_cancel
+...
 """
 
 EXAMPLES = """
@@ -53,6 +54,7 @@ EXAMPLES = """
   ansible.platform.job_cancel:
     job_id: 456
     fail_if_not_running: true
+...
 """
 
 RETURN = """

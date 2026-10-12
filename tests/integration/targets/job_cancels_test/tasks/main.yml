@@ -55,7 +55,11 @@
     that:
       - cancellation is not failed
       - cancellation.id | int == launched_job.json.id | int
-      - (cancellation.changed and final_job.json.status == 'canceled') or (not cancellation.changed and final_job.json.status in ['successful', 'failed', 'error', 'canceled'])
+      - >-
+        (cancellation.changed and final_job.json.status == 'canceled')
+        or
+        (not cancellation.changed and final_job.json.status in
+        ['successful', 'failed', 'error', 'canceled'])
 
 - name: Confirm strict handling fails for a completed job
   ansible.platform.job_cancel:
@@ -70,3 +74,4 @@
     that:
       - strict_cancellation is failed
   when: not cancellation.changed
+...
