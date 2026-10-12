@@ -11,6 +11,11 @@ import json
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_launch import (
+    CONTROLLER_JOB_ENDPOINT,
+    CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
+    CONTROLLER_JOB_TEMPLATES_ENDPOINT,
+)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -54,7 +59,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         try:
             launch_result = manager.launch_resource(
-                f"/api/controller/v2/job_templates/{jt_id}/launch/",
+                CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT.format(id=jt_id),
                 payload,
                 service="controller",
             )
@@ -64,7 +69,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         job_id = launch_result.get("id") or launch_result.get("job")
         job_status = launch_result.get("status", "unknown")
-        job_url = launch_result.get("url", f"/api/controller/v2/jobs/{job_id}/")
+        job_url = launch_result.get("url", CONTROLLER_JOB_ENDPOINT.format(id=job_id))
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
@@ -109,7 +114,7 @@ class ActionModule(BaseResourceActionPlugin):
         if organization:
             org_id = manager.lookup_resource_id("organizations", "name", organization)
             data = manager.search_api(
-                "/api/controller/v2/job_templates/",
+                CONTROLLER_JOB_TEMPLATES_ENDPOINT,
                 query_params={"name": name, "organization": org_id},
             )
             results = data.get("results", [])
