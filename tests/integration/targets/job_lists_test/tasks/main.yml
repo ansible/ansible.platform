@@ -13,3 +13,4 @@
       - successful_jobs.results is defined
       - successful_jobs.results is sequence
       - successful_jobs.results | selectattr('status', 'ne', 'successful') | list | length == 0
+...
