@@ -1,0 +1,70 @@
+---
+- name: Generate a unique test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+
+- name: Set unique host names
+  ansible.builtin.set_fact:
+    test_host_names:
+      - "AAP-Collection-Test-BulkHost-{{ test_id }}-1"
+      - "AAP-Collection-Test-BulkHost-{{ test_id }}-2"
+
+- name: Run the bulk host create integration test
+  block:
+    - name: Create both hosts in one request
+      ansible.platform.bulk_host_create:
+        inventory: Demo Inventory
+        hosts:
+          - name: "{{ test_host_names[0] }}"
+            description: Bulk host create integration test
+            enabled: true
+            variables:
+              integration_test_id: "{{ test_id }}"
+          - name: "{{ test_host_names[1] }}"
+            description: Bulk host create integration test
+            enabled: true
+            variables:
+              integration_test_id: "{{ test_id }}"
+      register: created_hosts
+
+    - name: Assert both hosts were submitted in one changed operation
+      ansible.builtin.assert:
+        that:
+          - created_hosts is changed
+          - created_hosts.hosts | length == 2
+
+    - name: Read both created hosts
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/hosts/?name={{ item | urlencode }}"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      loop: "{{ test_host_names }}"
+      register: created_host_lookups
+      delegate_to: localhost
+
+    - name: Assert the bulk-created hosts are available in Controller
+      ansible.builtin.assert:
+        that:
+          - created_host_lookups.results | length == 2
+          - created_host_lookups.results | map(attribute='json.results') | map('length') | list == [1, 1]
+          - created_host_lookups.results[0].json.results[0].variables is search(test_id)
+          - created_host_lookups.results[1].json.results[0].variables is search(test_id)
+
+  always:
+    - name: Delete the bulk-created hosts
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/hosts/{{ item.json.results[0].id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204, 404]
+      loop: "{{ created_host_lookups.results | default([]) }}"
+      when: item.json.results | default([]) | length > 0
+      delegate_to: localhost
+      failed_when: false
