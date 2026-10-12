@@ -10,6 +10,19 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-IG-{{ test_id }}"
 
+- name: Get an existing Controller instance for the association test
+  ansible.builtin.set_fact:
+    controller_instances: "{{ query('ansible.platform.gateway_api', 'api/controller/v2/instances/', **connection_info) }}"
+
+- name: Assert a Controller instance is available
+  ansible.builtin.assert:
+    that:
+      - controller_instances | length > 0
+
+- name: Select a Controller instance for the association test
+  ansible.builtin.set_fact:
+    controller_instance: "{{ controller_instances | first }}"
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.controller:
@@ -68,6 +81,47 @@
       ansible.builtin.assert:
         that:
           - renamed_ig is changed
+
+    - name: Associate an existing instance with the group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        instances:
+          - "{{ controller_instance.hostname }}"
+      register: associated_ig
+
+    - name: Assert instance association changed
+      ansible.builtin.assert:
+        that:
+          - associated_ig is changed
+
+    - name: Read the instance group instance association
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/{{ renamed_ig.instance_group.id }}/instances/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: associated_instances
+      delegate_to: localhost
+
+    - name: Assert the expected instance is associated
+      ansible.builtin.assert:
+        that:
+          - associated_instances.json.results | selectattr('hostname', 'equalto', controller_instance.hostname) | list | length == 1
+
+    - name: Check instance association idempotency
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        instances:
+          - "{{ controller_instance.hostname }}"
+      register: idempotent_association
+
+    - name: Assert the instance association is idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_association is not changed
 
     - name: Check exists
       ansible.platform.instance_group:
