@@ -1,0 +1,178 @@
+---
+# Integration tests for ansible.platform.inventory_source
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-InvSource-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Look up Demo Inventory for a notification template organization
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: demo_inventory
+      delegate_to: localhost
+
+    - name: Assert Demo Inventory is available
+      ansible.builtin.assert:
+        that:
+          - demo_inventory.json.results | length > 0
+
+    - name: Create a webhook notification template for the association test
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/notification_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Notification"
+          organization: "{{ demo_inventory.json.results[0].organization }}"
+          notification_type: webhook
+          notification_configuration:
+            url: https://example.invalid/
+        status_code: [201]
+      register: test_notification_template
+      delegate_to: localhost
+
+    - name: Create inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test inventory source"
+        inventory: "Demo Inventory"
+        source: ec2
+        state: present
+      register: created_is
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_is is changed
+          - created_is.inventory_source.name is defined
+          - created_is.inventory_source.id is defined
+
+    - name: Check idempotency
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test inventory source"
+        inventory: "Demo Inventory"
+        source: ec2
+        state: present
+      register: idempotent_is
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_is is not changed
+
+    - name: Update description
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test inventory source"
+        inventory: "Demo Inventory"
+        source: ec2
+      register: updated_is
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_is is changed
+
+    - name: Associate a notification template with inventory sync success
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        notification_templates_success:
+          - "{{ test_notification_template.json.name }}"
+      register: associated_is
+
+    - name: Assert the association changed the inventory source
+      ansible.builtin.assert:
+        that:
+          - associated_is is changed
+
+    - name: Read the inventory source notification association
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/{{ created_is.inventory_source.id }}/notification_templates_success/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: associated_notifications
+      delegate_to: localhost
+
+    - name: Assert the expected notification template is associated
+      ansible.builtin.assert:
+        that:
+          - associated_notifications.json.results | selectattr('name', 'equalto', test_notification_template.json.name) | list | length == 1
+
+    - name: Check notification association idempotency
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        notification_templates_success:
+          - "{{ test_notification_template.json.name }}"
+      register: idempotent_association
+
+    - name: Assert the notification association is idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_association is not changed
+
+    - name: Check exists
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete inventory source
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        state: absent
+      failed_when: false
+
+    - name: Delete the test notification template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/notification_templates/{{ test_notification_template.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204, 404]
+      when:
+        - test_notification_template is defined
+        - test_notification_template.json.id is defined
+      delegate_to: localhost
+      failed_when: false
+...
