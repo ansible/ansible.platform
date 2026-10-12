@@ -113,7 +113,13 @@
 
     - name: Read the inventory source notification association
       ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/{{ created_is.inventory_source.id }}/notification_templates_success/"
+        url: >-
+          {{
+            gateway_hostname | regex_replace('/$', '')
+            ~ '/api/controller/v2/inventory_sources/'
+            ~ created_is.inventory_source.id
+            ~ '/notification_templates_success/'
+          }}
         method: GET
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
