@@ -135,19 +135,6 @@
       delegate_to: localhost
       failed_when: false
 
-    - name: Delete approval workflow template
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ approval_workflow.json.id }}/"
-        method: DELETE
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        status_code: [200, 202, 204]
-      when: approval_workflow is defined and approval_workflow.json.id is defined
-      delegate_to: localhost
-      failed_when: false
-
     - name: Delete approval template
       ansible.builtin.uri:
         url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_approval_templates/{{ approval_template.json.id }}/"
@@ -158,6 +145,19 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         status_code: [200, 202, 204]
       when: approval_template is defined and approval_template.json.id is defined
+      delegate_to: localhost
+      failed_when: false
+
+    - name: Delete approval workflow template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ approval_workflow.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204]
+      when: approval_workflow is defined and approval_workflow.json.id is defined
       delegate_to: localhost
       failed_when: false
 ...
