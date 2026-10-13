@@ -524,15 +524,12 @@ class DirectHTTPClient(BaseAPIClient):
         if str(lookup_value).isdigit():
             return int(lookup_value)
 
-        cache_key = f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value))
         if cache_key in self.cache:
             return self.cache[cache_key]
 
         svc_version = self.get_api_version(service)
-
-        if "X-API-Version" not in (self.session.headers or {}):
-            gw_version = self.get_api_version("gateway")
-            self.session.headers.update({"X-API-Version": str(gw_version)})
+        self._prepare_resource_lookup(service)
 
         api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
@@ -549,6 +546,16 @@ class DirectHTTPClient(BaseAPIClient):
         if rid is not None:
             self.cache[cache_key] = rid
         return rid
+
+    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str) -> str:
+        """Preserve the direct client's resource-lookup cache key format."""
+        return f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
+
+    def _prepare_resource_lookup(self, service: str) -> None:
+        """Set the Gateway API version header used by direct requests."""
+        if "X-API-Version" not in (self.session.headers or {}):
+            gateway_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gateway_version)})
 
     def _ensure_authenticated(self) -> None:
         """Lazy-authenticate, for SDK methods that may be called before execute()."""
@@ -574,14 +581,17 @@ class DirectHTTPClient(BaseAPIClient):
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
         current associations, and associates/disassociates to reconcile.
 
+        This read-then-write reconciliation is not atomic. Concurrent changes from another
+        client can interleave with the read and individual POSTs, leaving final state different
+        from desired_items.
+
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
         what the declarative create/update flow covers.
         """
         self._ensure_authenticated()
-        desired_ids = {
-            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
-        }
+        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service)
+        desired_ids = {int(item) if str(item).isdigit() else resolved_names.get(str(item)) if item else None for item in desired_items}
 
         # Follow pagination so associations beyond the first page aren't silently
         # treated as absent (which would re-associate them and skip disassociating
@@ -595,10 +605,32 @@ class DirectHTTPClient(BaseAPIClient):
 
         changed = False
         for rid in desired_ids - current_ids:
-            self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
+            try:
+                self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
+            except APIError as e:
+                details = {**e.details, "association_id": rid}
+                raise APIError(
+                    message=f"Failed to associate {association_field} ID {rid}: {e.message}",
+                    operation=e.operation,
+                    resource=e.resource,
+                    details=details,
+                    status_code=e.status_code,
+                    response_body=e.response_body,
+                ) from e
             changed = True
         for rid in current_ids - desired_ids:
-            self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
+            try:
+                self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
+            except APIError as e:
+                details = {**e.details, "association_id": rid}
+                raise APIError(
+                    message=f"Failed to disassociate {association_field} ID {rid}: {e.message}",
+                    operation=e.operation,
+                    resource=e.resource,
+                    details=details,
+                    status_code=e.status_code,
+                    response_body=e.response_body,
+                ) from e
             changed = True
         return changed
 
@@ -729,7 +761,11 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Pagination: follow 'next' links
         all_results = list(response_data.get("results", []))
-        while response_data.get("next") and len(all_results) < max_objects:
+        total = response_data.get("count", len(all_results))
+        if total > max_objects or len(all_results) > max_objects:
+            raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
+
+        while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.
             next_url = urljoin(self.base_url, response_data["next"])
@@ -737,8 +773,10 @@ class DirectHTTPClient(BaseAPIClient):
             response_body = response.read()
             response_data = json.loads(response_body) if response_body else {}
             all_results.extend(response_data.get("results", []))
+            if len(all_results) > max_objects:
+                raise ValueError("Endpoint '%s' returned more than max_objects=%d objects while paginating" % (endpoint, max_objects))
 
-        response_data["results"] = all_results[:max_objects]
+        response_data["results"] = all_results
         return response_data
 
     def execute(self, operation: str, module_name: str, ansible_data_dict=None, **kwargs) -> dict:

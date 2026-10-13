@@ -31,6 +31,9 @@ class BaseAPIClient(ABC):
     - Optimizations (caching, lookup helpers)
     """
 
+    # Keep batched GET URLs below common reverse-proxy request-line limits.
+    MAX_BATCH_LOOKUP_URL_BYTES = 6000
+
     def __init__(self, config: GatewayConfig):
         """
         Initialize base API client.
@@ -96,6 +99,76 @@ class BaseAPIClient(ABC):
         if ca_bundle:
             return ca_bundle
         return True
+
+    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str) -> str:
+        """Build the cache key used by resource-name lookups."""
+        return f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
+
+    def _prepare_resource_lookup(self, service: str) -> None:
+        """Allow clients to prepare transport headers before a batch lookup."""
+
+    def _lookup_resource_ids(self, endpoint: str, lookup_field: str, lookup_values: list, service: str = "gateway") -> dict:
+        """Resolve several names with bounded ``__in`` queries where possible."""
+        values = list(dict.fromkeys(str(value) for value in lookup_values if value and not str(value).isdigit()))
+        cache_keys = {value: self._resource_lookup_cache_key(service, endpoint, lookup_field, value) for value in values}
+        resolved = {value: self.cache[key] for value, key in cache_keys.items() if key in self.cache}
+        uncached = [value for value in values if value not in resolved]
+
+        if not uncached:
+            return resolved
+        if len(uncached) == 1:
+            resolved[uncached[0]] = self.lookup_resource_id(endpoint, lookup_field, uncached[0], service=service)
+            return resolved
+
+        service_version = self.get_api_version(service)
+        self._prepare_resource_lookup(service)
+        api_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/"
+
+        def resolve_batch(batch_values):
+            if not batch_values:
+                return
+            data = self.search_api(
+                api_path,
+                query_params={f"{lookup_field}__in": ",".join(batch_values)},
+                return_all=True,
+                max_objects=100000,
+            )
+            for result in data.get("results", []):
+                value = result.get(lookup_field)
+                value = str(value) if value is not None else None
+                if value in batch_values and value not in resolved:
+                    resolved[value] = result.get("id")
+                    if resolved[value] is not None:
+                        self.cache[cache_keys[value]] = resolved[value]
+
+            for value in batch_values:
+                if value not in resolved:
+                    raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
+
+        batch_values = []
+        for value in uncached:
+            if "," in value:
+                resolve_batch(batch_values)
+                batch_values = []
+                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service)
+                continue
+
+            candidate = batch_values + [value]
+            query = {f"{lookup_field}__in": ",".join(candidate)}
+            url_length = len(self._build_url(api_path, query).encode("utf-8"))
+            if url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
+                batch_values = candidate
+                continue
+
+            resolve_batch(batch_values)
+            batch_values = []
+            single_url_length = len(self._build_url(api_path, {f"{lookup_field}__in": value}).encode("utf-8"))
+            if single_url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
+                batch_values = [value]
+            else:
+                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service)
+        resolve_batch(batch_values)
+        return resolved
 
     def _ansible_tls_kwargs(self, verify=None):
         """Map TLS verify setting to Ansible Request validate_certs/ca_path kwargs."""

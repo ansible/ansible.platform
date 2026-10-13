@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+from requests.exceptions import HTTPError
 
 __metaclass__ = type
 
@@ -82,6 +83,49 @@ class TestManageAssociations(unittest.TestCase):
         self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
 
         self.svc.lookup_resource_id.assert_not_called()
+
+    def test_multiple_names_are_resolved_in_one_query(self):
+        self.svc.api_versions = {"gateway": "2"}
+        self.svc.search_api.side_effect = [
+            {"results": [{"id": 3, "name": "cred-a"}, {"id": 4, "name": "cred-b"}]},
+            {"results": [{"id": 3}, {"id": 4}]},
+        ]
+
+        changed = self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", ["cred-a", "cred-b"], "credentials", "name")
+
+        self.assertFalse(changed)
+        self.assertEqual(self.svc.search_api.call_args_list[0].kwargs["query_params"], {"name__in": "cred-a,cred-b"})
+        self.svc.lookup_resource_id.assert_not_called()
+
+    def test_long_name_list_is_split_to_fit_url_limit(self):
+        self.svc.api_versions = {"gateway": "2"}
+        names = [f"credential-{index:02d}-" + "x" * 340 for index in range(20)]
+        ids_by_name = {name: index + 1 for index, name in enumerate(names)}
+
+        def search_api(endpoint, query_params=None, **kwargs):
+            if query_params:
+                return {"results": [{"id": ids_by_name[name], "name": name} for name in query_params["name__in"].split(",")]}
+            return {"results": [{"id": i + 1} for i in range(len(names))]}
+
+        self.svc.search_api.side_effect = search_api
+
+        changed = self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", names, "credentials", "name")
+
+        self.assertFalse(changed)
+        lookup_calls = [call for call in self.svc.search_api.call_args_list if call.kwargs.get("query_params")]
+        self.assertGreater(len(lookup_calls), 1)
+        for call in lookup_calls:
+            url = self.svc._build_url(call.args[0], call.kwargs["query_params"])
+            self.assertLessEqual(len(url.encode("utf-8")), self.svc.MAX_BATCH_LOOKUP_URL_BYTES)
+
+    def test_association_error_identifies_resource_id(self):
+        response = _resp()
+        response.raise_for_status.side_effect = HTTPError("404 missing")
+        self.svc.search_api.return_value = {"results": []}
+        self.svc.session.post.return_value = response
+
+        with self.assertRaisesRegex(ValueError, "Failed to associate credentials ID 5"):
+            self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
 
     def test_relative_association_path_uses_requested_service(self):
         self.svc.get_api_version = MagicMock(return_value="2")
