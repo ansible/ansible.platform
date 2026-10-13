@@ -636,8 +636,11 @@ class PlatformService(BaseAPIClient):
         if update_op and current_data:
             current_dict = current_data if isinstance(current_data, dict) else current_data
             for field in getattr(update_op, "fields", []) or []:
-                if getattr(api_data, field, None) is None and current_dict.get(field) is not None:
-                    setattr(api_data, field, current_dict[field])
+                current_value = current_dict.get(field)
+                if hasattr(mixin_class, "get_update_value_from_current_data"):
+                    current_value = mixin_class.get_update_value_from_current_data(field, current_dict)
+                if getattr(api_data, field, None) is None and current_value is not None:
+                    setattr(api_data, field, current_value)
 
         # After the merge, let the mixin declare which fields must be sent as
         # null to clear server-side values that are incompatible with the new
@@ -1154,7 +1157,7 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
-        cache_key = f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value)
         if cache_key in self.cache:
             return self.cache[cache_key]
         url = self._build_url(f"/{endpoint}", query_params={lookup_field: lookup_value}, service=service)
@@ -1186,14 +1189,17 @@ class PlatformService(BaseAPIClient):
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
         current associations, and associates/disassociates to reconcile.
 
+        This read-then-write reconciliation is not atomic. Concurrent changes from another
+        client can interleave with the read and individual POSTs, leaving final state different
+        from desired_items.
+
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
         what the declarative create/update flow covers.
         """
         self.record_activity()
-        desired_ids = {
-            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
-        }
+        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service)
+        desired_ids = {int(item) if str(item).isdigit() else resolved_names.get(str(item)) if item else None for item in desired_items}
 
         # Follow pagination so associations beyond the first page aren't silently
         # treated as absent (which would re-associate them and skip disassociating
@@ -1207,12 +1213,18 @@ class PlatformService(BaseAPIClient):
 
         changed = False
         for rid in desired_ids - current_ids:
-            response = self.session.post(assoc_url, json={"id": rid, "associate": True}, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
+            try:
+                response = self.session.post(assoc_url, json={"id": rid, "associate": True}, timeout=self.request_timeout, verify=self.requests_verify)
+                response.raise_for_status()
+            except _get_requests().exceptions.HTTPError as e:
+                raise ValueError(f"Failed to associate {association_field} ID {rid}: {e}") from e
             changed = True
         for rid in current_ids - desired_ids:
-            response = self.session.post(assoc_url, json={"id": rid, "disassociate": True}, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
+            try:
+                response = self.session.post(assoc_url, json={"id": rid, "disassociate": True}, timeout=self.request_timeout, verify=self.requests_verify)
+                response.raise_for_status()
+            except _get_requests().exceptions.HTTPError as e:
+                raise ValueError(f"Failed to disassociate {association_field} ID {rid}: {e}") from e
             changed = True
         return changed
 

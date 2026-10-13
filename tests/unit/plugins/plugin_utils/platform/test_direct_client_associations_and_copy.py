@@ -19,8 +19,11 @@ def _client(base_url="https://gw.example.com"):
     client = DirectHTTPClient.__new__(DirectHTTPClient)
     client._authenticated = True
     client.base_url = base_url
-    client.api_versions = {}
     client.cache = {}
+    client.api_versions = {"gateway": "2"}
+    client.api_version = "2"
+    client.session = MagicMock()
+    client.session.headers = {}
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
     return client
@@ -104,6 +107,46 @@ class TestManageAssociations(unittest.TestCase):
         self.assertEqual(mock_request.call_count, 2)
         self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com" + association_path + "?page=2")
 
+    def test_multiple_names_are_resolved_in_one_query(self):
+        self.client.search_api.side_effect = [
+            {"results": [{"id": 3, "name": "cred-a"}, {"id": 4, "name": "cred-b"}]},
+            {"results": [{"id": 3}, {"id": 4}]},
+        ]
+
+        changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", ["cred-a", "cred-b"], "credentials", "name")
+
+        self.assertFalse(changed)
+        self.assertEqual(self.client.search_api.call_args_list[0].kwargs["query_params"], {"name__in": "cred-a,cred-b"})
+        self.client.lookup_resource_id.assert_not_called()
+
+    def test_long_name_list_is_split_to_fit_url_limit(self):
+        names = [f"credential-{index:02d}-" + "x" * 340 for index in range(20)]
+        ids_by_name = {name: index + 1 for index, name in enumerate(names)}
+
+        def search_api(endpoint, query_params=None, **kwargs):
+            if query_params:
+                return {"results": [{"id": ids_by_name[name], "name": name} for name in query_params["name__in"].split(",")]}
+            return {"results": [{"id": i + 1} for i in range(len(names))]}
+
+        self.client.search_api.side_effect = search_api
+
+        changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", names, "credentials", "name")
+
+        self.assertFalse(changed)
+        lookup_calls = [call for call in self.client.search_api.call_args_list if call.kwargs.get("query_params")]
+        self.assertGreater(len(lookup_calls), 1)
+        for call in lookup_calls:
+            url = self.client._build_url(call.args[0], call.kwargs["query_params"])
+            self.assertLessEqual(len(url.encode("utf-8")), self.client.MAX_BATCH_LOOKUP_URL_BYTES)
+
+    def test_association_error_identifies_resource_id(self):
+        self.client.search_api.return_value = {"results": []}
+        error = APIError("API request failed: HTTP 404", operation="associate", resource="credentials", status_code=404)
+
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=error):
+            with self.assertRaisesRegex(APIError, "Failed to associate credentials ID 5"):
+                self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
+
     def test_relative_association_path_uses_requested_service(self):
         self.client.get_api_version = MagicMock(return_value="2")
         self.client.search_api.return_value = {"results": []}
@@ -119,6 +162,27 @@ class TestManageAssociations(unittest.TestCase):
             resource="credentials",
             json={"id": 5, "associate": True},
         )
+
+    def test_search_api_follows_relative_next_link(self):
+        self.client.api_version = "2"
+        pages = [
+            _http_resp(body={"count": 3, "next": "/api/controller/v2/job_templates/42/labels/?page=2", "results": [{"id": 1}, {"id": 2}]}),
+            _http_resp(body={"count": 3, "next": None, "results": [{"id": 3}]}),
+        ]
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=pages) as mock_request:
+            result = DirectHTTPClient.search_api(self.client, "/api/controller/v2/job_templates/42/labels/", return_all=True)
+
+        self.assertEqual([item["id"] for item in result["results"]], [1, 2, 3])
+        self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com/api/controller/v2/job_templates/42/labels/?page=2")
+
+    def test_invalid_association_response_is_not_treated_as_empty(self):
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client)
+        response = _http_resp()
+        response.read.return_value = b"not json"
+
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
+            with self.assertRaises(json.JSONDecodeError):
+                self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
 
 
 class TestManageSubResource(unittest.TestCase):
@@ -244,6 +308,24 @@ class TestSearchApi(unittest.TestCase):
 
         self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com/api/controller/v2/job_templates/42/credentials/?page=2")
         self.assertEqual(result["results"], [{"id": 1}, {"id": 2}])
+
+    def test_return_all_raises_when_max_objects_is_exceeded(self):
+        page1 = {
+            "count": 3,
+            "results": [{"id": 1}, {"id": 2}],
+            "next": "/api/controller/v2/job_templates/42/credentials/?page=2",
+        }
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body=page1)) as mock_request:
+            with self.assertRaisesRegex(ValueError, "max_objects=2"):
+                self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=2)
+        mock_request.assert_called_once()
+
+    def test_return_all_raises_when_pages_exceed_max_objects_with_stale_count(self):
+        page1 = {"count": 1, "results": [{"id": 1}, {"id": 2}], "next": "/api/controller/v2/job_templates/42/credentials/?page=2"}
+        page2 = {"count": 1, "results": [{"id": 3}, {"id": 4}], "next": None}
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body=page1), _http_resp(body=page2)]):
+            with self.assertRaisesRegex(ValueError, "max_objects=3"):
+                self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=3)
 
 
 if __name__ == "__main__":

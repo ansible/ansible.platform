@@ -15,6 +15,7 @@ This directory holds Molecule scenarios for the ansible.platform collection.
 - **users_mock/** – Scenario for `ansible.platform.user` against the **mock** server (`http://127.0.0.1:8000`). No real AAP required. Use with `molecule test --all` (mock started by default) or start `python3 tools/mock_gateway_server.py` manually.
 - **organization_mock/** – Scenario for `ansible.platform.organization` against the **mock** server. Create, idempotency, update, verify, cleanup. No real AAP required.
 - **controller_ping_mock/** – Routing/plumbing check: confirms the mock server serves the **Controller API prefix** (`/api/controller/vN/`, used by ported `awx_collection`/Controller resources) alongside the existing `/api/gateway/vN/` prefix. No ansible.platform module is exercised and no state is created; this exists so future Controller resource mock scenarios have a prefix to register against.
+- **job_template_mock/** – Exercises Controller job template create, update, associations, survey, copy, check mode, and cleanup against the mock API in all three connection modes. The `molecule (mock)` CI workflow discovers it automatically.
 
 ## Gateway configuration
 

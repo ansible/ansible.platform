@@ -15,8 +15,6 @@ author: Red Hat (@RedHatOfficial)
 short_description: Manage a controller job template.
 description:
     - Create, update, or delete an automation platform controller job template.
-    - Association fields (C(credentials), C(labels), notification templates, C(instance_groups)), C(copy_from), and
-      C(survey_spec) are not yet supported by this module and will be added in a follow-up release.
 options:
     name:
       required: true
@@ -43,6 +41,13 @@ options:
     project:
       type: str
       description: Name or ID of the project to use for the job template.
+    copy_from:
+      type: str
+      description:
+        - Name or ID to copy the job template from.
+        - This will copy an existing job template and change any parameters supplied.
+        - The new job template name will be the one provided in the C(name) parameter.
+        - The organization parameter is not used in this, to facilitate copy from one organization to another.
     playbook:
       type: str
       description: Path to the playbook to use for the job template within the project provided.
@@ -165,6 +170,45 @@ options:
     opa_query_path:
       type: str
       description: The query path for the OPA policy to evaluate prior to job execution. The query path should be formatted as package/rule.
+    credential:
+      type: str
+      description:
+        - Name, ID, or named URL of the credential to use for the job template.
+        - Deprecated, use C(credentials).
+    vault_credential:
+      type: str
+      description:
+        - Name, ID, or named URL of the vault credential to use for the job template.
+        - Deprecated, use C(credentials).
+    credentials:
+      type: list
+      elements: str
+      description: List of credential names, IDs, or named URLs to use for the job template.
+    labels:
+      type: list
+      elements: str
+      description:
+        - The labels applied to this job template.
+        - Must be created with the labels module first. This will error if the label has not been created.
+    instance_groups:
+      type: list
+      elements: str
+      description: List of Instance Group names, IDs, or named URLs for this Organization to run on.
+    notification_templates_started:
+      type: list
+      elements: str
+      description: List of notifications to send on start.
+    notification_templates_success:
+      type: list
+      elements: str
+      description: List of notifications to send on success.
+    notification_templates_error:
+      type: list
+      elements: str
+      description: List of notifications to send on error.
+    survey_spec:
+      type: dict
+      description: JSON/YAML dict formatted survey definition.
 
 extends_documentation_fragment:
   - ansible.platform.state
@@ -184,6 +228,27 @@ EXAMPLES = """
     inventory: Local
     project: Demo
     playbook: ping.yml
+    credentials:
+      - Local
+      - 2nd credential
+    state: present
+    survey_spec: "{{ lookup('file', 'my_survey.json') }}"
+
+- name: Add start notification to a job template
+  ansible.platform.job_template:
+    name: Ping
+    notification_templates_started:
+      - Notification1
+      - Notification2
+
+- name: Copy a job template
+  ansible.platform.job_template:
+    name: Ping copy
+    copy_from: Ping
+    job_type: run
+    inventory: Copy Foo Inventory
+    project: Demo
+    playbook: hello_world.yml
     state: present
 
 - name: Rename a job template
