@@ -192,6 +192,12 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
             else:
                 api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
 
+        # Read-only fields needed for URL construction (e.g. {id} in update/delete paths)
+        for field in ("id", "created", "modified", "url"):
+            val = getattr(ansible_instance, field, None)
+            if val is not None:
+                api_data[field] = val
+
         return APIJobTemplate_v2(**api_data)
 
     @classmethod
