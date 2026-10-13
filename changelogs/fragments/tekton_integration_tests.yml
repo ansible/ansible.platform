@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - ci - add Tekton pipeline for running collection integration tests against live AAP deployments on pull requests.
+  - ci - add ``GATEWAY_HOSTNAME`` and ``--continue-on-error`` to Makefile integration test target.
