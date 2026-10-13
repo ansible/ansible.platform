@@ -106,7 +106,8 @@ class TestAssociationReconciliation(unittest.TestCase):
         self.assertIn("not found", result["msg"])
 
     def test_credential_and_vault_credential_aliases_merge_into_credentials(self):
-        action = _action({"name": "Ping", "credential": "Local", "vault_credential": "Vault", "state": "present"})
+        credentials = ["Existing"]
+        action = _action({"name": "Ping", "credentials": credentials, "credential": "Local", "vault_credential": "Vault", "state": "present"})
         manager = MagicMock()
         manager.manage_associations.return_value = True
 
@@ -116,7 +117,8 @@ class TestAssociationReconciliation(unittest.TestCase):
 
         call_args = manager.manage_associations.call_args
         self.assertEqual(call_args.args[0], BASE_PATH)
-        self.assertEqual(sorted(call_args.args[3]), ["Local", "Vault"])
+        self.assertEqual(sorted(call_args.args[3]), ["Existing", "Local", "Vault"])
+        self.assertEqual(credentials, ["Existing"])
 
     def test_credential_and_vault_credential_surface_deprecation_warnings(self):
         action = _action({"name": "Ping", "credential": "Local", "vault_credential": "Vault", "state": "present"})

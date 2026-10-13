@@ -81,9 +81,7 @@ class ActionModule(BaseResourceActionPlugin):
         vault_credential = self._task.args.pop("vault_credential", None)
         deprecations = []
         if credential or vault_credential:
-            credentials = association_data.get("credentials")
-            if credentials is None:
-                credentials = []
+            credentials = list(association_data.get("credentials") or [])
             if vault_credential:
                 credentials.append(vault_credential)
                 msg, version = _DEPRECATIONS["vault_credential"]
