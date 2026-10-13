@@ -147,38 +147,51 @@
         that:
           - delete is changed
 
-    - name: Add API http port
+    - name: Find existing API port
+      ansible.builtin.set_fact:
+        existing_api_ports: >-
+          {{ query('ansible.platform.gateway_api', 'http_ports',
+             query_params={'is_api_port': 'true'}, **connection_info) }}
+
+    - name: Try to create a second API port
       ansible.platform.http_port:
-        name: "Port 44301"
+        name: "{{ test_id }}-API-Port"
         number: 44301
         use_https: true
         is_api_port: true
-        state: present
-      register: http_port5
-
-    - name: Remove API http port
-      ansible.platform.http_port:
-        name: "Port 44301"
-        state: absent
       ignore_errors: true
-      register: http_port5_remove_result
+      register: duplicate_api_port_result
 
-    - name: Try to make it not an API port
-      ansible.platform.http_port:
-        name: "Port 44301"
-        is_api_port: false
-      ignore_errors: true
-      register: http_port5_not_api_result
-
-    - name: API Port assertions
+    - name: Assert creating a second API port fails
       ansible.builtin.assert:
         that:
-          - http_port5 is changed
-          - http_port5_remove_result is failed
-          - http_port5_not_api_result is failed
+          - duplicate_api_port_result is failed
+
+    - name: Try to delete the existing API port
+      ansible.platform.http_port:
+        name: "{{ existing_api_ports[0].name }}"
+        state: absent
+      ignore_errors: true
+      register: delete_api_port_result
+
+    - name: Assert deleting an API port fails
+      ansible.builtin.assert:
+        that:
+          - delete_api_port_result is failed
+
+    - name: Try to unset is_api_port on existing API port
+      ansible.platform.http_port:
+        name: "{{ existing_api_ports[0].name }}"
+        is_api_port: false
+      ignore_errors: true
+      register: unset_api_port_result
+
+    - name: Assert unsetting is_api_port fails
+      ansible.builtin.assert:
+        that:
+          - unset_api_port_result is failed
 
   always:
-    # Always Cleanup
     - name: Delete http ports
       ansible.platform.http_port:
         state: absent
@@ -189,8 +202,4 @@
         - "http_port2"
         - "http_port3"
         - "http_port4"
-        # API port cannot be deleted via API, so we leave it.
-        # If this ever becomes a problem in the future, add a task here to
-        # delete it using manage.py.
-        # - "http_port5"
 ...

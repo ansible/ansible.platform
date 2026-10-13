@@ -222,6 +222,12 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                     if field not in api_data and current.get(field) is not None:
                         api_data[field] = current[field]
 
+        # Read-only fields needed for URL construction (e.g. {id} in update/delete paths)
+        for field in ("id", "created", "modified", "url"):
+            val = getattr(ansible_instance, field, None)
+            if val is not None:
+                api_data[field] = val
+
         return APIJobTemplate_v2(**api_data)
 
     @classmethod

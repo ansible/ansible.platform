@@ -366,7 +366,7 @@
         res_ok: "{{ eda_cred is defined and eda_cred is not failed and eda_cred is not skipped }}"
         res_name: "{{ eda_cred_name }}"
         res_type: eda.edacredential
-        res_role_def: "Eda Credential Admin"
+        res_role_def: "EDA Credential Admin"
         team_name: "{{ team1.name }}"
 
     # -- EDA: event_streams ----------------------------------------------------
