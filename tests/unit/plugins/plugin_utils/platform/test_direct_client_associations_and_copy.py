@@ -19,6 +19,7 @@ def _client(base_url="https://gw.example.com"):
     client = DirectHTTPClient.__new__(DirectHTTPClient)
     client._authenticated = True
     client.base_url = base_url
+    client.api_versions = {}
     client.cache = {}
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
@@ -86,12 +87,17 @@ class TestManageAssociations(unittest.TestCase):
             "next": association_path + "?page=2",
         }
         page2 = {"count": 250, "results": [{"id": i} for i in range(201, 251)], "next": None}
-        self.client.api_versions = {"gateway": "2"}
+        self.client.api_version = "2"
         self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
 
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body=page1), _http_resp(body=page2)]) as mock_request:
             changed = self.client.manage_associations(
-                "/api/controller/v2/job_templates", 42, "credentials", list(range(1, 251)), "credentials", "name"
+                "/api/controller/v2/job_templates",
+                42,
+                "credentials",
+                list(range(1, 251)),
+                "credentials",
+                "name",
             )
 
         self.assertFalse(changed)

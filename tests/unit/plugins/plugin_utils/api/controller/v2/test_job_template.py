@@ -230,9 +230,13 @@ class TestFromApi(unittest.TestCase):
         manager.search_api.side_effect = ValueError("not found")
 
         with self.assertLogs(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template", level="WARNING"
+            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template",
+            level="WARNING",
         ) as logs:
-            result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
+            result = JobTemplateTransformMixin_v2.from_api(
+                {"name": "Ping", "inventory": 10},
+                _context("find", manager=manager),
+            )
 
         self.assertIsNone(result.inventory)
         self.assertIn("Failed to resolve controller inventories ID 10: not found", logs.output[0])
@@ -242,9 +246,13 @@ class TestFromApi(unittest.TestCase):
         manager.search_api.return_value = {"id": 10}
 
         with self.assertLogs(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template", level="WARNING"
+            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template",
+            level="WARNING",
         ) as logs:
-            result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
+            result = JobTemplateTransformMixin_v2.from_api(
+                {"name": "Ping", "inventory": 10},
+                _context("find", manager=manager),
+            )
 
         self.assertIsNone(result.inventory)
         self.assertIn("response did not contain a name", logs.output[0])
@@ -259,7 +267,8 @@ class TestFromApi(unittest.TestCase):
 
     def test_non_json_extra_vars_falls_back_to_none(self):
         with self.assertLogs(
-            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template", level="WARNING"
+            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template",
+            level="WARNING",
         ) as logs:
             result = JobTemplateTransformMixin_v2.from_api({"id": 5, "name": "Ping", "extra_vars": "not json"}, _context("find"))
 

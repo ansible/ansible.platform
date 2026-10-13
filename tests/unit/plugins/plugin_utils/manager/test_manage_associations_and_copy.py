@@ -123,7 +123,12 @@ class TestManageAssociations(unittest.TestCase):
         self.svc.search_api = PlatformService.search_api.__get__(self.svc, PlatformService)
 
         changed = self.svc.manage_associations(
-            "/api/controller/v2/job_templates", 42, "credentials", list(range(1, 251)), "credentials", "name"
+            "/api/controller/v2/job_templates",
+            42,
+            "credentials",
+            list(range(1, 251)),
+            "credentials",
+            "name",
         )
 
         self.assertFalse(changed)
