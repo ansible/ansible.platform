@@ -1,0 +1,84 @@
+---
+# Integration tests for ansible.platform.job_template
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-JobTemplate-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create job_template
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate"
+        project: "Demo Project"
+        playbook: hello_world.yml
+        inventory: "Demo Inventory"
+        state: present
+      register: created_job_template
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_job_template is changed
+          - created_job_template.job_template.name is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate"
+        project: "Demo Project"
+        playbook: hello_world.yml
+        inventory: "Demo Inventory"
+        state: present
+      register: idempotent_job_template
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_job_template is not changed
+
+    - name: Update description
+      ansible.platform.job_template:
+        name: "{{ name_prefix }}-Test-JobTemplate"
+        description: Updated via integration test
+        state: present
+      register: updated_job_template
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_job_template is changed
+          - updated_job_template.job_template.description == "Updated via integration test"
+
+    - name: Check exists returns true
+      ansible.platform.job_template:
+        name: "{{ created_job_template.job_template.name }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+  always:
+    - name: Delete job_template
+      ansible.platform.job_template:
+        name: "{{ created_job_template.job_template.name }}"
+        state: absent
+      when: >-
+        created_job_template is defined
+        and "job_template" in created_job_template
+        and "name" in created_job_template.job_template
+...
