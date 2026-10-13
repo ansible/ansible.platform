@@ -142,8 +142,6 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         api_data: Dict[str, Any] = {}
 
         resource_id = getattr(ansible_instance, "id", None)
-        if resource_id is not None:
-            api_data["id"] = resource_id
 
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
@@ -185,10 +183,6 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         if webhook_credential is not None:
             api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, service=service)
 
-        resource_id = getattr(ansible_instance, "id", None)
-        if resource_id is not None:
-            api_data["id"] = resource_id
-
         # project: organization (Gateway-owned, see docs/12-api-landscape.md) disambiguates
         # between same-named projects in different orgs, matching the legacy awx_collection
         # job_template module's get_one(..., data={"organization": organization_id}) lookup.
@@ -211,6 +205,12 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 )
             else:
                 api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
+
+        # Read-only fields from API (for building URL in execute).
+        for field in ("id", "created", "modified", "url"):
+            val = getattr(ansible_instance, field, None)
+            if val is not None:
+                api_data[field] = val
 
         # PlatformService merges missing update fields from its Ansible-facing
         # current state. Preserve wire-format IDs and JSON for fields omitted

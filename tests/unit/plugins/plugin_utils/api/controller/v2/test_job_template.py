@@ -87,12 +87,22 @@ class TestFromAnsibleDataUpdate(unittest.TestCase):
 
     def test_new_name_is_sent_as_name(self):
         manager = MagicMock()
-        instance = AnsibleJobTemplate(name="Ping", new_name="Ping Renamed", id=5)
+        instance = AnsibleJobTemplate(
+            name="Ping",
+            new_name="Ping Renamed",
+            id=5,
+            created="2026-01-01T00:00:00Z",
+            modified="2026-01-02T00:00:00Z",
+            url="/api/controller/v2/job_templates/5/",
+        )
 
         api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
 
         self.assertEqual(api_data.name, "Ping Renamed")
         self.assertEqual(api_data.id, 5)
+        self.assertEqual(api_data.created, "2026-01-01T00:00:00Z")
+        self.assertEqual(api_data.modified, "2026-01-02T00:00:00Z")
+        self.assertEqual(api_data.url, "/api/controller/v2/job_templates/5/")
 
     def test_plain_name_is_echoed_back(self):
         manager = MagicMock()
