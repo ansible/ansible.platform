@@ -9,7 +9,6 @@ action_groups:
     - ca_certificate
     - feature_flag
     - http_port
-    - job_template
     - organization
     - role_user_assignment
     - role_team_assignment

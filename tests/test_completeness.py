@@ -79,31 +79,34 @@ def test_meta_runtime():
 
     meta_data = yaml.load(meta_data_string, Loader=yaml.Loader)
 
-    action_groups = meta_data.get("action_groups", {}).get("gateway", [])
-    needs_to_be_removed = list(set(action_groups) - set(needs_grouping))
-    needs_to_be_added = list(set(needs_grouping) - set(action_groups))
+    all_action_groups = meta_data.get("action_groups", {})
+    all_grouped_modules = set()
+    for group_modules in all_action_groups.values():
+        all_grouped_modules.update(group_modules)
 
-    needs_to_be_removed.sort()
-    needs_to_be_added.sort()
+    not_in_any_group = list(set(needs_grouping) - all_grouped_modules)
+    not_in_any_group.sort()
 
-    group = "action-groups.gateway"
-    if needs_to_be_removed:
+    if not_in_any_group:
         print(
             cause_error(
                 "Meta/runtime.yml check",
-                "The following items should be removed from the {0} {1}:\n    {2}".format(meta_filename, group, "\n    ".join(needs_to_be_removed)),
+                "The following items should be added to an action group in {0}:\n    {1}".format(meta_filename, "\n    ".join(not_in_any_group)),
             )
         )
 
-    if needs_to_be_added:
-        print(
-            cause_error(
-                "Meta/runtime.yml check",
-                "The following items should be added to the {0} {1}:\n    {2}".format(meta_filename, group, "\n    ".join(needs_to_be_added)),
+    for group_name, group_modules in all_action_groups.items():
+        extra = list(set(group_modules) - set(needs_grouping))
+        extra.sort()
+        if extra:
+            print(
+                cause_error(
+                    "Meta/runtime.yml check",
+                    "The following items should be removed from {0} action-groups.{1}:\n    {2}".format(meta_filename, group_name, "\n    ".join(extra)),
+                )
             )
-        )
 
-    if not needs_to_be_added or needs_to_be_removed:
+    if not not_in_any_group and all(not (set(g) - set(needs_grouping)) for g in all_action_groups.values()):
         print("OK\n")
 
 
