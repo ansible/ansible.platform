@@ -110,6 +110,30 @@ class TestManageAssociations(unittest.TestCase):
         self.svc.session.post.assert_not_called()
         self.svc.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
 
+    def test_current_associations_over_200_follow_multiple_pages(self):
+        """All association pages are considered when reconciling more than 200 items."""
+        association_path = "/api/controller/v2/job_templates/42/credentials/"
+        page1 = {
+            "count": 250,
+            "results": [{"id": i} for i in range(1, 201)],
+            "next": association_path + "?page=2",
+        }
+        page2 = {"count": 250, "results": [{"id": i} for i in range(201, 251)], "next": None}
+        self.svc._make_request = MagicMock(side_effect=[_resp(json_data=page1), _resp(json_data=page2)])
+        self.svc.search_api = PlatformService.search_api.__get__(self.svc, PlatformService)
+
+        changed = self.svc.manage_associations(
+            "/api/controller/v2/job_templates", 42, "credentials", list(range(1, 251)), "credentials", "name"
+        )
+
+        self.assertFalse(changed)
+        self.assertEqual(self.svc._make_request.call_count, 2)
+        self.assertEqual(
+            self.svc._make_request.call_args_list[1].args[1],
+            "https://gw.example.com" + association_path + "?page=2",
+        )
+        self.svc.session.post.assert_not_called()
+
 
 class TestManageSubResource(unittest.TestCase):
     def setUp(self):

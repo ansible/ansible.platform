@@ -46,6 +46,13 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
 
         self.assertEqual(api_data.extra_vars, '{"foo": "bar"}')
 
+    def test_extra_vars_rejects_non_dict_values(self):
+        manager = MagicMock()
+        instance = AnsibleJobTemplate(name="Ping", extra_vars=["foo"])
+
+        with self.assertRaisesRegex(TypeError, "extra_vars must be dict, got list"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
     def test_inventory_execution_environment_webhook_credential_resolved_via_controller_service(self):
         manager = MagicMock()
         manager.lookup_resource_id.side_effect = lambda endpoint, field, value, service=None: {
@@ -133,6 +140,42 @@ class TestProjectResolution(unittest.TestCase):
         with self.assertRaises(ValueError):
             JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
+    def test_project_with_organization_requires_exact_name_match(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 99
+        manager.search_api.return_value = {"results": [{"id": 55, "name": "Demo Copy"}]}
+        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
+
+        with self.assertRaisesRegex(ValueError, "not found"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
+    def test_project_with_organization_ambiguous_match_raises(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 99
+        manager.search_api.return_value = {"results": [{"id": 55, "name": "Demo"}, {"id": 56, "name": "Demo"}]}
+        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
+
+        with self.assertRaisesRegex(ValueError, "Multiple 'projects' resources"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
+    def test_project_with_organization_without_resolved_scope_raises(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = None
+        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
+
+        with self.assertRaisesRegex(ValueError, "without a value for scope field organization"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+        manager.search_api.assert_not_called()
+
+    def test_project_with_organization_missing_result_id_raises(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 99
+        manager.search_api.return_value = {"results": [{"name": "Demo"}]}
+        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
+
+        with self.assertRaisesRegex(ValueError, "has no ID"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
 
 class TestFromApi(unittest.TestCase):
     def test_round_trips_scalar_fields_and_resolves_fk_ids_to_names(self):
@@ -186,9 +229,25 @@ class TestFromApi(unittest.TestCase):
         manager = MagicMock()
         manager.search_api.side_effect = ValueError("not found")
 
-        result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
+        with self.assertLogs(
+            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template", level="WARNING"
+        ) as logs:
+            result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
 
         self.assertIsNone(result.inventory)
+        self.assertIn("Failed to resolve controller inventories ID 10: not found", logs.output[0])
+
+    def test_fk_response_without_name_warns_and_falls_back_to_none(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {"id": 10}
+
+        with self.assertLogs(
+            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template", level="WARNING"
+        ) as logs:
+            result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "inventory": 10}, _context("find", manager=manager))
+
+        self.assertIsNone(result.inventory)
+        self.assertIn("response did not contain a name", logs.output[0])
 
     def test_null_fk_id_skips_lookup(self):
         manager = MagicMock()
@@ -199,8 +258,13 @@ class TestFromApi(unittest.TestCase):
         manager.search_api.assert_not_called()
 
     def test_non_json_extra_vars_falls_back_to_none(self):
-        result = JobTemplateTransformMixin_v2.from_api({"name": "Ping", "extra_vars": "not json"}, _context("find"))
+        with self.assertLogs(
+            "ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template", level="WARNING"
+        ) as logs:
+            result = JobTemplateTransformMixin_v2.from_api({"id": 5, "name": "Ping", "extra_vars": "not json"}, _context("find"))
+
         self.assertIsNone(result.extra_vars)
+        self.assertIn("Could not parse extra_vars JSON for job template ID 5", logs.output[0])
 
 
 class TestEndpointOperations(unittest.TestCase):

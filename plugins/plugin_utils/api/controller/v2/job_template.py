@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
+from .lookup import lookup_resource_id_with_scope
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,9 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         # extra_vars: dict on the Ansible side, JSON string on the wire.
         extra_vars = getattr(ansible_instance, "extra_vars", None)
         if extra_vars is not None:
-            api_data["extra_vars"] = json.dumps(extra_vars) if isinstance(extra_vars, dict) else str(extra_vars)
+            if not isinstance(extra_vars, dict):
+                raise TypeError(f"extra_vars must be dict, got {type(extra_vars).__name__}")
+            api_data["extra_vars"] = json.dumps(extra_vars)
 
         inventory = getattr(ansible_instance, "inventory", None)
         if inventory is not None:
@@ -176,12 +179,16 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 api_data["project"] = int(project)
             elif organization is not None:
                 org_id = manager.lookup_resource_id("organizations", "name", organization)
-                projects_path = f"/api/{service}/v{api_version}/projects/"
-                response = manager.search_api(projects_path, query_params={"name": project, "organization": org_id})
-                results = response.get("results", [])
-                if not results:
-                    raise ValueError(f"The project {project} in organization {organization} was not found on the controller instance")
-                api_data["project"] = results[0]["id"]
+                api_data["project"] = lookup_resource_id_with_scope(
+                    manager,
+                    endpoint="projects",
+                    lookup_field="name",
+                    lookup_value=project,
+                    scope_field="organization",
+                    scope_value=org_id,
+                    service=service,
+                    api_version=api_version,
+                )
             else:
                 api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
 
@@ -250,7 +257,8 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         elif isinstance(raw_extra, str) and raw_extra.strip():
             try:
                 extra_vars = json.loads(raw_extra)
-            except ValueError:
+            except ValueError as e:
+                logger.warning("Could not parse extra_vars JSON for job template ID %s: %s", api_data.get("id"), e)
                 extra_vars = None
 
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
@@ -258,6 +266,10 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         service = getattr(context, "service", "controller") if isinstance(context, TransformContext) else context.get("service", "controller")
         api_version = getattr(context, "api_version", None) if isinstance(context, TransformContext) else context.get("api_version")
 
+        # from_api transforms one resource at a time, so each uncached FK below
+        # requires a separate detail request. The shared cache avoids repeat
+        # requests for IDs reused across resources; batching requires collecting
+        # FK IDs before calling from_api for a resource list.
         def _resolve_fk_name(endpoint: str, resource_id: Optional[int]) -> Optional[str]:
             # FK fields are Optional[str] (names) on AnsibleJobTemplate, so the
             # raw int id from the API must be resolved back to a name here. Returning the
@@ -272,9 +284,13 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
             try:
                 result = manager.search_api(f"/api/{service}/v{api_version}/{endpoint}/{resource_id}/")
                 name = result.get("name")
-            except Exception:
-                name = None
-            if name is not None and cache is not None:
+            except Exception as e:
+                logger.warning("Failed to resolve %s %s ID %s: %s", service, endpoint, resource_id, e)
+                return None
+            if name is None:
+                logger.warning("Could not resolve %s %s ID %s: response did not contain a name", service, endpoint, resource_id)
+                return None
+            if cache is not None:
                 cache[cache_key] = name
             return name
 

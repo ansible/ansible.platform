@@ -77,6 +77,27 @@ class TestManageAssociations(unittest.TestCase):
         mock_request.assert_not_called()
         self.client.search_api.assert_called_once_with("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=100000)
 
+    def test_current_associations_over_200_follow_multiple_pages(self):
+        """All association pages are considered when reconciling more than 200 items."""
+        association_path = "/api/controller/v2/job_templates/42/credentials/"
+        page1 = {
+            "count": 250,
+            "results": [{"id": i} for i in range(1, 201)],
+            "next": association_path + "?page=2",
+        }
+        page2 = {"count": 250, "results": [{"id": i} for i in range(201, 251)], "next": None}
+        self.client.api_versions = {"gateway": "2"}
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
+
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body=page1), _http_resp(body=page2)]) as mock_request:
+            changed = self.client.manage_associations(
+                "/api/controller/v2/job_templates", 42, "credentials", list(range(1, 251)), "credentials", "name"
+            )
+
+        self.assertFalse(changed)
+        self.assertEqual(mock_request.call_count, 2)
+        self.assertEqual(mock_request.call_args_list[1].args[1], "https://gw.example.com" + association_path + "?page=2")
+
     def test_relative_association_path_uses_requested_service(self):
         self.client.get_api_version = MagicMock(return_value="2")
         self.client.search_api.return_value = {"results": []}
