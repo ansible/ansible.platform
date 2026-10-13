@@ -1212,19 +1212,18 @@ class PlatformService(BaseAPIClient):
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
-        requests = _get_requests()
         for rid in desired_ids - current_ids:
             try:
                 response = self.session.post(assoc_url, json={"id": rid, "associate": True}, timeout=self.request_timeout, verify=self.requests_verify)
                 response.raise_for_status()
-            except requests.exceptions.HTTPError as e:
+            except _get_requests().exceptions.HTTPError as e:
                 raise ValueError(f"Failed to associate {association_field} ID {rid}: {e}") from e
             changed = True
         for rid in current_ids - desired_ids:
             try:
                 response = self.session.post(assoc_url, json={"id": rid, "disassociate": True}, timeout=self.request_timeout, verify=self.requests_verify)
                 response.raise_for_status()
-            except requests.exceptions.HTTPError as e:
+            except _get_requests().exceptions.HTTPError as e:
                 raise ValueError(f"Failed to disassociate {association_field} ID {rid}: {e}") from e
             changed = True
         return changed

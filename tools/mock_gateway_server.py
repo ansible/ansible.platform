@@ -121,16 +121,21 @@ class GenericResource:
                 or_id_val: Optional[str] = None
                 or_name_val: Optional[str] = None
                 regular: Dict[str, str] = {}
+                in_filters: Dict[str, set] = {}
                 for k, v in filters.items():
                     if k == "or__id":
                         or_id_val = v
                     elif k in ("or__name", "or__slug"):
                         or_name_val = v
+                    elif k.endswith("__in"):
+                        in_filters[k[:-4]] = set(v.split(","))
                     else:
                         regular[k] = v
                 # Apply AND-filters first
                 for k, v in regular.items():
                     items = [i for i in items if str(i.get(k, "")) == str(v)]
+                for field, values in in_filters.items():
+                    items = [i for i in items if str(i.get(field, "")) in values]
                 # Apply OR-filter: match by numeric id OR by name
                 if or_id_val is not None or or_name_val is not None:
 

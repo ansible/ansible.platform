@@ -6,10 +6,10 @@
 from __future__ import absolute_import, division, print_function
 
 import unittest
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
-from requests.exceptions import HTTPError
 
 __metaclass__ = type
 
@@ -119,13 +119,21 @@ class TestManageAssociations(unittest.TestCase):
             self.assertLessEqual(len(url.encode("utf-8")), self.svc.MAX_BATCH_LOOKUP_URL_BYTES)
 
     def test_association_error_identifies_resource_id(self):
+        class FakeHTTPError(Exception):
+            pass
+
         response = _resp()
-        response.raise_for_status.side_effect = HTTPError("404 missing")
+        response.raise_for_status.side_effect = FakeHTTPError("404 missing")
         self.svc.search_api.return_value = {"results": []}
         self.svc.session.post.return_value = response
 
-        with self.assertRaisesRegex(ValueError, "Failed to associate credentials ID 5"):
-            self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
+        requests_stub = SimpleNamespace(exceptions=SimpleNamespace(HTTPError=FakeHTTPError))
+        with patch(
+            "ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager._get_requests",
+            return_value=requests_stub,
+        ):
+            with self.assertRaisesRegex(ValueError, "Failed to associate credentials ID 5"):
+                self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
 
     def test_relative_association_path_uses_requested_service(self):
         self.svc.get_api_version = MagicMock(return_value="2")
