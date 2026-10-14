@@ -16,9 +16,12 @@
   ansible.builtin.set_fact:
     _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters', **connection_info) }}"
 
-- name: Compute unique api_slug prefix from test_id
-  ansible.builtin.set_fact:
-    _slug_prefix: "{{ (test_id | lower)[:8] }}"
+- name: Fail if more than one service cluster or that cluster is not a gateway cluster
+  ansible.builtin.fail:
+    msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
+  when:
+    - _sc_query | length > 1
+    - _sc_query | length == 1 and sc_query[0].type != 'gateway'
 
 - name: See if there is an existing is_api_port
   # We need one to create an http_port and there can only be one
@@ -93,7 +96,7 @@
         name: "{{ name_prefix }}-Automation Hub API"
         description: "Proxy to the Automation Hub"
         http_port: "{{ api_port_id }}"
-        api_slug: "{{ _slug_prefix }}hub"
+        api_slug: hub
         service_cluster: "{{ hub_sc.id }}"
         service_path: '/api/hub/'
         service_port: 5001
@@ -116,7 +119,7 @@
         name: "{{ name_prefix }}-Automation Hub API"
         description: "Proxy to the Automation Hub"
         http_port: "{{ api_port_id }}"
-        api_slug: "{{ _slug_prefix }}hub"
+        api_slug: hub
         service_cluster: "{{ hub_sc.id }}"
         service_path: '/api/hub/'
         service_port: 5001
@@ -133,7 +136,7 @@
         name: "{{ hub_service.name }}"
         description: "Proxy to the Automation Hub"
         http_port: "{{ api_port_id }}"
-        api_slug: "{{ _slug_prefix }}hub"
+        api_slug: hub
         service_cluster: "{{ hub_sc.id }}"
         service_path: '/api/hub/'
         service_port: 5001
@@ -149,7 +152,8 @@
       ansible.platform.service:
         name: "{{ name_prefix }}-Controller API"
         description: Proxy to the Controller
-        api_slug: "{{ _slug_prefix }}ctrl"
+        api_slug: "{{ (test_id | lower)[:10] }}controller"
+        api_slug: "controller-{{ test_id | lower }}"
         http_port: "{{ api_port_id }}"
         service_cluster: "{{ controller_sc.name }}"
         is_service_https: true
