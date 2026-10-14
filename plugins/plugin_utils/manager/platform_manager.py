@@ -988,8 +988,10 @@ class PlatformService(BaseAPIClient):
                 val = api_data_dict[field]
                 if val is None:
                     # Include as explicit null only for fields declared by the mixin
-                    # as needing to be cleared (e.g. role/team on map_type change).
-                    if field in _fields_to_null:
+                    # as needing to be cleared, or for associations in enforced updates.
+                    if field in _fields_to_null or (
+                        context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
+                    ):
                         request_data[field] = None
                     continue
                 request_data[field] = val

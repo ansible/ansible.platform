@@ -6,6 +6,7 @@
 from __future__ import absolute_import, division, print_function
 
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -20,6 +21,9 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ex
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.execution_environment import (  # noqa: E402
     ExecutionEnvironmentTransformMixin_v2,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService  # noqa: E402
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient  # noqa: E402
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import EndpointOperation, TransformContext  # noqa: E402
 
 
 class TestExecutionEnvironmentTransform(unittest.TestCase):
@@ -124,6 +128,81 @@ class TestExecutionEnvironmentTransform(unittest.TestCase):
         ansible = AnsibleExecutionEnvironment(name="ee", id=99)
         api = ExecutionEnvironmentTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
+
+
+class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
+    """Enforced updates clear omitted associations while partial updates omit them."""
+
+    def _context(self, enforced):
+        return TransformContext(
+            manager=MagicMock(),
+            session=MagicMock(),
+            cache={},
+            api_version="2",
+            service="controller",
+            operation="update",
+            include_nulls_for_update=enforced,
+        )
+
+    def _api_data(self, context):
+        return ExecutionEnvironmentTransformMixin_v2.from_ansible_data(AnsibleExecutionEnvironment(name="ee", image="quay.io/example/ee", id=12), context)
+
+    def _operation(self):
+        return {
+            "update": EndpointOperation(
+                path="/api/controller/v2/execution_environments/{id}/",
+                method="PATCH",
+                fields=["image", "organization", "credential"],
+                path_params=["id"],
+                required_for="update",
+            )
+        }
+
+    def _direct_client(self):
+        client = DirectHTTPClient.__new__(DirectHTTPClient)
+        client._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/execution_environments/12/")
+        response = MagicMock()
+        response.read.return_value = b'{"id": 12}'
+        client._make_request = MagicMock(return_value=response)
+        client._lock = threading.Lock()
+        client._http_request_count = 0
+        return client
+
+    def _platform_service(self):
+        service = PlatformService.__new__(PlatformService)
+        service._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/execution_environments/12/")
+        service.session = MagicMock()
+        response = MagicMock()
+        response.content = b'{"id": 12}'
+        response.json.return_value = {"id": 12}
+        service.session.request.return_value = response
+        service._lock = threading.Lock()
+        service._http_request_count = 0
+        service.request_timeout = 30
+        service.config = None
+        service.verify_ssl = True
+        service.ca_bundle = None
+        return service
+
+    def test_direct_client_enforced_update_sends_null_associations(self):
+        client = self._direct_client()
+        client._execute_operations(self._operation(), self._api_data(self._context(True)), self._context(True), required_for="update")
+        self.assertEqual(client._make_request.call_args.kwargs["json"], {"image": "quay.io/example/ee", "organization": None, "credential": None})
+
+    def test_direct_client_partial_update_omits_associations(self):
+        client = self._direct_client()
+        client._execute_operations(self._operation(), self._api_data(self._context(False)), self._context(False), required_for="update")
+        self.assertEqual(client._make_request.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
+
+    def test_platform_service_enforced_update_sends_null_associations(self):
+        service = self._platform_service()
+        service._execute_operations(self._operation(), self._api_data(self._context(True)), self._context(True), required_for="update")
+        self.assertEqual(service.session.request.call_args.kwargs["json"], {"image": "quay.io/example/ee", "organization": None, "credential": None})
+
+    def test_platform_service_partial_update_omits_associations(self):
+        service = self._platform_service()
+        service._execute_operations(self._operation(), self._api_data(self._context(False)), self._context(False), required_for="update")
+        self.assertEqual(service.session.request.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
 
 
 if __name__ == "__main__":

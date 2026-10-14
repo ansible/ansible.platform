@@ -300,7 +300,7 @@ class Store:
             ("job_templates", ["name"], 5000),
             ("inventories", ["name"], 5100),
             ("projects", ["name"], 5200),
-            ("execution_environments", ["name"], 5300),
+            ("execution_environments", ["name", "image"], 5300),
             ("credentials", ["name"], 5400),
             ("labels", ["name", "organization"], 5500),
             ("instance_groups", ["name"], 5600),
