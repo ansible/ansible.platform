@@ -653,21 +653,13 @@ class PlatformService(BaseAPIClient):
                 if getattr(api_data, field, None) is None and current_value is not None:
                     setattr(api_data, field, current_value)
 
-        # Enforced updates must clear omitted organization and credential
-        # associations after the merge restores values from the current resource.
-        fields_to_null: set = set()
-        if context.include_nulls_for_update:
-            for field in ("organization", "credential"):
-                if field in user_unset_fields and hasattr(api_data, field):
-                    setattr(api_data, field, None)
-                    fields_to_null.add(field)
-
         # After the merge, let the mixin declare which fields must be sent as
         # null to clear server-side values that are incompatible with the new
         # resource state (e.g. role/team when map_type changes to is_superuser).
         # Only fields the user did NOT explicitly provide are eligible — if the
         # user provided an incompatible field the API will reject it with a clear
         # validation error, which is the correct behaviour.
+        fields_to_null: set = set()
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
             candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
             for field in candidate_fields:
