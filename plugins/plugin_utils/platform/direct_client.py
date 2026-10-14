@@ -772,15 +772,6 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
-        while response_data.get("next") and len(all_results) < max_objects:
-            # AAP components may return pagination links as relative paths.
-            # Request.open() requires an absolute URL, so resolve against the gateway.
-            next_url = urljoin(self.base_url, response_data["next"])
-            response = self._make_request("GET", next_url, operation="search", resource=endpoint)
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-            all_results.extend(response_data.get("results", []))
-
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.
