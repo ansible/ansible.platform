@@ -453,25 +453,6 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
-        # Seed Controller inventories
-        inv_store = self._resources.get(("controller", "inventories"))
-        if inv_store and not inv_store._items:
-            inv_store.seed(
-                "2",
-                [
-                    {"id": 5001, "name": "Test Inventory", "description": "Seeded inventory"},
-                ],
-            )
-
-        # Seed settings
-        with self._settings_lock:
-            if not self._settings:
-                self._settings = {
-                    "RUNTIME_FEATURE_FLAGS": "True",
-                    "SESSION_COOKIE_AGE": 1800,
-                    "MAX_PAGE_SIZE": 200,
-                    "REMOTE_HOST_HEADERS": [],
-                }
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
