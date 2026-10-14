@@ -149,6 +149,7 @@
         name: "{{ name_prefix }}-Controller API"
         description: Proxy to the Controller
         api_slug: "{{ (test_id | lower)[:10] }}controller"
+        api_slug: "{{ test_id }}controller"
         http_port: "{{ api_port_id }}"
         service_cluster: "{{ controller_sc.name }}"
         is_service_https: true
