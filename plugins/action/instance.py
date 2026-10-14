@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# (c) 2025, Ansible Platform Collection Contributors
+# (c) 2026, Ansible Platform Collection Contributors
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 from __future__ import absolute_import, division, print_function
 
@@ -16,9 +16,11 @@ class ActionModule(BaseResourceActionPlugin):
     def _detect_operation(self, args: dict) -> str:
         state = args.get("state", "present")
         if state in ("absent", "deleted"):
+            if not args.get("id"):
+                return "delete"
             # Instances cannot be deleted — state=absent means deprovision.
             # Convert to an update that sets node_state=deprovisioning.
             args["node_state"] = "deprovisioning"
             args["state"] = "present"
-            return "update" if args.get("id") else "create"
+            return "update"
         return super()._detect_operation(args)
