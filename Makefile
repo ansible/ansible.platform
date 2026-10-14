@@ -89,7 +89,7 @@ ifneq ($(ANSIBLE_TEST_INTEGRATION_NO_VENV),)
 ANSIBLE_TEST_INTEGRATION_VENV :=
 endif
 CONNECTION_MODE ?= local
-GATEWAY_HOSTNAME ?= https://localhost:8443
+GATEWAY_HOSTNAME ?= https://localhost:8000
 
 _write_integration_config:
 	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
