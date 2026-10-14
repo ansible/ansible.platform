@@ -640,50 +640,12 @@ class DirectHTTPClient(BaseAPIClient):
                     status_code=e.status_code,
                     response_body=e.response_body,
                 ) from e
-        Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
-        current associations, and associates/disassociates to reconcile. Used by Pattern C
-        action plugins for post-CRUD association management.
-        Intended for Pattern C action plugins (custom orchestration run(), see
-        docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
-        what the declarative create/update flow covers.
-        """
-        self._ensure_authenticated()
-        desired_ids = {
-            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
-        }
-
-        # Follow pagination so associations beyond the first page aren't silently
-        # treated as absent (which would re-associate them and skip disassociating
-        # ones that should be removed).
-        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
-        if not assoc_path.startswith("/api/"):
-            assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
-        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
-        current_ids = {item["id"] for item in current_data.get("results", [])}
-        assoc_url = self._build_url(assoc_path, service=service)
-
-        changed = False
-        for rid in desired_ids - current_ids:
-            self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
-            changed = True
-        for rid in current_ids - desired_ids:
-            self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
             changed = True
         return changed
 
     def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
-
-        Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
-        rather than writing bespoke get/compare/post logic per resource. data is None:
-        no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
-        POST only if different.
-
-        Intended for Pattern C action plugins (custom orchestration run(), see
-        docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
-        what the declarative create/update flow covers.
-        Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
         Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
         rather than writing bespoke get/compare/post logic per resource. data is None:
@@ -710,25 +672,12 @@ class DirectHTTPClient(BaseAPIClient):
             except HTTPError as he:
                 # Retain handling for callers that surface Request.open() errors directly.
                 if he.code == 404:
-            except Exception as e:
-                if getattr(e, "code", None) == 404:
-            except HTTPError as he:
-                # Ansible's Request.open() raises HTTPError for 4xx/5xx responses.
-                if he.code == 404:
-            except APIError as e:
-                # _make_request() converts non-401 HTTPErrors to APIError before they
-                # reach the caller, so catch that here rather than HTTPError.
-                if e.status_code == 404:
                     return False
                 raise
             return True
 
         response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
         current = json.loads(response.read())
-        try:
-            current = json.loads(response.read())
-        except Exception:
-            current = {}
         if current == data:
             return False
 
