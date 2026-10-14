@@ -123,14 +123,13 @@ collection-test-all-connections: collection-install
 ## Run a single Molecule scenario (mock tests, no real Gateway needed).
 ## Usage: make molecule-test SCENARIO=role_user_assignment_mock
 ##        make molecule-test SCENARIO=users_mock
-## Runs from inside the scenario directory so molecule finds molecule.yml regardless of version.
 SCENARIO ?= default
 molecule-test:
-	cd extensions/molecule/$(SCENARIO) && molecule test
+	molecule test -s $(SCENARIO)
 
 ## Run all Molecule mock scenarios (starts mock server via default scenario, runs all, tears down).
 molecule-test-all:
-	cd extensions && molecule test --all
+	molecule test --all
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:
