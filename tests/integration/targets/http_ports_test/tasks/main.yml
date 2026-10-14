@@ -201,5 +201,7 @@
       ansible.platform.http_port:
         name: "{{ test_id }}-API-Port"
         state: absent
+      register: delete_duplicate_api_port
+      failed_when: delete_duplicate_api_port is failed and '403' not in delete_duplicate_api_port.msg | default('')
       when: duplicate_api_port_result is defined and duplicate_api_port_result is not failed
 ...
