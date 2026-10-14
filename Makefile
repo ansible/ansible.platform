@@ -130,7 +130,13 @@ molecule-test:
 
 ## Run all Molecule mock scenarios (starts mock server via default scenario, runs all, tears down).
 molecule-test-all:
-	cd extensions && molecule test --all
+	@set -e; \
+	cd extensions; \
+	molecule create -s default; \
+	trap 'molecule destroy -s default' EXIT; \
+	for scenario in molecule/*_mock; do \
+		molecule test -s "$${scenario#molecule/}"; \
+	done
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:
