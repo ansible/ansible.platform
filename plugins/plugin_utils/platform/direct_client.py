@@ -711,10 +711,6 @@ class DirectHTTPClient(BaseAPIClient):
         copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
         return json.loads(response.read())
-        try:
-            return json.loads(response.read())
-        except Exception:
-            return {}
 
     def _get_json(self, url: str, operation: str = "http_request", resource: str = "unknown") -> dict:
         """GET a URL via _make_request and return parsed JSON."""
