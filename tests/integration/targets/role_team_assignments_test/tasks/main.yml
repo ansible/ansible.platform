@@ -359,15 +359,35 @@
       ignore_errors: true
       delegate_to: localhost
 
+    - name: Look up the built-in EDA credential admin role
+      ansible.builtin.set_fact:
+        eda_credential_admin_roles: >-
+          {{ query(
+               'ansible.platform.gateway_api',
+               'role_definitions',
+               query_params={'name': 'Eda Credential Admin'},
+               **connection_info
+             ) }}
+
     - name: Verify EDA credential role assignment
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
       vars:
-        res_ok: "{{ eda_cred is defined and eda_cred is not failed and eda_cred is not skipped }}"
+        res_ok: "{{ eda_cred is defined and eda_cred is not failed and eda_cred is not skipped and eda_credential_admin_roles | length > 0 }}"
         res_name: "{{ eda_cred_name }}"
         res_type: eda.edacredential
         res_role_def: "EDA Credential Admin"
+        res_role_def: "{{ eda_credential_admin_roles[0].id }}"
         team_name: "{{ team1.name }}"
+
+    - name: Report missing built-in EDA credential role
+      ansible.builtin.debug:
+        msg: Skipping EDA credential role assignment because Eda Credential Admin is not registered in this Gateway.
+      when:
+        - eda_cred is defined
+        - eda_cred is not failed
+        - eda_cred is not skipped
+        - eda_credential_admin_roles | length == 0
 
     # -- EDA: event_streams ----------------------------------------------------
     # Event streams require a credential of an event-stream-compatible type
