@@ -748,11 +748,8 @@ class DirectHTTPClient(BaseAPIClient):
 
         # GET to check if the resource can be canceled
         response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
-        try:
-            response_body = response.read()
-            cancel_info = json.loads(response_body) if response_body else {}
-        except Exception:
-            cancel_info = {}
+        response_body = response.read()
+        cancel_info = json.loads(response_body) if response_body else {}
 
         if not cancel_info.get("can_cancel", False):
             if fail_if_not_running:
