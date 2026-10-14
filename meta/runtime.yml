@@ -26,6 +26,5 @@ action_groups:
     - user
   controller:
     - job_template
-    - controller_subscriptions
     - subscriptions
 ...

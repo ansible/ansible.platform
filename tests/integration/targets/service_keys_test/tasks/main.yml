@@ -27,10 +27,11 @@
            **connection_info
          ) }}
 
-- name: Skip service key edit tests when the fixture is unavailable
-  ansible.builtin.debug:
-    msg: "Skipping service key edit tests because {{ test_service_key_name }} is not provisioned."
-  when: fixture_service_keys | length == 0
+- name: Assert service key fixture is available
+  ansible.builtin.assert:
+    that:
+      - fixture_service_keys | length > 0
+    fail_msg: "Required service key fixture {{ test_service_key_name }} is not provisioned."
 
 - name: Save the fixture service key's initial active state
   ansible.builtin.set_fact:
