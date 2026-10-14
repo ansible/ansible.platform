@@ -18,7 +18,6 @@
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
-      failed_when: false
       vars:
         ansible_connection: local
 
@@ -45,7 +44,6 @@
         identifier: "molecule-test-node-direct"
         workflow_job_template: "1"
         state: absent
-      failed_when: false
 
     - name: Remove manager survive flag
       ansible.builtin.file:
@@ -70,7 +68,6 @@
         identifier: "molecule-test-node-persistent"
         workflow_job_template: "1"
         state: absent
-      failed_when: false
 
     - name: Remove manager survive flag
       ansible.builtin.file:

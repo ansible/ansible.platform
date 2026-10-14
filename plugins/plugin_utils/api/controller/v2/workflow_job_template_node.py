@@ -124,6 +124,14 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         return "identifier"
 
     @classmethod
+    def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
+        """Scope node lookups to the workflow when it is provided."""
+        workflow_job_template = getattr(ansible_data, "workflow_job_template", None)
+        if workflow_job_template is not None:
+            return {"workflow_job_template": workflow_job_template}
+        return {}
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
