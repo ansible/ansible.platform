@@ -51,6 +51,11 @@
                **connection_info
              ) }}
 
+    - name: Save the fixture service key's initial active state
+      ansible.builtin.set_fact:
+        fixture_service_key_initial_is_active: "{{ fixture_service_keys[0].is_active }}"
+      when: fixture_service_keys | length > 0
+
     - name: Explain why service key edit tests are skipped
       ansible.builtin.debug:
         msg: >-
@@ -175,4 +180,9 @@
         that:
           - deleted_service_key is changed
       when: fixture_service_keys | length > 0
+    - name: Restore the fixture service key's initial active state
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: "{{ fixture_service_key_initial_is_active }}"
+      when: fixture_service_key_initial_is_active is defined
 ...

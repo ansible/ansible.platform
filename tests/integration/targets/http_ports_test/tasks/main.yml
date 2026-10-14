@@ -211,17 +211,20 @@
           - unset_api_port_result is failed
     - name: Try to make it not an API port
       ansible.platform.http_port:
-        name: "{{ api_http_port_id }}"
+        name: "{{ http_port5.id }}"
         is_api_port: false
       ignore_errors: true
       register: http_port5_not_api_result
+      when: existing_http_api_port | length == 0
 
     - name: API Port assertions
       ansible.builtin.assert:
         that:
-          - http_port5 is changed or http_port5 is skipped
+          - http_port5 is changed
           - http_port5_remove_result is failed
           - http_port5_not_api_result is failed
+          - http_port5.id is defined
+      when: existing_http_api_port | length == 0
 
   always:
     - name: Delete http ports

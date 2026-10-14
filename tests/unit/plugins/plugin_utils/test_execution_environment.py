@@ -204,6 +204,27 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
         service._execute_operations(self._operation(), self._api_data(self._context(False)), self._context(False), required_for="update")
         self.assertEqual(service.session.request.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
 
+    def _update_payload(self, enforced):
+        service = self._platform_service()
+        service._find_resource = MagicMock(return_value={"id": 12, "name": "ee", "image": "quay.io/example/ee", "organization": 5, "credential": 9})
+        desired = AnsibleExecutionEnvironment(name="ee", image="quay.io/example/ee", id=12)
+
+        service._update_resource(desired, ExecutionEnvironmentTransformMixin_v2, self._context(enforced))
+
+        return service.session.request.call_args.kwargs["json"]
+
+    def test_platform_service_enforced_update_clears_omitted_associations_after_merge(self):
+        self.assertEqual(
+            self._update_payload(enforced=True),
+            {"name": "ee", "image": "quay.io/example/ee", "description": "", "organization": None, "credential": None},
+        )
+
+    def test_platform_service_partial_update_preserves_associations_after_merge(self):
+        self.assertEqual(
+            self._update_payload(enforced=False),
+            {"name": "ee", "image": "quay.io/example/ee", "organization": 5, "credential": 9},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
