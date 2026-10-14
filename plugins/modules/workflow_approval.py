@@ -85,6 +85,7 @@ EXAMPLES = """
     interval: 5
     timeout: 30
     action: deny
+...
 """
 
 RETURN = """

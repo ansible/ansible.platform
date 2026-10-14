@@ -19,6 +19,9 @@ from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+WORKFLOW_JOBS_PATH = "/api/controller/v2/workflow_jobs"
+WORKFLOW_APPROVALS_PATH = "/api/controller/v2/workflow_approvals"
+
 
 @dataclass
 class APIWorkflowApproval_v2(BaseTransformMixin):
