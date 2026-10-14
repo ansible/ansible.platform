@@ -27,5 +27,4 @@ action_groups:
   controller:
     - job_template
     - notification_template
-    - controller_credential
 ...
