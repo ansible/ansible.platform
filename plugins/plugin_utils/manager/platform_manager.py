@@ -1354,8 +1354,7 @@ class PlatformService(BaseAPIClient):
         )
 
         # GET to check if the resource can be canceled
-        response = self.session.get(cancel_url, timeout=self.request_timeout, verify=self.requests_verify)
-        response.raise_for_status()
+        response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
         cancel_info = response.json()
 
         if not cancel_info.get("can_cancel", False):
@@ -1364,7 +1363,14 @@ class PlatformService(BaseAPIClient):
             return {"changed": False, "id": resource_id, "status": "already_completed"}
 
         # POST to cancel
-        response = self.session.post(cancel_url, json={}, timeout=self.request_timeout, verify=self.requests_verify)
+        response = self._make_request(
+            "POST",
+            cancel_url,
+            operation="cancel_resource",
+            resource=cancel_endpoint_path,
+            retry_config=RetryConfig(max_attempts=1),
+            json={},
+        )
         if response.status_code not in (200, 202):
             response.raise_for_status()
 
