@@ -14,8 +14,8 @@
   module_defaults:
     group/ansible.platform.controller:
       gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
+      gateway_username: "{{ gateway_username | default(omit, true) }}"
+      gateway_password: "{{ gateway_password | default(omit, true) }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
