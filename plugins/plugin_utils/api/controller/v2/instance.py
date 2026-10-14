@@ -137,7 +137,7 @@ class InstanceTransformMixin_v2(BaseTransformMixin):
             try:
                 cap_adj = float(cap_adj)
             except (ValueError, TypeError):
-                pass
+                logging.getLogger(__name__).warning("capacity_adjustment value %r could not be converted to float", cap_adj)
 
         return AnsibleInstance(
             hostname=api_data.get("hostname", ""),
