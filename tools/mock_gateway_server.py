@@ -281,17 +281,12 @@ class Store:
             ("notification_templates", 5700),
         )
         for endpoint, start_id in controller_resources:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("execution_environments", ["name", "image"], 5500),
-        ]
-        for endpoint, required, start_id in controller_defs:
+            required_fields = ["name", "image"] if endpoint == "execution_environments" else ["name"]
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint,
-                required_fields=required,
+                required_fields=required_fields,
                 start_id=start_id,
+                service="controller",
             )
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
