@@ -26,6 +26,10 @@ from ansible_collections.ansible.platform.plugins.action.base_action import (
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_approval import (
     AnsibleWorkflowApproval,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_approval import (
+    WORKFLOW_APPROVALS_PATH,
+    WORKFLOW_JOBS_PATH,
+)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -71,7 +75,7 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 1.0)
 
             # ---- poll for the approval node ---------------------------------
-            nodes_endpoint = "/api/controller/v2/workflow_jobs/%d/workflow_nodes/" % workflow_job_id
+            nodes_endpoint = "%s/%d/workflow_nodes/" % (WORKFLOW_JOBS_PATH, workflow_job_id)
 
             approval_node = None
             start_time = time.time()
@@ -113,7 +117,7 @@ class ActionModule(BaseResourceActionPlugin):
                 # Fallback: build URL from summary_fields job id
                 job_id = approval_node.get("summary_fields", {}).get("job", {}).get("id")
                 if job_id:
-                    related_job = "/api/controller/v2/workflow_approvals/%d/" % job_id
+                    related_job = "%s/%d/" % (WORKFLOW_APPROVALS_PATH, job_id)
                 else:
                     result["failed"] = True
                     result["changed"] = False

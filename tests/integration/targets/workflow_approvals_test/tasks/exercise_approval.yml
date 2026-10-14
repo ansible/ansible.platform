@@ -85,7 +85,9 @@
 
     - name: Read resolved workflow approval node
       ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{ launched_workflow.json.id }}/workflow_nodes/?job__name={{ approval_node_name }}"
+        url: >-
+          {{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{
+          launched_workflow.json.id }}/workflow_nodes/?job__name={{ approval_node_name }}
         method: GET
         user: "{{ gateway_username }}"
         password: "{{ gateway_password }}"
