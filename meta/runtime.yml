@@ -35,5 +35,4 @@ action_groups:
     - job_list
     - group
     - notification_template
-    - controller_credential
 ...
