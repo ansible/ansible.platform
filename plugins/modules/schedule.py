@@ -107,7 +107,7 @@ schedule:
       type: str
     unified_job_template:
       description: Unified job template ID.
-      type: int
+      type: str
     enabled:
       description: Whether the schedule is enabled.
       type: bool
