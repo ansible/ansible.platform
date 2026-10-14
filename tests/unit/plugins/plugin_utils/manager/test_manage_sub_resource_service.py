@@ -31,9 +31,7 @@ class TestManageSubResourceService(unittest.TestCase):
         result = service.manage_sub_resource("job_templates", 42, "survey_spec", {}, service="controller")
 
         self.assertTrue(result)
-        service.session.delete.assert_called_once_with(
-            "https://gateway.example.com/api/controller/v2/job_templates/42/survey_spec/", timeout=30, verify=True
-        )
+        service.session.delete.assert_called_once_with("https://gateway.example.com/api/controller/v2/job_templates/42/survey_spec/", timeout=30, verify=True)
 
     def test_direct_client_routes_relative_path_to_requested_service(self):
         client = DirectHTTPClient.__new__(DirectHTTPClient)
