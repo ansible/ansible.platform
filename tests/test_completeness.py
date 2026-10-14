@@ -33,7 +33,7 @@ conditional_endpoint_modules = {
 }
 
 # Add modules with endpoints that are not at /api/v2
-extra_endpoints = {}
+extra_endpoints = {"labels": "/api/controller/v2/labels/"}
 
 # Global module parameters we can ignore
 ignore_module_parameters = ["state", "new_name", "new_organization", "new_authenticator", "update_secrets", "copy_from", "assignment_objects"]
