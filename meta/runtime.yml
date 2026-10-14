@@ -56,6 +56,5 @@ action_groups:
     - bulk_host_delete
     - ad_hoc_command_wait
     - ad_hoc_command
-    - controller_job_cancel
     - job_cancel
 ...
