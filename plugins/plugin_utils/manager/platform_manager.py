@@ -848,7 +848,8 @@ class PlatformService(BaseAPIClient):
         Returns:
             Found resource as dict (Ansible format)
         """
-        operations = mixin_class.get_endpoint_operations()
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
@@ -1225,52 +1226,12 @@ class PlatformService(BaseAPIClient):
                 response.raise_for_status()
             except _get_requests().exceptions.HTTPError as e:
                 raise ValueError(f"Failed to disassociate {association_field} ID {rid}: {e}") from e
-        Resolves names/IDs in desired_items via lookup_resource_id(), diffs against the
-        current associations, and associates/disassociates to reconcile. Used by Pattern C
-        action plugins for post-CRUD association management.
-        Intended for Pattern C action plugins (custom orchestration run(), see
-        docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
-        what the declarative create/update flow covers.
-        """
-        self.record_activity()
-        desired_ids = {
-            int(item) if str(item).isdigit() else self.lookup_resource_id(lookup_endpoint, lookup_field, item, service=service) for item in desired_items
-        }
-
-        # Follow pagination so associations beyond the first page aren't silently
-        # treated as absent (which would re-associate them and skip disassociating
-        # ones that should be removed).
-        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
-        if not assoc_path.startswith("/api/"):
-            assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
-        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
-        current_ids = {item["id"] for item in current_data.get("results", [])}
-        assoc_url = self._build_url(assoc_path, service=service)
-
-        changed = False
-        for rid in desired_ids - current_ids:
-            response = self.session.post(assoc_url, json={"id": rid, "associate": True}, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
-            changed = True
-        for rid in current_ids - desired_ids:
-            response = self.session.post(assoc_url, json={"id": rid, "disassociate": True}, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
-
-        Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
-        rather than writing bespoke get/compare/post logic per resource. data is None:
-        no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
-        POST only if different.
-
-        Intended for Pattern C action plugins (custom orchestration run(), see
-        docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
-        what the declarative create/update flow covers.
-        Manage a secondary sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
         Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
         rather than writing bespoke get/compare/post logic per resource. data is None:
@@ -1284,7 +1245,7 @@ class PlatformService(BaseAPIClient):
         if data is None:
             return False
         self.record_activity()
-        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/", service=service)
 
         if data == {}:
             response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
