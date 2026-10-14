@@ -180,6 +180,25 @@
         is_api_port: true
       ignore_errors: true
       register: duplicate_api_port_result
+    - name: Look up existing API http ports
+      ansible.builtin.set_fact:
+        existing_api_http_ports: >-
+          {{ query(
+               'ansible.platform.gateway_api',
+               'http_ports',
+               query_params={'is_api_port': true},
+               **connection_info
+             ) }}
+
+    - name: Add API http port when none exists
+      ansible.platform.http_port:
+        name: "{{ test_id }}-Port-44301"
+        number: 44301
+        use_https: true
+        is_api_port: true
+        state: present
+      register: http_port5
+      when: existing_api_http_ports | length == 0
 
     - name: Assert creating a duplicate API port fails
       ansible.builtin.assert:
@@ -209,6 +228,32 @@
       ansible.builtin.assert:
         that:
           - unset_api_port_result is failed
+        name: "{{ test_id }}-Port-44301"
+        state: absent
+      ignore_errors: true
+      register: http_port5_remove_result
+      when: existing_api_http_ports | length == 0
+
+    - name: Try to make it not an API port
+      ansible.platform.http_port:
+        name: "{{ test_id }}-Port-44301"
+        is_api_port: false
+      ignore_errors: true
+      register: http_port5_not_api_result
+      when: existing_api_http_ports | length == 0
+
+    - name: API Port assertions
+      ansible.builtin.assert:
+        that:
+          - http_port5 is changed
+          - http_port5_remove_result is failed
+          - http_port5_not_api_result is failed
+      when: existing_api_http_ports | length == 0
+
+    - name: Skip API port creation checks when an API port already exists
+      ansible.builtin.debug:
+        msg: "An API HTTP port already exists; skipping creation-specific checks."
+      when: existing_api_http_ports | length > 0
 
   always:
     - name: Delete http ports

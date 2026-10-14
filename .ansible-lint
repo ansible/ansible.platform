@@ -10,6 +10,7 @@ exclude_paths:
   - 'extensions/molecule/job_template_mock/inventory.yml'
   - 'extensions/molecule/users_mock/inventory.yml'
 <<<<<<< HEAD
+<<<<<<< HEAD
   - 'extensions/molecule/controller_credential_type_mock/inventory.yml'
   - 'extensions/molecule/credential_input_source_mock/inventory.yml'
   - 'extensions/molecule/group_mock/inventory.yml'
@@ -32,6 +33,9 @@ exclude_paths:
   - extensions/molecule/organization_mock/inventory.yml
   - extensions/molecule/users_mock/inventory.yml
   - extensions/molecule/schedule_mock/inventory.yml
+=======
+  - 'extensions/molecule/schedule_mock/inventory.yml'
+>>>>>>> fc94599 (Fix schedule branch lint and integration checks)
 profile: production
 >>>>>>> 6d40f2e ([AAP-95846] Migrate credential module from awx_collection as controller_credential)
 use_default_rules: true
