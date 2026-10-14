@@ -132,11 +132,15 @@ molecule-test:
 molecule-test-all:
 	@set -e; \
 	cd extensions; \
-	molecule create -s default; \
 	trap 'molecule destroy -s default' EXIT; \
+	molecule create -s default; \
+	failed=0; \
 	for scenario in molecule/*_mock; do \
-		molecule test -s "$${scenario#molecule/}"; \
-	done
+		if ! molecule test -s "$${scenario#molecule/}"; then \
+			failed=1; \
+		fi; \
+	done; \
+	exit "$$failed"
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:
