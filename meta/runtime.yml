@@ -26,6 +26,7 @@ action_groups:
     - user
   controller:
     - job_template
+<<<<<<< HEAD
     - controller_credential_type
     - credential_input_source
     - execution_environment
@@ -37,5 +38,7 @@ action_groups:
     - group
     - inventory
     - job_wait
+=======
+>>>>>>> 4a800c5 (shorten name)
     - controller_project
 ...
