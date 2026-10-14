@@ -103,6 +103,21 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
     def test_lookup_field_is_identifier(self):
         self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_lookup_field(), "identifier")
 
+    def test_find_list_query_params_scope_to_workflow_when_present(self):
+        ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="42")
+        api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, {"operation": "find"})
+
+        self.assertEqual(
+            WorkflowJobTemplateNodeTransformMixin_v2.get_find_list_query_params(api),
+            {"workflow_job_template": 42},
+        )
+
+    def test_find_list_query_params_are_empty_without_workflow(self):
+        ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template=None)
+        api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, {"operation": "find"})
+
+        self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_find_list_query_params(api), {})
+
     def test_id_passthrough_for_update(self):
         ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="1", id=99)
         api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
