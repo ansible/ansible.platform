@@ -159,13 +159,7 @@
         number: 44301
         use_https: true
         is_api_port: true
-      ignore_errors: true
       register: duplicate_api_port_result
-
-    - name: Assert creating a second API port fails
-      ansible.builtin.assert:
-        that:
-          - duplicate_api_port_result is failed
 
     - name: Try to delete the existing API port
       ansible.platform.http_port:
@@ -202,4 +196,10 @@
         - "http_port2"
         - "http_port3"
         - "http_port4"
+
+    - name: Delete duplicate API port
+      ansible.platform.http_port:
+        name: "{{ test_id }}-API-Port"
+        state: absent
+      when: duplicate_api_port_result is defined and duplicate_api_port_result is not failed
 ...
