@@ -34,5 +34,7 @@ action_groups:
     - inventory_source
     - job_list
     - group
+    - job_wait
+    - controller_project
     - controller_project
 ...
