@@ -4,9 +4,15 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Compute unique port numbers from test_id
+- name: Look up an existing API HTTP port
   ansible.builtin.set_fact:
-    _port_base: "{{ range(10000, 50000) | random(seed=test_id) }}"
+    existing_http_api_ports: >-
+      {{ query(
+           'ansible.platform.gateway_api',
+           'http_ports',
+           query_params={'is_api_port': true},
+           **connection_info
+         ) }}
 
 - name: Run Test
   module_defaults:
@@ -19,26 +25,26 @@
   block:
     - name: Create http port 1 with check mode
       ansible.platform.http_port:
-        name: "{{ test_id }}-Port-{{ _port_base | int + 1 }}"
-        number: "{{ _port_base | int + 1 }}"
+        name: "{{ test_id }}-Port-65531"
+        number: 65531
         use_https: false
       check_mode: true
 
     - name: Search for http port 1
       ansible.builtin.set_fact:
         item_that_should_not_exist: "{{ lookup('ansible.platform.gateway_api', 'http_ports',
-          query_params={'name': test_id ~ '-Port-' ~ (_port_base | int + 1) | string}, **connection_info) }}"
+          query_params={'name': '{{ test_id }}-Port-65531'}, **connection_info) }}"
 
     - name: Assert that http port 1 does not exist
       ansible.builtin.assert:
         that:
           - item_that_should_not_exist is not defined or item_that_should_not_exist | length == 0
-        fail_msg: "http port '{{ test_id }}-Port-{{ _port_base | int + 1 }}' exists in the system!"
+        fail_msg: "http port '{{ test_id }}-Port-65531' exists in the system!"
 
     - name: Create http port 1
       ansible.platform.http_port:
-        name: "{{ test_id }}-Port-{{ _port_base | int }}"
-        number: "{{ _port_base | int }}"
+        name: "{{ test_id }}-Port-65530"
+        number: 65530
         use_https: false
       register: http_port1
 
@@ -49,8 +55,8 @@
 
     - name: Recreate http port 1
       ansible.platform.http_port:
-        name: "{{ test_id }}-Port-{{ _port_base | int }}"
-        number: "{{ _port_base | int }}"
+        name: "{{ test_id }}-Port-65530"
+        number: 65530
         use_https: false
       register: recreate_http_port1
 
@@ -61,8 +67,8 @@
 
     - name: Create http port 2
       ansible.platform.http_port:
-        name: "{{ test_id }}-Port-{{ _port_base | int + 1 }}"
-        number: "{{ _port_base | int + 1 }}"
+        name: "{{ test_id }}-Port-65531"
+        number: 65531
         state: present
       register: http_port2
 
@@ -73,8 +79,8 @@
 
     - name: Create http port 3
       ansible.platform.http_port:
-        name: "{{ test_id }}-Port-{{ _port_base | int + 2 }}"
-        number: "{{ _port_base | int + 2 }}"
+        name: "{{ test_id }}-Port-65532"
+        number: 65532
         use_https: true
       register: http_port3
 
@@ -85,8 +91,8 @@
 
     - name: Create http port 4
       ansible.platform.http_port:
-        name: "{{ test_id }}-Port-{{ _port_base | int + 3 }}"
-        number: "{{ _port_base | int + 3 }}"
+        name: "{{ test_id }}-Port-65533"
+        number: 65533
       register: http_port4
 
     - name: Validate we created the port
@@ -160,7 +166,7 @@
     - name: Create an API port if none exists
       ansible.platform.http_port:
         name: "{{ test_id }}-API-Port-Initial"
-        number: "{{ _port_base | int + 4 }}"
+        number: 44300
         use_https: true
         is_api_port: true
       register: initial_api_port
@@ -175,11 +181,18 @@
     - name: Try to create a duplicate API port
       ansible.platform.http_port:
         name: "{{ test_id }}-API-Port"
-        number: "{{ _port_base | int + 5 }}"
+        number: 44301
         use_https: true
         is_api_port: true
       ignore_errors: true
       register: duplicate_api_port_result
+        name: "{{ test_id }}-Port-44301"
+        number: 44301
+        use_https: true
+        is_api_port: true
+        state: present
+      register: http_port5
+      when: existing_http_api_ports | length == 0
 
     - name: Assert creating a duplicate API port fails
       ansible.builtin.assert:
@@ -209,6 +222,27 @@
       ansible.builtin.assert:
         that:
           - unset_api_port_result is failed
+        name: "{{ http_port5.id }}"
+        state: absent
+      ignore_errors: true
+      register: http_port5_remove_result
+      when: http_port5 is not skipped
+
+    - name: Try to make it not an API port
+      ansible.platform.http_port:
+        name: "{{ http_port5.id }}"
+        is_api_port: false
+      ignore_errors: true
+      register: http_port5_not_api_result
+      when: http_port5 is not skipped
+
+    - name: API Port assertions
+      ansible.builtin.assert:
+        that:
+          - http_port5 is changed
+          - http_port5_remove_result is failed
+          - http_port5_not_api_result is failed
+      when: existing_http_api_ports | length == 0
 
   always:
     - name: Delete http ports
