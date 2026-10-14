@@ -127,6 +127,23 @@ class TestInventoryTransform(unittest.TestCase):
         self.assertIsNone(ansible.kind)
         self.assertIsNone(ansible.id)
 
+    def test_from_api_resolves_organization_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_organization_names.return_value = ["Default"]
+
+        ansible = InventoryTransformMixin_v2.from_api({"name": "Production", "organization": 5}, {"manager": mock_manager})
+
+        mock_manager.lookup_organization_names.assert_called_once_with([5])
+        self.assertEqual(ansible.organization, "Default")
+
+    def test_from_api_preserves_missing_organization_as_empty_string(self):
+        mock_manager = MagicMock()
+
+        ansible = InventoryTransformMixin_v2.from_api({"name": "bare"}, {"manager": mock_manager})
+
+        mock_manager.lookup_organization_names.assert_not_called()
+        self.assertEqual(ansible.organization, "")
+
     def test_endpoint_operations_use_controller_paths(self):
         ops = InventoryTransformMixin_v2.get_endpoint_operations()
         for op_name, op in ops.items():

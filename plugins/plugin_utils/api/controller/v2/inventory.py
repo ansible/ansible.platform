@@ -143,12 +143,22 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
     ):
         from ....ansible_models.inventory import AnsibleInventory
 
-        organization_val = api_data.get("organization")
-        organization_str = str(organization_val) if organization_val is not None else ""
+        organization_id = api_data.get("organization")
+        if isinstance(organization_id, dict):
+            organization_id = organization_id.get("id")
+        organization = str(organization_id) if organization_id is not None else ""
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        if manager and organization_id is not None:
+            try:
+                names = manager.lookup_organization_names([organization_id])
+                if names:
+                    organization = names[0]
+            except Exception:
+                pass
 
         return AnsibleInventory(
             name=api_data.get("name", ""),
-            organization=organization_str,
+            organization=organization,
             description=api_data.get("description"),
             kind=api_data.get("kind"),
             host_filter=api_data.get("host_filter"),

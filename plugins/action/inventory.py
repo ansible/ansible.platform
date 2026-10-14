@@ -12,3 +12,17 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.in
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "inventory"
     MODEL_CLASS = AnsibleInventory
+
+    def _resolve_lookup(self, resource, resource_data, validated_params):
+        """Normalize numeric organization IDs to names for state comparison.
+
+        The API reverse transform exposes the organization name so name-based
+        task input compares idempotently. Resolve numeric task input to that
+        same name before the lookup and write operations.
+        """
+        organization = getattr(resource, "organization", None)
+        if organization is not None and str(organization).strip().isdigit():
+            names = self._client.lookup_organization_names([int(organization)])
+            if names:
+                resource.organization = names[0]
+                resource_data["organization"] = names[0]
