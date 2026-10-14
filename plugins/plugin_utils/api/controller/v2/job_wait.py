@@ -14,11 +14,11 @@ from typing import Any, Dict, Optional, Union
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
-JOB_TYPE_ENDPOINT_MAP = {
-    "jobs": "/api/controller/v2/jobs/{id}/",
-    "project_updates": "/api/controller/v2/project_updates/{id}/",
-    "inventory_updates": "/api/controller/v2/inventory_updates/{id}/",
-    "workflow_jobs": "/api/controller/v2/workflow_jobs/{id}/",
+JOB_TYPE_RESOURCE_MAP = {
+    "jobs": "jobs",
+    "project_updates": "project_updates",
+    "inventory_updates": "inventory_updates",
+    "workflow_jobs": "workflow_jobs",
 }
 
 
@@ -42,8 +42,8 @@ class APIJobWait_v2(BaseTransformMixin):
 class JobWaitTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for JobWait API v2.
 
-    This is a non-CRUD module so the transform mixin is minimal.
-    The action plugin handles all logic via search_api() directly.
+    This is a non-CRUD module so the transform mixin is minimal. It selects
+    the job resource endpoint for find operations based on the requested type.
     """
 
     @classmethod
@@ -64,7 +64,7 @@ class JobWaitTransformMixin_v2(BaseTransformMixin):
         """Endpoint operations (minimal for non-CRUD module)."""
         return {
             "get": EndpointOperation(
-                path=JOB_TYPE_ENDPOINT_MAP["jobs"],
+                path="/jobs/{id}/",
                 method="GET",
                 fields=[],
                 path_params=["id"],
@@ -72,6 +72,30 @@ class JobWaitTransformMixin_v2(BaseTransformMixin):
                 order=1,
             ),
         }
+
+    @classmethod
+    def get_find_endpoint_operations(cls, ansible_data) -> Dict[str, EndpointOperation]:
+        """Return the detail endpoint for the requested job type."""
+        job_type = getattr(ansible_data, "job_type", "jobs")
+        resource = JOB_TYPE_RESOURCE_MAP.get(job_type)
+        if resource is None:
+            raise ValueError("Unsupported job_type '%s'" % job_type)
+
+        return {
+            "get": EndpointOperation(
+                path="/%s/{id}/" % resource,
+                method="GET",
+                fields=[],
+                path_params=["id"],
+                required_for="find",
+                order=1,
+            ),
+        }
+
+    @classmethod
+    def resolve(cls, ansible_instance, context: TransformContext) -> Dict[str, Any]:
+        """Resolve the requested job through the SDK's standard find flow."""
+        return context.manager._find_resource(ansible_instance, cls, context)
 
     @classmethod
     def get_lookup_field(cls) -> str:
