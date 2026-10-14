@@ -271,27 +271,21 @@ class Store:
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
         controller_resources = (
-            ("job_templates", 5000),
-            ("inventories", 5100),
-            ("projects", 5200),
-            ("execution_environments", 5300),
-            ("credentials", 5400),
-            ("labels", 5500),
-            ("instance_groups", 5600),
-            ("notification_templates", 5700),
+            ("job_templates", ["name"], 5000),
+            ("inventories", ["name", "organization"], 5100),
+            ("projects", ["name"], 5200),
+            ("execution_environments", ["name"], 5300),
+            ("credentials", ["name"], 5400),
+            ("labels", ["name"], 5500),
+            ("instance_groups", ["name"], 5600),
+            ("notification_templates", ["name"], 5700),
         )
-        for endpoint, start_id in controller_resources:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("inventories", ["name", "organization"], 5000),
-        ]
-        for endpoint, required, start_id in controller_defs:
+        for endpoint, required_fields, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint,
-                required_fields=required,
+                required_fields=required_fields,
                 start_id=start_id,
+                service="controller",
             )
         # Controller resources
         controller_defs: List[tuple] = [
