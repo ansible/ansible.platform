@@ -283,16 +283,10 @@ class Store:
         for endpoint, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("workflow_job_templates", ["name"], 6000),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
             )
+        self._resources[("controller", "workflow_job_templates")] = GenericResource(
+            resource_name="workflow_job_templates", required_fields=["name"], start_id=6000, service="controller"
+        )
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
         return self._resources.get((service, name))
