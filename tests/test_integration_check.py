@@ -6,7 +6,11 @@ from sys import exit
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 # CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
 modules_without_live_integration = {}
+<<<<<<< HEAD
 module_test_name_overrides = {"label": "label_test"}
+=======
+module_test_name_overrides = {"execution_environment": "execution_environment_test"}
+>>>>>>> 574d781 (naming conflict)
 tests_to_ignore = [
     "lookup_test",
     "setup_gateway",
@@ -38,8 +42,14 @@ for plugin in plugins:
     if test_name is None:
         if plugin[-1] != "s":
             plugin = f"{plugin}s"
+<<<<<<< HEAD
         # If we ever have a resource like inventory, update this to account for `ies`.
         test_name = f"{plugin}_test"
+=======
+        test_name = f"{plugin}_test"
+    # If we every have something like inventory we will need to update this for `ies``.
+
+>>>>>>> 574d781 (naming conflict)
     if test_name not in tests:
         missing_tests.append(plugin)
     else:
