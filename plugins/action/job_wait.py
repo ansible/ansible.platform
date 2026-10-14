@@ -9,9 +9,6 @@ Action plugin for ansible.platform.job_wait module.
 
 Polls a Controller job (or project_update, inventory_update, workflow_job)
 until it reaches a finished state, then reports success or failure.
-
-This is a non-CRUD action plugin: it overrides run() and uses
-manager.search_api() directly instead of manager.execute().
 """
 
 from __future__ import absolute_import, division, print_function
@@ -21,7 +18,7 @@ __metaclass__ = type
 import time
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_wait import JOB_TYPE_ENDPOINT_MAP
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_wait import JOB_TYPE_RESOURCE_MAP
 
 # Job statuses that indicate the job has completed
 _FINISHED_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
@@ -66,19 +63,21 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 2)
 
             # Validate job_type
-            if job_type not in JOB_TYPE_ENDPOINT_MAP:
+            if job_type not in JOB_TYPE_RESOURCE_MAP:
                 result["failed"] = True
                 result["msg"] = "Invalid job_type '%s'. Must be one of: %s" % (
                     job_type,
-                    ", ".join(sorted(JOB_TYPE_ENDPOINT_MAP.keys())),
+                    ", ".join(sorted(JOB_TYPE_RESOURCE_MAP.keys())),
                 )
                 return result
 
-            endpoint = JOB_TYPE_ENDPOINT_MAP[job_type].format(id=job_id)
-
             # First, verify the job exists
             try:
-                job_data = manager.search_api(endpoint)
+                job_data = manager.execute(
+                    operation="resolve",
+                    module_name=self.MODULE_NAME,
+                    ansible_data={"job_id": job_id, "job_type": job_type},
+                )
             except Exception as e:
                 error_msg = str(e)
                 if "404" in error_msg or "not found" in error_msg.lower():
@@ -137,13 +136,28 @@ class ActionModule(BaseResourceActionPlugin):
                         result["status"] = status
                         result["msg"] = "Monitoring of %s %s aborted due to timeout." % (job_type.rstrip("s"), job_id)
                         return result
+                    sleep_interval = min(interval, timeout - elapsed_wait)
+                else:
+                    sleep_interval = interval
 
                 # Wait before polling again
-                time.sleep(interval)
+                time.sleep(sleep_interval)
+
+                # Do not make another API request once the timeout has expired.
+                if timeout is not None and time.monotonic() - start_time >= timeout:
+                    result["failed"] = True
+                    result["id"] = job_data.get("id")
+                    result["status"] = status
+                    result["msg"] = "Monitoring of %s %s aborted due to timeout." % (job_type.rstrip("s"), job_id)
+                    return result
 
                 # Poll for updated job data
                 try:
-                    job_data = manager.search_api(endpoint)
+                    job_data = manager.execute(
+                        operation="resolve",
+                        module_name=self.MODULE_NAME,
+                        ansible_data={"job_id": job_id, "job_type": job_type},
+                    )
                 except Exception as e:
                     result["failed"] = True
                     result["msg"] = "Failed to poll %s %s: %s" % (

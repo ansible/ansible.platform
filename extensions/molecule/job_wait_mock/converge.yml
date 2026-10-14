@@ -1,0 +1,102 @@
+---
+- name: Prepare job_wait mock scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Wait for mock Gateway
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+    - name: Ensure persistent manager marker directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0700"
+
+    - name: Keep the persistent manager alive across Molecule phases
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+
+- name: Exercise job_wait through the Controller SDK
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: false
+  tasks:
+    - name: Wait for a successful job of each supported type
+      ansible.platform.job_wait:
+        job_id: "{{ item.id }}"
+        job_type: "{{ item.type }}"
+        timeout: 2
+        interval: 0.1
+      loop:
+        - { id: 5801, type: jobs }
+        - { id: 5901, type: project_updates }
+        - { id: 6001, type: inventory_updates }
+        - { id: 6101, type: workflow_jobs }
+      register: completed_jobs
+
+    - name: Assert all supported job types resolve and complete successfully
+      ansible.builtin.assert:
+        that:
+          - completed_jobs.results | map(attribute='id') | list == [5801, 5901, 6001, 6101]
+          - completed_jobs.results | map(attribute='status') | list == ['successful', 'successful', 'successful', 'successful']
+          - completed_jobs.results | map(attribute='elapsed') | list == [1.25, 1.25, 1.25, 1.25]
+
+    - name: Wait for a failed job
+      ansible.platform.job_wait:
+        job_id: 5802
+        timeout: 2
+      register: failed_job
+      ignore_errors: true
+
+    - name: Assert failed jobs report their terminal status
+      ansible.builtin.assert:
+        that:
+          - failed_job is failed
+          - failed_job.id == 5802
+          - failed_job.status == 'failed'
+          - "'finished with status' in failed_job.msg"
+
+    - name: Wait for a job that does not exist
+      ansible.platform.job_wait:
+        job_id: 99999999
+        timeout: 2
+      register: missing_job
+      ignore_errors: true
+
+    - name: Assert missing jobs return a useful error
+      ansible.builtin.assert:
+        that:
+          - missing_job is failed
+          - "'could not be found' in missing_job.msg"
+
+    - name: Wait for a job that remains running until timeout
+      ansible.platform.job_wait:
+        job_id: 5803
+        timeout: 1
+        interval: 0.1
+      register: timed_out_job
+      ignore_errors: true
+
+    - name: Assert running jobs respect the timeout
+      ansible.builtin.assert:
+        that:
+          - timed_out_job is failed
+          - timed_out_job.id == 5803
+          - timed_out_job.status == 'running'
+          - "'aborted due to timeout' in timed_out_job.msg"
+...
