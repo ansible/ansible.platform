@@ -359,14 +359,33 @@
       ignore_errors: true
       delegate_to: localhost
 
+    - name: Look up EDA credential admin role definitions
+      ansible.builtin.set_fact:
+        eda_credential_admin_roles: >-
+          {{
+            query('ansible.platform.gateway_api', 'role_definitions', **connection_info)
+            | selectattr('name', 'match', '(?i)^eda credential admin$')
+            | list
+          }}
+      when: eda_cred is defined and eda_cred is not failed and eda_cred is not skipped
+
+    - name: Assert EDA credential admin role definition is available
+      ansible.builtin.assert:
+        that:
+          - eda_credential_admin_roles | length > 0
+        fail_msg: "The EDA Credential Admin role definition is required for the EDA credential assignment test."
+      when: eda_cred is defined and eda_cred is not failed and eda_cred is not skipped
+
     - name: Verify EDA credential role assignment
       ansible.builtin.include_tasks:
         file: verify_assignment.yml
+      when: eda_cred is defined and eda_cred is not failed and eda_cred is not skipped
       vars:
         res_ok: "{{ eda_cred is defined and eda_cred is not failed and eda_cred is not skipped }}"
         res_name: "{{ eda_cred_name }}"
         res_type: eda.edacredential
         res_role_def: "EDA Credential Admin"
+        res_role_def: "{{ eda_credential_admin_roles[0].id }}"
         team_name: "{{ team1.name }}"
 
     # -- EDA: event_streams ----------------------------------------------------
