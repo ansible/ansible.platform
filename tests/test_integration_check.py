@@ -6,6 +6,7 @@ from sys import exit
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 # CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
 modules_without_live_integration = {}
+module_test_name_overrides = {"execution_environment": "execution_environment_test"}
 tests_to_ignore = [
     "lookup_test",
     "setup_gateway",
@@ -33,11 +34,13 @@ for test_name in tests_to_ignore:
 missing_tests = []
 for plugin in plugins:
     plugin = plugin.replace(".py", "")
-    if plugin[-1] != "s":
-        plugin = f"{plugin}s"
+    test_name = module_test_name_overrides.get(plugin)
+    if test_name is None:
+        if plugin[-1] != "s":
+            plugin = f"{plugin}s"
+        test_name = f"{plugin}_test"
     # If we every have something like inventory we will need to update this for `ies``.
 
-    test_name = f"{plugin}_test"
     if test_name not in tests:
         missing_tests.append(plugin)
     else:
