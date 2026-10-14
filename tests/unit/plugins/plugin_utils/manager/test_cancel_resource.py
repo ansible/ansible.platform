@@ -5,10 +5,14 @@
 
 from __future__ import absolute_import, division, print_function
 
+import threading
 import unittest
 from unittest.mock import MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import TimeoutError as PlatformTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
+from requests.exceptions import Timeout as RequestTimeout
 
 __metaclass__ = type
 
@@ -27,6 +31,10 @@ def _service(base_url="https://gw.example.com"):
     service.api_versions = {"controller": "2"}
     service.registry = MagicMock()
     service.registry.get_supported_versions.return_value = ["2"]
+    service.retry_config = RetryConfig(max_attempts=3, initial_delay=0, jitter=False)
+    service._lock = threading.Lock()
+    service._http_request_count = 0
+    service._handle_auth_error = MagicMock(return_value=False)
     return service
 
 
@@ -128,7 +136,44 @@ class TestCancelResource(unittest.TestCase):
             service="controller",
         )
 
-        self.svc.record_activity.assert_called_once()
+        self.svc.record_activity.assert_called()
+
+    def test_eligibility_get_recovers_from_expired_credentials(self):
+        """The eligibility GET uses the shared 401 authentication recovery path."""
+        unauthorized = _resp(401)
+        finished = _resp(200, {"can_cancel": False})
+        self.svc.session.get.side_effect = [unauthorized, finished]
+        self.svc._handle_auth_error.return_value = True
+
+        result = self.svc.cancel_resource(resource_id=42, cancel_endpoint_path="jobs")
+
+        self.assertEqual(result["status"], "already_completed")
+        self.assertEqual(self.svc.session.get.call_count, 2)
+        self.svc._handle_auth_error.assert_called_once_with(unauthorized)
+
+    def test_post_retries_once_after_auth_recovery(self):
+        """A definite 401 permits one cancellation POST after credentials recover."""
+        self.svc.session.get.return_value = _resp(200, {"can_cancel": True})
+        unauthorized = _resp(401)
+        accepted = _resp(202)
+        self.svc.session.post.side_effect = [unauthorized, accepted]
+        self.svc._handle_auth_error.return_value = True
+
+        result = self.svc.cancel_resource(resource_id=42, cancel_endpoint_path="jobs")
+
+        self.assertTrue(result["changed"])
+        self.assertEqual(self.svc.session.post.call_count, 2)
+        self.svc._handle_auth_error.assert_called_once_with(unauthorized)
+
+    def test_post_does_not_retry_ambiguous_timeout(self):
+        """An ambiguous cancellation POST timeout must not replay the request."""
+        self.svc.session.get.return_value = _resp(200, {"can_cancel": True})
+        self.svc.session.post.side_effect = RequestTimeout("read timed out")
+
+        with self.assertRaises(PlatformTimeoutError):
+            self.svc.cancel_resource(resource_id=42, cancel_endpoint_path="jobs")
+
+        self.svc.session.post.assert_called_once()
 
 
 class TestCancelResourceRPC(unittest.TestCase):

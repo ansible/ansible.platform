@@ -137,7 +137,15 @@ class PlatformService(BaseAPIClient):
                 return False
         return self.seconds_since_last_activity() >= self.config.idle_timeout
 
-    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = "http_request",
+        resource: str = "unknown",
+        retry_request: bool = True,
+        **kwargs,
+    ) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -148,6 +156,7 @@ class PlatformService(BaseAPIClient):
             url: Request URL
             operation: Operation name for error context
             resource: Resource type for error context
+            retry_request: Whether to retry transient request failures
             **kwargs: Additional arguments for requests method
 
         Returns:
@@ -158,7 +167,9 @@ class PlatformService(BaseAPIClient):
         """
         self.record_activity()
 
-        @retry_http_request(config=self.retry_config)
+        retry_config = self.retry_config if retry_request else RetryConfig(max_attempts=1)
+
+        @retry_http_request(config=retry_config)
         def _execute_with_retry():
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
@@ -1293,8 +1304,7 @@ class PlatformService(BaseAPIClient):
         )
 
         # GET to check if the resource can be canceled
-        response = self.session.get(cancel_url, timeout=self.request_timeout, verify=self.requests_verify)
-        response.raise_for_status()
+        response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
         cancel_info = response.json()
 
         if not cancel_info.get("can_cancel", False):
@@ -1303,7 +1313,14 @@ class PlatformService(BaseAPIClient):
             return {"changed": False, "id": resource_id, "status": "already_completed"}
 
         # POST to cancel
-        response = self.session.post(cancel_url, json={}, timeout=self.request_timeout, verify=self.requests_verify)
+        response = self._make_request(
+            "POST",
+            cancel_url,
+            operation="cancel_resource",
+            resource=cancel_endpoint_path,
+            retry_request=False,
+            json={},
+        )
         if response.status_code not in (200, 202):
             response.raise_for_status()
 
