@@ -8,6 +8,29 @@
 - name: Set test variables
   ansible.builtin.set_fact:
     non_existent_service_key_name: "GW-Collection-Test-Service-Key-{{ test_id }}-DNE"
+# The service-key API no longer creates keys. Edit tests use the pre-provisioned
+# fixture when it is available in the target environment.
+- name: Generate a missing service key name
+  ansible.builtin.set_fact:
+    test_service_key_name: "{{ test_service_key_name }}"
+    non_existent_service_key_name: "{{ test_service_key_name }}-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  vars:
+    test_service_key_name: "GW-Collection-Test-Service-Key"
+
+- name: Look up the fixture service key
+  ansible.builtin.set_fact:
+    fixture_service_keys: >-
+      {{ query(
+           'ansible.platform.gateway_api',
+           'service_keys',
+           query_params={'name': test_service_key_name},
+           **connection_info
+         ) }}
+
+- name: Skip service-key edit tests when the fixture is unavailable
+  ansible.builtin.debug:
+    msg: "The {{ test_service_key_name }} fixture is unavailable; skipping edit tests."
+  when: fixture_service_keys | length == 0
 
 - name: Look up existing bootstrap service keys
   ansible.builtin.set_fact:
@@ -34,9 +57,10 @@
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
-
+  when: fixture_service_keys | length > 0
   block:
     - name: Verify the bootstrap service key exists
+    - name: Verify the fixture service key exists
       ansible.platform.service_key:
         name: "{{ test_service_key_name }}"
         state: exists
@@ -104,6 +128,22 @@
           - updated_service_key is changed
 
     - name: Attempt to use a missing service key
+  always:
+    - name: Restore the fixture service key active state
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: "{{ fixture_service_keys[0].is_active | bool }}"
+      when: fixture_service_keys | length > 0
+
+- name: Test creation and deletion of a missing service key
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Attempt to create a missing service key
       ansible.platform.service_key:
         name: "{{ non_existent_service_key_name }}"
         is_active: true
