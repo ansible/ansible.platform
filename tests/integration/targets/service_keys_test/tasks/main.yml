@@ -11,6 +11,16 @@
 - name: Set test variables
   ansible.builtin.set_fact:
     non_existent_service_key_name: "GW-Collection-Test-Service-Key-{{ test_id }}-DNE"
+# The service-key API no longer creates keys. The integration environment must
+# provision this fixture before running the edit-only tests.
+- name: Generate a missing service key name
+  ansible.builtin.set_fact:
+    test_service_key_name: "{{ aap_test_service_key_name | default('GW-Collection-Test-Service-Key') }}"
+
+- name: Generate a non-existent service key name
+  ansible.builtin.set_fact:
+    non_existent_service_key_name: >-
+      {{ test_service_key_name }}-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}
 
 - name: Look up existing bootstrap service keys
   ansible.builtin.set_fact:
@@ -40,6 +50,30 @@
 
   block:
     - name: Verify the bootstrap service key exists
+    - name: Look up the fixture service key
+      ansible.builtin.set_fact:
+        fixture_service_keys: >-
+          {{ query(
+               'ansible.platform.gateway_api',
+               'service_keys',
+               query_params={'name': test_service_key_name},
+               **connection_info
+             ) }}
+
+    - name: Require the integration environment to provision the fixture service key
+      ansible.builtin.assert:
+        that:
+          - fixture_service_keys | length == 1
+        fail_msg: >-
+          The integration environment must pre-provision {{ test_service_key_name }}.
+          Service keys cannot be created through the API, and the test runner cannot
+          execute management commands inside the Gateway host.
+
+    - name: Save the fixture service key's initial active state
+      ansible.builtin.set_fact:
+        fixture_service_key_initial_is_active: "{{ fixture_service_keys[0].is_active }}"
+
+    - name: Verify the fixture service key exists
       ansible.platform.service_key:
         name: "{{ test_service_key_name }}"
         state: exists
@@ -136,4 +170,9 @@
         is_active: "{{ original_is_active | bool }}"
       when: test_service_key_name is defined
       failed_when: false
+    - name: Restore the fixture service key's initial active state
+      ansible.platform.service_key:
+        name: "{{ test_service_key_name }}"
+        is_active: "{{ fixture_service_key_initial_is_active }}"
+      when: fixture_service_key_initial_is_active is defined
 ...
