@@ -1,7 +1,7 @@
 ---
 # Default scenario: manages mock Gateway server lifecycle.
-# With shared_state: true in config.yml, this scenario runs create first and destroy last
-# when using "molecule test --all". Other scenarios (e.g. users, users_mock) then share
+# With shared_state: true in config.yml, make molecule-test-all starts and destroys this scenario.
+# Other scenarios (e.g. users, users_mock) then share
 # the same mock server and skip their own create/destroy.
 # Uses its own inventory (connection: local) so create/destroy run on controller, not via platform connection.
 
