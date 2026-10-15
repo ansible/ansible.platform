@@ -572,6 +572,7 @@ class DirectHTTPClient(BaseAPIClient):
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        preserve_existing: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -579,7 +580,8 @@ class DirectHTTPClient(BaseAPIClient):
         Generic across any resource with a list-style association sub-endpoint (credentials,
         instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
-        current associations, and associates/disassociates to reconcile.
+        current associations, and associates/disassociates to reconcile. Set
+        preserve_existing=True to retain already-associated items.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -601,6 +603,8 @@ class DirectHTTPClient(BaseAPIClient):
             assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        if preserve_existing:
+            desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False

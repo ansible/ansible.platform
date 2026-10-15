@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - group - migrate group module from awx_collection for managing Controller inventory groups with host and child group associations (https://issues.redhat.com/browse/AAP-95850).
