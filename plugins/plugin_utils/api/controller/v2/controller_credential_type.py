@@ -50,7 +50,7 @@ class ControllerCredentialTypeTransformMixin_v2(BaseTransformMixin):
         )
 
         if op == "create":
-            api_data["name"] = name or new_name
+            api_data["name"] = name
             # Custom credential types are always non-managed
             api_data["managed"] = False
         elif op == "update":
