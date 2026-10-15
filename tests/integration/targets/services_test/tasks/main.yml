@@ -7,6 +7,7 @@
 - name: Preset vars
   ansible.builtin.set_fact:
     name_prefix: "GW-Collection-Test-Services-{{ test_id }}"
+    controller_api_slug: "ctl-{{ test_id | lower }}"
 
 - name: Get existing service clusters
   ansible.builtin.set_fact:
@@ -149,6 +150,7 @@
         name: "{{ name_prefix }}-Controller API"
         description: Proxy to the Controller
         api_slug: "{{ (test_id | lower)[:10] }}controller"
+        api_slug: "{{ controller_api_slug }}"
         http_port: "{{ api_port_id }}"
         service_cluster: "{{ controller_sc.name }}"
         is_service_https: true
