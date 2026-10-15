@@ -26,6 +26,8 @@ def _client(base_url="https://gw.example.com"):
     client.session.headers = {}
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
+    client.lookup_resource_id = MagicMock()
+    client.search_api = MagicMock()
     return client
 
 
@@ -274,6 +276,7 @@ class TestSearchApi(unittest.TestCase):
         self.client.base_url = "https://gw.example.com"
         self.client.api_versions = {}
         self.client.api_version = "2"
+        self.client.api_versions = {"gateway": "2"}
         self.client.cache = {}
 
     def _bad_json_response(self):

@@ -691,6 +691,10 @@ class DirectHTTPClient(BaseAPIClient):
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
             results = json.loads(response.read()).get("results", [])
+            try:
+                results = json.loads(response.read()).get("results", [])
+            except Exception:
+                results = []
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
@@ -764,7 +768,6 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
-
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.
