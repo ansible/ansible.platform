@@ -283,6 +283,16 @@ class Store:
         for endpoint, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
+        # Controller resources
+        controller_defs: List[tuple] = [
+            ("instance_groups", ["name"], 5200),
+            ("instances", ["hostname"], 7000),
+        ]
+        for endpoint, required, start_id in controller_defs:
+            self._resources[("controller", endpoint)] = GenericResource(
+                resource_name=endpoint,
+                required_fields=required,
+                start_id=start_id,
             )
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
@@ -392,6 +402,26 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
+        # Seed instances for Controller association tests
+        inst_store = self._resources.get(("controller", "instances"))
+        if inst_store and not inst_store._items:
+            inst_store.seed(
+                "2",
+                [
+                    {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
+                ],
+            )
+
+        # Seed settings
+        with self._settings_lock:
+            if not self._settings:
+                self._settings = {
+                    "RUNTIME_FEATURE_FLAGS": "True",
+                    "SESSION_COOKIE_AGE": 1800,
+                    "MAX_PAGE_SIZE": 200,
+                    "REMOTE_HOST_HEADERS": [],
+                }
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -656,6 +686,53 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         store = self.store.resource(service, resource_name)
         if store is None:
             return False
+
+        # Association list sub-endpoints: /resource/{id}/{association}/
+        if len(parts) == 6:
+            try:
+                item_id = int(parts[4])
+                item = store.get(item_id)
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return True
+
+            association_field = parts[5]
+            associated_store = self.store.resource(service, association_field)
+            if associated_store is None:
+                return False
+
+            if self.command == "GET":
+                results = []
+                try:
+                    results = [associated_store.get(associated_id) for associated_id in item.get(association_field, [])]
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                    return True
+                self._send_json(200, {"count": len(results), "results": results})
+                return True
+
+            if self.command == "POST":
+                payload = self._parse_json_body()
+                try:
+                    association_id = int(payload["id"])
+                    associated_store.get(association_id)
+                except (KeyError, TypeError, ValueError):
+                    self._send_json(404, {"detail": "Not Found"})
+                    return True
+
+                associated_ids = list(item.get(association_field, []))
+                if payload.get("associate"):
+                    if association_id not in associated_ids:
+                        associated_ids.append(association_id)
+                elif payload.get("disassociate"):
+                    associated_ids = [current_id for current_id in associated_ids if current_id != association_id]
+                else:
+                    self._send_json(400, {"detail": "Expected associate or disassociate"})
+                    return True
+
+                store.patch(item_id, {association_field: associated_ids})
+                self._send_empty(204)
+                return True
 
         # List / Create:  /api/gateway/vX/{resource}/
         if len(parts) == 4:
