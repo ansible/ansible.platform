@@ -1,6 +1,6 @@
 ---
 # Scenario: verify persistent manager exits after idle_timeout (mock Gateway).
-# Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
+# Requires the mock to be running (e.g. "make molecule-test-all" or default scenario create).
 
 driver:
   name: default

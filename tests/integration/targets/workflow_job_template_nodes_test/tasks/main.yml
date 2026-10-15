@@ -1,0 +1,186 @@
+---
+# Integration tests for ansible.platform.workflow_job_template_node
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    organization_name: "Workflow Node Test {{ test_id }}"
+    workflow_name: "Workflow Node Test {{ test_id }}"
+    node_identifier: "workflow-node-{{ test_id }}"
+    check_mode_node_identifier: "workflow-node-check-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create organization for workflow template
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+      register: test_organization
+
+    - name: Create workflow job template prerequisite
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ workflow_name }}"
+          organization: "{{ test_organization.id }}"
+        status_code: [200, 201]
+      register: test_workflow
+      delegate_to: localhost
+
+    - name: Check mode predicts node creation
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ check_mode_node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+      check_mode: true
+      register: check_mode_node
+
+    - name: Assert check mode predicts a change
+      ansible.builtin.assert:
+        that:
+          - check_mode_node is changed
+
+    - name: Confirm check mode did not create the node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ check_mode_node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        state: exists
+      register: check_mode_node_exists
+
+    - name: Assert check mode left the node absent
+      ansible.builtin.assert:
+        that:
+          - not (check_mode_node_exists.exists | default(false) | bool)
+
+    - name: Create workflow node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        all_parents_must_converge: false
+        state: present
+      register: created_node
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_node is changed
+          - created_node.workflow_job_template_node.id is defined
+          - created_node.workflow_job_template_node.identifier == node_identifier
+
+    - name: Check idempotency
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        all_parents_must_converge: false
+        state: present
+      register: idempotent_node
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_node is not changed
+
+    - name: Update node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        all_parents_must_converge: true
+      register: updated_node
+
+    - name: Assert update changed the requested field
+      ansible.builtin.assert:
+        that:
+          - updated_node is changed
+          - updated_node.workflow_job_template_node.all_parents_must_converge
+
+    - name: Check exists
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Delete workflow node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        state: absent
+      register: deleted_node
+
+    - name: Assert deleting the node changed state
+      ansible.builtin.assert:
+        that:
+          - deleted_node is changed
+
+    - name: Delete workflow node again
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        state: absent
+      register: absent_node
+
+    - name: Assert deleting an absent node is idempotent
+      ansible.builtin.assert:
+        that:
+          - absent_node is not changed
+
+  always:
+    - name: Delete workflow node if created
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        state: absent
+      when:
+        - test_workflow is defined
+        - test_workflow.json is defined
+        - test_workflow.json.id is defined
+
+    - name: Delete workflow job template prerequisite
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ test_workflow.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - test_workflow is defined
+        - test_workflow.json is defined
+        - test_workflow.json.id is defined
+      delegate_to: localhost
+
+    - name: Delete organization prerequisite
+      ansible.platform.organization:
+        name: "{{ organization_name }}"
+        state: absent
+      when:
+        - test_organization is defined
+        - test_organization.id is defined
+...
