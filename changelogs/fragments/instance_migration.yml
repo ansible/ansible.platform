@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - instance - migrate instance module from awx_collection for managing Controller mesh instances (https://issues.redhat.com/browse/AAP-95853).
