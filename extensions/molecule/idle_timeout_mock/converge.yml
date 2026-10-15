@@ -64,6 +64,7 @@
       ansible.builtin.find:
         paths:
           - "/tmp/ansible_platform"
+          - "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/ansible_platform"
           - "{{ home_dir.stdout }}/.ansible/tmp"
         patterns:
           - "manager_{{ uid.stdout }}_localhost_*.sock"
@@ -79,7 +80,7 @@
           - sock_find_persistent.files | length > 0
         fail_msg: >-
           Expected a *persistent* manager socket but found none.
-          searched_paths=['/tmp/ansible_platform','{{ home_dir.stdout }}/.ansible/tmp']
+          searched_paths=['/tmp/ansible_platform','{{ lookup("env", "TMPDIR") | default("/tmp", true) }}/ansible_platform','{{ home_dir.stdout }}/.ansible/tmp']
           persistent_found={{ sock_find_persistent }}
       vars:
         ansible_connection: local

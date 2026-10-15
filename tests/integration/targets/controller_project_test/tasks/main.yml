@@ -1,0 +1,184 @@
+---
+# Integration tests for ansible.platform.controller_project
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Project-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create project with check mode
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test project"
+        organization: "Default"
+        scm_type: git
+        scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+        state: present
+      check_mode: true
+      register: planned_proj
+
+    - name: Assert check mode predicts a project change
+      ansible.builtin.assert:
+        that:
+          - planned_proj is changed
+
+    - name: Create project
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test project"
+        organization: "Default"
+        scm_type: git
+        scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+        state: present
+      register: created_proj
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_proj is changed
+          - created_proj.controller_project.name == (name_prefix ~ '-Test')
+          - created_proj.controller_project.id is defined
+          - created_proj.controller_project.description == 'Integration test project'
+          - created_proj.controller_project.scm_type == 'git'
+          - created_proj.controller_project.scm_url == 'https://github.com/ansible/ansible-tower-samples.git'
+
+    - name: Check idempotency
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test project"
+        organization: "Default"
+        scm_type: git
+        scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+        state: present
+      register: idempotent_proj
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_proj is not changed
+
+    - name: Update project description
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test project"
+        organization: "Default"
+      register: updated_proj
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_proj is changed
+          - updated_proj.controller_project.id == created_proj.controller_project.id
+          - updated_proj.controller_project.description == 'Updated integration test project'
+          - updated_proj.controller_project.scm_type == 'git'
+          - updated_proj.controller_project.scm_url == 'https://github.com/ansible/ansible-tower-samples.git'
+
+    - name: Reapply updated project
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test project"
+        organization: "Default"
+      register: reapplied_proj
+
+    - name: Assert updated project is idempotent
+      ansible.builtin.assert:
+        that:
+          - reapplied_proj is not changed
+
+    - name: Rename project
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+      register: renamed_proj
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_proj is changed
+          - renamed_proj.controller_project.id == created_proj.controller_project.id
+          - renamed_proj.controller_project.name == (name_prefix ~ '-Renamed')
+
+    - name: Check exists
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Renamed"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Check exists by ID
+      ansible.platform.controller_project:
+        name: "{{ renamed_proj.controller_project.id | string }}"
+        state: exists
+      register: exists_by_id_check
+
+    - name: Assert exists by ID
+      ansible.builtin.assert:
+        that:
+          - exists_by_id_check.exists
+          - exists_by_id_check is not changed
+
+    - name: Delete a non-existent project
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-DoesNotExist"
+        state: absent
+      register: delete_missing_proj
+
+    - name: Assert deleting a non-existent project does not change anything
+      ansible.builtin.assert:
+        that:
+          - delete_missing_proj is not changed
+
+    - name: Delete project
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      register: deleted_proj
+
+    - name: Assert deleting project changed
+      ansible.builtin.assert:
+        that:
+          - deleted_proj is changed
+
+    - name: Delete project again
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      register: deleted_proj_again
+
+    - name: Assert deleting an absent project is idempotent
+      ansible.builtin.assert:
+        that:
+          - deleted_proj_again is not changed
+
+  always:
+    - name: Delete project (renamed)
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      failed_when: false
+
+    - name: Delete project (original, in case rename failed)
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...

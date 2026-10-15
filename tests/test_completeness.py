@@ -32,8 +32,8 @@ conditional_endpoint_modules = {
     "feature_flag": "RUNTIME_FEATURE_FLAGS"  # feature_flags endpoint only exists when RUNTIME_FEATURE_FLAGS is True
 }
 
-# Add modules with endpoints that are not at /api/v2
-extra_endpoints = {}
+# Add modules with endpoints that are not at /api/gateway/v1
+extra_endpoints = {"controller_projects": "/api/controller/v2/projects/"}
 
 # Global module parameters we can ignore
 ignore_module_parameters = ["state", "new_name", "new_organization", "new_authenticator", "update_secrets", "copy_from", "assignment_objects"]
