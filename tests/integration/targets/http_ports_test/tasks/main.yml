@@ -153,17 +153,38 @@
           {{ query('ansible.platform.gateway_api', 'http_ports',
              query_params={'is_api_port': 'true'}, **connection_info) }}
 
-    - name: Try to create a second API port
+    - name: Create an API port if none exists
+      ansible.platform.http_port:
+        name: "{{ test_id }}-API-Port-Initial"
+        number: 44300
+        use_https: true
+        is_api_port: true
+      register: initial_api_port
+      when: existing_api_ports | length == 0
+
+    - name: Set API port name for subsequent tests
+      ansible.builtin.set_fact:
+        api_port_name: >-
+          {{ existing_api_ports[0].name if existing_api_ports | length > 0
+             else initial_api_port.name }}
+
+    - name: Try to create a duplicate API port
       ansible.platform.http_port:
         name: "{{ test_id }}-API-Port"
         number: 44301
         use_https: true
         is_api_port: true
+      ignore_errors: true
       register: duplicate_api_port_result
+
+    - name: Assert creating a duplicate API port fails
+      ansible.builtin.assert:
+        that:
+          - duplicate_api_port_result is failed
 
     - name: Try to delete the existing API port
       ansible.platform.http_port:
-        name: "{{ existing_api_ports[0].name }}"
+        name: "{{ api_port_name }}"
         state: absent
       ignore_errors: true
       register: delete_api_port_result
@@ -175,7 +196,7 @@
 
     - name: Try to unset is_api_port on existing API port
       ansible.platform.http_port:
-        name: "{{ existing_api_ports[0].name }}"
+        name: "{{ api_port_name }}"
         is_api_port: false
       ignore_errors: true
       register: unset_api_port_result
@@ -204,4 +225,12 @@
       register: delete_duplicate_api_port
       failed_when: delete_duplicate_api_port is failed and '403' not in delete_duplicate_api_port.msg | default('')
       when: duplicate_api_port_result is defined and duplicate_api_port_result is not failed
+
+    - name: Delete initial API port if we created one
+      ansible.platform.http_port:
+        name: "{{ test_id }}-API-Port-Initial"
+        state: absent
+      register: delete_initial_api_port
+      failed_when: delete_initial_api_port is failed and '403' not in delete_initial_api_port.msg | default('')
+      when: initial_api_port is defined and initial_api_port is changed
 ...
