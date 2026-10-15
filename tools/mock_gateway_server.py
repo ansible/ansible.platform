@@ -15,6 +15,9 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   service_types, services, tokens, ui_plugin_routes,
   settings (singleton), settings/all (flat dict read)
 
+Controller endpoints include job_templates CRUD, associations, survey_spec,
+copy, and the related resources needed by the job_template Molecule scenario.
+
 Notes
 -----
 - Auth is intentionally permissive: any Authorization header is accepted.
@@ -38,6 +41,11 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+# API services this mock fronts. Each has its own /api/{service}/vN/ prefix and
+# version-discovery root, mirroring the real Gateway's per-service routing.
+SUPPORTED_SERVICES = ("gateway", "controller")
+
+
 # ---------------------------------------------------------------------------
 # Generic in-memory CRUD store for a single resource type
 # ---------------------------------------------------------------------------
@@ -53,16 +61,31 @@ class GenericResource:
         start_id: int = 2000,
         patch_fields: Optional[List[str]] = None,
         post_only_fields: Optional[Dict[str, Callable[[], Any]]] = None,
+        sort_list_fields: Optional[List[str]] = None,
+        service: str = "gateway",
     ):
         self.lock = threading.Lock()
         self.resource_name = resource_name
+        self.service = service
         self.required_fields: List[str] = required_fields or []
         self.patch_fields: Optional[List[str]] = patch_fields  # None = allow all
         # post_only_fields: generated on POST, returned in create response, never stored.
         # Simulates API-generated secrets like client_secret that are only visible once.
         self.post_only_fields: Dict[str, Callable[[], Any]] = post_only_fields or {}
+        # Fields that the real Gateway returns sorted alphabetically.
+        # The mock sorts these on write so that Molecule idempotency tests see
+        # the same ordering the real API would return, catching order-sensitivity
+        # bugs in _should_update() before they reach a real AAP instance.
+        self.sort_list_fields: List[str] = sort_list_fields or []
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
+
+    def _normalize_item(self, item: Dict[str, Any]) -> None:
+        """Sort list fields in-place to match real Gateway alphabetical ordering."""
+        for field_name in self.sort_list_fields:
+            value = item.get(field_name)
+            if isinstance(value, list):
+                item[field_name] = sorted(str(x) for x in value)
 
     def create(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
@@ -75,9 +98,11 @@ class GenericResource:
                 "id": item_id,
                 "created": _now_iso(),
                 "modified": _now_iso(),
-                "url": f"/api/gateway/v{version}/{self.resource_name}/{item_id}/",
+                "url": f"/api/{self.service}/v{version}/{self.resource_name}/{item_id}/",
             }
             item.update({k: v for k, v in payload.items() if v is not None})
+            # Normalise: sort list fields so the mock mirrors real Gateway ordering.
+            self._normalize_item(item)
             self._items[item_id] = item
             # post_only_fields are returned in the POST response but never stored.
             # On GET/PATCH the fields will be absent, matching real Gateway behaviour.
@@ -96,16 +121,21 @@ class GenericResource:
                 or_id_val: Optional[str] = None
                 or_name_val: Optional[str] = None
                 regular: Dict[str, str] = {}
+                in_filters: Dict[str, set] = {}
                 for k, v in filters.items():
                     if k == "or__id":
                         or_id_val = v
                     elif k in ("or__name", "or__slug"):
                         or_name_val = v
+                    elif k.endswith("__in"):
+                        in_filters[k[:-4]] = set(v.split(","))
                     else:
                         regular[k] = v
                 # Apply AND-filters first
                 for k, v in regular.items():
                     items = [i for i in items if str(i.get(k, "")) == str(v)]
+                for field, values in in_filters.items():
+                    items = [i for i in items if str(i.get(field, "")) in values]
                 # Apply OR-filter: match by numeric id OR by name
                 if or_id_val is not None or or_name_val is not None:
 
@@ -142,6 +172,8 @@ class GenericResource:
                 if allowed is None or k in allowed:
                     item[k] = v
             item["modified"] = _now_iso()
+            # Normalise: sort list fields so the mock mirrors real Gateway ordering.
+            self._normalize_item(item)
             self._items[item_id] = item
             return item
 
@@ -160,7 +192,7 @@ class GenericResource:
                 "id": item_id,
                 "created": _now_iso(),
                 "modified": _now_iso(),
-                "url": f"/api/gateway/v{version}/{self.resource_name}/{item_id}/",
+                "url": f"/api/{self.service}/v{version}/{self.resource_name}/{item_id}/",
             }
             item.update(raw)
             self._items[item_id] = item
@@ -188,13 +220,18 @@ class Store:
     _settings: Dict[str, Any] = field(default_factory=dict)
     _settings_lock: threading.Lock = field(default_factory=threading.Lock)
 
-    # Generic resource stores (keyed by endpoint name)
-    _resources: Dict[str, GenericResource] = field(default_factory=dict)
+    # Generic resource stores, keyed by (service, endpoint_name) so the same
+    # resource name can exist under different API services (e.g. a future
+    # Controller "credentials" alongside Gateway's own resources) without colliding.
+    _resources: Dict[tuple, GenericResource] = field(default_factory=dict)
+    _jt_associations: Dict[int, Dict[str, set]] = field(default_factory=dict)
+    _jt_surveys: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    _jt_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def _init_resources(self) -> None:
         """Create all generic resource stores with appropriate config."""
         # Applications: client_secret returned on POST only, never on GET/PATCH.
-        self._resources["applications"] = GenericResource(
+        self._resources[("gateway", "applications")] = GenericResource(
             resource_name="applications",
             required_fields=["name", "organization"],
             start_id=3000,
@@ -223,14 +260,33 @@ class Store:
             ("ui_plugin_routes", ["name"], 4600),
         ]
         for endpoint, required, start_id in defs:
-            self._resources[endpoint] = GenericResource(
+            self._resources[("gateway", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
             )
 
-    def resource(self, name: str) -> Optional[GenericResource]:
-        return self._resources.get(name)
+        # Resource-specific normalisation: sort list fields the real Gateway returns
+        # alphabetically so Molecule tests catch order-sensitivity regressions.
+        self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
+
+        controller_resources = (
+            ("job_templates", 5000),
+            ("inventories", 5100),
+            ("projects", 5200),
+            ("execution_environments", 5300),
+            ("credentials", 5400),
+            ("labels", 5500),
+            ("instance_groups", 5600),
+            ("notification_templates", 5700),
+        )
+        for endpoint, start_id in controller_resources:
+            self._resources[("controller", endpoint)] = GenericResource(
+                resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
+            )
+
+    def resource(self, service: str, name: str) -> Optional[GenericResource]:
+        return self._resources.get((service, name))
 
     def seed_defaults(self) -> None:
         with self.lock:
@@ -245,8 +301,18 @@ class Store:
                 self.orgs_by_id[org["id"]] = org
                 self.orgs_by_name[org["name"]] = org["id"]
 
+        # Seed settings
+        with self._settings_lock:
+            if not self._settings:
+                self._settings = {
+                    "RUNTIME_FEATURE_FLAGS": "True",
+                    "SESSION_COOKIE_AGE": 1800,
+                    "MAX_PAGE_SIZE": 200,
+                    "REMOTE_HOST_HEADERS": [],
+                }
+
         # Seed feature flags with runtime-toggleable flags
-        ff_store = self._resources.get("feature_flags")
+        ff_store = self._resources.get(("gateway", "feature_flags"))
         if ff_store and not ff_store._items:
             flags = [
                 {
@@ -276,15 +342,56 @@ class Store:
             ]
             ff_store.seed("1", flags)
 
-        # Seed settings
-        with self._settings_lock:
-            if not self._settings:
-                self._settings = {
-                    "RUNTIME_FEATURE_FLAGS": "True",
-                    "SESSION_COOKIE_AGE": 1800,
-                    "MAX_PAGE_SIZE": 200,
-                    "REMOTE_HOST_HEADERS": [],
-                }
+        controller_fixtures = {
+            "inventories": [{"id": 5101, "name": "Mock Inventory"}],
+            "projects": [{"id": 5201, "name": "Mock Project", "organization": 1}],
+            "execution_environments": [{"id": 5301, "name": "Mock EE"}],
+            "credentials": [{"id": 5401, "name": "Mock Credential"}, {"id": 5402, "name": "Mock Vault Credential"}],
+            "labels": [{"id": 5501, "name": "Mock Label 1"}, {"id": 5502, "name": "Mock Label 2"}, {"id": 5503, "name": "Mock Label 3"}],
+            "instance_groups": [{"id": 5601, "name": "Mock Instance Group"}],
+            "notification_templates": [{"id": 5701, "name": "Mock Notification"}],
+        }
+        for endpoint, items in controller_fixtures.items():
+            resource = self.resource("controller", endpoint)
+            if resource and not resource._items:
+                resource.seed("2", items)
+
+    def job_template_associations(self, template_id: int, field_name: str, page: int = 1) -> Dict[str, Any]:
+        """Return a DRF-style paginated association list."""
+        lookup_name = "notification_templates" if field_name.startswith("notification_templates_") else field_name
+        resource = self.resource("controller", lookup_name)
+        if resource is None:
+            raise KeyError("unknown association")
+        with self._jt_lock:
+            ids = sorted(self._jt_associations.get(template_id, {}).get(field_name, set()))
+        page_size = 2
+        results = [resource.get(item_id) for item_id in ids[(page - 1) * page_size : page * page_size]]
+        next_page = f"/api/controller/v2/job_templates/{template_id}/{field_name}/?page={page + 1}" if page * page_size < len(ids) else None
+        return {"count": len(ids), "next": next_page, "results": results}
+
+    def set_job_template_association(self, template_id: int, field_name: str, item_id: int, associate: bool) -> None:
+        lookup_name = "notification_templates" if field_name.startswith("notification_templates_") else field_name
+        resource = self.resource("controller", lookup_name)
+        if resource is None:
+            raise KeyError("unknown association")
+        resource.get(item_id)
+        with self._jt_lock:
+            ids = self._jt_associations.setdefault(template_id, {}).setdefault(field_name, set())
+            (ids.add if associate else ids.discard)(item_id)
+
+    def copy_job_template(self, version: str, template_id: int, name: str) -> Dict[str, Any]:
+        resource = self.resource("controller", "job_templates")
+        source = resource.get(template_id)
+        if any(item["name"] == name for item in resource.list_items()["results"]):
+            raise ValueError(f"Job template '{name}' already exists")
+        payload = {key: value for key, value in source.items() if key not in ("id", "created", "modified", "url")}
+        payload["name"] = name
+        copied = resource.create(version, payload)
+        with self._jt_lock:
+            self._jt_associations[copied["id"]] = {field_name: set(ids) for field_name, ids in self._jt_associations.get(template_id, {}).items()}
+            if template_id in self._jt_surveys:
+                self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
+        return copied
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -541,12 +648,12 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     # Generic CRUD helper
     # ------------------------------------------------------------------
 
-    def _handle_generic_resource(self, resource_name: str, parts: list, version: str, qs: Dict[str, list]) -> bool:
+    def _handle_generic_resource(self, service: str, resource_name: str, parts: list, version: str, qs: Dict[str, list]) -> bool:
         """
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
         """
-        store = self.store.resource(resource_name)
+        store = self.store.resource(service, resource_name)
         if store is None:
             return False
 
@@ -613,15 +720,16 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         # without an Authorization header to discover API versions before adding credentials.
         if self.command == "GET":
             _vparts = [p for p in path.split("/") if p]
-            _is_gateway_root = len(_vparts) == 2 and _vparts[0] == "api" and _vparts[1] == "gateway"
-            _is_versioned_root = len(_vparts) == 3 and _vparts[0] == "api" and _vparts[1] == "gateway" and _vparts[2].startswith("v")
-            if _is_gateway_root or _is_versioned_root:
+            _is_service_root = len(_vparts) == 2 and _vparts[0] == "api" and _vparts[1] in SUPPORTED_SERVICES
+            _is_versioned_root = len(_vparts) == 3 and _vparts[0] == "api" and _vparts[1] in SUPPORTED_SERVICES and _vparts[2].startswith("v")
+            if _is_service_root or _is_versioned_root:
+                _service = _vparts[1]
                 v = self.reported_api_version
                 self._send_json(
                     200,
                     {
-                        "current_version": f"/api/gateway/v{v}/",
-                        "available_versions": {"v1": "/api/gateway/v1/", "v2": "/api/gateway/v2/"},
+                        "current_version": f"/api/{_service}/v{v}/",
+                        "available_versions": {"v1": f"/api/{_service}/v1/", "v2": f"/api/{_service}/v2/"},
                     },
                 )
                 return
@@ -632,17 +740,18 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         parts = [p for p in path.split("/") if p]
 
-        if len(parts) < 3 or parts[0] != "api" or parts[1] != "gateway":
+        if len(parts) < 3 or parts[0] != "api" or parts[1] not in SUPPORTED_SERVICES:
             self._send_json(404, {"detail": "Not Found"})
             return
 
+        service = parts[1]
         version_part = parts[2]
         if not version_part.startswith("v"):
             self._send_json(404, {"detail": "Not Found"})
             return
         version = version_part[1:]
 
-        # /api/gateway/vX/ping/
+        # /api/{service}/vX/ping/
         if len(parts) == 4 and parts[3] == "ping" and self.command == "GET":
             headers = {"X-API-Version": self.reported_api_version}
             self._send_json(200, {"version": self.reported_api_version}, headers=headers)
@@ -650,8 +759,72 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         resource = parts[3] if len(parts) >= 4 else None
 
-        # ---- Settings (special: singleton, no id-based CRUD) ----
-        if resource == "settings":
+        if service == "controller" and resource == "job_templates" and len(parts) >= 5:
+            try:
+                template_id = int(parts[4])
+                self.store.resource("controller", "job_templates").get(template_id)
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            if len(parts) == 5 and self.command == "DELETE":
+                self.store.resource("controller", "job_templates").delete(template_id)
+                with self.store._jt_lock:
+                    self.store._jt_associations.pop(template_id, None)
+                    self.store._jt_surveys.pop(template_id, None)
+                self._send_empty(204)
+                return
+
+            if len(parts) == 6:
+                subresource = parts[5]
+                association_names = {
+                    "credentials",
+                    "labels",
+                    "instance_groups",
+                    "notification_templates_started",
+                    "notification_templates_success",
+                    "notification_templates_error",
+                }
+                if subresource in association_names:
+                    if self.command == "GET":
+                        page = int((qs.get("page") or ["1"])[0])
+                        self._send_json(200, self.store.job_template_associations(template_id, subresource, page))
+                        return
+                    if self.command == "POST":
+                        try:
+                            payload = self._parse_json_body()
+                            self.store.set_job_template_association(template_id, subresource, int(payload["id"]), not bool(payload.get("disassociate", False)))
+                            self._send_empty(204)
+                        except (KeyError, ValueError, TypeError):
+                            self._send_json(400, {"detail": "Invalid association"})
+                        return
+                if subresource == "survey_spec":
+                    if self.command == "GET":
+                        with self.store._jt_lock:
+                            survey = dict(self.store._jt_surveys.get(template_id, {"name": "", "description": "", "spec": []}))
+                        self._send_json(200, survey)
+                        return
+                    if self.command == "POST":
+                        survey = self._parse_json_body()
+                        with self.store._jt_lock:
+                            self.store._jt_surveys[template_id] = survey
+                        self._send_json(200, survey)
+                        return
+                    if self.command == "DELETE":
+                        with self.store._jt_lock:
+                            existed = self.store._jt_surveys.pop(template_id, None) is not None
+                        self._send_empty(204 if existed else 404)
+                        return
+                if subresource == "copy" and self.command == "POST":
+                    try:
+                        copied = self.store.copy_job_template(version, template_id, self._parse_json_body()["name"])
+                        self._send_json(201, copied)
+                    except (KeyError, ValueError) as error:
+                        self._send_json(400, {"detail": str(error)})
+                    return
+
+        # ---- Settings (special: singleton, no id-based CRUD; Gateway-only) ----
+        if service == "gateway" and resource == "settings":
             # /api/gateway/vX/settings/all/  — GET (flat dict) or PUT (full replace)
             if len(parts) == 5 and parts[4] == "all":
                 if self.command == "GET":
@@ -674,8 +847,8 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"detail": "Not Found"})
             return
 
-        # ---- Users ----
-        if resource == "users":
+        # ---- Users (Gateway-only) ----
+        if service == "gateway" and resource == "users":
             if len(parts) == 4:
                 if self.command == "GET":
                     username = (qs.get("username") or [None])[0]
@@ -716,8 +889,8 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(404, {"detail": "Not Found"})
                     return
 
-        # ---- Organizations ----
-        if resource == "organizations":
+        # ---- Organizations (Gateway-only) ----
+        if service == "gateway" and resource == "organizations":
             if len(parts) == 4:
                 if self.command == "GET":
                     name = (qs.get("name") or [None])[0]
@@ -758,8 +931,8 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(404, {"detail": "Not Found"})
                     return
 
-        # ---- Teams ----
-        if resource == "teams":
+        # ---- Teams (Gateway-only) ----
+        if service == "gateway" and resource == "teams":
             if len(parts) == 4:
                 if self.command == "GET":
                     name = (qs.get("name") or [None])[0]
@@ -803,8 +976,8 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     return
 
         # ---- All other resources — generic handler ----
-        if resource in self.store._resources:
-            if self._handle_generic_resource(resource, parts, version, qs):
+        if (service, resource) in self.store._resources:
+            if self._handle_generic_resource(service, resource, parts, version, qs):
                 return
 
         self._send_json(404, {"detail": "Not Found"})
@@ -869,10 +1042,11 @@ def main() -> int:
         httpd.serve_forever()
         return 0
 
-    resources = ", ".join(sorted(store._resources.keys()))
+    resources = ", ".join(f"{service}:{name}" for service, name in sorted(store._resources.keys()))
     print(f"Mock Gateway on http://{args.host}:{args.port} (api_version={args.reported_api_version})")
     print(f"Generic resources: {resources}")
-    print("Legacy: users, organizations, teams | Special: settings, settings/all")
+    print("Legacy (Gateway-only): users, organizations, teams | Special: settings, settings/all")
+    print(f"Services: {', '.join(SUPPORTED_SERVICES)} (e.g. /api/controller/v{{1,2}}/ping/)")
     httpd.serve_forever()
     return 0
 

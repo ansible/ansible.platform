@@ -83,5 +83,6 @@ class TransformContext:
     session: "Session"
     cache: Dict[str, Any]
     api_version: str
+    service: str = "gateway"
     operation: Optional[str] = None
     include_nulls_for_update: bool = False

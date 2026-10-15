@@ -9,6 +9,9 @@ __metaclass__ = type
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
+from ansible_collections.ansible.platform.plugins.plugin_utils.resource_type_map import get_expected_assignment_type
+
+_get_expected_endpoint = get_expected_assignment_type
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -17,12 +20,15 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "id"
 
     def _resolve_fks_to_strings(self, manager, data_dict):
-        """Helper to safely resolve and cast foreign keys."""
         if "role_definition" in data_dict:
             if not str(data_dict["role_definition"]).isdigit():
                 try:
                     data_dict["role_definition"] = str(manager.lookup_resource_id("role_definitions", "name", data_dict["role_definition"]))
-                except Exception:
+                except Exception as _exc:
+                    self._display.warning(
+                        "role_team_assignment: could not resolve role_definition %r to an ID (%s). "
+                        "Pass the numeric ID directly to skip lookup." % (data_dict["role_definition"], _exc)
+                    )
                     data_dict["role_definition"] = str(data_dict["role_definition"])
             else:
                 data_dict["role_definition"] = str(data_dict["role_definition"])
@@ -31,7 +37,11 @@ class ActionModule(BaseResourceActionPlugin):
             if not str(data_dict["team"]).isdigit():
                 try:
                     data_dict["team"] = str(manager.lookup_resource_id("teams", "name", data_dict["team"]))
-                except Exception:
+                except Exception as _exc:
+                    self._display.warning(
+                        "role_team_assignment: could not resolve team name %r to an ID (%s). "
+                        "Pass the team's numeric ID or ansible_id directly to skip lookup." % (data_dict["team"], _exc)
+                    )
                     data_dict["team"] = str(data_dict["team"])
             else:
                 data_dict["team"] = str(data_dict["team"])
@@ -39,17 +49,6 @@ class ActionModule(BaseResourceActionPlugin):
         return data_dict
 
     def run(self, tmp=None, task_vars=None):
-        """
-        Custom run() for role_team_assignment.
-
-        Supports two modes:
-        - Single-object (object_id / object_ansible_id): delegates to the
-          standard BaseResourceActionPlugin.run() after stripping
-          assignment_objects from task args.
-        - Multi-object (assignment_objects list): iterates over each entry,
-          resolves name+type -> object_id, and creates/deletes individual
-          assignments with idempotency.
-        """
         if task_vars is None:
             task_vars = {}
         self._task_vars = task_vars
@@ -57,7 +56,6 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            # ---- validate input ------------------------------------------------
             doc = self._get_documentation()
             argspec = self._build_argspec_from_docs(doc) if doc else None
             if not argspec:
@@ -65,7 +63,6 @@ class ActionModule(BaseResourceActionPlugin):
             validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
             validated_params = validated_input.validated_parameters
 
-            # ---- manager connection --------------------------------------------
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             if facts_to_set:
                 result["ansible_facts"] = facts_to_set
@@ -75,95 +72,122 @@ class ActionModule(BaseResourceActionPlugin):
             assignment_objects_raw = validated_params.get("assignment_objects") or []
 
             if not assignment_objects_raw:
-                # ---- single-object path: standard run logic -------------------
                 return self._run_standard(result, manager, argspec, validated_params, state)
 
-            # ---- multi-object path: iterate over assignment_objects -----------
-            # Base data shared across all assignments (role + team, no object_id)
-            _skip = self._AUTH_PARAMS | {
-                "assignment_objects",
-                "state",
-                "object_id",
-                "object_ids",
-                "object_ansible_id",
-            }
-            base_data = {k: v for k, v in validated_params.items() if v is not None and k not in _skip}
+            role_def_name = validated_params.get("role_definition", "")
+            _role_def_obj = None
+            try:
+                _role_def_obj = manager.execute(
+                    operation="find",
+                    module_name="role_definition",
+                    ansible_data={"name": role_def_name},
+                )
+            except Exception:
+                pass
+            _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
+
+            _skip = self._AUTH_PARAMS | {"assignment_objects", "state", "object_id", "object_ansible_id"}
+            base_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in _skip}
             base_data = self._resolve_fks_to_strings(manager, base_data)
 
             all_changed = False
             assignments = []
 
+            _orig_role_def = validated_params.get("role_definition")
+            _orig_team = validated_params.get("team")
+            _orig_team_ansible_id = validated_params.get("team_ansible_id")
+
+            def _humanise(api_result, obj_item):
+                humanised = dict(api_result)
+                if _orig_role_def:
+                    humanised["role_definition"] = _orig_role_def
+                if _orig_team:
+                    humanised["team"] = _orig_team
+                elif _orig_team_ansible_id:
+                    humanised["team_ansible_id"] = _orig_team_ansible_id
+                if obj_item and obj_item.get("name"):
+                    humanised["object_name"] = obj_item["name"]
+                    humanised["object_type"] = obj_item.get("type")
+                return humanised
+
             for obj in assignment_objects_raw:
                 per_obj = dict(base_data)
 
-                # Resolve and strict string-cast object identity
                 if obj.get("object_id") is not None:
                     per_obj["object_id"] = str(obj["object_id"])
                 elif obj.get("object_ansible_id"):
                     per_obj["object_ansible_id"] = str(obj["object_ansible_id"])
                 elif obj.get("name") and obj.get("type"):
+                    _expected_endpoint = _get_expected_endpoint(_role_content_type)
+                    if _expected_endpoint and obj["type"] != _expected_endpoint:
+                        raise AnsibleError(
+                            "Role '{role}' has content_type '{ct}' which requires type '{expected}' in assignment_objects, but got '{provided}'.".format(
+                                role=role_def_name,
+                                ct=_role_content_type or "unknown",
+                                expected=_expected_endpoint,
+                                provided=obj["type"],
+                            )
+                        )
+                    lookup_data = dict(per_obj)
+                    lookup_data["object_lookup"] = {
+                        "name": obj["name"],
+                        "type": obj["type"],
+                        "organization": obj.get("organization"),
+                    }
                     try:
-                        oid = manager.lookup_resource_id(obj["type"], "name", obj["name"])
-                        per_obj["object_id"] = str(oid)  # CRITICAL: Must be string
-                    except Exception:
-                        per_obj["object_id"] = str(obj["name"])
-
+                        resolved = manager.execute(
+                            operation="resolve",
+                            module_name=self.MODULE_NAME,
+                            ansible_data=lookup_data,
+                        )
+                        per_obj["object_id"] = str(resolved["object_id"])
+                    except Exception as exc:
+                        raise AnsibleError(
+                            "Could not resolve %s '%s'%s: %s"
+                            % (
+                                obj["type"],
+                                obj["name"],
+                                (" (organization=%s)" % obj["organization"]) if obj.get("organization") else "",
+                                exc,
+                            )
+                        ) from exc
+                elif obj.get("name") and not obj.get("type"):
+                    raise AnsibleError("Assignment Object has been defined only with name, but no type is associated with it")
                 if state == "present":
                     try:
-                        find_result = manager.execute(
-                            operation="find",
-                            module_name=self.MODULE_NAME,
-                            ansible_data=per_obj,
-                        )
+                        find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=per_obj)
                         if find_result and find_result.get("id"):
-                            assignments.append(find_result)
-                            continue  # already exists — no change
+                            assignments.append(_humanise(find_result, obj))
+                            continue
                     except Exception:
                         pass
-
-                    # Create
-                    mgr_result = manager.execute(
-                        operation="create",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=per_obj,
-                    )
+                    mgr_result = manager.execute(operation="create", module_name=self.MODULE_NAME, ansible_data=per_obj)
                     all_changed = True
-                    assignments.append(mgr_result)
+                    assignments.append(_humanise(mgr_result, obj))
 
                 elif state == "absent":
                     try:
-                        find_result = manager.execute(
-                            operation="find",
-                            module_name=self.MODULE_NAME,
-                            ansible_data=per_obj,
-                        )
+                        find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=per_obj)
                         if find_result and find_result.get("id"):
                             delete_payload = dict(per_obj)
                             delete_payload["id"] = find_result["id"]
                             manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
                             all_changed = True
+                            assignments.append(_humanise(find_result, obj))
                     except Exception as exc:
                         self._display.vvv("Delete failed: %s" % exc)
 
                 elif state == "exists":
-                    # Check existence without modifying; collect found assignments
                     try:
-                        find_result = manager.execute(
-                            operation="find",
-                            module_name=self.MODULE_NAME,
-                            ansible_data=per_obj,
-                        )
+                        find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=per_obj)
                         if find_result and find_result.get("id"):
-                            assignments.append(find_result)
+                            assignments.append(_humanise(find_result, obj))
                     except Exception:
                         pass
 
-            # For state=exists: fail (without setting MODULE_NAME key) if nothing
-            # was found — mirrors the single-object path's "not found" behaviour.
             if state == "exists" and not assignments:
                 raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
 
-            # ---- build clean result -------------------------------------------
             _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "assignment_objects", "assignments"}
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
@@ -173,8 +197,6 @@ class ActionModule(BaseResourceActionPlugin):
                     "changed": all_changed,
                     "failed": False,
                     self.MODULE_NAME: clean,
-                    # Flat top-level keys kept for backward compatibility with
-                    # playbooks written against <=2.6.
                     **clean,
                 }
             )
@@ -192,12 +214,10 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    # ------------------------------------------------------------------
     def _run_standard(self, result, manager, argspec, validated_params, state):
-        """Single-object path: mirrors the standard BaseResourceActionPlugin logic."""
         from dataclasses import asdict
 
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "assignment_objects"}
+        resource_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"}
         resource_data = self._resolve_fks_to_strings(manager, resource_data)
 
         if "object_id" in resource_data and resource_data["object_id"] is not None:
@@ -215,24 +235,11 @@ class ActionModule(BaseResourceActionPlugin):
 
         if state == "present" and operation == "create":
             try:
-                find_result = manager.execute(
-                    operation="find",
-                    module_name=self.MODULE_NAME,
-                    ansible_data=resource_data,
-                )
+                find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=resource_data)
                 if find_result and find_result.get("id"):
                     if not self._should_update(resource_data, find_result):
                         clean = {k: v for k, v in find_result.items() if k not in _strip}
-                        result.update(
-                            {
-                                "changed": False,
-                                "failed": False,
-                                self.MODULE_NAME: clean,
-                                # Flat top-level keys kept for backward compatibility with
-                                # playbooks written against <=2.6.
-                                **clean,
-                            }
-                        )
+                        result.update({"changed": False, "failed": False, self.MODULE_NAME: clean, **clean})
                         return result
                     operation = "update"
                     resource.id = find_result["id"]
@@ -241,38 +248,18 @@ class ActionModule(BaseResourceActionPlugin):
 
         if operation == "delete" and not getattr(resource, "id", None):
             try:
-                find_result = manager.execute(
-                    operation="find",
-                    module_name=self.MODULE_NAME,
-                    ansible_data=resource_data,
-                )
+                find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=resource_data)
                 if find_result and find_result.get("id"):
                     resource.id = find_result["id"]
                 else:
-                    result.update(
-                        {
-                            "changed": False,
-                            "failed": False,
-                            self.MODULE_NAME: {"state": "absent"},
-                        }
-                    )
+                    result.update({"changed": False, "failed": False, self.MODULE_NAME: {"state": "absent"}})
                     return result
             except Exception:
-                result.update(
-                    {
-                        "changed": False,
-                        "failed": False,
-                        self.MODULE_NAME: {"state": "absent"},
-                    }
-                )
+                result.update({"changed": False, "failed": False, self.MODULE_NAME: {"state": "absent"}})
                 return result
 
         ansible_data = asdict(resource)
-        manager_result = manager.execute(
-            operation=operation,
-            module_name=self.MODULE_NAME,
-            ansible_data=ansible_data,
-        )
+        manager_result = manager.execute(operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data)
 
         clean = {k: v for k, v in manager_result.items() if k not in _strip}
         result.update(
@@ -280,9 +267,6 @@ class ActionModule(BaseResourceActionPlugin):
                 "changed": manager_result.get("changed", False),
                 "failed": False,
                 self.MODULE_NAME: clean,
-                # Flat top-level keys kept for backward compatibility with
-                # playbooks written against <=2.6.
-                # Not spread for delete operations (clean would only have state=absent).
                 **(clean if operation != "delete" else {}),
             }
         )

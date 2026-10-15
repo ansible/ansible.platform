@@ -19,17 +19,16 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.plugins.action import ActionBase
 from ansible.utils.display import Display
-
-if TYPE_CHECKING:
-    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 # ---------------------------------------------------------------------------
 # Logging strategy for action plugins
@@ -271,6 +270,13 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this to list mutable FK fields for their resource.
     _MUTABLE_FK_FIELDS: frozenset = frozenset()
 
+    # Fields where list order does not matter for idempotency comparison.
+    # By default, list comparison is order-sensitive (safer).  Subclasses
+    # opt in specific fields where the API may return items in a different
+    # order than the user specified (e.g. permissions lists).
+    # Example:  _ORDER_INSENSITIVE_FIELDS = frozenset({"permissions"})
+    _ORDER_INSENSITIVE_FIELDS: frozenset = frozenset()
+
     _AUTH_PARAMS = frozenset(
         {
             "gateway_hostname",
@@ -285,6 +291,9 @@ class BaseResourceActionPlugin(ActionBase):
             "aap_token",
             "aap_validate_certs",
             "aap_request_timeout",
+            "aap_ca_bundle",
+            "gateway_ca_bundle",
+            "ansible_platform_ca_bundle",
         }
     )
     _ANSIBLE_DIRECTIVES = frozenset({"state", "new_name"})
@@ -356,6 +365,67 @@ class BaseResourceActionPlugin(ActionBase):
             operation: The resolved operation string.
         """
 
+    def _build_resource(self, resource_data: dict) -> Any:
+        """Construct the resource model from filtered task parameters.
+
+        Launch-style action plugins can override this when their argument
+        specification contains control parameters that are not model fields.
+        The default preserves the existing CRUD action-plugin behavior.
+        """
+        return self.MODEL_CLASS(**resource_data)
+
+    def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
+        """Prepare the common inputs needed by an action plugin.
+
+        This helper deliberately stops before operation detection and manager
+        execution.  It is therefore usable by non-CRUD action plugins without
+        entering the idempotency state machine implemented by :meth:`run`.
+
+        Args:
+            tmp: Temporary directory passed through to Ansible's base action.
+            task_vars: Ansible task variables used to initialize the manager.
+
+        Returns:
+            dict: A dictionary containing ``result``, ``argspec``,
+                ``validated_params``, ``resource_data``, ``write_only_data``,
+                and ``manager``.
+        """
+        if task_vars is None:
+            task_vars = {}
+        self._task_vars = task_vars
+        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
+        del tmp
+
+        doc = self._get_documentation()
+        argspec = self._build_argspec_from_docs(doc) if doc else None
+        if not argspec:
+            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
+
+        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+        self._client = manager
+        if facts_to_set:
+            result["ansible_facts"] = facts_to_set
+            result["_ansible_facts_cacheable"] = True
+
+        validated_params = validated_input.validated_parameters
+        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
+
+        for field, (msg, version) in self._DEPRECATED_FIELDS.items():
+            if resource_data.pop(field, None) is not None:
+                result.setdefault("deprecations", []).append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
+
+        write_only_data = {f: resource_data.pop(f) for f in self._WRITE_ONLY_FIELDS if f in resource_data}
+
+        return {
+            "result": result,
+            "argspec": argspec,
+            "validated_params": validated_params,
+            "resource_data": resource_data,
+            "write_only_data": write_only_data,
+            "manager": manager,
+        }
+
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get connection client from the connection plugin.
@@ -387,8 +457,8 @@ class BaseResourceActionPlugin(ActionBase):
         gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, required=True)
 
         # Collect task-level environment vars (e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, proxy
-        # settings) BEFORE dispatching so they can be forwarded to the manager subprocess
-        # regardless of which connection mode is in use (local, http-direct, http-persistent).
+        # settings) and inventory aap_ca_bundle BEFORE dispatching so they reach the manager
+        # subprocess regardless of which connection mode is in use (local, http-direct, http-persistent).
         task_env: dict = {}
         for _env_block in self._task.environment or []:
             if isinstance(_env_block, dict):
@@ -458,22 +528,37 @@ class BaseResourceActionPlugin(ActionBase):
         """
         import sys
 
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
         self._display.vvvv("Using experimental connection mode (Persistent Manager)")
 
         inventory_hostname = task_vars.get("inventory_hostname", "localhost")
 
         self._display.vvvv(f"Checking for existing persistent manager for host: {inventory_hostname}")
 
-        # Determine the expected socket path for the current credentials.
-        # The socket filename encodes a credential hash, so a credential
+        # Resolve task-level env before computing the socket identity. REQUESTS_CA_BUNDLE
+        # from environment: has higher precedence than inventory aap_ca_bundle and is
+        # baked into the manager at spawn, so it must participate in reuse.
+        _persistent_task_env: dict = {}
+        for _env_block in self._task.environment or []:
+            if isinstance(_env_block, dict):
+                try:
+                    _resolved = self._templar.template(_env_block)
+                    if isinstance(_resolved, dict):
+                        _persistent_task_env.update(_resolved)
+                except Exception as _env_err:
+                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
+
+        # Determine the expected socket path for the current credentials and TLS policy.
+        # The socket filename encodes an identity hash, so a credential or trust-policy
         # change automatically causes a new manager to be spawned.
         import tempfile
 
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
-        expected_conn_info = ProcessManager.generate_connection_info(identifier=inventory_hostname, socket_dir=socket_dir, gateway_config=gateway_config)
+        expected_conn_info = ProcessManager.generate_connection_info(
+            identifier=inventory_hostname,
+            socket_dir=socket_dir,
+            gateway_config=gateway_config,
+            task_env=_persistent_task_env or None,
+        )
         expected_socket_path = expected_conn_info.socket_path
         meta_path = expected_socket_path + ".meta"
 
@@ -534,17 +619,6 @@ class BaseResourceActionPlugin(ActionBase):
         # so os.getppid() is the main ansible-playbook process PID.  The manager's
         # watchdog thread watches that PID and self-terminates when it exits.
         import os as _os_spawn
-
-        # Resolve and forward task-level env vars to the persistent manager subprocess.
-        _persistent_task_env: dict = {}
-        for _env_block in self._task.environment or []:
-            if isinstance(_env_block, dict):
-                try:
-                    _resolved = self._templar.template(_env_block)
-                    if isinstance(_resolved, dict):
-                        _persistent_task_env.update(_resolved)
-                except Exception as _env_err:
-                    self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
 
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
@@ -807,8 +881,6 @@ class BaseResourceActionPlugin(ActionBase):
         if hasattr(self, "_client") and getattr(self._client, "_ephemeral", False):
             self._display.vv("Shutting down ephemeral manager (direct mode)")
             try:
-                from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
-
                 socket_path = getattr(self._client, "socket_path", None)
                 if socket_path:
                     self._shutdown_manager_process(socket_path, ProcessManager)
@@ -900,8 +972,6 @@ class BaseResourceActionPlugin(ActionBase):
                 if authkey_b64 and Path(socket_path).exists():
                     try:
                         authkey = base64.b64decode(authkey_b64)
-                        from .plugin_utils.manager.rpc_client import ManagerRPCClient
-
                         # CRITICAL: Ensure socket_path is a string (Fedora/Path object compatibility)
                         socket_path_str = str(socket_path)
                         client = ManagerRPCClient(process_info.get("gateway_url", ""), socket_path_str, authkey)
@@ -994,8 +1064,21 @@ class BaseResourceActionPlugin(ActionBase):
                 and current_val.isdigit()
             ):
                 continue
+            # List comparison: order-insensitive for opted-in fields only,
+            # order-sensitive (default) for everything else.
+            if isinstance(desired_val, list) and isinstance(current_val, list):
+                if key in self._ORDER_INSENSITIVE_FIELDS:
+                    # Opted-in: the API may return items in a different order
+                    # (e.g. permissions come back alphabetically).
+                    if sorted(str(x) for x in desired_val) != sorted(str(x) for x in current_val):
+                        return True
+                else:
+                    # Default: order-sensitive (safer — preserves ordering
+                    # semantics for fields like notification_addresses).
+                    if desired_val != current_val:
+                        return True
             # Same type: direct equality
-            if type(desired_val) is type(current_val):
+            elif type(desired_val) is type(current_val):
                 if desired_val != current_val:
                     return True
             else:
@@ -1026,44 +1109,24 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             dict: Ansible result dictionary
         """
-        if task_vars is None:
-            task_vars = {}
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
         if self.MODEL_CLASS is None:
             raise AnsibleError("%s must set MODEL_CLASS or override run()" % type(self).__name__)
 
+        # Preparation can fail before _prepare_action() returns a result.
+        # Keep a valid Ansible result available so the exception handler does
+        # not mask the original validation, documentation, or connection error.
+        result = {}
         try:
-            # ---- argspec & input validation --------------------------------
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-
-            # ---- manager connection ----------------------------------------
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            argspec = prepared["argspec"]
+            validated_params = prepared["validated_params"]
+            resource_data = prepared["resource_data"]
+            _write_only_data = prepared["write_only_data"]
+            manager = prepared["manager"]
 
             # ---- build resource object -------------------------------------
-            validated_params = validated_input.validated_parameters
-            resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
-
-            # Warn about and strip deprecated argspec fields.
-            for field, (msg, version) in self._DEPRECATED_FIELDS.items():
-                if resource_data.pop(field, None) is not None:
-                    result.setdefault("deprecations", []).append({"msg": msg, "version": version, "collection_name": "ansible.platform"})
-
-            # Pop write-only fields (not present in MODEL_CLASS) before instantiation;
-            # they are passed to _pre_execute_hook for use just before manager.execute().
-            _write_only_data = {f: resource_data.pop(f) for f in self._WRITE_ONLY_FIELDS if f in resource_data}
-
-            resource = self.MODEL_CLASS(**resource_data)
+            resource = self._build_resource(resource_data)
 
             # Allow subclasses to resolve lookup-by-id or other mutations.
             self._resolve_lookup(resource, resource_data, validated_params)
@@ -1186,7 +1249,7 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                    resource = self.MODEL_CLASS(**{k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
+                    resource = self._build_resource({k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
                     operation = "update"
                 else:
                     operation = "create"

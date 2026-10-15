@@ -24,6 +24,8 @@ jobs:
             command: check_mypy
           - name: pydoclint
             command: check_pydoclint
+          - name: action-plugin-invariants
+            command: check_action_plugin_invariants
     steps:
       - name: Install make
         run: sudo apt install make

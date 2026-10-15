@@ -10,6 +10,8 @@
 #   2. REQUESTS_CA_BUNDLE is read by requests inside the subprocess.
 #   3. SSL_CERT_FILE is mapped → REQUESTS_CA_BUNDLE (backward compat / deprecation shim).
 #   4. A valid CA bundle passed via REQUESTS_CA_BUNDLE allows SSL verification to succeed.
+#   5. Inventory aap_ca_bundle is forwarded to the manager subprocess without per-task environment:.
+#   6. Inventory aap_ca_bundle with a valid CA bundle allows SSL verification to succeed.
 #
 # Connection mode coverage:
 #   - local / http-direct: each task spawns a fresh ephemeral manager → env forwarding
@@ -208,6 +210,116 @@
     not _skip_forwarding_tests | bool
     and (gateway_tls_ca_bundle_path is not defined or gateway_tls_ca_bundle_path | length == 0)
 
+# ── Test 4: inventory aap_ca_bundle=/dev/null forces SSL failure ───────────────
+# Proves inventory-native CA bundle forwarding without per-task environment:.
+- name: Capture pre-test inventory CA bundle fact
+  ansible.builtin.set_fact:
+    _ssl_test_orig_aap_ca_bundle_defined: "{{ aap_ca_bundle is defined }}"
+    _ssl_test_orig_aap_ca_bundle: "{{ aap_ca_bundle | default('') }}"
+  when: not _skip_forwarding_tests | bool
+
+- name: "TEST 4: aap_ca_bundle=/dev/null must produce SSL error"
+  when: not _skip_forwarding_tests | bool
+  block:
+    - name: Set inventory CA bundle path to empty trust store
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "/dev/null"
+
+    - name: Call module with inventory aap_ca_bundle only
+      ansible.platform.organization:
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: true
+        name: "ssl-env-test-sentinel"
+        state: exists
+      register: _inventory_ca_bundle_negative
+      ignore_errors: true
+
+    - name: Assert inventory CA bundle caused SSL error
+      ansible.builtin.assert:
+        that:
+          - _inventory_ca_bundle_negative is failed
+          - >-
+            'SSL' in (_inventory_ca_bundle_negative.msg | default(''))
+            or 'certificate' in (_inventory_ca_bundle_negative.msg | default(''))
+            or 'CERTIFICATE' in (_inventory_ca_bundle_negative.msg | default(''))
+            or 'ioctl' in (_inventory_ca_bundle_negative.msg | default(''))
+        fail_msg: >-
+          Expected SSL error from inventory aap_ca_bundle=/dev/null but got:
+          {{ _inventory_ca_bundle_negative.msg | default('(no message)') }}.
+        success_msg: >-
+          TEST 4 PASSED: inventory aap_ca_bundle=/dev/null caused SSL error as expected.
+
+  always:
+    - name: Restore inventory CA bundle fact after test 4
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ _ssl_test_orig_aap_ca_bundle }}"
+      when: _ssl_test_orig_aap_ca_bundle_defined | bool
+
+    - name: Remove inventory CA bundle fact after test 4
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ omit }}"
+      when: not (_ssl_test_orig_aap_ca_bundle_defined | bool)
+
+# ── Test 5: inventory aap_ca_bundle with real CA bundle succeeds ───────────────
+- name: "TEST 5: aap_ca_bundle=<real CA bundle> allows SSL to succeed"
+  when:
+    - not _skip_forwarding_tests | bool
+    - gateway_tls_ca_bundle_path is defined
+    - gateway_tls_ca_bundle_path | length > 0
+  block:
+    - name: Verify CA bundle file exists for inventory test
+      ansible.builtin.stat:
+        path: "{{ gateway_tls_ca_bundle_path }}"
+      register: _inventory_ca_bundle_stat
+
+    - name: Set inventory CA bundle path to real trust store
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ gateway_tls_ca_bundle_path }}"
+      when: _inventory_ca_bundle_stat.stat.exists
+
+    - name: Call module with inventory aap_ca_bundle only
+      ansible.platform.organization:
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: true
+        name: "ssl-env-test-sentinel"
+        state: exists
+      register: _inventory_ca_bundle_positive
+      when: _inventory_ca_bundle_stat.stat.exists
+
+    - name: Assert inventory CA bundle allowed SSL verification to succeed
+      ansible.builtin.assert:
+        that:
+          - _inventory_ca_bundle_positive is not failed
+        fail_msg: >-
+          Call failed with inventory aap_ca_bundle={{ gateway_tls_ca_bundle_path }}.
+          Error: {{ _inventory_ca_bundle_positive.msg | default('(no message)') }}.
+        success_msg: >-
+          TEST 5 PASSED: inventory aap_ca_bundle allowed SSL verification to succeed.
+      when: _inventory_ca_bundle_stat.stat.exists
+
+  always:
+    - name: Restore inventory CA bundle fact after test 5
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ _ssl_test_orig_aap_ca_bundle }}"
+      when: _ssl_test_orig_aap_ca_bundle_defined | bool
+
+    - name: Remove inventory CA bundle fact after test 5
+      ansible.builtin.set_fact:
+        aap_ca_bundle: "{{ omit }}"
+      when: not (_ssl_test_orig_aap_ca_bundle_defined | bool)
+
+- name: "TEST 5 SKIPPED"
+  ansible.builtin.debug:
+    msg: >-
+      TEST 5 skipped — gateway_tls_ca_bundle_path not set in integration_config.yml.
+  when: >-
+    not _skip_forwarding_tests | bool
+    and (gateway_tls_ca_bundle_path is not defined or gateway_tls_ca_bundle_path | length == 0)
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 - name: Compute SSL env forwarding test result statuses
   ansible.builtin.set_fact:
@@ -225,6 +337,15 @@
       {{ 'PASS' if (_positive_result is defined
       and _positive_result is not failed)
       else 'SKIPPED (gateway_tls_ca_bundle_path not set)' }}
+    _ssl_t4_status: >-
+      {{ 'PASS' if (_inventory_ca_bundle_negative is defined
+      and _inventory_ca_bundle_negative is failed)
+      else 'SKIPPED (persistent mode)' if _skip_forwarding_tests | bool
+      else 'FAIL' }}
+    _ssl_t5_status: >-
+      {{ 'PASS' if (_inventory_ca_bundle_positive is defined
+      and _inventory_ca_bundle_positive is not failed)
+      else 'SKIPPED (gateway_tls_ca_bundle_path not set)' }}
 
 - name: SSL env forwarding test summary
   ansible.builtin.debug:
@@ -234,4 +355,6 @@
       - "TEST 1 (REQUESTS_CA_BUNDLE=/dev/null → SSL error) : {{ _ssl_t1_status }}"
       - "TEST 2 (SSL_CERT_FILE=/dev/null → SSL error via shim) : {{ _ssl_t2_status }}"
       - "TEST 3 (REQUESTS_CA_BUNDLE=<real CA> → success)   : {{ _ssl_t3_status }}"
+      - "TEST 4 (aap_ca_bundle=/dev/null → SSL error) : {{ _ssl_t4_status }}"
+      - "TEST 5 (aap_ca_bundle=<real CA> → success)   : {{ _ssl_t5_status }}"
 ...

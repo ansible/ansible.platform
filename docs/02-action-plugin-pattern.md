@@ -465,7 +465,7 @@ possible without any changes to playbooks.
 Each Gateway API release can introduce field changes, endpoint changes, and behaviour
 changes. A naive collection locked to a single API version breaks on upgrade:
 
-- AAP 2.6: Current release — `api/v1/` transform mixins
+- AAP 2.6: Current release — `api/gateway/v1/` transform mixins
 - AAP 2.7: Upcoming release — may introduce API field changes or new endpoints
 - AAP 2.x: Future releases — handled by adding new versioned mixin directories
 

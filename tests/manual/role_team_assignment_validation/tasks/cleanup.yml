@@ -1,0 +1,36 @@
+---
+- name: Remove role assignments (best effort)
+  ansible.platform.role_team_assignment:
+    role_definition: "{{ item.role }}"
+    team: "{{ gw_team_name | default(omit) }}"
+    assignment_objects: "{{ item.objects }}"
+    state: absent
+  loop: "{{ cleanup_assignments | default([]) }}"
+  when: gw_team_name is defined
+  failed_when: false
+
+- name: Delete gateway team
+  ansible.platform.team:
+    name: "{{ gw_team_name }}"
+    organization: "{{ gw_org_a }}"
+    state: absent
+  when: gw_team_name is defined and gw_org_a is defined
+  failed_when: false
+
+- name: Delete gateway orgs
+  ansible.platform.organization:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ gw_org_a | default('') }}"
+    - "{{ gw_org_b | default('') }}"
+  when: item | length > 0
+  failed_when: false
+
+- name: Note remaining Controller/EDA/Hub resources
+  ansible.builtin.debug:
+    msg: >-
+      Best-effort gateway cleanup done. Controller orgs/JTs, EDA projects, and Hub
+      namespaces with prefix {{ prefix | default('n/a') }} may remain — delete in UI
+      or re-run with service-specific cleanup if needed.
+...

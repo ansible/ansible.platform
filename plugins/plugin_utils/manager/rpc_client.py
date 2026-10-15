@@ -92,7 +92,7 @@ class ManagerRPCClient:
         # Execute via proxy
         return self.service_proxy.execute(operation, module_name, data_dict)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway"):
         """
         Resolve a resource name to its integer ID via the manager process.
 
@@ -103,6 +103,7 @@ class ManagerRPCClient:
             endpoint: API endpoint name (e.g. 'organizations', 'users')
             lookup_field: Field to filter by (e.g. 'name', 'username')
             lookup_value: Value to look up
+            service: Service to route the lookup through (e.g. 'gateway', 'controller')
 
         Returns:
             Integer resource ID
@@ -110,7 +111,28 @@ class ManagerRPCClient:
         Raises:
             ValueError: If the resource is not found
         """
-        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value)
+        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service)
+
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        service: str = "gateway",
+    ) -> bool:
+        """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
+        return self.service_proxy.manage_associations(base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service)
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+        """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
+        """Copy a resource via the manager process. See PlatformService.copy_resource()."""
+        return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

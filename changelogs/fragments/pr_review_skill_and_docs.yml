@@ -1,0 +1,3 @@
+---
+trivial:
+  - Add pr-review skill and comprehensive review guidelines for maintainers. Exclude .claude and docs directories from ruff linting.

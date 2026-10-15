@@ -1,0 +1,92 @@
+---
+- name: Verify Controller job template state in the mock API
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: false
+  tasks:
+    - name: Find the local template
+      ansible.platform.job_template:
+        name: Molecule Controller JT Local
+        state: exists
+      register: local_template
+
+    - name: Find the copied template
+      ansible.platform.job_template:
+        name: Molecule Controller JT Copy
+        state: exists
+      register: copied_template
+
+    - name: Find the direct and persistent templates
+      ansible.platform.job_template:
+        name: "{{ item }}"
+        state: exists
+      loop:
+        - Molecule Controller JT Direct
+        - Molecule Controller JT Persistent
+      register: connection_templates
+
+    - name: Read source template directly from the mock API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/{{ local_template.id }}/"
+        headers:
+          Authorization: Basic bW9jazptb2Nr
+        return_content: true
+      register: raw_source
+
+    - name: Read copied template directly from the mock API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/{{ copied_template.id }}/"
+        headers:
+          Authorization: Basic bW9jazptb2Nr
+        return_content: true
+      register: raw_copy
+
+    - name: Assert all templates exist and copy kept foreign keys
+      ansible.builtin.assert:
+        that:
+          - local_template.exists
+          - copied_template.exists
+          - copied_template.job_template.project == 'Mock Project'
+          - raw_source.json.project == 5201
+          - raw_copy.json.project == 5201
+          - connection_templates.results | map(attribute='exists') | list == [true, true]
+
+    - name: Read labels directly from the mock Controller API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/{{ local_template.id }}/labels/"
+        headers:
+          Authorization: Basic bW9jazptb2Nr
+        return_content: true
+      register: labels
+
+    - name: Read success notifications directly from the mock Controller API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/{{ local_template.id }}/notification_templates_success/"
+        headers:
+          Authorization: Basic bW9jazptb2Nr
+        return_content: true
+      register: success_notifications
+
+    - name: Read error notifications directly from the mock Controller API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/job_templates/{{ local_template.id }}/notification_templates_error/"
+        headers:
+          Authorization: Basic bW9jazptb2Nr
+        return_content: true
+      register: error_notifications
+
+    - name: Assert selective removal and check mode preserved server state
+      ansible.builtin.assert:
+        that:
+          - labels.json.count == 2
+          - labels.json.results | map(attribute='name') | list == ['Mock Label 1', 'Mock Label 2']
+          - success_notifications.json.count == 0
+          - error_notifications.json.count == 1
+        fail_msg: "Labels: {{ labels.json }} Success: {{ success_notifications.json }} Error: {{ error_notifications.json }}"
+...

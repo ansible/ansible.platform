@@ -36,18 +36,19 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader i
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry
 
 # ---------------------------------------------------------------------------
-# Fake v2 API module — injected into sys.modules during tests that exercise
-# multi-version logic.  v2 does not exist in the real collection (only v1 is
-# shipped); keeping the fixture here rather than in plugins/plugin_utils/api/
-# avoids shipping test-only code.
+# Fake gateway/v2 API module — injected into sys.modules during tests that
+# exercise multi-version logic.  v2 does not exist in the real collection
+# (only v1 is shipped); keeping the fixture here rather than in
+# plugins/plugin_utils/api/ avoids shipping test-only code.
 # ---------------------------------------------------------------------------
 
-_V2_PKG = "ansible_collections.ansible.platform.plugins.plugin_utils.api.v2"
-_V2_MOD = "ansible_collections.ansible.platform.plugins.plugin_utils.api.v2.user"
+_V2_PKG_GATEWAY = "ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway"
+_V2_PKG = "ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v2"
+_V2_MOD = "ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v2.user"
 
 
 def _make_fake_v2_module() -> types.ModuleType:
-    """Return a minimal fake api.v2.user module used only in tests."""
+    """Return a minimal fake api.gateway.v2.user module used only in tests."""
 
     @dataclass
     class APIUser_v2:  # noqa: N801 – name mirrors real collection convention
@@ -82,33 +83,34 @@ def _make_fake_v2_module() -> types.ModuleType:
 class TestAPIVersioning(unittest.TestCase):
     # ------------------------------------------------------------------
     # setUp / tearDown — create a temporary api dir containing a stub
-    # v2/user.py so APIVersionRegistry can discover "2" via filesystem
-    # scan, and inject the matching fake module into sys.modules so that
-    # DynamicClassLoader's importlib.import_module call resolves it.
+    # gateway/v2/user.py so APIVersionRegistry can discover "2" via
+    # filesystem scan, and inject the matching fake module into
+    # sys.modules so that DynamicClassLoader's importlib.import_module
+    # call resolves it.
     # ------------------------------------------------------------------
 
     def setUp(self):
-        # Temp dir: api/v2/user.py  (stub — registry only checks file existence)
         self._tmpdir = tempfile.mkdtemp()
-        v2_dir = Path(self._tmpdir) / "v2"
-        v2_dir.mkdir()
+        v2_dir = Path(self._tmpdir) / "gateway" / "v2"
+        v2_dir.mkdir(parents=True)
         (v2_dir / "__init__.py").write_text("")
         (v2_dir / "user.py").write_text("# v2 stub for unit tests")
 
-        # Inject fake v2 into sys.modules before every test so importlib
-        # finds it without touching the filesystem.
+        self._fake_gw_pkg = types.ModuleType(_V2_PKG_GATEWAY)
         self._fake_pkg = types.ModuleType(_V2_PKG)
         self._fake_mod = _make_fake_v2_module()
+        sys.modules[_V2_PKG_GATEWAY] = self._fake_gw_pkg
         sys.modules[_V2_PKG] = self._fake_pkg
         sys.modules[_V2_MOD] = self._fake_mod
 
     def tearDown(self):
         sys.modules.pop(_V2_MOD, None)
         sys.modules.pop(_V2_PKG, None)
+        sys.modules.pop(_V2_PKG_GATEWAY, None)
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _registry_with_v2(self) -> APIVersionRegistry:
-        """Registry that scans the temp dir (contains v2/user.py stub)."""
+        """Registry that scans the temp dir (contains gateway/v2/user.py stub)."""
         return APIVersionRegistry(api_base_path=self._tmpdir)
 
     # ------------------------------------------------------------------
@@ -121,11 +123,11 @@ class TestAPIVersioning(unittest.TestCase):
         and DynamicClassLoader routes to the correct user module classes.
         """
         registry = self._registry_with_v2()
-        supported = registry.get_supported_versions()
+        supported = registry.get_supported_versions("gateway")
         self.assertIn("2", supported)
         self.assertTrue(len(supported) >= 1)
 
-        latest = registry.get_latest_version()
+        latest = registry.get_latest_version("gateway")
         self.assertIsNotNone(latest)
         loader = DynamicClassLoader(registry)
 
@@ -152,11 +154,6 @@ class TestAPIVersioning(unittest.TestCase):
         Validates that when /v1/ping/ succeeds with no X-API-Version header,
         PlatformService conservatively returns '1' regardless of what the JSON
         body reports.
-
-        Design intent (see _detect_api_version docstring): successfully reaching
-        /api/gateway/v1/ping/ confirms that API v1 is available.  The
-        implementation intentionally never falls back to get_latest_version() —
-        a collection that ships v2 must not assume the server supports v2.
         """
         mock_response = MagicMock()
         mock_response.headers = {"Content-Type": "application/json"}
@@ -171,8 +168,6 @@ class TestAPIVersioning(unittest.TestCase):
         mock_cred_manager.return_value.get_or_create_store.return_value = mock_store
         config = GatewayConfig(base_url="https://127.0.0.1", username="admin", password="admin")
         service = PlatformService(config)
-        # /v1/ping/ returned 200 with no X-API-Version header -> v1 confirmed.
-        # The implementation does NOT fall back to get_latest_version().
         self.assertEqual(service.api_version, "1")
 
     @patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry.logger")
@@ -193,6 +188,7 @@ class TestAPIVersioning(unittest.TestCase):
         """
         registry = APIVersionRegistry()
         registry.module_versions["incomplete_module"] = []
+        registry.module_service["incomplete_module"] = "gateway"
         loader = DynamicClassLoader(registry)
         with self.assertRaises(ValueError) as context:
             loader.load_classes_for_module("incomplete_module", "1")

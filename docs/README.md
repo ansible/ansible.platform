@@ -24,7 +24,8 @@ Start with [07-adding-resources.md](07-adding-resources.md) to add a new platfor
 
 ### For AI Agents
 
-Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand personas, phases, and quality gates.
+Load [09-agent-collaboration.md](09-agent-collaboration.md) first — especially **§10 SDK
+execution invariants** — to understand personas, phases, and quality gates.
 
 ---
 
@@ -36,7 +37,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | 02 | [02-action-plugin-pattern.md](02-action-plugin-pattern.md) | All | States (present/absent/exists/enforced), entities vs endpoints, convergence contract |
 | 03 | [03-sdk-architecture.md](03-sdk-architecture.md) | Architects / Senior devs | Persistent connection manager, two connection modes, RPC interface, directory structure |
 | 04 | [04-data-model-transformation.md](04-data-model-transformation.md) | Framework devs | Three-tier data flow, Ansible model, API model, transform mixin, ref fields, case studies |
-| 05 | [05-design-principles.md](05-design-principles.md) | All devs | 10 rules governing every decision, quality checklist, human-in-the-loop triggers |
+| 05 | [05-design-principles.md](05-design-principles.md) | All devs | Design rules, SDK consumer parity, quality checklist, human-in-the-loop triggers |
 | 06 | [06-foundation-components.md](06-foundation-components.md) | Framework devs | Full spec: Registry, Loader, BaseTransformMixin, GatewayConfig, PlatformService, PlatformManager, ManagerRPCClient, BaseResourceActionPlugin |
 | 07 | [07-adding-resources.md](07-adding-resources.md) | Feature devs | Step-by-step 7-file workflow, complete example, common patterns catalog, PR checklist |
 | 08 | [08-testing-strategy.md](08-testing-strategy.md) | All devs / QE | Three-layer strategy: unit (pytest), Molecule mock, integration; CI workflows; linting |
@@ -44,6 +45,7 @@ Load [09-agent-collaboration.md](09-agent-collaboration.md) first to understand 
 | 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map (all 22 modules), identity categories, API quirks, platform-specific challenges, version strategy |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
 | 12 | [12-api-landscape.md](12-api-landscape.md) | Feature devs | **NEW**: Multi-service architecture (Gateway, EDA, Controller), resource overlap, naming conflicts, spec selection guide |
+| 13 | [13-pr-review-guidelines.md](13-pr-review-guidelines.md) | Maintainers / reviewers | PR review process, pre-merge CI checks, feature/bugfix/CI review checklists, security patterns, testing requirements |
 
 ---
 
@@ -179,8 +181,8 @@ HTTP to AAP Gateway API
 - Auto-terminates after idle timeout (prevents orphaned processes)
 
 ### Version Compatibility
-- `api/v1/` directory for AAP 2.6 (current release)
-- `api/v2/` directory for AAP 2.7+ (upcoming — add when API changes ship)
+- `api/gateway/v1/` directory for Gateway API (AAP 2.6, current release)
+- `api/{service}/v2/` directory for future API versions (upcoming — add when API changes ship)
 - Ansible interface (`AnsibleUser`, etc.) never changes across versions
 - Registry auto-detects API version and routes to correct mixin
 - Fallback to latest available version if exact match not found
@@ -257,7 +259,7 @@ A: No. Use the reading paths above to find the minimum set for your task.
 A: Yes. See [09-agent-collaboration.md](09-agent-collaboration.md) for personas and quality gates.
 
 **Q: How do new AAP versions get supported?**  
-A: Add a new `api/v<N>/` directory. Registry auto-discovers. No action plugin changes. See [10-case-study-aap-platform.md](10-case-study-aap-platform.md) Section 6.
+A: Add a new `api/{service}/v<N>/` directory. Registry auto-discovers. No action plugin changes. See [10-case-study-aap-platform.md](10-case-study-aap-platform.md) Section 6.
 
 **Q: What's the idle_timeout for?**  
 A: Prevents orphaned manager processes after playbook failure or cancellation. Default 3600s. See [01-overview.md](01-overview.md) and [10-case-study-aap-platform.md](10-case-study-aap-platform.md).

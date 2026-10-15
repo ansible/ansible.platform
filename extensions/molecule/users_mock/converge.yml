@@ -1,8 +1,4 @@
 ---
-# Converge: user create, idempotency, update, password handling, exists, delete
-# against mock Gateway (no real AAP instance required).
-
-# Play 1: health check — must use connection: local (uri module, not platform connection).
 - name: Ensure mock Gateway is reachable
   hosts: localhost
   connection: local
@@ -22,7 +18,6 @@
       vars:
         ansible_connection: local
 
-# Play 2: full user lifecycle (connection local / direct mode).
     - name: Ensure /tmp/ap directory exists
       ansible.builtin.file:
         path: /tmp/ap
@@ -31,7 +26,7 @@
       vars:
         ansible_connection: local
 
-    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+    - name: Create manager survive flag
       ansible.builtin.file:
         path: /tmp/ap/.survive
         state: touch
@@ -51,7 +46,6 @@
     gateway_validate_certs: false
 
   tasks:
-    # ── Create ─────────────────────────────────────────────────────────────────
     - name: Create user (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -93,8 +87,7 @@
       vars:
         ansible_connection: local
 
-    # ── Idempotency (present) ─────────────────────────────────────────────────
-    - name: Run again idempotency (connection local)
+    - name: Idempotency — no password, update_secrets false (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         first_name: "Molecule"
@@ -118,7 +111,56 @@
       vars:
         ansible_connection: local
 
-    # ── Update (change email and last_name) ───────────────────────────────────
+    - name: Idempotency — password in task, update_secrets false (connection local)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        first_name: "Molecule"
+        last_name: "TestUser"
+        email: "molecule-test@mock.example.com"
+        password: "MockPass123!"
+        is_superuser: false
+        state: present
+        update_secrets: false
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idem_with_pw_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert idempotent with password + update_secrets false (connection local)
+      ansible.builtin.assert:
+        that: idem_with_pw_local is not changed
+        fail_msg: "password with update_secrets=false should not trigger changed. idem_with_pw_local={{ idem_with_pw_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Re-run with password + update_secrets true — always changed (connection local)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        first_name: "Molecule"
+        last_name: "TestUser"
+        email: "molecule-test@mock.example.com"
+        password: "MockPass123!"
+        is_superuser: false
+        state: present
+        update_secrets: true
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: update_secrets_true_result
+      vars:
+        ansible_connection: local
+
+    - name: Assert update_secrets true always reports changed (connection local)
+      ansible.builtin.assert:
+        that: update_secrets_true_result is changed
+        fail_msg: "update_secrets=true should always report changed when password is provided."
+      vars:
+        ansible_connection: local
+
     - name: Update user email and last_name (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -142,8 +184,7 @@
       vars:
         ansible_connection: local
 
-    # ── Update idempotency ────────────────────────────────────────────────────
-    - name: Run update again idempotency (connection local)
+    - name: Update idempotency (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         first_name: "Molecule"
@@ -166,8 +207,7 @@
       vars:
         ansible_connection: local
 
-    # ── state: exists ─────────────────────────────────────────────────────────
-    - name: Check user exists (state exists, connection local)
+    - name: Check user exists (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         state: exists
@@ -190,8 +230,7 @@
       vars:
         ansible_connection: local
 
-    # ── state: exists for non-existent user ───────────────────────────────────
-    - name: Check non-existent user (state exists, connection local)
+    - name: Check non-existent user (connection local)
       ansible.platform.user:
         username: "user-that-does-not-exist"
         state: exists
@@ -213,7 +252,6 @@
       vars:
         ansible_connection: local
 
-    # ── Delete ────────────────────────────────────────────────────────────────
     - name: Delete user (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -233,8 +271,7 @@
       vars:
         ansible_connection: local
 
-    # ── Delete idempotency ────────────────────────────────────────────────────
-    - name: Delete again (idempotency, connection local)
+    - name: Delete idempotency (connection local)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         state: absent
@@ -266,7 +303,6 @@
     ansible_platform_use_persistent_connection: false
 
   tasks:
-    # ── Create ─────────────────────────────────────────────────────────────────
     - name: Create user (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -298,8 +334,7 @@
           - "'url' not in create_result.user"
         fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.user. result={{ create_result }}"
 
-    # ── Idempotency (present) ─────────────────────────────────────────────────
-    - name: Run again idempotency (http direct)
+    - name: Idempotency — no password, update_secrets false (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         first_name: "Molecule"
@@ -315,7 +350,23 @@
         that: idem_result is not changed
         fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
 
-    # ── Update (change email and last_name) ───────────────────────────────────
+    - name: Idempotency — password in task, update_secrets false (http direct)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        first_name: "Molecule"
+        last_name: "TestUser"
+        email: "molecule-test@mock.example.com"
+        password: "MockPass123!"
+        is_superuser: false
+        state: present
+        update_secrets: false
+      register: idem_with_pw_hd
+
+    - name: Assert idempotent with password + update_secrets false (http direct)
+      ansible.builtin.assert:
+        that: idem_with_pw_hd is not changed
+        fail_msg: "password with update_secrets=false should not trigger changed. idem_with_pw_hd={{ idem_with_pw_hd }}"
+
     - name: Update user email and last_name (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -331,8 +382,7 @@
         that: update_result is changed
         fail_msg: "Update should report changed. update_result={{ update_result }}"
 
-    # ── Update idempotency ────────────────────────────────────────────────────
-    - name: Run update again idempotency (http direct)
+    - name: Update idempotency (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         first_name: "Molecule"
@@ -347,8 +397,7 @@
         that: update_idem_result is not changed
         fail_msg: "Update idempotent run should not report changed. update_idem_result={{ update_idem_result }}"
 
-    # ── state: exists ─────────────────────────────────────────────────────────
-    - name: Check user exists (state exists, http direct)
+    - name: Check user exists (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         state: exists
@@ -363,8 +412,7 @@
           - exists_result.user.username == molecule_username
         fail_msg: "state:exists should find user. exists_result={{ exists_result }}"
 
-    # ── state: exists for non-existent user ───────────────────────────────────
-    - name: Check non-existent user (state exists, http direct)
+    - name: Check non-existent user (http direct)
       ansible.platform.user:
         username: "user-that-does-not-exist"
         state: exists
@@ -378,7 +426,6 @@
           - not (not_exists_result.get('exists') | default(false) | bool)
         fail_msg: "state:exists for missing user should return exists=false. not_exists_result={{ not_exists_result }}"
 
-    # ── Delete ────────────────────────────────────────────────────────────────
     - name: Delete user (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -390,8 +437,7 @@
         that: delete_result is changed
         fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
 
-    # ── Delete idempotency ────────────────────────────────────────────────────
-    - name: Delete again (idempotency, http direct)
+    - name: Delete idempotency (http direct)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         state: absent
@@ -415,7 +461,6 @@
     ansible_platform_use_persistent_connection: true
 
   tasks:
-    # ── Create ─────────────────────────────────────────────────────────────────
     - name: Create user (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -447,8 +492,7 @@
           - "'url' not in create_result.user"
         fail_msg: "RETURN shape violation: internal/readonly keys leaked into result.user. result={{ create_result }}"
 
-    # ── Idempotency (present) ─────────────────────────────────────────────────
-    - name: Run again idempotency (http persistent)
+    - name: Idempotency — no password, update_secrets false (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         first_name: "Molecule"
@@ -464,7 +508,23 @@
         that: idem_result is not changed
         fail_msg: "Idempotent run should not report changed. idem_result={{ idem_result }}"
 
-    # ── Update (change email and last_name) ───────────────────────────────────
+    - name: Idempotency — password in task, update_secrets false (http persistent)
+      ansible.platform.user:
+        username: "{{ molecule_username }}"
+        first_name: "Molecule"
+        last_name: "TestUser"
+        email: "molecule-test@mock.example.com"
+        password: "MockPass123!"
+        is_superuser: false
+        state: present
+        update_secrets: false
+      register: idem_with_pw_hp
+
+    - name: Assert idempotent with password + update_secrets false (http persistent)
+      ansible.builtin.assert:
+        that: idem_with_pw_hp is not changed
+        fail_msg: "password with update_secrets=false should not trigger changed. idem_with_pw_hp={{ idem_with_pw_hp }}"
+
     - name: Update user email and last_name (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -480,8 +540,7 @@
         that: update_result is changed
         fail_msg: "Update should report changed. update_result={{ update_result }}"
 
-    # ── Update idempotency ────────────────────────────────────────────────────
-    - name: Run update again idempotency (http persistent)
+    - name: Update idempotency (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         first_name: "Molecule"
@@ -496,8 +555,7 @@
         that: update_idem_result is not changed
         fail_msg: "Update idempotent run should not report changed. update_idem_result={{ update_idem_result }}"
 
-    # ── state: exists ─────────────────────────────────────────────────────────
-    - name: Check user exists (state exists, http persistent)
+    - name: Check user exists (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         state: exists
@@ -512,8 +570,7 @@
           - exists_result.user.username == molecule_username
         fail_msg: "state:exists should find user. exists_result={{ exists_result }}"
 
-    # ── state: exists for non-existent user ───────────────────────────────────
-    - name: Check non-existent user (state exists, http persistent)
+    - name: Check non-existent user (http persistent)
       ansible.platform.user:
         username: "user-that-does-not-exist"
         state: exists
@@ -527,7 +584,6 @@
           - not (not_exists_result.get('exists') | default(false) | bool)
         fail_msg: "state:exists for missing user should return exists=false. not_exists_result={{ not_exists_result }}"
 
-    # ── Delete ────────────────────────────────────────────────────────────────
     - name: Delete user (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
@@ -539,8 +595,7 @@
         that: delete_result is changed
         fail_msg: "Delete should report changed. delete_result={{ delete_result }}"
 
-    # ── Delete idempotency ────────────────────────────────────────────────────
-    - name: Delete again (idempotency, http persistent)
+    - name: Delete idempotency (http persistent)
       ansible.platform.user:
         username: "{{ molecule_username }}"
         state: absent

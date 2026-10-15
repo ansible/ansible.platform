@@ -105,7 +105,7 @@ automatically. Files 5–7 require manual work.
 |---|------|-------------|
 | 1 | `plugins/modules/<resource>.py` | **Generated** — `DOCUMENTATION` + `EXAMPLES` scaffold from OpenAPI spec |
 | 2 | `plugins/plugin_utils/ansible_models/<resource>.py` | **Generated** — `AnsibleFoo` dataclass from OpenAPI spec |
-| 3 | `plugins/plugin_utils/api/v1/<resource>.py` | **Generated skeleton, manual completion** — `APIFoo_v1` dataclass + `FooTransformMixin_v1` business logic |
+| 3 | `plugins/plugin_utils/api/{service}/v1/<resource>.py` | **Generated skeleton, manual completion** — `APIFoo_v1` dataclass + `FooTransformMixin_v1` business logic |
 | 4 | `plugins/action/<resource>.py` | **Generated** — `ActionModule(BaseResourceActionPlugin)` skeleton |
 | 5 | `tests/integration/targets/<resource>s_test/tasks/main.yml` | **Generated scaffold, manual completion** — integration test structure |
 | 6 | `extensions/molecule/<resource>_mock/` | **Manual** — Molecule mock scenario |
@@ -142,7 +142,7 @@ python tools/generate_resource.py \
 ```
 plugins/modules/team.py                    ← DOCUMENTATION + EXAMPLES
 plugins/plugin_utils/ansible_models/team.py ← AnsibleTeam dataclass
-plugins/plugin_utils/api/v1/team.py        ← APITeam_v1 + TransformMixin skeleton
+plugins/plugin_utils/api/gateway/v1/team.py ← APITeam_v1 + TransformMixin skeleton
 plugins/action/team.py                     ← ActionModule skeleton
 tests/integration/targets/teams_test/
   tasks/main.yml                           ← integration test scaffold
@@ -184,7 +184,7 @@ keys exactly — they are what the action plugin receives as `task_vars`.
 
 ---
 
-## SECTION 3: Complete the Transform Mixin (`plugins/plugin_utils/api/v1/`)
+## SECTION 3: Complete the Transform Mixin (`plugins/plugin_utils/api/{service}/v1/`)
 
 The generator produces the `APIFoo_v1` dataclass and a `FooTransformMixin_v1` skeleton.
 The `APIFoo_v1` dataclass is usually correct as-is. The transform mixin skeleton needs
@@ -194,7 +194,7 @@ It bridges Ansible model ↔ Gateway API wire format. The generator stubs out th
 methods; you fill in the logic.
 
 ```python
-# plugins/plugin_utils/api/v1/team.py
+# plugins/plugin_utils/api/gateway/v1/team.py
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
@@ -342,6 +342,71 @@ class ActionModule(BaseResourceActionPlugin):
 - `USER_MODEL` dotted path resolves to the correct `AnsibleFoo` dataclass for this resource
 - The class has no extra logic — all behaviour lives in `BaseResourceActionPlugin` and the transform mixin
 - File name matches the module stub (`team.py` → `ansible.platform.team`)
+
+---
+
+## SECTION 4a: Secondary Endpoints, Associations, and Controller Resources
+
+When a resource needs behavior beyond a single CRUD endpoint — association sub-resources
+(`credentials`, `labels`, `instance_groups`), secondary endpoints (`survey_spec`),
+copy workflows (`copy_from`), or controller-service paths (`/api/controller/v2/`) —
+implement that logic in the **transform mixin** and `PlatformService`, not in the action
+plugin.
+
+**Do**:
+
+- Declare secondary operations in `get_endpoint_operations()` (see [Common Patterns
+  Catalog — Pattern 6](#pattern-6-secondary-endpoint-post-create-operation)).
+- Resolve association names to IDs in `from_ansible_data()` using
+  `context.manager.lookup_resource_id()`.
+- Keep write-only / side-effect parameters in `_WRITE_ONLY_FIELDS` on the action plugin
+  so they are stripped before model instantiation.
+- Use Pattern B hooks (`_pre_execute_hook`, `_post_create`) only to orchestrate
+  **additional `manager.execute()` calls** when the SDK requires multiple steps.
+
+**Do not**:
+
+- Call `manager.session.get/post/delete` from `plugins/action/` (forbidden — see
+  [05-design-principles.md](05-design-principles.md) §1 and §3a).
+- Hardcode API paths in the action plugin; paths belong in the mixin / registry layer.
+- Add a large custom `run()` to implement HTTP that MCP and other SDK consumers cannot
+  reach (see [09-agent-collaboration.md](09-agent-collaboration.md) §10).
+
+Controller migrations from `awx.awx` / `ansible.controller` often need this section:
+awx modules historically bundled association and survey logic in the module/action layer.
+In `ansible.platform`, that parity work belongs in the SDK so playbooks, MCP, and future
+CLI tools share one implementation.
+
+---
+
+## SECTION 4c: Launch and Job Modules (Wait / Poll)
+
+Controller launch modules (`ad_hoc_command`, future `job_launch`, `project_update`, etc.)
+POST a job-like resource and optionally block until completion. These are **not** CRUD
+resources — every invocation creates a new execution — but they still must obey SDK
+consumer parity ([#206](https://github.com/ansible/ansible.platform/pull/206)).
+
+**Do**:
+
+- Document `wait`, `interval`, and `timeout` in module `DOCUMENTATION` when parity with
+  `awx.awx` / `ansible.controller` requires them.
+- Implement wait semantics in **`PlatformService.execute()`**: pop action-only params
+  before instantiating the Ansible dataclass, call create via the mixin, then poll with a
+  **shared** SDK helper (mixin hooks supply `is_finished()` / failure status rules).
+- Keep the action plugin thin — Pattern A is enough when the SDK handles launch + wait.
+
+**Do not**:
+
+- Add `_wait_for_completion()` or `time.sleep()` poll loops in `plugins/action/`. MCP and
+  other SDK consumers never import action plugins; wait logic there is Ansible-only.
+- Treat a correct `manager.execute()` launch as sufficient when `wait` is documented but
+  unimplemented in the SDK — that breaks MCP `execute` mode while playbooks appear to work.
+
+**Reference**: [#227](https://github.com/ansible/ansible.platform/pull/227) ports
+`ad_hoc_command` with solid mixin/transform coverage but places wait/poll in the action
+plugin — a documentation and placement miss, not a direct-HTTP violation like
+[#228](https://github.com/ansible/ansible.platform/pull/228). Guidance and CI checks are
+added in [#239](https://github.com/ansible/ansible.platform/pull/239).
 
 ---
 
@@ -908,7 +973,7 @@ Core Resource Files:
     - Optional fields use Optional[T] = None
     - Read-only fields (id, created, etc.) included
     
-[ ] plugins/plugin_utils/api/v1/<resource>.py
+[ ] plugins/plugin_utils/api/{service}/v1/<resource>.py
     - APIFoo_v1 dataclass matches API wire format
     - TransformMixin.from_ansible_data() handles all non-null fields
     - TransformMixin.from_api() returns AnsibleFoo instance (not dict)
@@ -973,7 +1038,7 @@ Syntax & Linting:
 [ ] ansible-doc -t module ansible.platform.<resource> renders correctly
 [ ] python -m py_compile plugins/modules/<resource>.py (no syntax errors)
 [ ] python -m py_compile plugins/plugin_utils/ansible_models/<resource>.py
-[ ] python -m py_compile plugins/plugin_utils/api/v1/<resource>.py
+[ ] python -m py_compile plugins/plugin_utils/api/{service}/v1/<resource>.py
 [ ] python -m py_compile plugins/action/<resource>.py
 [ ] tox -e black,flake8,isort passes (or: black + isort + flake8 manual)
 [ ] ansible-lint tests/integration/targets/<resource>s_test/ passes

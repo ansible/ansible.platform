@@ -1,0 +1,147 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — test vault-like credentials (connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    # Simulate vault credentials by using Jinja2 string filter
+    # In real scenarios, these would be AnsibleVaultEncryptedUnicode objects
+    gateway_username: "{{ 'mock' | string }}"
+    gateway_password: "{{ 'testpass' | string }}"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create organization with vault-like credentials (connection local)
+      ansible.platform.organization:
+        name: "vault-test-org-local"
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: create_org_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert organization created (connection local)
+      ansible.builtin.assert:
+        that: create_org_local is changed
+        fail_msg: "Organization creation (local) should report changed."
+      vars:
+        ansible_connection: local
+
+    - name: Create token with vault-like credentials (connection local)
+      ansible.platform.token:
+        description: "Vault test token"
+        scope: write
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: token_create_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert token created (connection local)
+      ansible.builtin.assert:
+        that:
+          - token_create_local is changed
+          - token_create_local.token is defined
+          - token_create_local.id is defined
+        fail_msg: "Token creation (local) should report changed and return token."
+      vars:
+        ansible_connection: local
+
+    - name: Save token ID for cleanup
+      ansible.builtin.set_fact:
+        token_id_local: "{{ token_create_local.id }}"
+        token_value_local: "{{ token_create_local.token }}"
+
+    - name: Use token auth while vault-like creds exist in vars (regression test)
+      ansible.platform.organization:
+        name: "vault-test-org-local"
+        state: exists
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_token: "{{ token_value_local }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: token_auth_test_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert token auth succeeded
+      ansible.builtin.assert:
+        that:
+          - token_auth_test_local is not changed
+          - token_auth_test_local.exists is true
+        fail_msg: "Token auth test (local) should succeed - this was the vault bug scenario."
+      vars:
+        ansible_connection: local
+
+- name: Converge — test vault-like credentials (http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "{{ 'mock' | string }}"
+    gateway_password: "{{ 'testpass' | string }}"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Create team with vault-like credentials (http persistent)
+      ansible.platform.team:
+        name: "vault-test-team-hp"
+        organization: "vault-test-org-local"
+      register: create_team_hp
+
+    - name: Assert team created (http persistent)
+      ansible.builtin.assert:
+        that: create_team_hp is changed
+        fail_msg: "Team creation (http persistent) should report changed."
+
+    - name: Check team idempotency (http persistent)
+      ansible.platform.team:
+        name: "vault-test-team-hp"
+        organization: "vault-test-org-local"
+        state: present
+      register: idem_team_hp
+
+    - name: Assert team idempotent (http persistent)
+      ansible.builtin.assert:
+        that: idem_team_hp is not changed
+        fail_msg: "Team idempotency (http persistent) should not report changed."
+...

@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
 from ..platform.loader import DynamicClassLoader
-from ..platform.registry import APIVersionRegistry
+from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,9 @@ class BaseAPIClient(ABC):
     - Optimizations (caching, lookup helpers)
     """
 
+    # Keep batched GET URLs below common reverse-proxy request-line limits.
+    MAX_BATCH_LOOKUP_URL_BYTES = 6000
+
     def __init__(self, config: GatewayConfig):
         """
         Initialize base API client.
@@ -41,31 +44,208 @@ class BaseAPIClient(ABC):
         self.config = config
         self.base_url = config.base_url.rstrip("/")
         self.verify_ssl = config.verify_ssl
+        self.ca_bundle = config.ca_bundle
         self.request_timeout = config.request_timeout
 
         # Shared: Version detection infrastructure
         self.registry = APIVersionRegistry()
         self.loader = DynamicClassLoader(self.registry)
 
-        # Shared: API version (detected during initialization)
-        self.api_version: Optional[str] = None
+        # Shared: Per-service API versions (detected lazily)
+        self.api_versions: Dict[str, str] = {}
 
         # Shared: Cache for lookups (org names ↔ IDs, etc.)
         self.cache: Dict[str, Any] = {}
 
         logger.info("BaseAPIClient initialized: base_url=%s, mode=%s", self.base_url, config.connection_mode)
 
+    @property
+    def api_version(self) -> Optional[str]:
+        """Gateway API version (backward-compatible accessor)."""
+        return self.api_versions.get(DEFAULT_SERVICE)
+
+    @api_version.setter
+    def api_version(self, value: Optional[str]) -> None:
+        if value is not None:
+            self.api_versions[DEFAULT_SERVICE] = value
+        else:
+            self.api_versions.pop(DEFAULT_SERVICE, None)
+
+    def get_api_version(self, service: str) -> str:
+        """Get detected API version for a service, detecting lazily if needed.
+
+        On transient failure the fallback is returned but NOT cached, so the
+        next call will retry detection instead of permanently using a guess.
+        """
+        if service not in self.api_versions:
+            try:
+                detected = self._detect_service_version(service)
+                self.api_versions[service] = detected
+            except Exception:
+                fallback = self.registry.get_latest_version(service) or "1"
+                logger.warning("Version detection failed for %s, defaulting to v%s", service, fallback)
+                return fallback
+        return self.api_versions[service]
+
+    @property
+    def requests_verify(self):
+        """TLS verify parameter for HTTP clients (bool or CA bundle path)."""
+        config = getattr(self, "config", None)
+        if config is not None:
+            return config.requests_verify
+        if not getattr(self, "verify_ssl", True):
+            return False
+        ca_bundle = getattr(self, "ca_bundle", None)
+        if ca_bundle:
+            return ca_bundle
+        return True
+
+    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str) -> str:
+        """Build the cache key used by resource-name lookups."""
+        return f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
+
+    def _prepare_resource_lookup(self, service: str) -> None:
+        """Allow clients to prepare transport headers before a batch lookup."""
+
+    def _lookup_resource_ids(self, endpoint: str, lookup_field: str, lookup_values: list, service: str = "gateway") -> dict:
+        """Resolve several names with bounded ``__in`` queries where possible."""
+        values = list(dict.fromkeys(str(value) for value in lookup_values if value and not str(value).isdigit()))
+        cache_keys = {value: self._resource_lookup_cache_key(service, endpoint, lookup_field, value) for value in values}
+        resolved = {value: self.cache[key] for value, key in cache_keys.items() if key in self.cache}
+        uncached = [value for value in values if value not in resolved]
+
+        if not uncached:
+            return resolved
+        if len(uncached) == 1:
+            resolved[uncached[0]] = self.lookup_resource_id(endpoint, lookup_field, uncached[0], service=service)
+            return resolved
+
+        service_version = self.get_api_version(service)
+        self._prepare_resource_lookup(service)
+        api_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/"
+
+        def resolve_batch(batch_values):
+            if not batch_values:
+                return
+            data = self.search_api(
+                api_path,
+                query_params={f"{lookup_field}__in": ",".join(batch_values)},
+                return_all=True,
+                max_objects=100000,
+            )
+            for result in data.get("results", []):
+                value = result.get(lookup_field)
+                value = str(value) if value is not None else None
+                if value in batch_values and value not in resolved:
+                    resolved[value] = result.get("id")
+                    if resolved[value] is not None:
+                        self.cache[cache_keys[value]] = resolved[value]
+
+            for value in batch_values:
+                if value not in resolved:
+                    raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
+
+        batch_values = []
+        for value in uncached:
+            if "," in value:
+                resolve_batch(batch_values)
+                batch_values = []
+                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service)
+                continue
+
+            candidate = batch_values + [value]
+            query = {f"{lookup_field}__in": ",".join(candidate)}
+            url_length = len(self._build_url(api_path, query).encode("utf-8"))
+            if url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
+                batch_values = candidate
+                continue
+
+            resolve_batch(batch_values)
+            batch_values = []
+            single_url_length = len(self._build_url(api_path, {f"{lookup_field}__in": value}).encode("utf-8"))
+            if single_url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
+                batch_values = [value]
+            else:
+                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service)
+        resolve_batch(batch_values)
+        return resolved
+
+    def _ansible_tls_kwargs(self, verify=None):
+        """Map TLS verify setting to Ansible Request validate_certs/ca_path kwargs."""
+        if verify is None:
+            verify = self.requests_verify
+        if isinstance(verify, str):
+            return {"validate_certs": True, "ca_path": verify}
+        return {"validate_certs": bool(verify), "ca_path": None}
+
     @abstractmethod
     def _detect_api_version(self) -> str:
         """
-        Detect API version from platform.
-
-        This is implemented differently by each mode:
-        - Standard mode: Direct HTTP request to /ping endpoint
-        - Experimental mode: Same, but cached in persistent process
+        Detect Gateway API version from platform.
 
         Returns:
             API version string (e.g., '1', '2')
+        """
+        pass
+
+    def _detect_service_version(self, service: str) -> str:
+        """
+        Detect API version for a specific service by probing its API root.
+
+        For gateway, delegates to _detect_api_version(). For other services,
+        probes /api/{service}/ via _probe_service_root() and parses the
+        X-API-Version header or current_version body field. Raises on any
+        failure so get_api_version() can return an uncached fallback.
+        """
+        if service == DEFAULT_SERVICE:
+            return self._detect_api_version()
+
+        import re
+
+        supported = self.registry.get_supported_versions(service)
+        if not supported:
+            raise RuntimeError(f"No API versions discovered for service '{service}'")
+
+        headers, body = self._probe_service_root(service)
+
+        raw = (headers.get("X-API-Version", "") or "").lstrip("v")
+        if raw and raw in supported:
+            logger.info("%s API version detected (header): v%s", service, raw)
+            return raw
+        if raw:
+            major = raw.split(".")[0]
+            if major in supported:
+                logger.info("%s API version detected (header major): v%s", service, major)
+                return major
+
+        if body is not None:
+            if not isinstance(body, dict):
+                raise ValueError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
+            if "current_version" in body:
+                cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
+                cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
+                if cv_raw in supported:
+                    logger.info("%s API version detected (body): v%s", service, cv_raw)
+                    return cv_raw
+                cv_major = cv_raw.split(".")[0]
+                if cv_major in supported:
+                    logger.info("%s API version detected (body major): v%s", service, cv_major)
+                    return cv_major
+
+        raise RuntimeError(f"Could not detect API version for service '{service}' from probe response")
+
+    @abstractmethod
+    def _probe_service_root(self, service: str):
+        """
+        Probe /api/{service}/ and return the parsed response.
+
+        Returns:
+            Tuple of (headers_dict, body_dict_or_None). body is None when
+            the response is not JSON.
+
+        Raises:
+            On transport or HTTP errors — these must propagate so that
+            get_api_version() does not permanently cache a fallback.
         """
         pass
 

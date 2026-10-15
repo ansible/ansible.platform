@@ -11,7 +11,7 @@ Quick reference for day-to-day development on `ansible.platform`.
 | Add/edit an action plugin | `plugins/action/<resource>.py` |
 | See the base class all plugins inherit | `plugins/action/base_action.py` |
 | Find/edit the Ansible-facing dataclass | `plugins/plugin_utils/ansible_models/<resource>.py` |
-| Find/edit the API model + transform mixin | `plugins/plugin_utils/api/v1/<resource>.py` |
+| Find/edit the API model + transform mixin | `plugins/plugin_utils/api/{service}/v1/<resource>.py` |
 | Find the module documentation stub | `plugins/modules/<resource>.py` |
 | Understand connection routing | `plugins/connection/http.py` |
 | See how the manager subprocess works | `plugins/plugin_utils/manager/platform_manager.py` |
@@ -59,19 +59,25 @@ class ActionModule(BaseResourceActionPlugin):
 Available hooks: `_pre_create`, `_post_create`, `_pre_update`, `_post_update`,
 `_pre_delete`, `_post_delete`, `_custom_exists`.
 
-### Pattern C — Fully Custom
+### Pattern C — Orchestration-only custom `run()`
 
-Use when: Complex resources with write-only fields, multiple endpoints,
-or non-standard workflows.
+Use when: Multi-step Ansible workflows that still delegate all HTTP to the SDK
+(for example `user.py`, `role_team_assignment.py`).
+
+**Do not** use Pattern C to add `manager.session` HTTP, association sub-endpoints,
+or survey/copy logic — put that in the transform mixin
+([05-design-principles.md §3a](../../docs/05-design-principles.md)).
 
 ```python
 class ActionModule(BaseResourceActionPlugin):
-    resource_type = "user"
+    MODULE_NAME = "user"
+    MODEL_CLASS = AnsibleUser
+    _WRITE_ONLY_FIELDS = frozenset({"update_secrets"})
 
-    def execute(self, operation, ansible_data):
-        # Full custom logic — handle password (write-only),
-        # multi-org assignment, etc.
-        ...
+    def run(self, tmp=None, task_vars=None):
+        # Orchestrate multiple manager.execute() calls if needed.
+        # All HTTP stays in PlatformService — required for MCP (#206) parity.
+        return super().run(tmp, task_vars)
 ```
 
 ---
@@ -112,7 +118,7 @@ endpoint paths, service-specific prefixes, and field classification.
 
 ### Step 3: Implement the transform mixin
 
-In `plugins/plugin_utils/api/v1/<resource>.py`:
+In `plugins/plugin_utils/api/{service}/v1/<resource>.py`:
 
 ```python
 class FooTransformMixin_v1:
@@ -140,7 +146,7 @@ class FooTransformMixin_v1:
 
 - No custom logic needed → Pattern A (3 lines)
 - Need hooks → Pattern B
-- Complex resource → Pattern C
+- Need multi-step orchestration via `manager.execute()` → Pattern C (not HTTP in action plugin)
 
 ### Step 5–7: Tests
 
@@ -164,6 +170,9 @@ molecule test -s <resource>_mock
 
 # Run linting
 ansible-test sanity --docker -v
+
+# Verify action plugins do not call HTTP directly or poll job status
+make check_action_plugin_invariants
 
 # Check registry discovers your module
 python -c "
@@ -220,7 +229,7 @@ If yes → `changed: false`. If no → create/update → `changed: true`.
 the transform mixin automatically resolves `"Red Hat"` → integer ID `42`
 by querying the Gateway API.
 
-**Version isolation**: API changes go in new `api/v2/` directory. The Registry
+**Version isolation**: API changes go in new `api/{service}/v2/` directory. The Registry
 auto-detects. Ansible Models and action plugins never change.
 
 **Persistent manager**: One subprocess per play, shared across all tasks.

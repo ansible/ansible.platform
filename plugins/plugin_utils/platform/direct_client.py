@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -73,7 +73,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Initialize session using Ansible's Request (like current collection)
         # This is more compatible with Ansible worker processes
-        self.session = Request(cookies=CookieJar(), validate_certs=self.verify_ssl, timeout=self.request_timeout)
+        tls_kwargs = self._ansible_tls_kwargs()
+        self.session = Request(
+            cookies=CookieJar(),
+            validate_certs=tls_kwargs["validate_certs"],
+            ca_path=tls_kwargs["ca_path"],
+            timeout=self.request_timeout,
+        )
         self.session.headers.update({"User-Agent": "Ansible Platform Collection", "Accept": "application/json", "Content-Type": "application/json"})
 
         # Track authentication state
@@ -90,7 +96,6 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Defer authentication and version detection until first request
         # This prevents HTTP requests during worker process initialization
-        self.api_version = None  # Will be set on first request
         self._authenticated = False
         logger.info("DirectHTTPClient: Initialized (authentication deferred until first request)")
 
@@ -114,7 +119,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         logger.info("DirectHTTPClient: Detecting API version dynamically from platform...")
 
-        supported = self.registry.get_supported_versions()
+        supported = self.registry.get_supported_versions("gateway")
 
         def _hdr_version(resp) -> str:
             """Extract API version from X-API-Version header; return '' if absent."""
@@ -132,7 +137,12 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             ping_url = f"{self.base_url.rstrip('/')}/api/gateway/v1/ping/"
             logger.debug("DirectHTTPClient: version detection tier-1 %s", ping_url)
-            response = self.session.open("GET", ping_url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
+            response = self.session.open(
+                "GET",
+                ping_url,
+                timeout=self.request_timeout,
+                **self._ansible_tls_kwargs(),
+            )
 
             # Only trust the X-API-Version header from the ping endpoint.
             # The JSON body "version" field is the *product* version
@@ -157,7 +167,12 @@ class DirectHTTPClient(BaseAPIClient):
         try:
             root_url = f"{self.base_url.rstrip('/')}/api/gateway/"
             logger.debug("DirectHTTPClient: version detection tier-2 %s", root_url)
-            response = self.session.open("GET", root_url, validate_certs=self.verify_ssl, timeout=self.request_timeout)
+            response = self.session.open(
+                "GET",
+                root_url,
+                timeout=self.request_timeout,
+                **self._ansible_tls_kwargs(),
+            )
 
             v = _hdr_version(response)
             if v:
@@ -186,13 +201,30 @@ class DirectHTTPClient(BaseAPIClient):
         except Exception as e:
             logger.warning("DirectHTTPClient: tier-2 detection failed (%s)", e)
 
-        # ── Tier 3: safe default ───────────────────────────────────────────
+        # ── Tier 3: raise so get_api_version() returns uncached fallback ──
         if not supported:
             raise RuntimeError("CRITICAL: No API versions discovered in the collection's api/ directory!")
-        logger.warning("DirectHTTPClient: version detection failed — defaulting to v1")
-        if "1" in supported:
-            return "1"
-        return supported[0]
+        raise RuntimeError("DirectHTTPClient: all gateway version detection tiers failed")
+
+    def _probe_service_root(self, service):
+        root_url = f"{self.base_url.rstrip('/')}/api/{service}/"
+        logger.debug("DirectHTTPClient: probing service version at %s", root_url)
+        response = self.session.open(
+            "GET",
+            root_url,
+            timeout=self.request_timeout,
+            **self._ansible_tls_kwargs(),
+        )
+        headers = getattr(response, "headers", {})
+        if not hasattr(headers, "get"):
+            headers = {}
+        body = None
+        content_type = headers.get("Content-Type", "") if headers else ""
+        if content_type.startswith("application/json"):
+            body_bytes = response.read()
+            if body_bytes:
+                body = json.loads(body_bytes)
+        return headers, body
 
     def _authenticate(self) -> None:
         """
@@ -246,7 +278,8 @@ class DirectHTTPClient(BaseAPIClient):
         # Set default timeout and verify_ssl if not provided
         request_kwargs = kwargs.copy()
         timeout = request_kwargs.pop("timeout", self.request_timeout)
-        verify = request_kwargs.pop("verify", self.verify_ssl)
+        verify = request_kwargs.pop("verify", self.requests_verify)
+        tls_kwargs = self._ansible_tls_kwargs(verify)
 
         # Prepare data for JSON requests
         data = None
@@ -288,10 +321,10 @@ class DirectHTTPClient(BaseAPIClient):
                 response = self.session.open(
                     method.upper(),
                     url_str,
-                    validate_certs=verify,
                     timeout=timeout,
                     follow_redirects=True,
                     data=data,
+                    **tls_kwargs,
                 )
                 status = getattr(response, "status", getattr(response, "code", "unknown"))
                 logger.info("DirectHTTPClient: Response received: status=%s", status)
@@ -322,10 +355,10 @@ class DirectHTTPClient(BaseAPIClient):
                         response = self.session.open(
                             method.upper(),
                             parsed_url.geturl() if hasattr(parsed_url, "geturl") else str(url),
-                            validate_certs=verify,
                             timeout=timeout,
                             follow_redirects=True,
                             data=data,
+                            **tls_kwargs,
                         )
                         # Success - return the response
                         return response
@@ -442,25 +475,28 @@ class DirectHTTPClient(BaseAPIClient):
             logger.error("Re-authentication failed: %s", e)
             return False
 
-    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None) -> str:
+    def _build_url(self, endpoint: str, query_params: Optional[Dict] = None, *, service: str = None, api_version: str = None) -> str:
         """
         Build full URL from endpoint.
 
         Args:
             endpoint: API endpoint (e.g., '/api/gateway/v1/users/')
             query_params: Optional query parameters
+            service: Service name for relative-path prefix (default: gateway)
+            api_version: API version for relative-path prefix
 
         Returns:
             Full URL
         """
-        # Ensure endpoint starts with /
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
+        if not endpoint.startswith("/api/"):
+            svc = service or "gateway"
+            ver = api_version or self.get_api_version(svc)
+            endpoint = f"/api/{svc}/v{ver}{endpoint}"
 
-        # Build base URL
         url = f"{self.base_url}{endpoint}"
 
-        # Add query parameters if provided
         if query_params:
             from urllib.parse import urlencode
 
@@ -468,7 +504,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway"):
         """
         Resolve a resource name to ID by GET list with filter.
         Compatible with PlatformService.lookup_resource_id interface.
@@ -478,6 +514,7 @@ class DirectHTTPClient(BaseAPIClient):
             endpoint: API resource endpoint name (e.g. 'authenticators', 'service_clusters')
             lookup_field: Field to filter on (e.g. 'name')
             lookup_value: Value to look up
+            service: Service to route the lookup through (e.g. 'gateway', 'controller')
 
         Returns:
             Resource ID (int) or None
@@ -487,29 +524,19 @@ class DirectHTTPClient(BaseAPIClient):
         if str(lookup_value).isdigit():
             return int(lookup_value)
 
-        cache_key = f"lookup:{endpoint}:{lookup_field}:{lookup_value}"
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value))
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        # Detect API version if not done yet
-        if self.api_version is None:
-            try:
-                self.api_version = self._detect_api_version()
-            except Exception:
-                self.api_version = "1"
-            self.session.headers.update({"X-API-Version": str(self.api_version)})
+        svc_version = self.get_api_version(service)
+        self._prepare_resource_lookup(service)
 
-        # Build the URL: /api/gateway/v{version}/{endpoint}/?{lookup_field}={lookup_value}
-        api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+        api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
         url = self._build_url(api_path, {lookup_field: lookup_value})
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
 
-        try:
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-        except Exception:
-            response_data = {}
+        response_data = json.loads(response.read())
 
         results = response_data.get("results", [])
         if not results:
@@ -520,6 +547,238 @@ class DirectHTTPClient(BaseAPIClient):
             self.cache[cache_key] = rid
         return rid
 
+    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str) -> str:
+        """Preserve the direct client's resource-lookup cache key format."""
+        return f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
+
+    def _prepare_resource_lookup(self, service: str) -> None:
+        """Set the Gateway API version header used by direct requests."""
+        if "X-API-Version" not in (self.session.headers or {}):
+            gateway_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gateway_version)})
+
+    def _ensure_authenticated(self) -> None:
+        """Lazy-authenticate, for SDK methods that may be called before execute()."""
+        if not self._authenticated:
+            self._authenticate()
+            self._authenticated = True
+
+    def manage_associations(
+        self,
+        base_path: str,
+        resource_id: int,
+        association_field: str,
+        desired_items: list,
+        lookup_endpoint: str,
+        lookup_field: str,
+        service: str = "gateway",
+    ) -> bool:
+        """
+        Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
+
+        Generic across any resource with a list-style association sub-endpoint (credentials,
+        instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
+        resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
+        current associations, and associates/disassociates to reconcile.
+
+        This read-then-write reconciliation is not atomic. Concurrent changes from another
+        client can interleave with the read and individual POSTs, leaving final state different
+        from desired_items.
+
+        Intended for Pattern C action plugins (custom orchestration run(), see
+        docs/02-action-plugin-pattern.md) that need post-CRUD association management beyond
+        what the declarative create/update flow covers.
+        """
+        self._ensure_authenticated()
+        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service)
+        desired_ids = {int(item) if str(item).isdigit() else resolved_names.get(str(item)) if item else None for item in desired_items}
+
+        # Follow pagination so associations beyond the first page aren't silently
+        # treated as absent (which would re-associate them and skip disassociating
+        # ones that should be removed).
+        assoc_path = f"{base_path}/{resource_id}/{association_field}/"
+        if not assoc_path.startswith("/api/"):
+            assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
+        current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
+        current_ids = {item["id"] for item in current_data.get("results", [])}
+        assoc_url = self._build_url(assoc_path, service=service)
+
+        changed = False
+        for rid in desired_ids - current_ids:
+            try:
+                self._make_request("POST", assoc_url, operation="associate", resource=association_field, json={"id": rid, "associate": True})
+            except APIError as e:
+                details = {**e.details, "association_id": rid}
+                raise APIError(
+                    message=f"Failed to associate {association_field} ID {rid}: {e.message}",
+                    operation=e.operation,
+                    resource=e.resource,
+                    details=details,
+                    status_code=e.status_code,
+                    response_body=e.response_body,
+                ) from e
+            changed = True
+        for rid in current_ids - desired_ids:
+            try:
+                self._make_request("POST", assoc_url, operation="disassociate", resource=association_field, json={"id": rid, "disassociate": True})
+            except APIError as e:
+                details = {**e.details, "association_id": rid}
+                raise APIError(
+                    message=f"Failed to disassociate {association_field} ID {rid}: {e.message}",
+                    operation=e.operation,
+                    resource=e.resource,
+                    details=details,
+                    status_code=e.status_code,
+                    response_body=e.response_body,
+                ) from e
+            changed = True
+        return changed
+
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+        """
+        Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
+
+        Generic across any resource with a singleton (non-list) sub-endpoint -- reuse this
+        rather than writing bespoke get/compare/post logic per resource. data is None:
+        no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
+        POST only if different.
+
+        Intended for Pattern C action plugins (custom orchestration run(), see
+        docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
+        what the declarative create/update flow covers.
+        """
+        if data is None:
+            return False
+        self._ensure_authenticated()
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+
+        if data == {}:
+            try:
+                self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
+            except APIError as err:
+                # _make_request translates HTTPError responses into APIError.
+                if err.status_code == 404:
+                    return False
+                raise
+            except HTTPError as he:
+                # Retain handling for callers that surface Request.open() errors directly.
+                if he.code == 404:
+                    return False
+                raise
+            return True
+
+        response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
+        current = json.loads(response.read())
+        if current == data:
+            return False
+
+        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
+        return True
+
+    def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
+        """
+        Copy a resource via its /copy/ sub-endpoint.
+
+        Resolves source_name_or_id to an ID via a direct GET+filter against
+        copy_endpoint_path (not self.execute(), since the caller may not have a fully
+        populated Ansible dataclass instance at copy time), then POSTs {name: new_name}
+        to {copy_endpoint_path}/{source_id}/copy/.
+        """
+        self._ensure_authenticated()
+        if str(source_name_or_id).isdigit():
+            source_id = int(source_name_or_id)
+        else:
+            lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
+            response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
+            results = json.loads(response.read()).get("results", [])
+            if not results:
+                raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
+            source_id = results[0]["id"]
+
+        copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
+        response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
+        return json.loads(response.read())
+
+    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+        """
+        Perform a raw GET against any API endpoint and return the JSON response.
+
+        Mirrors PlatformService.search_api() so action plugins can use the
+        same call regardless of connection mode (persistent manager vs direct).
+
+        Accepts full API paths (e.g. ``/api/eda/v1/projects/``) which bypass
+        the Gateway prefix, or short endpoint names (e.g. ``organizations``)
+        which are auto-prefixed with ``/api/gateway/v{version}/``.
+
+        Args:
+            endpoint: API endpoint path or short name
+            query_params: Optional key/value filter parameters
+            return_all: When True, follow 'next' pagination links
+            max_objects: Safety cap when return_all is True
+
+        Returns:
+            Raw API response dict.
+        """
+        # Lazy initialization
+        if not self._authenticated:
+            try:
+                self._authenticate()
+                self._authenticated = True
+            except Exception:
+                raise
+
+        # Detect API version if not done yet
+        if self.api_version is None:
+            try:
+                self.api_version = self._detect_api_version()
+            except Exception:
+                self.api_version = "1"
+            self.session.headers.update({"X-API-Version": str(self.api_version)})
+
+        # Build URL: if endpoint starts with /api/ treat as absolute path,
+        # otherwise prefix with /api/gateway/v{version}/
+        if endpoint.startswith("/api/"):
+            api_path = endpoint
+        else:
+            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
+
+        url = self._build_url(api_path, query_params)
+        response = self._make_request("GET", url, operation="search", resource=endpoint)
+        try:
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
+        except Exception:
+            # Callers with return_all=True (e.g. manage_associations) diff this
+            # result's "results" against desired state to decide what to
+            # associate/disassociate — silently treating a parse failure as an
+            # empty page would make that diff wrong. Fail loudly instead.
+            if return_all:
+                raise
+            response_data = {}
+
+        if not return_all:
+            return response_data
+
+        # Pagination: follow 'next' links
+        all_results = list(response_data.get("results", []))
+        total = response_data.get("count", len(all_results))
+        if total > max_objects or len(all_results) > max_objects:
+            raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
+
+        while response_data.get("next"):
+            # AAP components may return pagination links as relative paths.
+            # Request.open() requires an absolute URL, so resolve against the gateway.
+            next_url = urljoin(self.base_url, response_data["next"])
+            response = self._make_request("GET", next_url, operation="search", resource=endpoint)
+            response_body = response.read()
+            response_data = json.loads(response_body) if response_body else {}
+            all_results.extend(response_data.get("results", []))
+            if len(all_results) > max_objects:
+                raise ValueError("Endpoint '%s' returned more than max_objects=%d objects while paginating" % (endpoint, max_objects))
+
+        response_data["results"] = all_results
+        return response_data
+
     def execute(self, operation: str, module_name: str, ansible_data_dict=None, **kwargs) -> dict:
         """
         Execute a generic operation on any resource.
@@ -528,7 +787,7 @@ class DirectHTTPClient(BaseAPIClient):
         Uses the same shared CRUD logic as PlatformService.
 
         Args:
-            operation: Operation type ('create', 'update', 'delete', 'find')
+        operation: Operation type ('create', 'update', 'delete', 'find', or mixin-supported 'resolve')
             module_name: Module name (e.g., 'user', 'organization')
             ansible_data_dict: Ansible dataclass or dict
         kwargs: Optional alias: ansible_data (matches ManagerRPCClient API)
@@ -563,18 +822,19 @@ class DirectHTTPClient(BaseAPIClient):
                 self._last_auth_error = e
                 raise
 
-        # Lazy initialization: Detect API version on first request
-        if self.api_version is None:
-            try:
-                self.api_version = self._detect_api_version()
-                logger.info("DirectHTTPClient: API version detected: v%s", self.api_version)
-            except Exception as e:
-                logger.warning("DirectHTTPClient: Version detection failed: %s, defaulting to v1", e)
-                self.api_version = "1"
-            self.session.headers.update({"X-API-Version": str(self.api_version)})
+        # Resolve this module's service and detect its API version lazily
+        service = self.registry.get_service_for_module(module_name)
+        if not service:
+            raise ValueError(f"Module '{module_name}' not found in any service")
+        service_version = self.get_api_version(service)
+
+        # Ensure gateway version header is set (for gateway auth/routing)
+        if "X-API-Version" not in (self.session.headers or {}):
+            gw_version = self.get_api_version("gateway")
+            self.session.headers.update({"X-API-Version": str(gw_version)})
 
         # Load version-appropriate classes (shared layer)
-        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, self.api_version)
+        AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
 
@@ -583,7 +843,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Build transformation context (using dataclass for type safety)
         context = TransformContext(
-            manager=self, session=self.session, cache=self.cache, api_version=self.api_version, operation=operation, include_nulls_for_update=include_nulls
+            manager=self,
+            session=self.session,
+            cache=self.cache,
+            api_version=service_version,
+            service=service,
+            operation=operation,
+            include_nulls_for_update=include_nulls,
         )
 
         # Execute operation (shared CRUD logic)
@@ -596,6 +862,11 @@ class DirectHTTPClient(BaseAPIClient):
                 result = self._delete_resource(ansible_instance, MixinClass, context)
             elif operation == "find":
                 result = self._find_resource(ansible_instance, MixinClass, context)
+            elif operation == "resolve":
+                resolver = getattr(MixinClass, "resolve", None)
+                if resolver is None:
+                    raise ValueError("Resolve operation is not supported for %s" % module_name)
+                result = resolver(ansible_instance, context)
             else:
                 raise ValueError(f"Unknown operation: {operation}")
 
@@ -714,7 +985,7 @@ class DirectHTTPClient(BaseAPIClient):
             raise ValueError(f"Delete operation not defined for {mixin_class.__name__}")
 
         # Build URL
-        url = self._build_url(delete_op.path.format(id=resource_id))
+        url = self._build_url(delete_op.path.format(id=resource_id), service=context.service, api_version=context.api_version)
 
         # Execute delete
         _response = self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
@@ -738,7 +1009,7 @@ class DirectHTTPClient(BaseAPIClient):
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
-            url = self._build_url(get_op.path)
+            url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             with self._lock:
                 self._http_request_count += 1
             response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
@@ -779,7 +1050,7 @@ class DirectHTTPClient(BaseAPIClient):
         # instead of a list-filter, which would find nothing.
         if get_op and lookup_value is not None and str(lookup_value).strip().isdigit():
             try:
-                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())))
+                id_url = self._build_url(get_op.path.format(id=int(str(lookup_value).strip())), service=context.service, api_version=context.api_version)
                 logger.info("DirectHTTPClient: ID-based lookup URL for %s: %s", mixin_class.__name__, id_url)
                 with self._lock:
                     self._http_request_count += 1
@@ -825,7 +1096,7 @@ class DirectHTTPClient(BaseAPIClient):
         if composite_params:
             query_params.update(composite_params)
         # Build URL with query parameter(s)
-        url = self._build_url(list_op.path, query_params)
+        url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)
         logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
         # Execute list request
         logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
@@ -895,14 +1166,14 @@ class DirectHTTPClient(BaseAPIClient):
                     if param_value:
                         url = url.replace(f"{{{param}}}", str(param_value))
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
-            url = self._build_url(url)
+            url = self._build_url(url, service=context.service, api_version=context.api_version)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
             # Prepare request data; include "" on update so enforced can clear e.g. email
             request_data = {}
             if endpoint_op.fields:
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
-                    if value is None:
+                    if value is None or value == "":
                         continue
                     request_data[field] = value
 

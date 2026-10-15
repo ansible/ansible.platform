@@ -178,5 +178,69 @@ class TestRequestTimeoutAliases(unittest.TestCase):
         self.assertEqual(cfg.request_timeout, 10.0)
 
 
+class TestCaBundleAliases(unittest.TestCase):
+    """aap_ca_bundle / gateway_ca_bundle / ansible_platform_ca_bundle aliases."""
+
+    def test_aap_ca_bundle_from_task_args(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "aap_ca_bundle": "/tmp/custom-ca.pem"},
+            host_vars={},
+        )
+        self.assertEqual(cfg.ca_bundle, "/tmp/custom-ca.pem")
+
+    def test_gateway_ca_bundle_alias(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "gateway_ca_bundle": "/tmp/gateway-ca.pem"},
+            host_vars={},
+        )
+        self.assertEqual(cfg.ca_bundle, "/tmp/gateway-ca.pem")
+
+    def test_ansible_platform_ca_bundle_alias(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "ansible_platform_ca_bundle": "/tmp/platform-ca.pem"},
+            host_vars={},
+        )
+        self.assertEqual(cfg.ca_bundle, "/tmp/platform-ca.pem")
+
+    def test_task_args_override_host_vars(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "aap_ca_bundle": "/tmp/task-ca.pem"},
+            host_vars={"gateway_ca_bundle": "/tmp/host-ca.pem"},
+        )
+        self.assertEqual(cfg.ca_bundle, "/tmp/task-ca.pem")
+
+    def test_host_vars_used_when_not_in_task_args(self):
+        cfg = extract_gateway_config(
+            task_args=dict(_BASE),
+            host_vars={"aap_ca_bundle": "/tmp/inventory-ca.pem"},
+        )
+        self.assertEqual(cfg.ca_bundle, "/tmp/inventory-ca.pem")
+
+    def test_aap_ca_bundle_takes_priority_over_aliases(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "aap_ca_bundle": "/tmp/primary.pem", "gateway_ca_bundle": "/tmp/legacy.pem"},
+            host_vars={},
+        )
+        self.assertEqual(cfg.ca_bundle, "/tmp/primary.pem")
+
+    def test_default_is_none_when_not_set(self):
+        cfg = extract_gateway_config(task_args=dict(_BASE), host_vars={})
+        self.assertIsNone(cfg.ca_bundle)
+
+    def test_requests_verify_uses_ca_bundle_when_verify_enabled(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "aap_ca_bundle": "/tmp/custom-ca.pem", "aap_validate_certs": True},
+            host_vars={},
+        )
+        self.assertEqual(cfg.requests_verify, "/tmp/custom-ca.pem")
+
+    def test_requests_verify_false_when_validate_certs_disabled(self):
+        cfg = extract_gateway_config(
+            task_args={**_BASE, "aap_ca_bundle": "/tmp/custom-ca.pem", "aap_validate_certs": False},
+            host_vars={},
+        )
+        self.assertFalse(cfg.requests_verify)
+
+
 if __name__ == "__main__":
     unittest.main()

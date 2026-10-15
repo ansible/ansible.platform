@@ -136,7 +136,7 @@ As the collection grows to support multiple AAP services:
    - This makes discovery via `ansible.platform.eda_` or `ansible.platform.controller_` possible
 
 3. **Schema isolation**
-   - Each service has its own transform mixins in `api/v1/`, `api/v2/`, etc.
+   - Each service has its own transform mixins in `api/{service}/v1/`, `api/{service}/v2/`, etc.
    - No risk of Gateway fields leaking into EDA modules (or vice versa)
 
 ---

@@ -12,7 +12,7 @@ PYTHON_VERSION:
 	@echo "$(subst python,,$(PYTHON))"
 
 .PHONY: PYTHON_VERSION clean git_hooks_config \
-	check_ruff check_mypy check_pydoclint \
+	check_ruff check_mypy check_pydoclint check_action_plugin_invariants \
 	collection-install collection-test collection-docs \
 	collection-lint collection-sanity  collection-test-completeness \
 	collection-test-integration-check \
@@ -41,6 +41,10 @@ check_mypy:
 ## Run pydoclint docstring style check
 check_pydoclint:
 	tox -e pydoclint
+
+## Fail if action plugins contain direct HTTP or Ansible-only wait/poll logic
+check_action_plugin_invariants:
+	@bash tools/check_action_plugin_invariants.sh
 
 ## Install the collection locally on your machine
 collection-install:
@@ -79,22 +83,24 @@ collection-lint: collection-install
 ##   local            (default) – ephemeral DirectHTTPClient, one per task
 ##   http-direct      – ansible.platform.http plugin, DirectHTTPClient, one per task
 ##   http-persistent  – ansible.platform.http plugin, shared ManagerRPCClient process
+## Set GATEWAY_HOSTNAME to override the gateway URL (default: https://localhost:8443)
 ANSIBLE_TEST_INTEGRATION_VENV := --venv
 ifneq ($(ANSIBLE_TEST_INTEGRATION_NO_VENV),)
 ANSIBLE_TEST_INTEGRATION_VENV :=
 endif
 CONNECTION_MODE ?= local
+GATEWAY_HOSTNAME ?= https://localhost:8000
 
 _write_integration_config:
 	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
-	@printf 'gateway_password: %s\nconnection_mode: %s\n' \
-		'$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
+	@printf 'gateway_hostname: %s\ngateway_password: %s\nconnection_mode: %s\n' \
+		'$(GATEWAY_HOSTNAME)' '$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
 		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
 collection-test: collection-install _write_integration_config
 	cd /tmp/collections/ansible_collections/ansible/platform && \
-	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage
+	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage --continue-on-error
 
 ## Run integration tests explicitly using connection: local (default ephemeral mode)
 collection-test-local: collection-install

@@ -1,0 +1,27 @@
+---
+- name: Remove Controller job templates from the mock API
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: false
+  tasks:
+    - name: Delete mock job templates
+      ansible.platform.job_template:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - Molecule Controller JT Copy
+        - Molecule Controller JT Local
+        - Molecule Controller JT Direct
+        - Molecule Controller JT Persistent
+
+    - name: Allow the persistent manager to stop
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+...

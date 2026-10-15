@@ -2,8 +2,8 @@
 Ansible RoleTeamAssignment dataclass - user-facing stable interface.
 """
 
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import InitVar, dataclass
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -25,7 +25,6 @@ class AnsibleRoleTeamAssignment:
 
     # Object selector (mutually exclusive groups)
     object_id: Optional[int] = None
-    object_ids: Optional[List] = None  # multi-object iteration
     object_ansible_id: Optional[str] = None
 
     state: str = "present"
@@ -38,6 +37,13 @@ class AnsibleRoleTeamAssignment:
 
     # Multi-object input: list of {name, type} / {object_id} / {object_ansible_id} dicts
     assignment_objects: Optional[List] = None
+    # Internal metadata resolved by the API transform during execute().
+    object_lookup: InitVar[Optional[Dict[str, str]]] = None
+
+    def __post_init__(self, object_lookup):
+        # Keep lookup metadata out of dataclasses.asdict() results and API
+        # output while making it available to the execute() transform hook.
+        self._object_lookup = object_lookup
 
     # Multi-object result list (populated by action plugin)
     assignments: Optional[List[dict]] = None

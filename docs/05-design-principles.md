@@ -59,11 +59,11 @@ and support both in the action plugin for two release cycles.
 ## SECTION 3: Principle 3 — Transform Mixin Is the Only Resource-Specific Code
 
 **Rule**: All resource-specific business logic must live in the transform mixin
-(`plugins/plugin_utils/api/v<N>/<resource>.py`). Action plugins, the manager, and
+(`plugins/plugin_utils/api/{service}/v<N>/<resource>.py`). Action plugins, the manager, and
 the base classes must be resource-agnostic.
 
 **Why**: Centralising resource logic in the mixin makes it easy to find, test, and
-replace. It also makes version upgrades mechanical: add `api/v2/<resource>.py`,
+replace. It also makes version upgrades mechanical: add `api/{service}/v2/<resource>.py`,
 implement the new mixin, done. No framework code changes. No conditional branches
 scattered across the action plugin.
 
@@ -85,9 +85,41 @@ scattered across the action plugin.
 
 ---
 
+## SECTION 3a: Principle — SDK Consumer Parity (Single Execution Path)
+
+**Rule**: Every resource capability exposed in module `DOCUMENTATION` must be reachable
+through `PlatformService.execute(operation, module_name, params)` inside the manager
+process. Action plugins, MCP servers, CLIs, and other SDK consumers must not diverge.
+
+**Why**: Non-Ansible consumers (for example the MCP server in
+[#206](https://github.com/ansible/ansible.platform/pull/206)) discover tools from module
+metadata and call `PlatformService.execute()` directly — they do not import action plugins.
+Logic trapped in a custom action plugin (especially direct `manager.session` HTTP) is
+**Ansible-only** and breaks parity across consumers.
+
+**What this means in practice**:
+
+| Need | Implement in | Action plugin |
+|------|----------------|---------------|
+| Field mapping, FK resolution | Transform mixin | Pattern A (default) |
+| Associations, surveys, copy, secondary endpoints | Mixin `get_endpoint_operations()` / hooks | Pattern B hooks only |
+| Launch/job wait (`wait`, `interval`, `timeout`) | `PlatformService.execute()` + shared poller | Pattern A (pass-through) |
+| Multi-step Ansible orchestration | Thin custom `run()` calling `manager.execute()` | Pattern C |
+
+**Test**: If MCP `execute` mode (or a standalone SDK script) cannot perform the same
+operation as a playbook task, the implementation belongs in the SDK layer, not the
+action plugin. A launch module that documents `wait: true` but only polls in the action
+plugin fails this test — see
+[#227](https://github.com/ansible/ansible.platform/pull/227).
+
+See [09-agent-collaboration.md](09-agent-collaboration.md) §10 for agent invariants and
+`make check_action_plugin_invariants` for CI enforcement.
+
+---
+
 ## SECTION 4: Principle 4 — Registry Auto-Discovery
 
-**Rule**: New API versions are added by creating a new directory `plugins/plugin_utils/api/v<N>/`.
+**Rule**: New API versions are added by creating a new directory `plugins/plugin_utils/api/{service}/v<N>/`.
 No list of supported versions should ever be hardcoded in the framework.
 
 **Why**: Hardcoded version lists require framework changes for every API update. The
@@ -98,13 +130,15 @@ and implement the mixin.
 **Implementation**:
 ```python
 # registry.py — discovers versions by scanning filesystem
-for version_dir in Path(api_base_path).iterdir():
-    if version_dir.is_dir() and version_dir.name.startswith("v"):
-        version_num = version_dir.name[1:]  # 'v1' → '1'
-        # Load and register...
+for service_dir in Path(api_base_path).iterdir():
+    if service_dir.is_dir():
+        for version_dir in service_dir.iterdir():
+            if version_dir.is_dir() and version_dir.name.startswith("v"):
+                version_num = version_dir.name[1:]  # 'v1' → '1'
+                # Load and register...
 ```
 
-**Test**: To verify the registry works, add a new `api/v9/` directory with a stub mixin
+**Test**: To verify the registry works, add a new `api/{service}/v9/` directory with a stub mixin
 and confirm the framework loads it without any code changes.
 
 ---
@@ -399,7 +433,7 @@ behavior: if the config file accepts it, the env var must too.
 Before submitting any new platform action plugin, verify:
 
 - [ ] `AnsibleFoo` dataclass exists in `ansible_models/foo.py`
-- [ ] `APIFoo_v1` dataclass exists in `api/v1/foo.py`
+- [ ] `APIFoo_v1` dataclass exists in `api/{service}/v1/foo.py`
 - [ ] `FooTransformMixin_v1` implements all required protocol methods
 - [ ] Action plugin `ActionModule` extends `BaseResourceActionPlugin`
 - [ ] Module stub `plugins/modules/foo.py` has only `DOCUMENTATION` and `EXAMPLES`
@@ -513,6 +547,7 @@ matching must be designed. (See: Principle 2 in `04-data-model-transformation.md
 | 12. Consistent env var types | Env vars accept same types as config | User experience |
 | 13. Quality checklist | Verify all items before merge | Consistency |
 | 14. Human-in-the-loop | Stop on key/secondary/nested/conditional fields | Safety |
+| 15. SDK consumer parity | All behavior via `PlatformService.execute()` | Multi-consumer architecture |
 
 ---
 
