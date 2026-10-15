@@ -10,18 +10,7 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-JobTemplate-{{ test_id }}"
 
-- name: Check if controller API is available
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname }}/api/controller/v2/ping/"
-    user: "{{ gateway_username | default('admin') }}"
-    password: "{{ gateway_password | default('admin') }}"
-    validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
-    force_basic_auth: true
-  register: controller_ping
-  ignore_errors: true
-
 - name: Run Test
-  when: controller_ping is success
   module_defaults:
     group/ansible.platform.controller:
       gateway_hostname: "{{ gateway_hostname }}"

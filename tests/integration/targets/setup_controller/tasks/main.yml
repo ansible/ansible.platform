@@ -1,0 +1,15 @@
+---
+- name: Check if controller API is available
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/controller/v2/ping/"
+    user: "{{ gateway_username | default('admin') }}"
+    password: "{{ gateway_password | default('admin') }}"
+    validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
+    force_basic_auth: true
+  register: controller_ping
+  ignore_errors: true
+
+- name: Skip play when controller is not available
+  ansible.builtin.meta: end_play
+  when: controller_ping is not success
+...
