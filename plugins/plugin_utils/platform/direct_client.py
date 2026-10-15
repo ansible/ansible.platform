@@ -631,10 +631,10 @@ class DirectHTTPClient(BaseAPIClient):
                     status_code=e.status_code,
                     response_body=e.response_body,
                 ) from e
-            changed = True
+
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -650,7 +650,7 @@ class DirectHTTPClient(BaseAPIClient):
         if data is None:
             return False
         self._ensure_authenticated()
-        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/", service=service)
 
         if data == {}:
             try:
@@ -764,7 +764,6 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
-
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.

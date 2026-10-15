@@ -15,8 +15,8 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   service_types, services, tokens, ui_plugin_routes,
   settings (singleton), settings/all (flat dict read)
 
-Controller endpoints include job_templates CRUD, associations, survey_spec,
-copy, and the related resources needed by the job_template Molecule scenario.
+Controller endpoints include jobs, job_templates CRUD, associations,
+survey_spec, copy, and the related resources needed by Molecule scenarios.
 
 Notes
 -----
@@ -279,6 +279,10 @@ class Store:
             ("labels", 5500),
             ("instance_groups", 5600),
             ("notification_templates", 5700),
+            ("jobs", 5800),
+            ("project_updates", 5900),
+            ("inventory_updates", 6000),
+            ("workflow_jobs", 6100),
         )
         for endpoint, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
@@ -350,6 +354,62 @@ class Store:
             "labels": [{"id": 5501, "name": "Mock Label 1"}, {"id": 5502, "name": "Mock Label 2"}, {"id": 5503, "name": "Mock Label 3"}],
             "instance_groups": [{"id": 5601, "name": "Mock Instance Group"}],
             "notification_templates": [{"id": 5701, "name": "Mock Notification"}],
+            "jobs": [
+                {
+                    "id": 5801,
+                    "name": "Mock Successful Job",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                },
+                {
+                    "id": 5802,
+                    "name": "Mock Failed Job",
+                    "status": "failed",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                },
+                {
+                    "id": 5803,
+                    "name": "Mock Running Job",
+                    "status": "running",
+                    "elapsed": 0.0,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": None,
+                },
+            ],
+            "project_updates": [
+                {
+                    "id": 5901,
+                    "name": "Mock Successful Project Update",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                }
+            ],
+            "inventory_updates": [
+                {
+                    "id": 6001,
+                    "name": "Mock Successful Inventory Update",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                }
+            ],
+            "workflow_jobs": [
+                {
+                    "id": 6101,
+                    "name": "Mock Successful Workflow Job",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                }
+            ],
         }
         for endpoint, items in controller_fixtures.items():
             resource = self.resource("controller", endpoint)
