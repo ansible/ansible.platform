@@ -1,0 +1,143 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-WJT-{{ test_id }}"
+    workflow_template_name: "AAP-Collection-Test-WJT-{{ test_id }}-Test"
+    renamed_workflow_template_name: "AAP-Collection-Test-WJT-{{ test_id }}-Renamed"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        description: "Integration test workflow job template"
+        state: present
+      register: created_wjt
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_wjt is changed
+          - created_wjt.workflow_job_template.name == workflow_template_name
+          - created_wjt.workflow_job_template.description == "Integration test workflow job template"
+          - created_wjt.workflow_job_template.id is defined
+
+    - name: Check idempotency
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        description: "Integration test workflow job template"
+        state: present
+      register: idempotent_wjt
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_wjt is not changed
+
+    - name: Update workflow job template settings
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        description: "Updated integration test workflow job template"
+        extra_vars:
+          integration_key: "workflow_job_template_test"
+        ask_variables_on_launch: true
+        state: present
+      register: updated_wjt
+
+    - name: Assert workflow job template settings updated
+      ansible.builtin.assert:
+        that:
+          - updated_wjt is changed
+          - updated_wjt.workflow_job_template.id == created_wjt.workflow_job_template.id
+          - updated_wjt.workflow_job_template.description == "Updated integration test workflow job template"
+          - (updated_wjt.workflow_job_template.extra_vars | from_json).integration_key == "workflow_job_template_test"
+          - updated_wjt.workflow_job_template.ask_variables_on_launch is true
+
+    - name: Reapply workflow job template settings
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        description: "Updated integration test workflow job template"
+        extra_vars:
+          integration_key: "workflow_job_template_test"
+        ask_variables_on_launch: true
+        state: present
+      register: idempotent_update_wjt
+
+    - name: Assert updated workflow job template is idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_update_wjt is not changed
+
+    - name: Rename workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        new_name: "{{ renamed_workflow_template_name }}"
+      register: renamed_wjt
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_wjt is changed
+          - renamed_wjt.workflow_job_template.id == created_wjt.workflow_job_template.id
+          - renamed_wjt.workflow_job_template.name == renamed_workflow_template_name
+
+    - name: Check exists
+      ansible.platform.workflow_job_template:
+        name: "{{ renamed_workflow_template_name }}"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+          - exists_check.workflow_job_template.id == created_wjt.workflow_job_template.id
+
+    - name: Delete a non-existent workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ name_prefix }}-Missing"
+        state: absent
+      register: delete_missing_wjt
+
+    - name: Assert deleting a non-existent workflow job template does not change the system
+      ansible.builtin.assert:
+        that:
+          - delete_missing_wjt is not changed
+
+    - name: Delete workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ renamed_workflow_template_name }}"
+        state: absent
+      register: deleted_wjt
+
+    - name: Assert workflow job template deletion
+      ansible.builtin.assert:
+        that:
+          - deleted_wjt is changed
+
+  always:
+    - name: Delete workflow job template (renamed)
+      ansible.platform.workflow_job_template:
+        name: "{{ renamed_workflow_template_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete workflow job template (original, in case rename failed)
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        state: absent
+      failed_when: false
+...
