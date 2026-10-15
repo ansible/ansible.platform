@@ -60,10 +60,18 @@
       vars:
         ansible_connection: local
 
+    - name: Determine the system temporary directory
+      ansible.builtin.command: python3 -c 'import tempfile; print(tempfile.gettempdir())'
+      register: system_temp_dir
+      changed_when: false
+      vars:
+        ansible_connection: local
+
     - name: Find persistent manager socket for localhost + current uid (common locations)
       ansible.builtin.find:
         paths:
           - "/tmp/ansible_platform"
+          - "{{ system_temp_dir.stdout }}/ansible_platform"
           - "{{ home_dir.stdout }}/.ansible/tmp"
         patterns:
           - "manager_{{ uid.stdout }}_localhost_*.sock"
