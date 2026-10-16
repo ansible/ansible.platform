@@ -40,7 +40,7 @@ class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
         )
 
         if op == "create":
-            api_data["name"] = name or new_name
+            api_data["name"] = name
         elif op == "update":
             if new_name is not None:
                 api_data["name"] = new_name
@@ -84,7 +84,8 @@ class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
             api_data["description"] = ""
 
         inputs = getattr(ansible_instance, "inputs", None)
-        if inputs is not None:
+        update_secrets = getattr(ansible_instance, "update_secrets", True)
+        if inputs is not None and (op == "create" or update_secrets is not False):
             api_data["inputs"] = inputs
 
         for field in ("id",):
