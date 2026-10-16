@@ -31,7 +31,7 @@ spec:
         value: ansible-platform-collection-tests
       - name: bundle
         value: >-
-          quay.io/aap-ci/tekton-catalog/pipeline/test/ansible-platform-collection-tests:0.1@sha256:82a387f2d5b1e0f168f918f6077246d9ab7bb7cb60effeabd8914eee321e7922
+          quay.io/aap-ci/tekton-catalog/pipeline/test/ansible-platform-collection-tests:0.1@sha256:504b46c4ce1c2fd12f9a08699f771725811def9ad78b47789c98c1c785ef9b84
       - name: kind
         value: pipeline
       - name: secret
