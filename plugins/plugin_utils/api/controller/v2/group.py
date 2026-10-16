@@ -49,7 +49,7 @@ class GroupTransformMixin_v2(BaseTransformMixin):
         )
 
         if op == "create":
-            api_data["name"] = name or new_name
+            api_data["name"] = name
         elif op == "update":
             if new_name is not None:
                 api_data["name"] = new_name
@@ -131,6 +131,16 @@ class GroupTransformMixin_v2(BaseTransformMixin):
     @classmethod
     def get_lookup_field(cls) -> str:
         return "name"
+
+    @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        inventory_id = getattr(api_data, "inventory", None)
+        if inventory_id is not None:
+            try:
+                return {"inventory": int(str(inventory_id).strip())}
+            except Exception:
+                pass
+        return {}
 
     @classmethod
     def from_api(
