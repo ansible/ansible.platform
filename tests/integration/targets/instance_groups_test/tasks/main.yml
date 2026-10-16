@@ -1,0 +1,175 @@
+---
+# Integration tests for ansible.platform.instance_group
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-IG-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create instance group with check mode
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 10
+        max_forks: 50
+        state: present
+      check_mode: true
+      register: planned_ig
+
+    - name: Assert check mode predicts an instance group change
+      ansible.builtin.assert:
+        that:
+          - planned_ig is changed
+
+    - name: Create instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 10
+        max_forks: 50
+        state: present
+      register: created_ig
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_ig is changed
+          - created_ig.instance_group.name == (name_prefix ~ '-Test')
+          - created_ig.instance_group.id is defined
+          - created_ig.instance_group.max_concurrent_jobs == 10
+          - created_ig.instance_group.max_forks == 50
+
+    - name: Check idempotency
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 10
+        max_forks: 50
+        state: present
+      register: idempotent_ig
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_ig is not changed
+
+    - name: Update instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 20
+      register: updated_ig
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_ig is changed
+          - updated_ig.instance_group.id == created_ig.instance_group.id
+          - updated_ig.instance_group.max_concurrent_jobs == 20
+          - updated_ig.instance_group.max_forks == 50
+
+    - name: Reapply updated instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        max_concurrent_jobs: 20
+        max_forks: 50
+        state: present
+      register: reapplied_ig
+
+    - name: Assert updated instance group is idempotent
+      ansible.builtin.assert:
+        that:
+          - reapplied_ig is not changed
+
+    - name: Rename instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+      register: renamed_ig
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_ig is changed
+          - renamed_ig.instance_group.id == created_ig.instance_group.id
+          - renamed_ig.instance_group.name == (name_prefix ~ '-Renamed')
+
+    - name: Check exists
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Check exists by ID
+      ansible.platform.instance_group:
+        name: "{{ renamed_ig.instance_group.id | string }}"
+        state: exists
+      register: exists_by_id_check
+
+    - name: Assert exists by ID
+      ansible.builtin.assert:
+        that:
+          - exists_by_id_check.exists
+          - exists_by_id_check is not changed
+
+    - name: Delete a non-existent instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-DoesNotExist"
+        state: absent
+      register: delete_missing_ig
+
+    - name: Assert deleting a non-existent instance group does not change anything
+      ansible.builtin.assert:
+        that:
+          - delete_missing_ig is not changed
+
+    - name: Delete instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      register: deleted_ig
+
+    - name: Assert deleting instance group changed
+      ansible.builtin.assert:
+        that:
+          - deleted_ig is changed
+
+    - name: Delete instance group again
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      register: deleted_ig_again
+
+    - name: Assert deleting an absent instance group is idempotent
+      ansible.builtin.assert:
+        that:
+          - deleted_ig_again is not changed
+
+  always:
+    - name: Delete instance group (renamed)
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      failed_when: false
+
+    - name: Delete instance group (original, in case rename failed)
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...

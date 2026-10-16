@@ -28,5 +28,5 @@ action_groups:
     - job_template
     - controller_credential_type
     - host
-
+    - instance_group
 ...
