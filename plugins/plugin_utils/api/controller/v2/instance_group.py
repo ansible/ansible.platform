@@ -48,6 +48,9 @@ class InstanceGroupTransformMixin_v2(BaseTransformMixin):
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
+        include_nulls = (
+            getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        )
 
         if op == "create":
             api_data["name"] = name
@@ -65,6 +68,8 @@ class InstanceGroupTransformMixin_v2(BaseTransformMixin):
                 api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, service="controller")
             else:
                 api_data["credential"] = int(credential) if credential is not None else None
+        elif op == "update" and include_nulls:
+            api_data["credential"] = None
 
         for field in (
             "is_container_group",
@@ -78,6 +83,8 @@ class InstanceGroupTransformMixin_v2(BaseTransformMixin):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
+            elif op == "update" and include_nulls and field == "pod_spec_override":
+                api_data[field] = None
 
         # Read-only from API (for building URL in execute)
         for field in ("id",):
