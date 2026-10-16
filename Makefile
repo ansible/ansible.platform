@@ -130,19 +130,7 @@ molecule-test:
 
 ## Run all Molecule mock scenarios (starts mock server via default scenario, runs all, tears down).
 molecule-test-all:
-	@cd extensions && \
-	result=0; \
-	molecule create -s default || result=$$?; \
-	if [ $$result -eq 0 ]; then \
-		for scenario_dir in molecule/*; do \
-			[ -f "$$scenario_dir/molecule.yml" ] || continue; \
-			scenario=$${scenario_dir##*/}; \
-			[ "$$scenario" = default ] && continue; \
-			molecule test -s "$$scenario" || { result=$$?; break; }; \
-		done; \
-	fi; \
-	molecule destroy -s default || { destroy_result=$$?; [ $$result -ne 0 ] || result=$$destroy_result; }; \
-	exit $$result
+	cd extensions && molecule test --all
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:
