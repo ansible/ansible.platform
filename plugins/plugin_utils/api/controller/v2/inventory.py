@@ -52,7 +52,7 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
         )
 
         if op == "create":
-            api_data["name"] = name or new_name
+            api_data["name"] = name
         elif op == "update":
             if new_name is not None:
                 api_data["name"] = new_name
