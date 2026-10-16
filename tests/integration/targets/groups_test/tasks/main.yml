@@ -1,0 +1,152 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Group-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Delete a non-existent group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Missing"
+        inventory: "Demo Inventory"
+        state: absent
+      register: missing_group
+
+    - name: Assert deleting a non-existent group does not change anything
+      ansible.builtin.assert:
+        that:
+          - missing_group is not changed
+
+    - name: Create group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test group"
+        inventory: "Demo Inventory"
+        variables:
+          env: test
+        state: present
+      register: created_group
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_group is changed
+          - created_group.group.name == (name_prefix ~ '-Test')
+          - created_group.group.id is defined
+          - created_group.group.description == 'Integration test group'
+          - "created_group.group.variables | from_json == {'env': 'test'}"
+
+    - name: Check idempotency
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test group"
+        inventory: "Demo Inventory"
+        variables:
+          env: test
+        state: present
+      register: idempotent_group
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_group is not changed
+
+    - name: Update group description and variables
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        description: "Updated integration test group"
+        variables:
+          env: updated
+      register: updated_group
+
+    - name: Assert group update changed the existing group
+      ansible.builtin.assert:
+        that:
+          - updated_group is changed
+          - updated_group.group.id == created_group.group.id
+          - updated_group.group.description == 'Updated integration test group'
+          - "updated_group.group.variables | from_json == {'env': 'updated'}"
+
+    - name: Reapply the updated group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        description: "Updated integration test group"
+        variables:
+          env: updated
+      register: idempotent_update_group
+
+    - name: Assert the group update is idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_update_group is not changed
+
+    - name: Rename group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+        inventory: "Demo Inventory"
+      register: renamed_group
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_group is changed
+          - renamed_group.group.id == created_group.group.id
+          - renamed_group.group.name == (name_prefix ~ '-Renamed')
+          - renamed_group.group.description == 'Updated integration test group'
+          - "renamed_group.group.variables | from_json == {'env': 'updated'}"
+
+    - name: Check exists
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Renamed"
+        inventory: "Demo Inventory"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+          - exists_check is not changed
+
+    - name: Delete the renamed group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Renamed"
+        inventory: "Demo Inventory"
+        state: absent
+      register: deleted_group
+
+    - name: Assert deleting the group changed it
+      ansible.builtin.assert:
+        that:
+          - deleted_group is changed
+
+  always:
+    - name: Delete group (renamed)
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Renamed"
+        inventory: "Demo Inventory"
+        state: absent
+      failed_when: false
+
+    - name: Delete group (original, in case rename failed)
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        state: absent
+      failed_when: false
+...
