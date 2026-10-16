@@ -4,6 +4,10 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
+- name: Compute unique health check interval from test_id
+  ansible.builtin.set_fact:
+    _health_check_interval: "{{ range(1000, 9000) | random(seed=test_id) }}"
+
 - name: Get existing service clusters
   ansible.builtin.set_fact:
     _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters', **connection_info) }}"
@@ -57,7 +61,7 @@
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
         service_type: "{{ controller_st.id }}"
-        health_check_interval_seconds: 1162
+        health_check_interval_seconds: "{{ _health_check_interval }}"
         dns_discovery_type: LOGICAL_DNS
         dns_lookup_family: V4_ONLY
       register: controller_sc
@@ -71,7 +75,7 @@
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Controller"
         service_type: "{{ controller_st.id }}"
-        health_check_interval_seconds: 1162
+        health_check_interval_seconds: "{{ _health_check_interval }}"
       register: recreate_controller_sc
 
     - name: Assert that we a recreate does not change the system
@@ -92,7 +96,7 @@
       ansible.platform.service_cluster:
         name: "{{ test_id }}-Automation-Hub"
         service_type: "{{ hub_st.id }}"
-        health_check_interval_seconds: 1162
+        health_check_interval_seconds: "{{ _health_check_interval }}"
         upstream_hostname: hub.com
       register: hub_sc
 
@@ -161,7 +165,7 @@
     - name: Change a health check interval
       ansible.platform.service_cluster:
         name: "{{ eda_sc.id }}"
-        health_check_interval_seconds: 1162
+        health_check_interval_seconds: "{{ _health_check_interval }}"
       register: changed_eda_sc
 
     - name: Assert that we can change a service cluster
@@ -172,9 +176,9 @@
 
     - name: Query the server for service clusters  with specific health check interval
       ansible.builtin.set_fact:
-        _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters/?health_check_interval_seconds=1162', **connection_info) }}"
+        _sc_query: "{{ query('ansible.platform.gateway_api', 'service_clusters/?health_check_interval_seconds=' ~ _health_check_interval, **connection_info) }}"
 
-    - name: Ensure we have 3 service clusters with health_check_interval_seconds=1162
+    - name: Ensure we have 3 service clusters with matching health_check_interval_seconds
       ansible.builtin.assert:
         that:
           - _sc_query | length == 3

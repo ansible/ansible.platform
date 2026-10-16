@@ -4,6 +4,10 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
+- name: Compute unique port numbers from test_id
+  ansible.builtin.set_fact:
+    _port_base: "{{ range(10000, 50000) | random(seed=test_id) }}"
+
 - name: Route Module Tests
   module_defaults:
     group/ansible.platform.gateway:
@@ -25,10 +29,10 @@
       loop: "{{ gateway_http_ports }}"
       vars:
         gateway_http_ports:
-          - name: "{{ test_id }}Port 9082"
-            number: 9082
-          - name: "{{ test_id }}Port 8050"
-            number: 8050
+          - name: "{{ test_id }}Port {{ _port_base | int }}"
+            number: "{{ _port_base | int }}"
+          - name: "{{ test_id }}Port {{ _port_base | int + 1 }}"
+            number: "{{ _port_base | int + 1 }}"
       register: __http_port_create_result
 
     - name: Assert Created Http Port
@@ -90,7 +94,7 @@
           - name: "{{ test_id }}Gateway Svc Route"
             description: Gateway Service Route
             gateway_path: '/gw-svc-1/v1/'
-            http_port: "{{ test_id }}Port 9082"
+            http_port: "{{ test_id }}Port {{ _port_base | int }}"
             enable_gateway_auth: false
             service_cluster: "{{ test_id }}gateway"
             service_path: '/aaa/v1/'
@@ -129,7 +133,7 @@
           - name: "{{ test_id }}Gateway Svc Route"
             description: Gateway Service Route
             gateway_path: '/gw-svc-1/v1/'
-            http_port: "{{ test_id }}Port 9082"
+            http_port: "{{ test_id }}Port {{ _port_base | int }}"
             enable_gateway_auth: false
             service_cluster: "{{ test_id }}gateway"
             service_path: '/aaa/v1/'
@@ -143,7 +147,7 @@
             service_port: 2345
           - name: "{{ test_id }}Hub Svc Route"
             gateway_path: '/hub-svc-1/'
-            http_port: "{{ test_id }}Port 8050"
+            http_port: "{{ test_id }}Port {{ _port_base | int + 1 }}"
             service_cluster: "{{ test_id }}hub"
             service_path: '/ccc/v1/'
             service_port: 1111
@@ -181,7 +185,7 @@
           - name: "{{ test_id }}Gateway Svc Route"
             description: Gateway Service Route
             gateway_path: '/gw-svc-1/v1/'
-            http_port: "{{ test_id }}Port 9082"
+            http_port: "{{ test_id }}Port {{ _port_base | int }}"
             enable_gateway_auth: false
             service_cluster: "{{ test_id }}gateway"
             service_path: '/aaa/v1/'
@@ -189,13 +193,13 @@
           # Update
           - name: "{{ test_id }}Gateway Svc Route 2"
             gateway_path: '/gw-svc-2/v1/'
-            http_port: "{{ test_id }}Port 9082"
+            http_port: "{{ test_id }}Port {{ _port_base | int }}"
             service_cluster: "{{ test_id }}gateway"
             is_service_https: false  # Changed
           # Check for existence, no changes
           - name: "{{ test_id }}Hub Svc Route"
             gateway_path: '/hub-svc-1/'
-            http_port: "{{ test_id }}Port 8050"
+            http_port: "{{ test_id }}Port {{ _port_base | int + 1 }}"
             reject_failed_basic_auth: true
             state: exists
           # Check for existence, no changes
@@ -204,7 +208,7 @@
           # Change cluster
           - name: "{{ test_id }}Hub Svc Route"
             gateway_path: '/hub-svc-1/'
-            http_port: "{{ test_id }}Port 8050"
+            http_port: "{{ test_id }}Port {{ _port_base | int + 1 }}"
             service_cluster: "{{ test_id }}controller"
             service_path: '/ccc/v1/'
             service_port: 1111
@@ -214,7 +218,7 @@
           # Non-existing cluster
           - name: "{{ test_id }}Wrong cluster"
             gateway_path: '/xxx/'
-            http_port: "{{ test_id }}Port 8050"
+            http_port: "{{ test_id }}Port {{ _port_base | int + 1 }}"
             service_cluster: "{{ test_id }}eda"
             state: absent
           # Non-existing port
@@ -232,7 +236,7 @@
           # Existing port and cluster, non-existing route
           - name: "{{ test_id }}Wrong Route"
             gateway_path: '/non-existing/'
-            http_port: Port 9082
+            http_port: "Port {{ _port_base | int }}"
             service_cluster: "{{ test_id }}gateway"
             state: absent
       register: __routes_result
@@ -398,7 +402,7 @@
       ansible.platform.route:
         name: "{{ test_id }}mTLS-validation-test"
         gateway_path: "/test-mtls/"
-        http_port: "{{ test_id }}Port 9082"
+        http_port: "{{ test_id }}Port {{ _port_base | int }}"
         service_cluster: "{{ test_id }}gateway-service-cluster"
         service_path: "/api/"
         service_port: 8000
@@ -433,7 +437,7 @@
       loop: "{{ gateway_http_ports }}"
       vars:
         gateway_http_ports:
-          - name: "{{ test_id }}Port 9082"
-          - name: "{{ test_id }}Port 8050"
+          - name: "{{ test_id }}Port {{ _port_base | int }}"
+          - name: "{{ test_id }}Port {{ _port_base | int + 1 }}"
       register: __http_port_create_result
 ...
