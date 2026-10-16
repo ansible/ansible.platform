@@ -131,6 +131,16 @@ class CredentialInputSourceTransformMixin_v2(BaseTransformMixin):
         return "input_field_name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        target_credential = getattr(api_data, "target_credential", None)
+        if target_credential is not None:
+            try:
+                return {"target_credential": int(str(target_credential).strip())}
+            except Exception:
+                pass
+        return {}
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
