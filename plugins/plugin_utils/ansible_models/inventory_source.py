@@ -45,4 +45,4 @@ class AnsibleInventorySource:
 
     def __post_init__(self):
         if isinstance(self.source_vars, dict):
-            self.source_vars = json.dumps(self.source_vars)
+            self.source_vars = json.dumps(self.source_vars, sort_keys=True)
