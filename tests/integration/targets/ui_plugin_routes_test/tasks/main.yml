@@ -4,6 +4,10 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
+- name: Compute unique port numbers from test_id
+  ansible.builtin.set_fact:
+    _port_base: "{{ range(10000, 50000) | random(seed=test_id) }}"
+
 - name: Set test variables
   ansible.builtin.set_fact:
     # Plugin names
@@ -13,10 +17,10 @@
     hub_admin_plugin_name: "{{ test_id }}Hub Admin Plugin"
     non_existing_plugin_name: "{{ test_id }}Non-existing Plugin"
     # HTTP port names and numbers
-    primary_http_port_number: 9089
-    primary_http_port_name: "{{ test_id }}Port 9089"
-    secondary_http_port_number: 8058
-    secondary_http_port_name: "{{ test_id }}Port 8058"
+    primary_http_port_number: "{{ _port_base | int }}"
+    primary_http_port_name: "{{ test_id }}Port {{ _port_base | int }}"
+    secondary_http_port_number: "{{ _port_base | int + 1 }}"
+    secondary_http_port_name: "{{ test_id }}Port {{ _port_base | int + 1 }}"
     # Service cluster/type names
     hub_service_name: "{{ test_id }}hub"
     controller_service_name: "{{ test_id }}controller"
