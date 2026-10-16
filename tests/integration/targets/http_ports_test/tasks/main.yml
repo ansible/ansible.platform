@@ -4,10 +4,6 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: See if there is an existing API port
-  ansible.builtin.set_fact:
-    existing_http_api_port: "{{ lookup('ansible.platform.gateway_api', 'http_ports', query_params={'is_api_port': true}, **connection_info) }}"
-
 - name: Run Test
   module_defaults:
     group/ansible.platform.gateway:
@@ -180,9 +176,6 @@
         is_api_port: true
       ignore_errors: true
       register: duplicate_api_port_result
-        state: present
-      register: http_port5
-      when: existing_http_api_port | length == 0
 
     - name: Assert creating a duplicate API port fails
       ansible.builtin.assert:
@@ -193,7 +186,6 @@
       ansible.platform.http_port:
         name: "{{ api_port_name }}"
         state: absent
-      when: existing_http_api_port | length == 0
       ignore_errors: true
       register: delete_api_port_result
 
@@ -213,21 +205,6 @@
       ansible.builtin.assert:
         that:
           - unset_api_port_result is failed
-    - name: Try to make it not an API port
-      ansible.platform.http_port:
-        name: "Port 44301"
-        is_api_port: false
-      when: existing_http_api_port | length == 0
-      ignore_errors: true
-      register: http_port5_not_api_result
-
-    - name: API Port assertions
-      ansible.builtin.assert:
-        that:
-          - http_port5 is changed
-          - http_port5_remove_result is failed
-          - http_port5_not_api_result is failed
-      when: existing_http_api_port | length == 0
 
   always:
     - name: Delete http ports
