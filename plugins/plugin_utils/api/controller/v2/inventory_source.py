@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
+import yaml
+
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
@@ -65,7 +67,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         )
 
         if op == "create":
-            api_data["name"] = name or new_name
+            api_data["name"] = name
         elif op == "update":
             if new_name is not None:
                 api_data["name"] = new_name
@@ -132,7 +134,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         # source_vars: already normalized to JSON string by __post_init__
         source_vars = getattr(ansible_instance, "source_vars", None)
         if source_vars is not None:
-            api_data["source_vars"] = json.dumps(source_vars) if isinstance(source_vars, dict) else source_vars
+            api_data["source_vars"] = json.dumps(source_vars, sort_keys=True) if isinstance(source_vars, dict) else source_vars
 
         # Read-only from API (for building URL in execute)
         for field in ("id",):
@@ -211,6 +213,21 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
     def get_lookup_field(cls) -> str:
         return "name"
 
+    @staticmethod
+    def _normalize_vars(val):
+        if val is None:
+            return None
+        if isinstance(val, dict):
+            return json.dumps(val, sort_keys=True)
+        if isinstance(val, str) and val.strip():
+            try:
+                parsed = yaml.safe_load(val)
+                if isinstance(parsed, dict):
+                    return json.dumps(parsed, sort_keys=True)
+            except Exception:
+                pass
+        return val
+
     @classmethod
     def from_api(
         cls,
@@ -228,7 +245,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
             description=api_data.get("description"),
             source=api_data.get("source"),
             source_path=api_data.get("source_path"),
-            source_vars=api_data.get("source_vars"),
+            source_vars=cls._normalize_vars(api_data.get("source_vars")),
             enabled_var=api_data.get("enabled_var"),
             enabled_value=api_data.get("enabled_value"),
             host_filter=api_data.get("host_filter"),
