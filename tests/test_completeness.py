@@ -15,8 +15,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # -----------------------------------------------------------------------------------------------------------
 
 # Read-only endpoints are dynamically created by an options page with no POST section.
-# Normally a read-only endpoint should not have a module (i.e. /api/v2/me) but sometimes we reuse a name
-# For example, we have a role module but /api/v2/roles is a read only endpoint.
+# Normally a read-only endpoint should not have a module (e.g. /api/gateway/v1/me/) but sometimes we reuse a name.
+# For example, we have a role module but /api/gateway/v1/roles/ is a read-only endpoint.
 # This list indicates which read-only endpoints have associated modules with them.
 read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key"]
 
@@ -27,12 +27,21 @@ no_module_for_endpoint = []
 # Some modules work on the related fields of an endpoint. These modules will not have an auto-associated endpoint
 no_endpoint_for_module = ["token", "job_template", "controller_credential_type", "credential_input_source", "host", "instance_group", "label"]
 
+# Module params that exist in the module but not in the controller API POST schema.
+# Common across controller modules: "organization" is a lookup helper, "survey_spec"
+# is set via a separate endpoint. Pre-populated so migrators don't need to investigate.
+controller_no_api_parameter_ok = {
+    "job_template": ["organization", "survey_spec"],
+    "host": [],
+    "controller_credential_type": [],
+}
+
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
 conditional_endpoint_modules = {
     "feature_flag": "RUNTIME_FEATURE_FLAGS"  # feature_flags endpoint only exists when RUNTIME_FEATURE_FLAGS is True
 }
 
-# Add modules with endpoints that are not at /api/v2
+# Add modules with endpoints not auto-discovered from gateway or controller APIs
 extra_endpoints = {}
 
 # Global module parameters we can ignore
@@ -50,13 +59,9 @@ no_api_parameter_ok = {
     "token": ["existing_token", "existing_token_id", "organization"],
 }
 
-# When this tool was created we were not feature complete. Adding something in here indicates a module
-# that needs to be developed. If the module is found on the file system it will auto-detect that the
-# work is being done and will bypass this check. At some point this module should be removed from this list.
-# https://issues.redhat.com/browse/AAP-23122 for DAB RBAC endpoints
-# https://issues.redhat.com/browse/AAP-24613 for service_key
-
-needs_development = ["ui_plugin_route"]  # i.e. 'team', 'organization'
+# Modules that need to be developed. If the module is found on the file system it will auto-detect
+# that the work is being done and will bypass this check.
+needs_development = ["ui_plugin_route"]
 needs_param_development = {}
 # -----------------------------------------------------------------------------------------------------------
 
@@ -169,7 +174,7 @@ def determine_state(module_id, endpoint, module, parameter, api_option, module_o
         return "OK, ignored api parameter"
 
     # Third, if this is a read only parameter we are ok to ignore
-    if api_option and api_option["read_only"]:
+    if api_option and api_option.get("read_only", False):
         return "OK, read only api parameters"
 
     # If both the api option and the module option are both either objects or none
@@ -250,12 +255,41 @@ json_response = endpoint_response.json()
 for key, val in extra_endpoints.items():
     json_response[key] = val
 
+# Auto-detect Controller API and validate controller modules when available.
+# For each module in no_endpoint_for_module, try to find a matching controller
+# endpoint by singularizing endpoint names and trying a "controller_" prefix.
+# Merge controller_no_api_parameter_ok into no_api_parameter_ok for matched modules.
+try:
+    controller_response = request_session.get(f"{container_startup_info['gateway_host']}/api/controller/v2/", verify=False, timeout=10)
+    if controller_response.status_code == 200:
+        controller_endpoints = controller_response.json()
+        matched = []
+        for module_name in list(no_endpoint_for_module):
+            for endpoint_key, endpoint_url in controller_endpoints.items():
+                singular = endpoint_key
+                if singular.endswith("ies"):
+                    singular = singular[:-3] + "y"
+                elif singular.endswith("s"):
+                    singular = singular[:-1]
+                if module_name == singular or module_name == f"controller_{singular}":
+                    response_key = module_name + "s"
+                    json_response[response_key] = endpoint_url
+                    matched.append(module_name)
+                    if module_name in controller_no_api_parameter_ok:
+                        no_api_parameter_ok[module_name] = controller_no_api_parameter_ok[module_name]
+                    print(f"Controller detected: validating {module_name} against {endpoint_key}")
+                    break
+        for m in matched:
+            no_endpoint_for_module.remove(m)
+except (requests.ConnectionError, requests.Timeout):
+    print("Controller API not available, skipping controller module validation")
+
 for endpoint in json_response.keys():
     # Module names are singular and endpoints are plural, so we need to convert to singular
     singular_endpoint = "{0}".format(endpoint)
     if singular_endpoint.endswith("ies"):
-        singular_endpoint = singular_endpoint[:-3]
-    if singular_endpoint != "settings" and singular_endpoint.endswith("s"):
+        singular_endpoint = singular_endpoint[:-3] + "y"
+    elif singular_endpoint != "settings" and singular_endpoint.endswith("s"):
         singular_endpoint = singular_endpoint[:-1]
     module_name = "{0}".format(singular_endpoint)
 
