@@ -286,6 +286,16 @@ class Store:
             )
         # Controller resources
         controller_defs: List[tuple] = [
+            ("labels", ["name", "organization"], 5100),
+        ]
+        for endpoint, required, start_id in controller_defs:
+            self._resources[("controller", endpoint)] = GenericResource(
+                resource_name=endpoint,
+                required_fields=required,
+                start_id=start_id,
+            )
+        # Controller resources
+        controller_defs: List[tuple] = [
             ("credential_input_sources", ["input_field_name", "target_credential"], 5400),
         ]
         for endpoint, required, start_id in controller_defs:
