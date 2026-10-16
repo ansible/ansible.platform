@@ -135,6 +135,16 @@ class HostTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        inventory_id = getattr(api_data, "inventory", None)
+        if inventory_id is not None:
+            try:
+                return {"inventory": int(str(inventory_id).strip())}
+            except Exception:
+                pass
+        return {}
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
