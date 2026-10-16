@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - inventory - migrate inventory module from awx_collection for managing Controller inventories (https://issues.redhat.com/browse/AAP-95855).
