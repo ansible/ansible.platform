@@ -25,7 +25,7 @@ read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_k
 no_module_for_endpoint = []
 
 # Some modules work on the related fields of an endpoint. These modules will not have an auto-associated endpoint
-no_endpoint_for_module = ["token", "job_template", "controller_credential_type", "credential_input_source", "host", "instance_group"]
+no_endpoint_for_module = ["token", "job_template", "controller_credential", "controller_credential_type", "credential_input_source", "host", "instance_group"]
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
 conditional_endpoint_modules = {

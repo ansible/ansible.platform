@@ -25,9 +25,11 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
+    - controller_credential
     - job_template
     - controller_credential_type
     - credential_input_source
     - host
     - instance_group
+    - schedule
 ...
