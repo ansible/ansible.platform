@@ -1,0 +1,112 @@
+---
+# Integration tests for ansible.platform.controller_credential_type
+
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-ControllerCredentialType-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Create credential type
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test credential type"
+        kind: cloud
+        inputs:
+          fields:
+            - id: test_user
+              type: string
+              label: Test User
+        injectors:
+          extra_vars:
+            test_user: "{{ '{{' }} test_user {{ '}}' }}"
+        state: present
+      register: created_ct
+
+    - name: Assert creation changed
+      ansible.builtin.assert:
+        that:
+          - created_ct is changed
+          - created_ct.controller_credential_type.name is defined
+          - created_ct.controller_credential_type.id is defined
+
+    - name: Check idempotency (re-apply, expect no change)
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test credential type"
+        kind: cloud
+        inputs:
+          fields:
+            - id: test_user
+              type: string
+              label: Test User
+        injectors:
+          extra_vars:
+            test_user: "{{ '{{' }} test_user {{ '}}' }}"
+        state: present
+      register: idempotent_ct
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_ct is not changed
+
+    - name: Update credential type description
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test credential type"
+        kind: cloud
+      register: updated_ct
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - updated_ct is changed
+
+    - name: Check exists returns true
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Test"
+        state: exists
+      register: exists_check
+
+    - name: Assert exists is true
+      ansible.builtin.assert:
+        that:
+          - exists_check.exists
+
+    - name: Rename credential type
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Test"
+        new_name: "{{ name_prefix }}-Renamed"
+      register: renamed_ct
+
+    - name: Assert rename changed
+      ansible.builtin.assert:
+        that:
+          - renamed_ct is changed
+
+  always:
+    - name: Delete credential type (renamed)
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      failed_when: false
+
+    - name: Delete credential type (original name, in case rename failed)
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-Test"
+        state: absent
+      failed_when: false
+...
