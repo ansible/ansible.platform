@@ -1,17 +1,5 @@
 # Ansible Platform Collection
 
-## Changelog for v2.7.20260313
-
-* Added OIDC User Identity support for Ansible Automation Platform Gateway
-* New modules: feature_flag, ca_certificates, role_team_assignment, role_definition
-* Add request_timeout_seconds and idle_timeout_seconds to route modules
-* Add enable_mtls attribute to route module for mutual TLS support
-* Add associated_authenticators parameter to users module
-* Add Gateway UI plugin Route Collection Module
-* Enhanced organization association logic and auditor user support
-* Multiple bug fixes for role assignment, object deletion, and URL handling
-* Deprecated authenticator_uid and authenticators fields
-
 ## Upgrading to AAP 2.7?
 
 Ensure you are on `ansible.platform >= 2.7.x` before upgrading. Connection variables have changed — replace `controller_host` with `aap_hostname` pointing to your gateway URL.
