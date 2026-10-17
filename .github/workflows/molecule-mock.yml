@@ -27,7 +27,7 @@ jobs:
     outputs:
       scenarios: ${{ steps.list.outputs.scenarios }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: List *_mock scenario directories
         id: list
@@ -50,7 +50,7 @@ jobs:
       ANSIBLE_COLLECTIONS_PATH: $HOME/.ansible/collections
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
