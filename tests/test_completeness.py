@@ -39,9 +39,7 @@ controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
     "host": [],
     "controller_credential_type": [],
-},
-    "instance",
-]
+}
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
 conditional_endpoint_modules = {
