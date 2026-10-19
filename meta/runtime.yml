@@ -25,8 +25,8 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
+    - subscriptions
     - job_template
-<<<<<<< HEAD
     - controller_credential_type
     - credential_input_source
     - host
@@ -35,8 +35,4 @@ action_groups:
     - inventory_source
     - job_list
     - group
-    - controller_subscriptions
-=======
->>>>>>> 6a0a458 (test cleanup)
-    - subscriptions
 ...
