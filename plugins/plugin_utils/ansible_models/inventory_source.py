@@ -50,8 +50,4 @@ class AnsibleInventorySource:
 
     def __post_init__(self):
         if isinstance(self.source_vars, dict):
-<<<<<<< HEAD
             self.source_vars = json.dumps(self.source_vars, sort_keys=True)
-=======
-            self.source_vars = json.dumps(self.source_vars)
->>>>>>> 409fe24 ([AAP-95856] Migrate inventory_source module from awx_collection (core CRUD))
