@@ -1,0 +1,84 @@
+---
+- name: Cleanup — delete inventory_source (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    is_name_local: "Molecule Test InvSource Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete inventory source (connection local)
+      ansible.platform.inventory_source:
+        name: "{{ is_name_local }}"
+        inventory: "1"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      failed_when: false
+      vars:
+        ansible_connection: local
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete inventory_source (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    is_name_http_direct: "Molecule Test InvSource HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Delete inventory source (http direct)
+      ansible.platform.inventory_source:
+        name: "{{ is_name_http_direct }}"
+        inventory: "1"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+
+- name: Cleanup — delete inventory_source (mock, http persistent)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    is_name_http_persistent: "Molecule Test InvSource HTTP Persistent"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Delete inventory source (http persistent)
+      ansible.platform.inventory_source:
+        name: "{{ is_name_http_persistent }}"
+        inventory: "1"
+        state: absent
+      failed_when: false
+
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...

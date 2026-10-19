@@ -31,4 +31,5 @@ action_groups:
     - host
     - instance_group
     - label
+    - inventory_source
 ...
