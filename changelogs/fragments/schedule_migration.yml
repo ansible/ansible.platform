@@ -1,3 +1,5 @@
 ---
 minor_changes:
   - schedule - migrate schedule module from awx_collection for managing Controller schedules (https://issues.redhat.com/browse/AAP-95868).
+
+...
