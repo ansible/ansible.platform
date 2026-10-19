@@ -1,0 +1,16 @@
+---
+- name: List successful Controller jobs
+  ansible.platform.job_list:
+    status: successful
+    all_pages: true
+  register: successful_jobs
+
+- name: Assert the read-only job list response and filter
+  ansible.builtin.assert:
+    that:
+      - successful_jobs is not changed
+      - successful_jobs.count is defined
+      - successful_jobs.results is defined
+      - successful_jobs.results is sequence
+      - successful_jobs.results | selectattr('status', 'ne', 'successful') | list | length == 0
+...
