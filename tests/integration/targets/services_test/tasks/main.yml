@@ -153,8 +153,8 @@
         http_port: "{{ api_port_id }}"
         service_cluster: "{{ controller_sc.name }}"
         is_service_https: true
-        service_path: "/api/controller-{{ test_id | lower }}/"
-        service_port: 8044
+        service_path: '/api/'
+        service_port: 8043
       register: controller_service
 
     - name: Assert that we changed the system
