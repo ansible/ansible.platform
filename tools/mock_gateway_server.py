@@ -284,7 +284,6 @@ class Store:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
             )
-<<<<<<< HEAD
         # Controller resources
         controller_defs: List[tuple] = [
             ("inventory_sources", ["name", "source", "inventory"], 5000),
@@ -330,11 +329,6 @@ class Store:
                 start_id=start_id,
                 service="controller",
             )
-=======
-        self._resources[("controller", "workflow_job_templates")] = GenericResource(
-            resource_name="workflow_job_templates", required_fields=["name"], start_id=6000, service="controller"
-        )
->>>>>>> ff56971 (Fix workflow_job_template integration test CI failures)
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
         return self._resources.get((service, name))
