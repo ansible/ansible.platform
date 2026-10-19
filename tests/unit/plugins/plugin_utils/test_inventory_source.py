@@ -17,6 +17,7 @@ if _COLLECTIONS_PARENT not in sys.path:
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory_source import AnsibleInventorySource  # noqa: E402
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory_source import (  # noqa: E402
+    APIInventorySource_v2,
     InventorySourceTransformMixin_v2,
 )
 
@@ -187,6 +188,16 @@ class TestInventorySourceTransform(unittest.TestCase):
         ansible = AnsibleInventorySource(name="src", inventory="1", id=99)
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
+
+    def test_get_find_list_query_params_with_inventory(self):
+        api_data = APIInventorySource_v2(name="src", inventory=42)
+        params = InventorySourceTransformMixin_v2.get_find_list_query_params(api_data)
+        self.assertEqual(params, {"inventory": 42})
+
+    def test_get_find_list_query_params_without_inventory(self):
+        api_data = APIInventorySource_v2(name="src")
+        params = InventorySourceTransformMixin_v2.get_find_list_query_params(api_data)
+        self.assertEqual(params, {})
 
 
 if __name__ == "__main__":

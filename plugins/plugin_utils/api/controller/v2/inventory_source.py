@@ -213,6 +213,16 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
     def get_lookup_field(cls) -> str:
         return "name"
 
+    @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        inventory_id = getattr(api_data, "inventory", None)
+        if inventory_id is not None:
+            try:
+                return {"inventory": int(str(inventory_id).strip())}
+            except Exception:
+                pass
+        return {}
+
     @staticmethod
     def _normalize_vars(val):
         if val is None:
