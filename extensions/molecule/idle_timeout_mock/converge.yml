@@ -88,11 +88,7 @@
           - sock_find_persistent.files | length > 0
         fail_msg: >-
           Expected a *persistent* manager socket but found none.
-<<<<<<< HEAD
           searched_paths=['/tmp/ansible_platform','{{ lookup("env", "TMPDIR") | default("/tmp", true) }}/ansible_platform','{{ home_dir.stdout }}/.ansible/tmp']
-=======
-          searched_paths=['/tmp/ansible_platform','{{ home_dir.stdout }}/.ansible/tmp','{{ temp_dir.stdout }}/ansible_platform']
->>>>>>> aa70ac2 (Fix workflow node integration and Molecule checks)
           persistent_found={{ sock_find_persistent }}
       vars:
         ansible_connection: local
