@@ -25,6 +25,7 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
+    - controller_project
     - job_template
 <<<<<<< HEAD
     - controller_credential_type
