@@ -25,9 +25,7 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
-    - controller_project
     - job_template
-<<<<<<< HEAD
     - controller_credential_type
     - credential_input_source
     - host
@@ -36,9 +34,5 @@ action_groups:
     - inventory_source
     - job_list
     - group
-    - job_wait
-=======
->>>>>>> 4a800c5 (shorten name)
-    - controller_project
     - controller_project
 ...
