@@ -71,11 +71,7 @@
       ansible.builtin.find:
         paths:
           - "/tmp/ansible_platform"
-<<<<<<< HEAD
           - "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/ansible_platform"
-=======
-          - "{{ system_temp_dir.stdout }}/ansible_platform"
->>>>>>> d003956 (Update integration tests, molecule and linting)
           - "{{ home_dir.stdout }}/.ansible/tmp"
         patterns:
           - "manager_{{ uid.stdout }}_localhost_*.sock"
