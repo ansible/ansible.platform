@@ -32,6 +32,5 @@ action_groups:
     - instance_group
     - label
     - inventory_source
-    - controller_job_list
     - job_list
 ...
