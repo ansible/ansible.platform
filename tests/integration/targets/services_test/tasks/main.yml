@@ -4,6 +4,10 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
+- name: Compute unique port numbers from test_id
+  ansible.builtin.set_fact:
+    _port_base: "{{ range(10000, 50000) | random(seed=test_id) }}"
+
 - name: Preset vars
   ansible.builtin.set_fact:
     name_prefix: "GW-Collection-Test-Services-{{ test_id }}"
@@ -37,7 +41,7 @@
     - name: Create API Port
       ansible.platform.http_port:
         name: "{{ name_prefix }}-API Port"
-        number: 9080
+        number: "{{ _port_base | int }}"
         use_https: true
         is_api_port: true
       when: existing_http_api_port | length == 0
@@ -50,7 +54,7 @@
     - name: Create an HTTP Port
       ansible.platform.http_port:
         name: "{{ name_prefix }}-Http_Port"
-        number: 9000
+        number: "{{ _port_base | int + 1 }}"
       register: port1
     # </Http Ports> -------------------------------
 
