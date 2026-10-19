@@ -53,11 +53,9 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True, "failed": False, "msg": "Job launch skipped (check mode)"})
             return result
 
-        jt_id = self._resolve_job_template(manager, name, organization)
-
-        payload = self._build_launch_payload(manager, params)
-
         try:
+            jt_id = self._resolve_job_template(manager, name, organization)
+            payload = self._build_launch_payload(manager, params)
             launch_result = manager.launch_resource(
                 CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT.format(id=jt_id),
                 payload,
@@ -103,6 +101,16 @@ class ActionModule(BaseResourceActionPlugin):
                     "msg": str(exc),
                     "id": lr.get("id", job_id),
                     "status": lr.get("status", "unknown"),
+                }
+            )
+        except Exception as exc:
+            result.update(
+                {
+                    "changed": True,
+                    "failed": True,
+                    "msg": "Failed to poll job %s: %s" % (job_id, exc),
+                    "id": job_id,
+                    "status": "unknown",
                 }
             )
 
