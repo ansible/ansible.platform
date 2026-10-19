@@ -690,11 +690,8 @@ class DirectHTTPClient(BaseAPIClient):
         else:
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
-            results = json.loads(response.read()).get("results", [])
-            try:
-                results = json.loads(response.read()).get("results", [])
-            except Exception:
-                results = []
+            response_body = response.read()
+            results = json.loads(response_body).get("results", []) if response_body else []
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
