@@ -100,6 +100,35 @@ class TestGroupTransform(unittest.TestCase):
         api = GroupTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
 
+    def test_variables_dict_sorted_keys(self):
+        ansible = AnsibleGroup(name="g", inventory="1", variables={"z": 1, "a": 2})
+        api = GroupTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.variables, '{"a": 2, "z": 1}')
+
+    def test_variables_string_normalized_to_sorted_keys(self):
+        ansible = AnsibleGroup(name="g", inventory="1", variables='{"z": 1, "a": 2}')
+        api = GroupTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.variables, '{"a": 2, "z": 1}')
+
+    def test_variables_invalid_json_string_passed_through(self):
+        ansible = AnsibleGroup(name="g", inventory="1", variables="not-json")
+        api = GroupTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.variables, "not-json")
+
+    def test_get_find_list_query_params_with_inventory(self):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.group import APIGroup_v2
+
+        api_data = APIGroup_v2(name="g", inventory=42)
+        params = GroupTransformMixin_v2.get_find_list_query_params(api_data)
+        self.assertEqual(params, {"inventory": 42})
+
+    def test_get_find_list_query_params_without_inventory(self):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.group import APIGroup_v2
+
+        api_data = APIGroup_v2(name="g")
+        params = GroupTransformMixin_v2.get_find_list_query_params(api_data)
+        self.assertEqual(params, {})
+
 
 if __name__ == "__main__":
     unittest.main()

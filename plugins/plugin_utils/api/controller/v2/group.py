@@ -72,10 +72,17 @@ class GroupTransformMixin_v2(BaseTransformMixin):
             elif op == "update" and include_nulls:
                 api_data[field] = ""
 
-        # variables: already normalized to JSON string by __post_init__
         variables = getattr(ansible_instance, "variables", None)
         if variables is not None:
-            api_data["variables"] = json.dumps(variables) if isinstance(variables, dict) else variables
+            if isinstance(variables, dict):
+                api_data["variables"] = json.dumps(variables, sort_keys=True)
+            elif isinstance(variables, str):
+                try:
+                    api_data["variables"] = json.dumps(json.loads(variables), sort_keys=True)
+                except (json.JSONDecodeError, TypeError):
+                    api_data["variables"] = variables
+            else:
+                api_data["variables"] = variables
 
         # Read-only from API (for building URL in execute)
         for field in ("id",):
