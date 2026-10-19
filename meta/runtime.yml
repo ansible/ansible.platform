@@ -25,9 +25,7 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
-    - bulk_host_create
     - job_template
-<<<<<<< HEAD
     - controller_credential_type
     - credential_input_source
     - host
@@ -36,8 +34,5 @@ action_groups:
     - inventory_source
     - job_list
     - group
-    - controller_bulk_host_create
-=======
->>>>>>> 9d4e304 (Remove stale controller_bulk_host_create from runtime.yml)
     - bulk_host_create
 ...
