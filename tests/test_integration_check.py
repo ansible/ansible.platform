@@ -11,6 +11,7 @@ module_test_name_overrides = {
     "inventory": "inventory_test",
     "execution_environment": "execution_environment_test",
     "controller_project": "controller_project_test",
+    "schedule": "schedule_test",
 }
 tests_to_ignore = [
     "lookup_test",
