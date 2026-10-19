@@ -111,7 +111,8 @@ class ActionModule(BaseResourceActionPlugin):
                     result["status"] = status
                     result["elapsed"] = job_data.get("elapsed")
                     result["started"] = job_data.get("started")
-                    result["finished"] = finished
+                    result["finished"] = finished is not None
+                    result["finished_at"] = finished
 
                     if status in ("successful",):
                         result["changed"] = True

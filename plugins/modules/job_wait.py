@@ -79,6 +79,11 @@ started:
     type: str
     sample: "2017-03-01T17:03:53.200234Z"
 finished:
+    description: Whether the job has finished.
+    returned: success
+    type: bool
+    sample: true
+finished_at:
     description: Timestamp of when the job finished running.
     returned: success
     type: str
