@@ -88,7 +88,9 @@ class ActionModule(BaseResourceActionPlugin):
                     )
                 except Exception as poll_exc:
                     self._display.vvv("workflow_approval: poll error: %s" % poll_exc)
-                    time.sleep(interval)
+                    remaining = timeout - (time.time() - start_time)
+                    if remaining > 0:
+                        time.sleep(min(interval, remaining))
                     continue
 
                 for node in nodes_response.get("results", []):
@@ -103,7 +105,9 @@ class ActionModule(BaseResourceActionPlugin):
                 if approval_node is not None:
                     break
 
-                time.sleep(interval)
+                remaining = timeout - (time.time() - start_time)
+                if remaining > 0:
+                    time.sleep(min(interval, remaining))
 
             if approval_node is None:
                 result["failed"] = True
