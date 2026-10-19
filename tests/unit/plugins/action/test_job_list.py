@@ -70,6 +70,10 @@ class TestBuildQueryParams:
         with pytest.raises(ValueError, match="page and all_pages are mutually exclusive"):
             build_query_params({"page": 2, "all_pages": True})
 
+    def test_all_pages_with_page_in_query_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="page and all_pages are mutually exclusive"):
+            build_query_params({"all_pages": True, "query": {"page": 5}})
+
     def test_endpoint_constant(self):
         assert CONTROLLER_JOBS_ENDPOINT == "/api/controller/v2/jobs/"
 
