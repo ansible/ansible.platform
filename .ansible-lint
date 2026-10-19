@@ -11,15 +11,12 @@ exclude_paths:
   - 'extensions/molecule/job_template_mock/inventory.yml'
   - 'extensions/molecule/users_mock/inventory.yml'
   - 'extensions/molecule/controller_credential_type_mock/inventory.yml'
-<<<<<<< HEAD
   - 'extensions/molecule/credential_input_source_mock/inventory.yml'
   - 'extensions/molecule/group_mock/inventory.yml'
   - 'extensions/molecule/host_mock/inventory.yml'
   - 'extensions/molecule/instance_group_mock/inventory.yml'
   - 'extensions/molecule/inventory_source_mock/inventory.yml'
   - 'extensions/molecule/label_mock/inventory.yml'
-=======
   - 'extensions/molecule/inventory_mock/inventory.yml'
->>>>>>> 8d9cd81 ([AAP-95855] Migrate inventory module from awx_collection (core CRUD))
 use_default_rules: true
 ...
