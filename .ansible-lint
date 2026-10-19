@@ -15,11 +15,8 @@ exclude_paths:
   - 'extensions/molecule/group_mock/inventory.yml'
   - 'extensions/molecule/host_mock/inventory.yml'
   - 'extensions/molecule/instance_group_mock/inventory.yml'
-<<<<<<< HEAD
   - 'extensions/molecule/inventory_source_mock/inventory.yml'
   - 'extensions/molecule/label_mock/inventory.yml'
-=======
   - 'extensions/molecule/schedule_mock/inventory.yml'
->>>>>>> 8ea6572 ([AAP-95868] Migrate schedule module from awx_collection (core CRUD))
 use_default_rules: true
 ...
