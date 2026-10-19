@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import glob
 import importlib
 import os
 import re
@@ -29,8 +28,16 @@ no_module_for_endpoint = []
 no_endpoint_for_module = [
     "token",
     "job_template",
+    "controller_credential_type",
+    "credential_input_source",
+    "host",
+    "instance_group",
+    "label",
+    "inventory_source",
     "job_list",
+    "group",
     "instance",
+    "workflow_job_template",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
@@ -266,24 +273,34 @@ json_response = endpoint_response.json()
 for key, val in extra_endpoints.items():
     json_response[key] = val
 
-# Fetch controller API endpoints for fallback matching after the gateway loop.
-_controller_endpoints = {}
+# Auto-detect Controller API and validate controller modules when available.
+# For each module in no_endpoint_for_module, try to find a matching controller
+# endpoint by singularizing endpoint names and trying a "controller_" prefix.
+# Merge controller_no_api_parameter_ok into no_api_parameter_ok for matched modules.
 try:
     controller_response = request_session.get(f"{container_startup_info['gateway_host']}/api/controller/v2/", verify=False, timeout=10)
     if controller_response.status_code == 200:
-        _controller_endpoints = controller_response.json()
-    else:
-        print(f"Controller API returned HTTP {controller_response.status_code}, skipping controller module validation")
+        controller_endpoints = controller_response.json()
+        matched = []
+        for module_name in list(no_endpoint_for_module):
+            for endpoint_key, endpoint_url in controller_endpoints.items():
+                singular = endpoint_key
+                if singular.endswith("ies"):
+                    singular = singular[:-3] + "y"
+                elif singular.endswith("s"):
+                    singular = singular[:-1]
+                if module_name == singular or module_name == f"controller_{singular}":
+                    response_key = module_name + "s"
+                    json_response[response_key] = endpoint_url
+                    matched.append(module_name)
+                    if module_name in controller_no_api_parameter_ok:
+                        no_api_parameter_ok[module_name] = controller_no_api_parameter_ok[module_name]
+                    print(f"Controller detected: validating {module_name} against {endpoint_key}")
+                    break
+        for m in matched:
+            no_endpoint_for_module.remove(m)
 except (requests.ConnectionError, requests.Timeout):
     print("Controller API not available, skipping controller module validation")
-
-# Build set of known controller modules by checking for API model files.
-
-_controller_module_names = set()
-for api_file in glob.glob(os.path.join(base_dir, "plugins", "plugin_utils", "api", "controller", "v*", "*.py")):
-    fname = os.path.basename(api_file).replace(".py", "")
-    if fname != "__init__":
-        _controller_module_names.add(fname)
 
 for endpoint in json_response.keys():
     # Module names are singular and endpoints are plural, so we need to convert to singular
@@ -312,52 +329,6 @@ for endpoint in json_response.keys():
         option_comparison[module_name]["api_options"] = options_response.json().get("actions").get("POST")
     else:
         read_only_endpoint.append(module_name)
-
-# Controller fallback: modules with no gateway endpoint are matched against
-# the controller API automatically. No manual list maintenance needed.
-if _controller_endpoints:
-    for module_name, module_data in list(option_comparison.items()):
-        if module_data.get("endpoint") != "N/A":
-            continue
-        if module_name in no_endpoint_for_module:
-            continue
-        if module_data.get("module_name") == "N/A":
-            continue
-        for endpoint_key, endpoint_url in _controller_endpoints.items():
-            singular = endpoint_key
-            if singular.endswith("ies"):
-                singular = singular[:-3] + "y"
-            elif singular.endswith("s"):
-                singular = singular[:-1]
-            if module_name == singular or module_name == f"controller_{singular}":
-                option_comparison[module_name]["endpoint"] = endpoint_url
-                option_comparison[module_name]["api_options"] = {}
-                if module_name in controller_no_api_parameter_ok:
-                    no_api_parameter_ok[module_name] = controller_no_api_parameter_ok[module_name]
-                options_response = request_session.options(f"{container_startup_info['gateway_host']}{endpoint_url}", verify=False)
-                if "POST" in options_response.json().get("actions", {}):
-                    option_comparison[module_name]["api_options"] = options_response.json().get("actions").get("POST")
-                else:
-                    read_only_endpoint.append(module_name)
-                print(f"Controller fallback: validating {module_name} against {endpoint_key}")
-                break
-
-# When the controller API is unreachable, modules with no gateway endpoint
-# can't be validated. Auto-exempt them instead of failing. When the controller
-# API IS available, the fallback loop above already matched valid modules —
-# any remaining unmatched module is a real problem and should fail.
-if not _controller_endpoints:
-    for module_name, module_data in list(option_comparison.items()):
-        if module_data.get("endpoint") != "N/A":
-            continue
-        if module_name in no_endpoint_for_module:
-            continue
-        if module_data.get("module_name") == "N/A":
-            continue
-        if module_name not in _controller_module_names:
-            continue
-        no_endpoint_for_module.append(module_name)
-        print(f"Controller module without reachable endpoint: {module_name} (skipped)")
 
 # Parse through our data to get string lengths to make a pretty report
 longest_module_name = 0
