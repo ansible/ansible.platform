@@ -1310,6 +1310,8 @@ class PlatformService(BaseAPIClient):
             timeout = DEFAULT_WAIT_TIMEOUT
         if interval is None:
             interval = DEFAULT_WAIT_INTERVAL
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
 
         self.record_activity()
         url = self._build_url(resource_url, service=service)
