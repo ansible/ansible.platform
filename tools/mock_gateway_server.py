@@ -475,16 +475,6 @@ class Store:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
 
-        # Seed settings
-        with self._settings_lock:
-            if not self._settings:
-                self._settings = {
-                    "RUNTIME_FEATURE_FLAGS": "True",
-                    "SESSION_COOKIE_AGE": 1800,
-                    "MAX_PAGE_SIZE": 200,
-                    "REMOTE_HOST_HEADERS": [],
-                }
-
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
