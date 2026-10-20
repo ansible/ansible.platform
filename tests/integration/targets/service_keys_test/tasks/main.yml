@@ -18,10 +18,14 @@
   ansible.builtin.meta: end_play
   when: bootstrap_keys | length == 0
 
-- name: Select first bootstrap service key for testing
+- name: Select a bootstrap service key for testing (distributed for parallel safety)
   ansible.builtin.set_fact:
-    test_service_key_name: "{{ bootstrap_keys[0].name }}"
-    original_is_active: "{{ bootstrap_keys[0].is_active }}"
+    _key_index: "{{ range(bootstrap_keys | length) | random(seed=test_id) }}"
+
+- name: Set test service key variables
+  ansible.builtin.set_fact:
+    test_service_key_name: "{{ bootstrap_keys[_key_index | int].name }}"
+    original_is_active: "{{ bootstrap_keys[_key_index | int].is_active }}"
 
 - name: Run service key tests
   module_defaults:
