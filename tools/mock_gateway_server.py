@@ -474,18 +474,6 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
-        # Seed notification templates for Controller association tests
-        nt_store = self._resources.get(("controller", "notification_templates"))
-        if nt_store and not nt_store._items:
-            nt_store.seed(
-                "2",
-                [
-                    {"id": 6001, "name": "Slack Start Notification", "notification_type": "slack"},
-                    {"id": 6002, "name": "Email Success Notification", "notification_type": "email"},
-                    {"id": 6003, "name": "PagerDuty Error Notification", "notification_type": "pagerduty"},
-                    {"id": 6004, "name": "Slack Error Notification", "notification_type": "slack"},
-                ],
-            )
 
         # Seed settings
         with self._settings_lock:

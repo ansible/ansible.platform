@@ -97,6 +97,26 @@
       vars:
         ansible_connection: local
 
+    - name: Create notification templates for association test (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/notification_templates/"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ item }}"
+        status_code: [201]
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      loop:
+        - "Slack Start Notification"
+        - "Email Success Notification"
+        - "PagerDuty Error Notification"
+        - "Slack Error Notification"
+      vars:
+        ansible_connection: local
+
     - name: Add notification template associations (connection local)
       ansible.platform.inventory_source:
         name: "{{ is_name_local }}"
