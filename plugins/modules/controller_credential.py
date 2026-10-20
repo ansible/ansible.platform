@@ -33,6 +33,13 @@ options:
       - Setting this option will change the existing name (looked up via the name field).
     type: str
 
+  copy_from:
+    description:
+      - Name or ID to copy the credential from.
+      - This will copy an existing credential and change any parameters supplied.
+      - The new credential name will be the one provided in the C(name) parameter.
+    type: str
+
   description:
     description:
       - The description of the credential.
@@ -95,6 +102,14 @@ EXAMPLES = """
     inputs:
       username: admin
       password: secret123
+    state: present
+
+- name: Copy a credential
+  ansible.platform.controller_credential:
+    name: Copied Credential
+    copy_from: Team Credential
+    credential_type: Machine
+    organization: Default
     state: present
 
 - name: Delete a credential
