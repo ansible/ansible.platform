@@ -20,8 +20,6 @@ short_description: Manage Controller projects
 description:
   - Create, update, or delete projects on Ansible Automation Platform Controller.
   - Projects represent a collection of playbooks from an SCM repository or local path.
-  - Association endpoints (notification_templates) and copy_from are planned for a follow-up PR.
-  - Wait/update_project sync functionality is planned for a follow-up PR.
 version_added: "2.8.0"
 
 options:
@@ -34,6 +32,13 @@ options:
   new_name:
     description:
       - Setting this option will change the existing name (looked up via the name field).
+    type: str
+
+  copy_from:
+    description:
+      - Name or ID to copy the project from.
+      - This will copy an existing project and change any parameters supplied.
+      - The new project name will be the one provided in the C(name) parameter.
     type: str
 
   description:
@@ -131,6 +136,24 @@ options:
       - If provided, signature validation will be enabled.
     type: str
 
+  notification_templates_started:
+    description:
+      - List of notification template names, IDs, or named URLs to trigger on start.
+    type: list
+    elements: str
+
+  notification_templates_success:
+    description:
+      - List of notification template names, IDs, or named URLs to trigger on success.
+    type: list
+    elements: str
+
+  notification_templates_error:
+    description:
+      - List of notification template names, IDs, or named URLs to trigger on error.
+    type: list
+    elements: str
+
 seealso:
   - module: ansible.controller.project
   - module: awx.awx.project
@@ -164,6 +187,24 @@ EXAMPLES = """
     name: "My Project"
     new_name: "My Renamed Project"
     organization: "Default"
+
+- name: Copy a project
+  ansible.platform.controller_project:
+    name: "My Project Copy"
+    copy_from: "My Project"
+    organization: "Default"
+    state: present
+
+- name: Add notification templates to a project
+  ansible.platform.controller_project:
+    name: "My Project"
+    organization: "Default"
+    notification_templates_started:
+      - "Start Notification"
+    notification_templates_success:
+      - "Success Notification"
+    notification_templates_error:
+      - "Error Notification"
 
 - name: Delete a project
   ansible.platform.controller_project:
