@@ -20,8 +20,6 @@ short_description: Manage Controller inventories
 description:
   - Create, update, or delete inventories on Ansible Automation Platform Controller.
   - Supports regular, smart, and constructed inventory types.
-  - Association endpoints (instance_groups, input_inventories) and copy_from
-    are planned for a follow-up PR.
 version_added: "2.8.0"
 
 options:
@@ -34,6 +32,13 @@ options:
   new_name:
     description:
       - Setting this option will change the existing name (looked up via the name field).
+    type: str
+
+  copy_from:
+    description:
+      - Name or ID to copy the inventory from.
+      - This will copy an existing inventory and change any parameters supplied.
+      - The new inventory name will be the one provided in the C(name) parameter.
     type: str
 
   description:
@@ -72,6 +77,19 @@ options:
       - Prevent falling back to instance groups set on the organization.
     type: bool
 
+  instance_groups:
+    description:
+      - List of instance group names, IDs, or named URLs for this inventory to run on.
+    type: list
+    elements: str
+
+  input_inventories:
+    description:
+      - List of inventory names or IDs to use as input for a constructed inventory.
+      - Only applicable when C(kind=constructed).
+    type: list
+    elements: str
+
 seealso:
   - module: ansible.controller.inventory
   - module: awx.awx.inventory
@@ -108,6 +126,20 @@ EXAMPLES = """
     name: "Production Inventory"
     new_name: "Prod Inventory"
     organization: "Default"
+
+- name: Copy an inventory
+  ansible.platform.inventory:
+    name: "Production Copy"
+    copy_from: "Production Inventory"
+    organization: "Default"
+    state: present
+
+- name: Assign instance groups to an inventory
+  ansible.platform.inventory:
+    name: "Production Inventory"
+    organization: "Default"
+    instance_groups:
+      - "Tower"
 
 - name: Delete an inventory
   ansible.platform.inventory:

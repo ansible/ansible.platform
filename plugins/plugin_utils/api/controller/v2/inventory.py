@@ -16,6 +16,8 @@ from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+BASE_PATH = "/api/controller/v2/inventories"
+
 
 @dataclass
 class APIInventory_v2(BaseTransformMixin):
