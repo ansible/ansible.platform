@@ -20,7 +20,7 @@ short_description: Manage Controller schedules
 description:
   - Create, update, or delete schedules on Ansible Automation Platform Controller.
   - Schedules define when a unified job template runs automatically.
-  - Prompt-override scalar fields (extra_data, inventory, etc.) are planned for a follow-up PR.
+  - Supports prompt-override fields for launch-time configuration.
 version_added: "2.8.0"
 
 options:
@@ -54,6 +54,78 @@ options:
     description:
       - Enables processing of this schedule.
     type: bool
+
+  extra_data:
+    description:
+      - Extra variables for the scheduled launch.
+    type: dict
+
+  inventory:
+    description:
+      - Inventory name or ID to use for the scheduled launch.
+    type: str
+
+  scm_branch:
+    description:
+      - SCM branch to use for the scheduled launch.
+    type: str
+
+  job_type:
+    description:
+      - Job type to use for the scheduled launch.
+    choices: ['run', 'check']
+    type: str
+
+  job_tags:
+    description:
+      - Job tags for the scheduled launch.
+    type: str
+
+  skip_tags:
+    description:
+      - Tags to skip for the scheduled launch.
+    type: str
+
+  limit:
+    description:
+      - Host limit for the scheduled launch.
+    type: str
+
+  diff_mode:
+    description:
+      - Show changes for the scheduled launch.
+    type: bool
+
+  verbosity:
+    description:
+      - Verbosity level for the scheduled launch.
+    choices: [0, 1, 2, 3, 4, 5]
+    type: int
+
+  forks:
+    description:
+      - Number of forks for the scheduled launch.
+    type: int
+
+  job_slice_count:
+    description:
+      - Job slice count for the scheduled launch.
+    type: int
+
+  timeout:
+    description:
+      - Timeout in seconds for the scheduled launch.
+    type: int
+
+  execution_environment:
+    description:
+      - Execution environment name or ID for the scheduled launch.
+    type: str
+
+  organization:
+    description:
+      - Organization name or ID to scope the unified_job_template lookup.
+    type: str
 
   credentials:
     description:
