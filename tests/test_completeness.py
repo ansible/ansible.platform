@@ -33,6 +33,7 @@ no_endpoint_for_module = [
     "group",
     "instance",
     "workflow_job_template",
+    "subscriptions",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
