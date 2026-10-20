@@ -21,6 +21,12 @@ options:
   new_name:
     description: Setting this option will change the existing name.
     type: str
+  copy_from:
+    description:
+      - Name or ID to copy the notification template from.
+      - This will copy an existing notification template and change any parameters supplied.
+      - The new notification template name will be the one provided in the C(name) parameter.
+    type: str
   description:
     description: The description of the notification template.
     type: str
@@ -57,6 +63,19 @@ EXAMPLES = """
       http_method: "POST"
       headers: {}
     state: present
+
+- name: Copy a notification template
+  ansible.platform.notification_template:
+    name: "Deploy Webhook Copy"
+    copy_from: "Deploy Webhook"
+    organization: "Default"
+    state: present
+
+- name: Delete a notification template
+  ansible.platform.notification_template:
+    name: "Deploy Webhook"
+    organization: "Default"
+    state: absent
 ...
 """
 RETURN = """
