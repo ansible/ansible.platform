@@ -703,7 +703,7 @@ class DirectHTTPClient(BaseAPIClient):
         """POST to a launch endpoint and return the created resource."""
         self._ensure_authenticated()
         url = self._build_url(launch_url, service=service)
-        response = self._make_request("POST", url, operation="launch", resource="job", json=payload)
+        response = self._make_request("POST", url, operation="launch_resource", resource="launch", json=payload)
         return json.loads(response.read())
 
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
@@ -720,6 +720,8 @@ class DirectHTTPClient(BaseAPIClient):
             timeout = DEFAULT_WAIT_TIMEOUT
         if interval is None:
             interval = DEFAULT_WAIT_INTERVAL
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
 
         self._ensure_authenticated()
         url = self._build_url(resource_url, service=service)
@@ -727,7 +729,7 @@ class DirectHTTPClient(BaseAPIClient):
         last_result = {}
 
         while True:
-            response = self._make_request("GET", url, operation="wait_poll", resource="job")
+            response = self._make_request("GET", url, operation="wait_poll", resource="launch")
             last_result = json.loads(response.read())
 
             status = last_result.get("status", "")
