@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - inventory_source - add notification template association management
+    to the inventory_source module (https://issues.redhat.com/browse/AAP-95856).
+...

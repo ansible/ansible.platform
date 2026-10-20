@@ -13,6 +13,61 @@ from typing import Any, Dict, Optional, Union
 
 import yaml
 
+from ....platform.base_transform import BaseTransformMixin
+from ....platform.types import EndpointOperation, TransformContext
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class APIInventorySource_v2(BaseTransformMixin):
+    """API v2 representation of a Controller inventory source."""
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    source: Optional[str] = None
+    source_path: Optional[str] = None
+    source_vars: Optional[str] = None
+    scm_branch: Optional[str] = None
+    credential: Optional[int] = None
+    enabled_var: Optional[str] = None
+    enabled_value: Optional[str] = None
+    host_filter: Optional[str] = None
+    overwrite: Optional[bool] = None
+    overwrite_vars: Optional[bool] = None
+    timeout: Optional[int] = None
+    verbosity: Optional[int] = None
+    limit: Optional[str] = None
+    execution_environment: Optional[int] = None
+    inventory: Optional[int] = None
+    update_on_launch: Optional[bool] = None
+    update_cache_timeout: Optional[int] = None
+    source_project: Optional[int] = None
+
+    # Read-only fields from API
+    id: Optional[int] = None
+
+
+class InventorySourceTransformMixin_v2(BaseTransformMixin):
+    """Transform mixin for InventorySource API v2."""
+
+    @classmethod
+    def from_ansible_data(
+        cls,
+        ansible_instance,
+        context: Union[TransformContext, Dict[str, Any]],
+    ) -> "APIInventorySource_v2":
+        api_data: Dict[str, Any] = {}
+
+        name = getattr(ansible_instance, "name", None)
+        new_name = getattr(ansible_instance, "new_name", None)
+        op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
+        include_nulls = (
+            getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        )
+
+        if op == "create":
+            api_data["name"] = name
         elif op == "update":
             if new_name is not None:
                 api_data["name"] = new_name
@@ -184,6 +239,23 @@ import yaml
         return val
 
     @classmethod
+    def from_api(
+        cls,
+        api_data: Dict[str, Any],
+        context: Union[TransformContext, Dict[str, Any]],
+    ):
+        from ....ansible_models.inventory_source import AnsibleInventorySource
+
+        def _str_or_none(val):
+            return str(val) if val is not None else None
+
+        return AnsibleInventorySource(
+            name=api_data.get("name", ""),
+            inventory=_str_or_none(api_data.get("inventory")),
+            description=api_data.get("description"),
+            source=api_data.get("source"),
+            source_path=api_data.get("source_path"),
+            source_vars=cls._normalize_vars(api_data.get("source_vars")),
             enabled_var=api_data.get("enabled_var"),
             enabled_value=api_data.get("enabled_value"),
             host_filter=api_data.get("host_filter"),
