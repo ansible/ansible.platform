@@ -15,6 +15,8 @@ from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+BASE_PATH = "/api/controller/v2/workflow_job_template_nodes"
+
 
 @dataclass
 class APIWorkflowJobTemplateNode_v2(BaseTransformMixin):
@@ -24,8 +26,19 @@ class APIWorkflowJobTemplateNode_v2(BaseTransformMixin):
     workflow_job_template: Optional[int] = None
     unified_job_template: Optional[int] = None
     all_parents_must_converge: Optional[bool] = None
-
-    # Read-only fields from API
+    extra_data: Optional[str] = None
+    inventory: Optional[int] = None
+    scm_branch: Optional[str] = None
+    job_type: Optional[str] = None
+    job_tags: Optional[str] = None
+    skip_tags: Optional[str] = None
+    limit: Optional[str] = None
+    diff_mode: Optional[bool] = None
+    verbosity: Optional[int] = None
+    forks: Optional[int] = None
+    job_slice_count: Optional[int] = None
+    timeout: Optional[int] = None
+    execution_environment: Optional[int] = None
     id: Optional[int] = None
 
 
@@ -63,12 +76,37 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
             else:
                 api_data["unified_job_template"] = int(ujt) if ujt is not None else None
 
-        # Simple fields
-        all_converge = getattr(ansible_instance, "all_parents_must_converge", None)
-        if all_converge is not None:
-            api_data["all_parents_must_converge"] = all_converge
+        _SCALAR_FIELDS = (
+            "all_parents_must_converge", "scm_branch", "job_type", "job_tags",
+            "skip_tags", "limit", "diff_mode", "verbosity", "forks", "job_slice_count", "timeout",
+        )
+        for field in _SCALAR_FIELDS:
+            val = getattr(ansible_instance, field, None)
+            if val is not None:
+                api_data[field] = val
 
-        # Read-only from API (for building URL in execute)
+        extra_data = getattr(ansible_instance, "extra_data", None)
+        if extra_data is not None:
+            import json
+
+            api_data["extra_data"] = json.dumps(extra_data) if isinstance(extra_data, dict) else extra_data
+
+        inventory = getattr(ansible_instance, "inventory", None)
+        if inventory is not None:
+            if manager is not None and not str(inventory).strip().isdigit():
+                api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
+            else:
+                api_data["inventory"] = int(inventory)
+
+        execution_environment = getattr(ansible_instance, "execution_environment", None)
+        if execution_environment is not None:
+            if manager is not None and not str(execution_environment).strip().isdigit():
+                api_data["execution_environment"] = manager.lookup_resource_id(
+                    "execution_environments", "name", execution_environment, service="controller"
+                )
+            else:
+                api_data["execution_environment"] = int(execution_environment)
+
         for field in ("id",):
             val = getattr(ansible_instance, field, None)
             if val is not None:
@@ -82,14 +120,24 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
             "create": EndpointOperation(
                 path="/api/controller/v2/workflow_job_template_nodes/",
                 method="POST",
-                fields=["identifier", "workflow_job_template", "unified_job_template", "all_parents_must_converge"],
+                fields=[
+                    "identifier", "workflow_job_template", "unified_job_template",
+                    "all_parents_must_converge", "extra_data", "inventory", "scm_branch",
+                    "job_type", "job_tags", "skip_tags", "limit", "diff_mode", "verbosity",
+                    "forks", "job_slice_count", "timeout", "execution_environment",
+                ],
                 required_for="create",
                 order=1,
             ),
             "update": EndpointOperation(
                 path="/api/controller/v2/workflow_job_template_nodes/{id}/",
                 method="PATCH",
-                fields=["identifier", "workflow_job_template", "unified_job_template", "all_parents_must_converge"],
+                fields=[
+                    "identifier", "workflow_job_template", "unified_job_template",
+                    "all_parents_must_converge", "extra_data", "inventory", "scm_branch",
+                    "job_type", "job_tags", "skip_tags", "limit", "diff_mode", "verbosity",
+                    "forks", "job_slice_count", "timeout", "execution_environment",
+                ],
                 path_params=["id"],
                 required_for="update",
                 order=1,
@@ -145,10 +193,37 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         ujt_val = api_data.get("unified_job_template")
         ujt_str = str(ujt_val) if ujt_val is not None else None
 
+        extra_data = api_data.get("extra_data")
+        if isinstance(extra_data, str) and extra_data.strip():
+            import json as _json
+
+            try:
+                extra_data = _json.loads(extra_data)
+            except ValueError:
+                extra_data = None
+        elif not isinstance(extra_data, dict):
+            extra_data = None
+
+        inv_val = api_data.get("inventory")
+        ee_val = api_data.get("execution_environment")
+
         return AnsibleWorkflowJobTemplateNode(
             identifier=api_data.get("identifier", ""),
             workflow_job_template=wfjt_str,
             unified_job_template=ujt_str,
             all_parents_must_converge=api_data.get("all_parents_must_converge"),
+            extra_data=extra_data if extra_data else None,
+            inventory=str(inv_val) if inv_val is not None else None,
+            scm_branch=api_data.get("scm_branch") or None,
+            job_type=api_data.get("job_type") or None,
+            job_tags=api_data.get("job_tags") or None,
+            skip_tags=api_data.get("skip_tags") or None,
+            limit=api_data.get("limit") or None,
+            diff_mode=api_data.get("diff_mode"),
+            verbosity=api_data.get("verbosity"),
+            forks=api_data.get("forks"),
+            job_slice_count=api_data.get("job_slice_count"),
+            timeout=api_data.get("timeout"),
+            execution_environment=str(ee_val) if ee_val is not None else None,
             id=api_data.get("id"),
         )
