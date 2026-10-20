@@ -36,7 +36,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
 
-        if resource_id and state not in ("absent", "deleted", "exists") and association_data:
+        if resource_id and state not in ("absent", "deleted", "exists") and association_data and not self._task.check_mode:
             for field, (lookup_ep, lookup_field) in _NOTIFICATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
