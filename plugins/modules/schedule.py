@@ -20,7 +20,7 @@ short_description: Manage Controller schedules
 description:
   - Create, update, or delete schedules on Ansible Automation Platform Controller.
   - Schedules define when a unified job template runs automatically.
-  - Prompt-override fields (extra_data, inventory, credentials, etc.) are planned for a follow-up PR.
+  - Prompt-override scalar fields (extra_data, inventory, etc.) are planned for a follow-up PR.
 version_added: "2.8.0"
 
 options:
@@ -54,6 +54,24 @@ options:
     description:
       - Enables processing of this schedule.
     type: bool
+
+  credentials:
+    description:
+      - List of credential names or IDs to associate with this schedule.
+    type: list
+    elements: str
+
+  labels:
+    description:
+      - List of label names or IDs to associate with this schedule.
+    type: list
+    elements: str
+
+  instance_groups:
+    description:
+      - List of instance group names or IDs to associate with this schedule.
+    type: list
+    elements: str
 
 seealso:
   - module: ansible.controller.schedule
