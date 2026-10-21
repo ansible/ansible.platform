@@ -35,4 +35,5 @@ action_groups:
     - job_list
     - group
     - job_cancel
+    - ad_hoc_command_wait
 ...
