@@ -1,0 +1,61 @@
+---
+- name: Look up Demo Inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_inventory
+  delegate_to: localhost
+
+- name: Assert Demo Inventory exists
+  ansible.builtin.assert:
+    that:
+      - demo_inventory.json.results | length > 0
+
+- name: Launch an ad hoc command without waiting
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      inventory: "{{ demo_inventory.json.results[0].id }}"
+      module_name: "ping"
+    status_code: [201]
+  register: launched_cmd
+  delegate_to: localhost
+
+- name: Wait for the ad hoc command to complete
+  ansible.platform.ad_hoc_command_wait:
+    command_id: "{{ launched_cmd.json.id }}"
+    timeout: 60
+    interval: 2
+  register: wait_result
+
+- name: Assert wait returned status and ID
+  ansible.builtin.assert:
+    that:
+      - wait_result is not failed
+      - wait_result.id | int == launched_cmd.json.id | int
+      - wait_result.status is defined
+
+- name: Wait for an already-finished command (idempotent)
+  ansible.platform.ad_hoc_command_wait:
+    command_id: "{{ launched_cmd.json.id }}"
+    timeout: 10
+    interval: 1
+  register: rewait_result
+
+- name: Assert re-wait succeeded immediately
+  ansible.builtin.assert:
+    that:
+      - rewait_result is not failed
+      - rewait_result.status is defined
+...
