@@ -1,99 +1,10 @@
 ---
-- name: Clean up any leftover workflow job template from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/?name=WL+Integration+Test+WF"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_wf
-  delegate_to: localhost
+- set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
 
-- name: Delete leftover workflow job template
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204, 409]
-  delegate_to: localhost
-  loop: "{{ leftover_wf.json.results }}"
-  when: leftover_wf.json.count > 0
-
-- name: Clean up any leftover job template from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=WL+Test+Job+Template"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_jt
-  delegate_to: localhost
-
-- name: Delete leftover job template
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
-  loop: "{{ leftover_jt.json.results }}"
-  when: leftover_jt.json.count > 0
-
-- name: Clean up any leftover inventory from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=WL+Test+Inventory"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_inv
-  delegate_to: localhost
-
-- name: Delete leftover inventory
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
-  loop: "{{ leftover_inv.json.results }}"
-  when: leftover_inv.json.count > 0
-
-- name: Clean up any leftover project from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/?name=WL+Test+Project"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_proj
-  delegate_to: localhost
-
-- name: Delete leftover project
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
-  loop: "{{ leftover_proj.json.results }}"
-  when: leftover_proj.json.count > 0
+- set_fact:
+    name_prefix: "AAP-Collection-Test-WL-{{ test_id }}"
 
 - name: Create a test project for workflow launch
   ansible.builtin.uri:
@@ -105,7 +16,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "WL Test Project"
+      name: "{{ name_prefix }}-Project"
       organization: 1
       scm_type: "git"
       scm_url: "https://github.com/ansible/ansible-tower-samples"
@@ -137,7 +48,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "WL Test Inventory"
+      name: "{{ name_prefix }}-Inventory"
       organization: 1
     status_code: [201]
   register: test_inventory
@@ -168,7 +79,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "WL Test Job Template"
+      name: "{{ name_prefix }}-JT"
       organization: 1
       project: "{{ test_project.json.id }}"
       playbook: "hello_world.yml"
@@ -187,7 +98,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "WL Integration Test WF"
+      name: "{{ name_prefix }}-WF"
       organization: 1
     status_code: [201]
   register: wf_template
@@ -209,7 +120,7 @@
 
 - name: Launch the workflow and wait for completion
   ansible.platform.workflow_launch:
-    name: "WL Integration Test WF"
+    name: "{{ name_prefix }}-WF"
     wait: true
     timeout: 120
     interval: 2
@@ -224,7 +135,7 @@
 
 - name: Launch the workflow without waiting
   ansible.platform.workflow_launch:
-    name: "WL Integration Test WF"
+    name: "{{ name_prefix }}-WF"
     wait: false
   register: nowait_result
 
