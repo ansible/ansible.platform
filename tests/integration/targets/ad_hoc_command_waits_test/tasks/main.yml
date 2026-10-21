@@ -1,4 +1,11 @@
 ---
+- set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- set_fact:
+    name_prefix: "AAP-Collection-Test-AHCW-{{ test_id }}"
+
 - name: Create a test inventory for ad hoc command wait
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
@@ -9,7 +16,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "Ad Hoc Wait Test Inventory"
+      name: "{{ name_prefix }}-Inventory"
       organization: 1
     status_code: [201]
   register: test_inventory
