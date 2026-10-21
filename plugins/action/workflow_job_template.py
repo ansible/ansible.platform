@@ -9,8 +9,88 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_job_template import (
     AnsibleWorkflowJobTemplate,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_job_template import BASE_PATH
+
+_ASSOC_MAP = {
+    "labels": ("labels", "name"),
+    "notification_templates_started": ("notification_templates", "name"),
+    "notification_templates_success": ("notification_templates", "name"),
+    "notification_templates_error": ("notification_templates", "name"),
+    "notification_templates_approvals": ("notification_templates", "name"),
+}
+
+_SERVICE = "controller"
 
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_job_template"
     MODEL_CLASS = AnsibleWorkflowJobTemplate
+    LOOKUP_FIELD = "name"
+
+    _WRITE_ONLY_FIELDS = frozenset(
+        {
+            "copy_from",
+            "survey_spec",
+        }
+        | set(_ASSOC_MAP)
+    )
+
+    def run(self, tmp=None, task_vars=None):
+        if task_vars is None:
+            task_vars = {}
+
+        copy_from = self._task.args.pop("copy_from", None)
+        survey_spec = self._task.args.pop("survey_spec", None)
+        association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+
+        name = self._task.args.get("name")
+        state = self._task.args.get("state", "present")
+        check_mode = self._task.check_mode
+
+        copied = False
+        if copy_from and state not in ("absent", "exists") and not check_mode:
+            try:
+                super(BaseResourceActionPlugin, self).run(tmp, task_vars)
+                self._task_vars = task_vars
+                manager, facts_to_set = self._get_or_spawn_manager(task_vars)
+                self._client = manager
+                existing = manager.search_api(BASE_PATH, query_params={"name": name})
+                if not any(item.get("name") == name for item in existing.get("results", [])):
+                    manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
+                    copied = True
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
+
+        result = super().run(tmp, task_vars)
+        if copied:
+            result["changed"] = True
+        if result.get("failed") or state in ("absent", "exists"):
+            return result
+
+        wjt_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
+        if not wjt_id:
+            return result
+
+        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
+        if check_mode:
+            if reconcile_fields or survey_spec is not None:
+                result["changed"] = True
+            return result
+
+        try:
+            manager = self._client
+            changed = False
+            for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
+                desired = association_data.get(field)
+                if desired is not None and manager.manage_associations(BASE_PATH, wjt_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                    changed = True
+            if survey_spec is not None and manager.manage_sub_resource(BASE_PATH, wjt_id, "survey_spec", survey_spec):
+                changed = True
+        except Exception as exc:
+            result["failed"] = True
+            result["msg"] = "Failed to reconcile associations/survey_spec: %s" % exc
+            return result
+
+        if changed:
+            result["changed"] = True
+        return result
