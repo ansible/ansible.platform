@@ -1,20 +1,19 @@
 ---
-- name: Look up Demo Inventory
+- name: Create a test inventory for bulk host delete
   ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
-    method: GET
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+    method: POST
     user: "{{ gateway_username }}"
     password: "{{ gateway_password }}"
     force_basic_auth: true
     validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [200]
-  register: demo_inventory
+    body_format: json
+    body:
+      name: "Bulk Host Delete Test Inventory"
+      organization: 1
+    status_code: [201]
+  register: test_inventory
   delegate_to: localhost
-
-- name: Assert Demo Inventory exists
-  ansible.builtin.assert:
-    that:
-      - demo_inventory.json.results | length > 0
 
 - name: Create test hosts for bulk deletion
   ansible.builtin.uri:
@@ -27,7 +26,7 @@
     body_format: json
     body:
       name: "bulk-delete-test-{{ item }}"
-      inventory: "{{ demo_inventory.json.results[0].id }}"
+      inventory: "{{ test_inventory.json.id }}"
     status_code: [201]
   register: created_hosts
   delegate_to: localhost
@@ -61,4 +60,15 @@
     status_code: [404]
   delegate_to: localhost
   loop: "{{ created_hosts.results }}"
+
+- name: Clean up test inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
 ...
