@@ -11,7 +11,7 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: bulk_job_launch
-author: "Ansible Platform Collection Contributors"
+author: "Red Hat (@RedHatOfficial)"
 short_description: Bulk job launch in Controller.
 description:
     - Launch multiple jobs in a single API request to Controller.
@@ -189,6 +189,7 @@ EXAMPLES = """
       - unified_job_template: 7
       - unified_job_template: 10
     wait: false
+...
 """
 
 RETURN = """
@@ -206,4 +207,5 @@ job_info:
     description: Full response from the bulk job launch API.
     returned: success
     type: dict
+...
 """
