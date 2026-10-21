@@ -85,7 +85,7 @@ class ActionModule(BaseResourceActionPlugin):
             wjt_id = wjt["id"]
 
             # Build the launch payload
-            post_data = {}
+            post_data: dict = {}
 
             if inventory is not None:
                 if str(inventory).strip().isdigit():
