@@ -186,6 +186,27 @@ class TestInventorySourceAssociations(unittest.TestCase):
         self.assertFalse(result["changed"])
 
     @patch.object(BaseResourceActionPlugin, "run")
+    def test_check_mode_skips_associations(self, mock_super_run):
+        mock_super_run.return_value = {
+            "changed": True,
+            "failed": False,
+        }
+        action = self._make_action(
+            {
+                "name": "ec2-src",
+                "inventory": "Prod",
+                "state": "present",
+                "notification_templates_started": ["Slack Start"],
+            },
+            check_mode=True,
+        )
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["changed"])
+        action._client.manage_associations.assert_not_called()
+
+    @patch.object(BaseResourceActionPlugin, "run")
     def test_id_from_nested_result(self, mock_super_run):
         """Resource ID extracted from nested module_name dict when not top-level."""
         mock_super_run.return_value = {
