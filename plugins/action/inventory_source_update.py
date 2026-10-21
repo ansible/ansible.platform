@@ -89,21 +89,25 @@ class ActionModule(BaseResourceActionPlugin):
                 result["msg"] = "Inventory source update %s finished with status: %s" % (job_id, final_status)
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
-            result.update({
-                "changed": True,
-                "failed": True,
-                "msg": str(exc),
-                "id": lr.get("id", job_id),
-                "status": lr.get("status", "unknown"),
-            })
+            result.update(
+                {
+                    "changed": True,
+                    "failed": True,
+                    "msg": str(exc),
+                    "id": lr.get("id", job_id),
+                    "status": lr.get("status", "unknown"),
+                }
+            )
         except Exception as exc:
-            result.update({
-                "changed": True,
-                "failed": True,
-                "msg": "Failed to poll inventory source update %s: %s" % (job_id, exc),
-                "id": job_id,
-                "status": "unknown",
-            })
+            result.update(
+                {
+                    "changed": True,
+                    "failed": True,
+                    "msg": "Failed to poll inventory source update %s: %s" % (job_id, exc),
+                    "id": job_id,
+                    "status": "unknown",
+                }
+            )
 
         return result
 
