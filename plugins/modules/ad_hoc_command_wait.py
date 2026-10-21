@@ -11,7 +11,7 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: ad_hoc_command_wait
-author: "Ansible Platform Collection Contributors"
+author: Red Hat (@RedHatOfficial)
 short_description: Wait for a Controller ad hoc command to finish.
 description:
     - Wait for a Controller ad hoc command to reach a terminal status and report success or failure.
@@ -60,6 +60,7 @@ EXAMPLES = """
     command_id: "{{ command.id }}"
     interval: 5
     timeout: 300
+...
 """
 
 RETURN = """
@@ -88,4 +89,5 @@ status:
     returned: success
     type: str
     sample: successful
+...
 """
