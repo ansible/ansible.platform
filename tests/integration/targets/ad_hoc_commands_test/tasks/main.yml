@@ -1,0 +1,48 @@
+---
+- name: Look up Demo Inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_inventory
+  delegate_to: localhost
+
+- name: Assert Demo Inventory exists
+  ansible.builtin.assert:
+    that:
+      - demo_inventory.json.results | length > 0
+
+- name: Run an ad hoc command and wait for completion
+  ansible.platform.ad_hoc_command:
+    inventory: "Demo Inventory"
+    module_name: "ping"
+    wait: true
+    timeout: 60
+    interval: 2
+  register: adhoc_result
+  ignore_errors: true
+
+- name: Assert ad hoc command returned an ID and status
+  ansible.builtin.assert:
+    that:
+      - adhoc_result.id is defined
+      - adhoc_result.status is defined
+
+- name: Run an ad hoc command without waiting
+  ansible.platform.ad_hoc_command:
+    inventory: "Demo Inventory"
+    module_name: "ping"
+    wait: false
+  register: nowait_result
+
+- name: Assert no-wait launch returned an ID
+  ansible.builtin.assert:
+    that:
+      - nowait_result is not failed
+      - nowait_result.id is defined
+      - nowait_result.changed
+...
