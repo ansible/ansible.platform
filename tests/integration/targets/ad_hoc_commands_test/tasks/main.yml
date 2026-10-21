@@ -1,4 +1,11 @@
 ---
+- set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- set_fact:
+    name_prefix: "AAP-Collection-Test-AHC-{{ test_id }}"
+
 - name: Create a test inventory for ad hoc command
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
@@ -9,7 +16,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "Ad Hoc Test Inventory"
+      name: "{{ name_prefix }}-Inventory"
       organization: 1
     status_code: [201]
   register: test_inventory
@@ -32,7 +39,7 @@
 
 - name: Run an ad hoc command and wait for completion
   ansible.platform.ad_hoc_command:
-    inventory: "Ad Hoc Test Inventory"
+    inventory: "{{ name_prefix }}-Inventory"
     credential: "Demo Credential"
     module_name: "ping"
     wait: true
@@ -49,7 +56,7 @@
 
 - name: Run an ad hoc command without waiting
   ansible.platform.ad_hoc_command:
-    inventory: "Ad Hoc Test Inventory"
+    inventory: "{{ name_prefix }}-Inventory"
     credential: "Demo Credential"
     module_name: "ping"
     wait: false
