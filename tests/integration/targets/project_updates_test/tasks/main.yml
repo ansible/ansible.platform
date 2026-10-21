@@ -1,0 +1,44 @@
+---
+- name: Sync the Demo Project and wait for completion
+  ansible.platform.project_update:
+    name: "Demo Project"
+    wait: true
+    timeout: 120
+    interval: 2
+  register: sync_result
+
+- name: Assert the sync completed successfully
+  ansible.builtin.assert:
+    that:
+      - sync_result is not failed
+      - sync_result.id is defined
+      - sync_result.status == "successful"
+
+- name: Trigger a project sync without waiting
+  ansible.platform.project_update:
+    name: "Demo Project"
+    wait: false
+  register: nowait_result
+
+- name: Assert the no-wait launch returned an ID
+  ansible.builtin.assert:
+    that:
+      - nowait_result is not failed
+      - nowait_result.id is defined
+      - nowait_result.changed
+
+- name: Wait for the background sync to finish before proceeding
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/project_updates/{{ nowait_result.id }}/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: bg_sync
+  delegate_to: localhost
+  until: bg_sync.json.status in ['successful', 'failed', 'error', 'canceled']
+  retries: 60
+  delay: 2
+...

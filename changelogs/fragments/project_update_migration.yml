@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - project_update - migrate project_update module from awx_collection for triggering Controller project syncs with optional wait/poll (https://issues.redhat.com/browse/AAP-95866).
+
+...
