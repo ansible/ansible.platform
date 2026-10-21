@@ -1,0 +1,66 @@
+---
+- name: Look up Demo Job Template
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_jt
+  delegate_to: localhost
+
+- name: Assert Demo Job Template exists
+  ansible.builtin.assert:
+    that:
+      - demo_jt.json.results | length > 0
+
+- name: Bulk launch jobs and wait for completion
+  ansible.platform.bulk_job_launch:
+    name: "BJL Integration Test"
+    jobs:
+      - unified_job_template: "{{ demo_jt.json.results[0].id }}"
+    wait: true
+    timeout: 120
+    interval: 2
+  register: launch_result
+
+- name: Assert bulk launch succeeded
+  ansible.builtin.assert:
+    that:
+      - launch_result is not failed
+      - launch_result.id is defined
+      - launch_result.status == "successful"
+      - launch_result.changed
+
+- name: Bulk launch without waiting
+  ansible.platform.bulk_job_launch:
+    name: "BJL No Wait Test"
+    jobs:
+      - unified_job_template: "{{ demo_jt.json.results[0].id }}"
+    wait: false
+  register: nowait_result
+
+- name: Assert no-wait launch returned an ID
+  ansible.builtin.assert:
+    that:
+      - nowait_result is not failed
+      - nowait_result.id is defined
+      - nowait_result.changed
+
+- name: Wait for background workflow to finish
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{ nowait_result.id }}/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: bg_job
+  delegate_to: localhost
+  until: bg_job.json.status in ['successful', 'failed', 'error', 'canceled']
+  retries: 60
+  delay: 2
+...
