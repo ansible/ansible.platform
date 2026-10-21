@@ -19,8 +19,8 @@ author: Red Hat (@RedHatOfficial)
 short_description: Manage Controller workflow job templates
 description:
   - Create, update, or delete workflow job templates on Ansible Automation Platform Controller.
-  - Association endpoints (labels, credentials, notification_templates), survey_spec,
-    copy_from, and workflow_nodes are planned for follow-up PRs.
+  - Supports associating labels, notification templates, and managing survey specifications.
+  - Supports copying an existing workflow job template via C(copy_from).
 version_added: "2.8.0"
 
 options:
@@ -134,6 +134,50 @@ options:
       - Credential name or ID for the webhook service.
     type: str
 
+  copy_from:
+    description:
+      - Name or ID of an existing workflow job template to copy.
+      - This will copy the source and apply any other supplied parameters.
+      - The new workflow job template name will be the one provided in the C(name) parameter.
+    type: str
+
+  survey_spec:
+    description:
+      - JSON/YAML dict formatted survey definition.
+      - Pass an empty dict C({}) to delete an existing survey.
+    type: dict
+
+  labels:
+    description:
+      - List of label names to associate with this workflow job template.
+      - The association is synced — labels not in the list will be disassociated.
+    type: list
+    elements: str
+
+  notification_templates_started:
+    description:
+      - List of notification template names to trigger on workflow start.
+    type: list
+    elements: str
+
+  notification_templates_success:
+    description:
+      - List of notification template names to trigger on workflow success.
+    type: list
+    elements: str
+
+  notification_templates_error:
+    description:
+      - List of notification template names to trigger on workflow error.
+    type: list
+    elements: str
+
+  notification_templates_approvals:
+    description:
+      - List of notification template names to trigger on workflow approval steps.
+    type: list
+    elements: str
+
 seealso:
   - module: ansible.controller.workflow_job_template
   - module: awx.awx.workflow_job_template
@@ -165,6 +209,32 @@ EXAMPLES = """
     name: "My Workflow"
     new_name: "Production Workflow"
     organization: "Default"
+
+- name: Set a survey on a workflow job template
+  ansible.platform.workflow_job_template:
+    name: "My Workflow"
+    survey_enabled: true
+    survey_spec: "{{ lookup('file', 'my_survey.json') }}"
+
+- name: Add labels to a workflow job template
+  ansible.platform.workflow_job_template:
+    name: "My Workflow"
+    labels:
+      - production
+      - deploy
+
+- name: Add start notification to a workflow job template
+  ansible.platform.workflow_job_template:
+    name: "My Workflow"
+    notification_templates_started:
+      - Notification1
+      - Notification2
+
+- name: Copy a workflow job template
+  ansible.platform.workflow_job_template:
+    name: "Copy of My Workflow"
+    copy_from: "My Workflow"
+    state: present
 
 - name: Delete a workflow job template
   ansible.platform.workflow_job_template:

@@ -91,6 +91,132 @@
       vars:
         ansible_connection: local
 
+    - name: Create labels for association test (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/labels/"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ item }}"
+          organization: 1
+        status_code: [201]
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      loop:
+        - "wjt-label-1"
+        - "wjt-label-2"
+      vars:
+        ansible_connection: local
+
+    - name: Create notification template for association test (connection local)
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/notification_templates/"
+        method: POST
+        body_format: json
+        body:
+          name: "{{ item }}"
+        status_code: [201]
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: false
+      loop:
+        - "wjt-notify-start"
+        - "wjt-notify-approval"
+      vars:
+        ansible_connection: local
+
+    - name: Associate labels to workflow (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        labels:
+          - "wjt-label-1"
+          - "wjt-label-2"
+      register: label_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert label association changed (connection local)
+      ansible.builtin.assert:
+        that: label_result_local is changed
+      vars:
+        ansible_connection: local
+
+    - name: Re-run same labels for idempotency (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        labels:
+          - "wjt-label-1"
+          - "wjt-label-2"
+      register: label_idem_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert label association idempotent (connection local)
+      ansible.builtin.assert:
+        that: label_idem_local is not changed
+      vars:
+        ansible_connection: local
+
+    - name: Associate notification templates (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        notification_templates_started:
+          - "wjt-notify-start"
+        notification_templates_approvals:
+          - "wjt-notify-approval"
+      register: notify_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert notification association changed (connection local)
+      ansible.builtin.assert:
+        that: notify_result_local is changed
+      vars:
+        ansible_connection: local
+
+    - name: Set survey spec (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }}"
+        survey_enabled: true
+        survey_spec:
+          name: "Test Survey"
+          description: "A test survey"
+          spec:
+            - question_name: "Target Host"
+              variable: "target_host"
+              type: "text"
+              required: true
+              default: "localhost"
+      register: survey_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert survey changed (connection local)
+      ansible.builtin.assert:
+        that: survey_result_local is changed
+      vars:
+        ansible_connection: local
+
+    - name: Copy workflow job template (connection local)
+      ansible.platform.workflow_job_template:
+        name: "{{ wjt_name_local }} Copy"
+        copy_from: "{{ wjt_name_local }}"
+        state: present
+      register: copy_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert copy changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - copy_result_local is changed
+          - copy_result_local.workflow_job_template.id is defined
+      vars:
+        ansible_connection: local
+
 - name: Converge — workflow_job_template (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http
