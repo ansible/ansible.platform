@@ -34,4 +34,6 @@ action_groups:
     - inventory_source
     - job_list
     - group
+    - job_cancel
+    - workflow_node_wait
 ...
