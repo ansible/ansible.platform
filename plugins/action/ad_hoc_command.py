@@ -8,10 +8,14 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import json
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, Union
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+
+if TYPE_CHECKING:
+    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command import (
     AD_HOC_COMMANDS_DETAIL_ENDPOINT,
     AD_HOC_COMMANDS_ENDPOINT,
@@ -115,7 +119,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _build_post_data(self, manager: object, params: dict) -> dict:
+    def _build_post_data(self, manager: Union["DirectHTTPClient", "ManagerRPCClient"], params: dict) -> dict:
         """Build the POST payload, resolving FK references and serializing extra_vars.
 
         Args:
