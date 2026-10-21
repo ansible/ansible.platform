@@ -1,0 +1,87 @@
+---
+- name: Look up Demo Job Template to build a workflow
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_jt
+  delegate_to: localhost
+
+- name: Assert Demo Job Template exists
+  ansible.builtin.assert:
+    that:
+      - demo_jt.json.results | length > 0
+
+- name: Create a simple workflow job template
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "WL Integration Test WF"
+      organization: 1
+    status_code: [201]
+  register: wf_template
+  delegate_to: localhost
+
+- name: Add a node to the workflow
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ wf_template.json.id }}/workflow_nodes/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      unified_job_template: "{{ demo_jt.json.results[0].id }}"
+    status_code: [201]
+  delegate_to: localhost
+
+- name: Launch the workflow and wait for completion
+  ansible.platform.workflow_launch:
+    name: "WL Integration Test WF"
+    wait: true
+    timeout: 120
+    interval: 2
+  register: launch_result
+
+- name: Assert launch succeeded
+  ansible.builtin.assert:
+    that:
+      - launch_result is not failed
+      - launch_result.id is defined
+      - launch_result.status == "successful"
+
+- name: Launch the workflow without waiting
+  ansible.platform.workflow_launch:
+    name: "WL Integration Test WF"
+    wait: false
+  register: nowait_result
+
+- name: Assert no-wait launch returned an ID
+  ansible.builtin.assert:
+    that:
+      - nowait_result is not failed
+      - nowait_result.id is defined
+      - nowait_result.changed
+
+- name: Clean up workflow job template
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ wf_template.json.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
+...
