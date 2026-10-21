@@ -11,7 +11,7 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: bulk_host_delete
-author: "Ansible Platform Collection Contributors"
+author: "Red Hat (@RedHatOfficial)"
 short_description: Bulk delete hosts in Controller.
 description:
     - Delete multiple hosts in a single API request to Controller.
@@ -41,6 +41,7 @@ EXAMPLES = """
 - name: Delete hosts gathered from a query
   ansible.platform.bulk_host_delete:
     hosts: "{{ host_ids_to_remove }}"
+...
 """
 
 RETURN = """
@@ -49,4 +50,5 @@ changed:
     returned: success
     type: bool
     sample: true
+...
 """
