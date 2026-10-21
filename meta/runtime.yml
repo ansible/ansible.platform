@@ -34,5 +34,6 @@ action_groups:
     - inventory_source
     - job_list
     - group
+    - bulk_job_launch
     - job_cancel
 ...
