@@ -11,7 +11,7 @@ metadata:
     pipelinesascode.tekton.dev/cancel-in-progress: 'true'
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-event: "[pull_request]"
-    pipelinesascode.tekton.dev/on-target-branch: "[devel]"
+    pipelinesascode.tekton.dev/on-target-branch: "[devel, feature/anstrat-1874]"
     pipelinesascode.tekton.dev/on-comment: "^/run-integration-tests$"
     pipelinesascode.tekton.dev/on-path-change: "[plugins/**, extensions/**, tests/**, tools/**, .tekton/**]"
     pipelinesascode.tekton.dev/target-namespace: ansible-ci-tenant
@@ -53,6 +53,8 @@ spec:
       value: "{{revision}}"
     - name: pipeline-github-pr-number
       value: "{{pull_request_number}}"
+    - name: aap-version
+      value: "devel"
     - name: oci-container-repo
       value: "quay.io/aap-ci/pipeline-artifacts/ansible/ansible-platform"
 
