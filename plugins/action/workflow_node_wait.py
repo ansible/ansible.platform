@@ -22,7 +22,7 @@ from typing import Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_node_wait import AnsibleWorkflowNodeWait
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_node_wait import WORKFLOW_NODES_LIST_ENDPOINT
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_node_wait import CONTROLLER_V2_PREFIX, WORKFLOW_NODES_LIST_ENDPOINT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
 
 FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
@@ -102,8 +102,8 @@ class ActionModule(BaseResourceActionPlugin):
             # Convert full URL to resource path for wait_for_completion
             # job_url is like "/api/controller/v2/jobs/123/" — strip the prefix
             resource_path = job_url
-            if resource_path.startswith("/api/controller/v2/"):
-                resource_path = resource_path[len("/api/controller/v2/") :]
+            if resource_path.startswith(CONTROLLER_V2_PREFIX):
+                resource_path = resource_path[len(CONTROLLER_V2_PREFIX) :]
 
             try:
                 job_result = manager.wait_for_completion(

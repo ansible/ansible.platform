@@ -17,6 +17,7 @@ from ....platform.types import EndpointOperation, TransformContext
 logger = logging.getLogger(__name__)
 
 WORKFLOW_NODES_LIST_ENDPOINT = "/api/controller/v2/workflow_jobs/{workflow_job_id}/workflow_nodes/"
+CONTROLLER_V2_PREFIX = "/api/controller/v2/"
 
 
 @dataclass
