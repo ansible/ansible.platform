@@ -37,6 +37,7 @@ no_endpoint_for_module = [
     "job_list",
     "group",
     "job_cancel",
+    "ad_hoc_command",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
@@ -46,6 +47,7 @@ controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
     "host": [],
     "controller_credential_type": [],
+    "ad_hoc_command": ["wait", "interval", "timeout"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
