@@ -1,4 +1,11 @@
 ---
+- set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- set_fact:
+    name_prefix: "AAP-Collection-Test-BHD-{{ test_id }}"
+
 - name: Create a test inventory for bulk host delete
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
@@ -9,7 +16,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "Bulk Host Delete Test Inventory"
+      name: "{{ name_prefix }}-Inventory"
       organization: 1
     status_code: [201]
   register: test_inventory
@@ -25,7 +32,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "bulk-delete-test-{{ item }}"
+      name: "{{ name_prefix }}-host-{{ item }}"
       inventory: "{{ test_inventory.json.id }}"
     status_code: [201]
   register: created_hosts
