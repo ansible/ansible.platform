@@ -1,9 +1,11 @@
 ---
-- set_fact:
+- name: Generate unique test ID
+  ansible.builtin.set_fact:
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- set_fact:
+- name: Set name prefix for test resources
+  ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-AHCC-{{ test_id }}"
 
 - name: Create a test inventory for ad hoc command cancel
