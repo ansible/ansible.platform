@@ -1,4 +1,76 @@
 ---
+- name: Clean up any leftover inventory source from previous runs
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/?name=ISU+Test+Source"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+  register: leftover_src
+  delegate_to: localhost
+
+- name: Delete leftover inventory source
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/{{ item.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
+  loop: "{{ leftover_src.json.results }}"
+  when: leftover_src.json.count > 0
+
+- name: Clean up any leftover inventory from previous runs
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=ISU+Test+Inventory"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+  register: leftover_inv
+  delegate_to: localhost
+
+- name: Delete leftover inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ item.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
+  loop: "{{ leftover_inv.json.results }}"
+  when: leftover_inv.json.count > 0
+
+- name: Clean up any leftover project from previous runs
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/?name=ISU+Test+Project"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+  register: leftover_proj
+  delegate_to: localhost
+
+- name: Delete leftover project
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ item.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
+  loop: "{{ leftover_proj.json.results }}"
+  when: leftover_proj.json.count > 0
+
 - name: Create a test project for inventory source update
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/"
