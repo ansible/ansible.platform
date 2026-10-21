@@ -9,9 +9,13 @@ __metaclass__ = type
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.project_update import (
+    CONTROLLER_PROJECT_UPDATE_ENDPOINT,
+    CONTROLLER_PROJECT_UPDATES_ENDPOINT,
+    CONTROLLER_PROJECTS_ENDPOINT,
+)
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
 
-_PROJECTS_ENDPOINT = "/api/controller/v2/projects/"
 _SERVICE = "controller"
 
 
@@ -52,10 +56,10 @@ class ActionModule(BaseResourceActionPlugin):
 
         try:
             project_id = self._resolve_project(manager, name, organization)
-            project_data = manager.search_api(f"{_PROJECTS_ENDPOINT}{project_id}/")
+            project_data = manager.search_api(CONTROLLER_PROJECTS_ENDPOINT + str(project_id) + "/")
             scm_revision_original = project_data.get("scm_revision", "")
 
-            update_url = f"{_PROJECTS_ENDPOINT}{project_id}/update/"
+            update_url = CONTROLLER_PROJECT_UPDATE_ENDPOINT.format(id=project_id)
             launch_result = manager.launch_resource(update_url, {}, service=_SERVICE)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
@@ -63,7 +67,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         job_id = launch_result.get("id") or launch_result.get("project_update")
         job_status = launch_result.get("status", "unknown")
-        job_url = launch_result.get("url", f"/api/controller/v2/project_updates/{job_id}/")
+        job_url = launch_result.get("url", CONTROLLER_PROJECT_UPDATES_ENDPOINT.format(id=job_id))
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
@@ -111,7 +115,7 @@ class ActionModule(BaseResourceActionPlugin):
         if organization:
             org_id = manager.lookup_resource_id("organizations", "name", organization)
             data = manager.search_api(
-                _PROJECTS_ENDPOINT,
+                CONTROLLER_PROJECTS_ENDPOINT,
                 query_params={"name": name, "organization": org_id},
             )
             results = data.get("results", [])
