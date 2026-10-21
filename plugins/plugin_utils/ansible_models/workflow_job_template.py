@@ -3,8 +3,8 @@ Ansible WorkflowJobTemplate dataclass - user-facing stable interface.
 """
 
 import json
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -36,6 +36,15 @@ class AnsibleWorkflowJobTemplate:
     webhook_service: Optional[str] = None
     webhook_credential: Optional[str] = None
     state: str = "present"
+
+    # Association fields (handled by action plugin, not sent to API directly)
+    copy_from: Optional[str] = None
+    survey_spec: Optional[dict] = None
+    labels: Optional[List[str]] = field(default=None)
+    notification_templates_started: Optional[List[str]] = field(default=None)
+    notification_templates_success: Optional[List[str]] = field(default=None)
+    notification_templates_error: Optional[List[str]] = field(default=None)
+    notification_templates_approvals: Optional[List[str]] = field(default=None)
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None
