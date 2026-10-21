@@ -11,7 +11,7 @@ __metaclass__ = type
 DOCUMENTATION = """
 ---
 module: workflow_node_wait
-author: "Ansible Platform Collection Contributors"
+author: "Red Hat (@RedHatOfficial)"
 short_description: Wait for a workflow node to finish.
 description:
     - Wait for a specific workflow node within a workflow job to appear and
@@ -59,6 +59,7 @@ EXAMPLES = """
     name: "Approval Data Step"
     timeout: 120
     interval: 2
+...
 """
 
 RETURN = """
@@ -81,4 +82,5 @@ job_data:
     description: Full response from the workflow node's job API.
     returned: success
     type: dict
+...
 """
