@@ -35,4 +35,5 @@ action_groups:
     - job_list
     - group
     - job_cancel
+    - inventory_source_update
 ...
