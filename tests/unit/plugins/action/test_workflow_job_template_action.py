@@ -28,11 +28,13 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "id": 10,
             "workflow_job_template": {"id": 10, "name": "wf1"},
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "labels": ["prod", "deploy"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "labels": ["prod", "deploy"],
+            }
+        )
         action._client.manage_associations.return_value = True
 
         result = action.run(task_vars={})
@@ -40,7 +42,12 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         self.assertTrue(result["changed"])
         action._client.manage_associations.assert_any_call(
             "/api/controller/v2/workflow_job_templates/",
-            10, "labels", ["prod", "deploy"], "labels", "name", service="controller",
+            10,
+            "labels",
+            ["prod", "deploy"],
+            "labels",
+            "name",
+            service="controller",
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -51,12 +58,14 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "id": 20,
             "workflow_job_template": {"id": 20, "name": "wf2"},
         }
-        action = self._make_action({
-            "name": "wf2",
-            "state": "present",
-            "notification_templates_started": ["Notify1"],
-            "notification_templates_approvals": ["ApprovalNotify"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf2",
+                "state": "present",
+                "notification_templates_started": ["Notify1"],
+                "notification_templates_approvals": ["ApprovalNotify"],
+            }
+        )
         action._client.manage_associations.return_value = True
 
         result = action.run(task_vars={})
@@ -64,11 +73,21 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         self.assertTrue(result["changed"])
         action._client.manage_associations.assert_any_call(
             "/api/controller/v2/workflow_job_templates/",
-            20, "notification_templates_started", ["Notify1"], "notification_templates", "name", service="controller",
+            20,
+            "notification_templates_started",
+            ["Notify1"],
+            "notification_templates",
+            "name",
+            service="controller",
         )
         action._client.manage_associations.assert_any_call(
             "/api/controller/v2/workflow_job_templates/",
-            20, "notification_templates_approvals", ["ApprovalNotify"], "notification_templates", "name", service="controller",
+            20,
+            "notification_templates_approvals",
+            ["ApprovalNotify"],
+            "notification_templates",
+            "name",
+            service="controller",
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -80,11 +99,13 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "workflow_job_template": {"id": 30, "name": "wf3"},
         }
         survey = {"name": "test", "description": "", "spec": []}
-        action = self._make_action({
-            "name": "wf3",
-            "state": "present",
-            "survey_spec": survey,
-        })
+        action = self._make_action(
+            {
+                "name": "wf3",
+                "state": "present",
+                "survey_spec": survey,
+            }
+        )
         action._client.manage_associations.return_value = False
         action._client.manage_sub_resource.return_value = True
 
@@ -93,7 +114,9 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         self.assertTrue(result["changed"])
         action._client.manage_sub_resource.assert_called_once_with(
             "/api/controller/v2/workflow_job_templates/",
-            30, "survey_spec", survey,
+            30,
+            "survey_spec",
+            survey,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -103,12 +126,14 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "failed": False,
             "workflow_job_template": {"state": "absent"},
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "absent",
-            "labels": ["prod"],
-            "survey_spec": {"name": "test"},
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "absent",
+                "labels": ["prod"],
+                "survey_spec": {"name": "test"},
+            }
+        )
 
         action.run(task_vars={})
 
@@ -124,11 +149,13 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "id": 10,
             "workflow_job_template": {"id": 10},
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "exists",
-            "labels": ["prod"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "exists",
+                "labels": ["prod"],
+            }
+        )
 
         action.run(task_vars={})
 
@@ -142,10 +169,12 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "id": 10,
             "workflow_job_template": {"id": 10, "name": "wf1"},
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+            }
+        )
 
         action.run(task_vars={})
 
@@ -160,14 +189,16 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "id": 10,
             "workflow_job_template": {"id": 10},
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "labels": ["prod"],
-            "survey_spec": {"name": "test"},
-            "copy_from": "source",
-            "notification_templates_started": ["N1"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "labels": ["prod"],
+                "survey_spec": {"name": "test"},
+                "copy_from": "source",
+                "notification_templates_started": ["N1"],
+            }
+        )
         action._client.manage_associations.return_value = False
         action._client.manage_sub_resource.return_value = False
 
@@ -183,11 +214,13 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "failed": True,
             "msg": "Not found",
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "labels": ["prod"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "labels": ["prod"],
+            }
+        )
 
         result = action.run(task_vars={})
 
@@ -238,11 +271,13 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "id": 10,
             "workflow_job_template": {"id": 10},
         }
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "labels": ["prod"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "labels": ["prod"],
+            }
+        )
         action._client.manage_associations.return_value = False
 
         result = action.run(task_vars={})
@@ -256,11 +291,13 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "failed": False,
             "workflow_job_template": {"id": 55, "name": "wf"},
         }
-        action = self._make_action({
-            "name": "wf",
-            "state": "present",
-            "labels": ["prod"],
-        })
+        action = self._make_action(
+            {
+                "name": "wf",
+                "state": "present",
+                "labels": ["prod"],
+            }
+        )
         action._client.manage_associations.return_value = True
 
         action.run(task_vars={})
