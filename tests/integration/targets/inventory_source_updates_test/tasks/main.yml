@@ -1,75 +1,10 @@
 ---
-- name: Clean up any leftover inventory source from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/?name=ISU+Test+Source"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_src
-  delegate_to: localhost
+- set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
 
-- name: Delete leftover inventory source
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
-  loop: "{{ leftover_src.json.results }}"
-  when: leftover_src.json.count > 0
-
-- name: Clean up any leftover inventory from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=ISU+Test+Inventory"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_inv
-  delegate_to: localhost
-
-- name: Delete leftover inventory
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
-  loop: "{{ leftover_inv.json.results }}"
-  when: leftover_inv.json.count > 0
-
-- name: Clean up any leftover project from previous runs
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/?name=ISU+Test+Project"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: leftover_proj
-  delegate_to: localhost
-
-- name: Delete leftover project
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ item.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
-  loop: "{{ leftover_proj.json.results }}"
-  when: leftover_proj.json.count > 0
+- set_fact:
+    name_prefix: "AAP-Collection-Test-ISU-{{ test_id }}"
 
 - name: Create a test project for inventory source update
   ansible.builtin.uri:
@@ -81,7 +16,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "ISU Test Project"
+      name: "{{ name_prefix }}-Project"
       organization: 1
       scm_type: "git"
       scm_url: "https://github.com/ansible/test-playbooks"
@@ -113,7 +48,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "ISU Test Inventory"
+      name: "{{ name_prefix }}-Inventory"
       organization: 1
     status_code: [201]
   register: test_inventory
@@ -129,7 +64,7 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     body_format: json
     body:
-      name: "ISU Test Source"
+      name: "{{ name_prefix }}-Source"
       inventory: "{{ test_inventory.json.id }}"
       source: "scm"
       source_project: "{{ test_project.json.id }}"
@@ -140,8 +75,8 @@
 
 - name: Trigger inventory source update without waiting
   ansible.platform.inventory_source_update:
-    name: "ISU Test Source"
-    inventory: "ISU Test Inventory"
+    name: "{{ name_prefix }}-Source"
+    inventory: "{{ name_prefix }}-Inventory"
     wait: false
   register: nowait_result
 
@@ -154,8 +89,8 @@
 
 - name: Trigger inventory source update with wait
   ansible.platform.inventory_source_update:
-    name: "ISU Test Source"
-    inventory: "ISU Test Inventory"
+    name: "{{ name_prefix }}-Source"
+    inventory: "{{ name_prefix }}-Inventory"
     wait: true
     timeout: 120
     interval: 2
