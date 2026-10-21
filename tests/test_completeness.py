@@ -37,6 +37,7 @@ no_endpoint_for_module = [
     "job_list",
     "group",
     "job_cancel",
+    "bulk_job_launch",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
