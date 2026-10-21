@@ -1,24 +1,39 @@
 ---
-- name: Look up Demo Inventory
+- name: Create a test inventory for ad hoc command
   ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
-    method: GET
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+    method: POST
     user: "{{ gateway_username }}"
     password: "{{ gateway_password }}"
     force_basic_auth: true
     validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [200]
-  register: demo_inventory
+    body_format: json
+    body:
+      name: "Ad Hoc Test Inventory"
+      organization: 1
+    status_code: [201]
+  register: test_inventory
   delegate_to: localhost
 
-- name: Assert Demo Inventory exists
-  ansible.builtin.assert:
-    that:
-      - demo_inventory.json.results | length > 0
+- name: Add localhost to the inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "localhost"
+      variables: '{"ansible_connection": "local"}'
+    status_code: [201]
+  delegate_to: localhost
 
 - name: Run an ad hoc command and wait for completion
   ansible.platform.ad_hoc_command:
-    inventory: "Demo Inventory"
+    inventory: "Ad Hoc Test Inventory"
+    credential: "Demo Credential"
     module_name: "ping"
     wait: true
     timeout: 60
@@ -34,7 +49,8 @@
 
 - name: Run an ad hoc command without waiting
   ansible.platform.ad_hoc_command:
-    inventory: "Demo Inventory"
+    inventory: "Ad Hoc Test Inventory"
+    credential: "Demo Credential"
     module_name: "ping"
     wait: false
   register: nowait_result
@@ -45,4 +61,29 @@
       - nowait_result is not failed
       - nowait_result.id is defined
       - nowait_result.changed
+
+- name: Wait for no-wait ad hoc command to finish before cleanup
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/{{ nowait_result.id }}/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+  register: nowait_job_status
+  delegate_to: localhost
+  until: nowait_job_status.json.status in ['successful', 'failed', 'error', 'canceled']
+  retries: 30
+  delay: 2
+
+- name: Clean up test inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
 ...
