@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import json
+from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -24,7 +25,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "ad_hoc_command"
     MODEL_CLASS = None
 
-    def run(self, tmp=None, task_vars=None):
+    def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Launch an ad hoc command on Controller.
 
         Args:
@@ -114,7 +115,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _build_post_data(self, manager, params):
+    def _build_post_data(self, manager: object, params: dict) -> dict:
         """Build the POST payload, resolving FK references and serializing extra_vars.
 
         Args:
