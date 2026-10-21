@@ -1,4 +1,36 @@
 ---
+- name: Create a test project for inventory source update
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "ISU Test Project"
+      organization: 1
+      scm_type: "git"
+      scm_url: "https://github.com/ansible/test-playbooks"
+    status_code: [201]
+  register: test_project
+  delegate_to: localhost
+
+- name: Wait for project sync to complete
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ test_project.json.id }}/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+  register: project_status
+  delegate_to: localhost
+  until: project_status.json.status in ['successful', 'failed', 'error', 'canceled']
+  retries: 60
+  delay: 2
+
 - name: Create a test inventory for inventory source update
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
@@ -28,8 +60,8 @@
       name: "ISU Test Source"
       inventory: "{{ test_inventory.json.id }}"
       source: "scm"
-      source_project: 6
-      source_path: ""
+      source_project: "{{ test_project.json.id }}"
+      source_path: "inventories/create_10_hosts.ini"
     status_code: [201]
   register: test_source
   delegate_to: localhost
@@ -78,6 +110,17 @@
 - name: Clean up test inventory
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204]
+  delegate_to: localhost
+
+- name: Clean up test project
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ test_project.json.id }}/"
     method: DELETE
     user: "{{ gateway_username }}"
     password: "{{ gateway_password }}"
