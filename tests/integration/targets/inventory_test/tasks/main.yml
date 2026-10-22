@@ -83,7 +83,75 @@
         that:
           - exists_check.exists
 
+    # -- Instance group association tests --
+
+    - name: Create an instance group for association test
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-IG"
+        state: present
+      register: test_ig
+
+    - name: Associate instance group with inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+        instance_groups:
+          - "{{ name_prefix }}-IG"
+      register: ig_assoc
+
+    - name: Assert instance group association changed
+      ansible.builtin.assert:
+        that:
+          - ig_assoc is changed
+
+    - name: Check instance group association idempotency
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+        instance_groups:
+          - "{{ name_prefix }}-IG"
+      register: ig_assoc_idem
+
+    - name: Assert instance group association is idempotent
+      ansible.builtin.assert:
+        that:
+          - ig_assoc_idem is not changed
+
+    # -- Copy (clone) tests --
+
+    - name: Copy the inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Cloned"
+        copy_from: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+        state: present
+      register: cloned_inv
+
+    - name: Assert copy changed
+      ansible.builtin.assert:
+        that:
+          - cloned_inv is changed
+          - cloned_inv.inventory.name == (name_prefix ~ '-Cloned')
+
+    - name: Assert cloned inventory is a different resource
+      ansible.builtin.assert:
+        that:
+          - cloned_inv.inventory.id != renamed_inv.inventory.id
+
   always:
+    - name: Delete cloned inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Cloned"
+        organization: "Default"
+        state: absent
+      failed_when: false
+
+    - name: Delete instance group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-IG"
+        state: absent
+      failed_when: false
+
     - name: Delete inventory (renamed)
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Renamed"
