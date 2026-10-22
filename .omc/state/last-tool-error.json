@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git rebase origin/devel 2>&1\",\"description\":\"Rebase onto latest devel\"}",
+  "error": "Exit code 1\nRebasing (1/6)\rRebasing (2/6)\rRebasing (3/6)\rRebasing (4/6)\rRebasing (5/6)\rRebasing (6/6)\rAuto-merging tests/test_completeness.py\nCONFLICT (content): Merge conflict in tests/test_completeness.py\nerror: could not apply f917a20... fix: repair mangled test_completeness.py merge\nhint: Resolve all conflicts manually, mark them as resolved with\nhint: \"git add/rm <conflicted_files>\", then run \"git rebase --continue\".\nhint: You can instead skip this commit: run \"git rebase --skip\".\nhint: To ...",
+  "timestamp": "2026-10-22T09:53:14.008Z",
+  "retry_count": 1
+}

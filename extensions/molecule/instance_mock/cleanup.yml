@@ -16,7 +16,7 @@
     - name: Deprovision instance (connection local)
       ansible.platform.instance:
         hostname: "{{ instance_hostname_local }}"
-        node_state: deprovisioning
+        state: absent
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
         gateway_password: "{{ gateway_password }}"
@@ -47,7 +47,7 @@
     - name: Deprovision instance (http direct)
       ansible.platform.instance:
         hostname: "{{ instance_hostname_http_direct }}"
-        node_state: deprovisioning
+        state: absent
       failed_when: false
 
     - name: Remove manager survive flag
@@ -72,7 +72,7 @@
     - name: Deprovision instance (http persistent)
       ansible.platform.instance:
         hostname: "{{ instance_hostname_http_persistent }}"
-        node_state: deprovisioning
+        state: absent
       failed_when: false
 
     - name: Remove manager survive flag
