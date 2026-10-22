@@ -168,6 +168,34 @@
           - idempotent_association is not changed
       when: controller_instance is defined
 
+    - name: Set policy_instance_list on the group (works with all node types)
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        policy_instance_list:
+          - "{{ all_instances[0].hostname }}"
+      register: policy_list_ig
+      when: all_instances | length > 0
+
+    - name: Assert policy_instance_list changed
+      ansible.builtin.assert:
+        that:
+          - policy_list_ig is changed
+      when: all_instances | length > 0
+
+    - name: Check policy_instance_list idempotency
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        policy_instance_list:
+          - "{{ all_instances[0].hostname }}"
+      register: policy_list_idem
+      when: all_instances | length > 0
+
+    - name: Assert policy_instance_list idempotent
+      ansible.builtin.assert:
+        that:
+          - policy_list_idem is not changed
+      when: all_instances | length > 0
+
     - name: Check exists
       ansible.platform.instance_group:
         name: "{{ name_prefix }}-Renamed"
