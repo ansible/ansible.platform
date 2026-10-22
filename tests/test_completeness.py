@@ -46,6 +46,7 @@ no_endpoint_for_module = [
     "ad_hoc_command",
     "ad_hoc_command_cancel",
     "ad_hoc_command_wait",
+    "bulk_host_delete",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
