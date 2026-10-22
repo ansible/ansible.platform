@@ -23,6 +23,7 @@ _ASSOC_MAP = {
 }
 
 _SERVICE = "controller"
+_NODE_ASSOC_FIELDS = frozenset({"success_nodes", "failure_nodes", "always_nodes"})
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -31,6 +32,23 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "identifier"
 
     _WRITE_ONLY_FIELDS = frozenset(_ASSOC_MAP)
+
+    @staticmethod
+    def _resolve_node_ids_in_workflow(manager, workflow_id, identifiers):
+        """Resolve node identifiers to IDs scoped to a specific workflow."""
+        resolved = []
+        for ident in identifiers:
+            if str(ident).strip().isdigit():
+                resolved.append(int(ident))
+                continue
+            data = manager.search_api(
+                f"{BASE_PATH}/?identifier={ident}&workflow_job_template={workflow_id}"
+            )
+            nodes = data.get("results", [])
+            if not nodes:
+                raise ValueError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
+            resolved.append(nodes[0]["id"])
+        return resolved
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -54,12 +72,19 @@ class ActionModule(BaseResourceActionPlugin):
                 result["changed"] = True
             return result
 
+        node_data = result.get(self.MODULE_NAME) or {}
+        wfjt_id = node_data.get("workflow_job_template")
+
         try:
             manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(
+                if desired is None:
+                    continue
+                if field in _NODE_ASSOC_FIELDS and wfjt_id:
+                    desired = self._resolve_node_ids_in_workflow(manager, wfjt_id, desired)
+                if manager.manage_associations(
                     BASE_PATH, node_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE
                 ):
                     changed = True
