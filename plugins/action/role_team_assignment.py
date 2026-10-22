@@ -9,6 +9,7 @@ __metaclass__ = type
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import resolve_team_id
 from ansible_collections.ansible.platform.plugins.plugin_utils.resource_type_map import get_expected_assignment_type
 
 _get_expected_endpoint = get_expected_assignment_type
@@ -33,18 +34,13 @@ class ActionModule(BaseResourceActionPlugin):
             else:
                 data_dict["role_definition"] = str(data_dict["role_definition"])
 
+        # organization is lookup-only for the receiving team; never send to the API
+        organization = data_dict.pop("organization", None)
         if "team" in data_dict:
-            if not str(data_dict["team"]).isdigit():
-                try:
-                    data_dict["team"] = str(manager.lookup_resource_id("teams", "name", data_dict["team"]))
-                except Exception as _exc:
-                    self._display.warning(
-                        "role_team_assignment: could not resolve team name %r to an ID (%s). "
-                        "Pass the team's numeric ID or ansible_id directly to skip lookup." % (data_dict["team"], _exc)
-                    )
-                    data_dict["team"] = str(data_dict["team"])
-            else:
-                data_dict["team"] = str(data_dict["team"])
+            try:
+                data_dict["team"] = resolve_team_id(manager, data_dict["team"], organization)
+            except Exception as _exc:
+                raise AnsibleError("role_team_assignment: %s" % _exc) from _exc
 
         return data_dict
 
