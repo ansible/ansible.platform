@@ -53,6 +53,11 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
     ) -> "APIWorkflowJobTemplateNode_v2":
         api_data: Dict[str, Any] = {}
 
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        include_nulls = (
+            getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        )
+
         # identifier is the lookup field
         identifier = getattr(ansible_instance, "identifier", None)
         if identifier is not None:
@@ -61,7 +66,6 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         # FK resolution: workflow_job_template name → ID
         wfjt = getattr(ansible_instance, "workflow_job_template", None)
         if wfjt is not None:
-            manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
             if manager is not None and not str(wfjt).strip().isdigit():
                 api_data["workflow_job_template"] = manager.lookup_resource_id("workflow_job_templates", "name", wfjt, service="controller")
             else:
@@ -70,7 +74,6 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         # FK resolution: unified_job_template name → ID
         ujt = getattr(ansible_instance, "unified_job_template", None)
         if ujt is not None:
-            manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
             if manager is not None and not str(ujt).strip().isdigit():
                 api_data["unified_job_template"] = manager.lookup_resource_id("unified_job_templates", "name", ujt, service="controller")
             else:
@@ -84,6 +87,8 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
+            elif include_nulls:
+                api_data[field] = None
 
         extra_data = getattr(ansible_instance, "extra_data", None)
         if extra_data is not None:
@@ -97,6 +102,8 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
                 api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
             else:
                 api_data["inventory"] = int(inventory)
+        elif include_nulls:
+            api_data["inventory"] = None
 
         execution_environment = getattr(ansible_instance, "execution_environment", None)
         if execution_environment is not None:
@@ -106,6 +113,8 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
                 )
             else:
                 api_data["execution_environment"] = int(execution_environment)
+        elif include_nulls:
+            api_data["execution_environment"] = None
 
         for field in ("id",):
             val = getattr(ansible_instance, field, None)
@@ -113,6 +122,10 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
                 api_data[field] = val
 
         return APIWorkflowJobTemplateNode_v2(**api_data)
+
+    @classmethod
+    def get_fields_to_null_for_update(cls, api_data) -> frozenset:
+        return frozenset({"inventory", "execution_environment"})
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
