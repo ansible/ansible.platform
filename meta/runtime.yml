@@ -51,4 +51,5 @@ action_groups:
     - license
     - job_cancel
     - project_update
+    - inventory_source_update
 ...
