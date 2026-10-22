@@ -45,6 +45,7 @@ action_groups:
     - instance
     - job_launch
     - bulk_host_create
+    - bulk_job_launch
     - job_cancel
     - workflow_approval
     - job_wait
