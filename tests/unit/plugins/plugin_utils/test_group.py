@@ -129,5 +129,6 @@ class TestGroupTransform(unittest.TestCase):
         params = GroupTransformMixin_v2.get_find_list_query_params(api_data)
         self.assertEqual(params, {})
 
+
 if __name__ == "__main__":
     unittest.main()
