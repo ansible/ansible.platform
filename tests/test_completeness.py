@@ -30,6 +30,7 @@ no_endpoint_for_module = [
     "token",
     "job_template",
     "job_list",
+    "bulk_host_create",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
