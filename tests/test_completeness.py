@@ -44,6 +44,7 @@ no_endpoint_for_module = [
     "inventory_source_update",
     "workflow_launch",
     "ad_hoc_command",
+    "ad_hoc_command_cancel",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
