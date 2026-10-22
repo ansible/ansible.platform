@@ -148,6 +148,9 @@ class ManagerRPCClient:
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
+        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

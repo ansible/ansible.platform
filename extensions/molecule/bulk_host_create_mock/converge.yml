@@ -1,0 +1,117 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — bulk_host_create (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Bulk create hosts (connection local)
+      ansible.platform.bulk_host_create:
+        inventory: "5001"
+        hosts:
+          - name: host1.example.com
+            description: "First host"
+            enabled: true
+            variables:
+              ansible_host: "192.168.1.1"
+          - name: host2.example.com
+      register: bulk_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert bulk create changed (connection local)
+      ansible.builtin.assert:
+        that:
+          - bulk_result_local is changed
+          - not bulk_result_local.failed
+        fail_msg: "Bulk create (local) should report changed. bulk_result_local={{ bulk_result_local }}"
+      vars:
+        ansible_connection: local
+
+    - name: Bulk create hosts in check_mode (connection local)
+      ansible.platform.bulk_host_create:
+        inventory: "Test Inventory"
+        hosts:
+          - name: checkmode_host.example.com
+      register: check_result_local
+      check_mode: true
+      vars:
+        ansible_connection: local
+
+    - name: Assert check_mode reports changed without calling API
+      ansible.builtin.assert:
+        that:
+          - check_result_local is changed
+          - not check_result_local.failed
+          - "'Would create 1 host(s)' in check_result_local.msg"
+        fail_msg: "Check mode should report would-create. check_result_local={{ check_result_local }}"
+      vars:
+        ansible_connection: local
+
+- name: Converge — bulk_host_create (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Bulk create hosts (http direct)
+      ansible.platform.bulk_host_create:
+        inventory: "5001"
+        hosts:
+          - name: direct_host1.example.com
+          - name: direct_host2.example.com
+            variables:
+              ansible_host: "10.0.0.1"
+      register: bulk_result_direct
+
+    - name: Assert bulk create changed (http direct)
+      ansible.builtin.assert:
+        that:
+          - bulk_result_direct is changed
+          - not bulk_result_direct.failed
+        fail_msg: "Bulk create (http direct) should report changed. bulk_result_direct={{ bulk_result_direct }}"
+...

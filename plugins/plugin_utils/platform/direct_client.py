@@ -752,6 +752,28 @@ class DirectHTTPClient(BaseAPIClient):
                 raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
 
             time.sleep(min(interval, max(0, timeout - elapsed)))
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        self._ensure_authenticated()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
+        response_body = response.read()
+        response_data = json.loads(response_body) if response_body else {}
+        return response_data
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
