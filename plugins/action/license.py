@@ -11,9 +11,8 @@ import base64
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.license import ATTACH_ENDPOINT, CONFIG_ENDPOINT
 
-_CONFIG_ENDPOINT = "/api/controller/v2/config/"
-_ATTACH_ENDPOINT = "/api/controller/v2/config/attach/"
 _SERVICE = "controller"
 
 
@@ -80,7 +79,7 @@ class ActionModule(BaseResourceActionPlugin):
         )
 
     def _handle_absent(self, manager, result):
-        config = manager.search_api(_CONFIG_ENDPOINT)
+        config = manager.search_api(CONFIG_ENDPOINT)
         if not self._is_licensed(config):
             result.update({"changed": False, "msg": "No license to remove"})
             return result
@@ -89,7 +88,7 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True})
             return result
 
-        manager.delete_resource(_CONFIG_ENDPOINT, service=_SERVICE)
+        manager.delete_resource(CONFIG_ENDPOINT, service=_SERVICE)
         result.update({"changed": True, "msg": "License removed"})
         return result
 
@@ -101,7 +100,7 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": False, "failed": True, "msg": str(e)})
             return result
 
-        config = manager.search_api(_CONFIG_ENDPOINT)
+        config = manager.search_api(CONFIG_ENDPOINT)
         if self._is_licensed(config) and not force:
             result.update({
                 "changed": False,
@@ -114,9 +113,9 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True})
             return result
 
-        manager.post_resource(_CONFIG_ENDPOINT, {"manifest": manifest_b64}, service=_SERVICE)
+        manager.post_resource(CONFIG_ENDPOINT, {"manifest": manifest_b64}, service=_SERVICE)
 
-        updated_config = manager.search_api(_CONFIG_ENDPOINT)
+        updated_config = manager.search_api(CONFIG_ENDPOINT)
         result.update({
             "changed": True,
             "license_info": updated_config.get("license_info", {}),
@@ -124,7 +123,7 @@ class ActionModule(BaseResourceActionPlugin):
         return result
 
     def _handle_subscription(self, manager, result, subscription_id, force):
-        config = manager.search_api(_CONFIG_ENDPOINT)
+        config = manager.search_api(CONFIG_ENDPOINT)
         if self._is_licensed(config) and not force:
             result.update({
                 "changed": False,
@@ -137,9 +136,9 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True})
             return result
 
-        manager.post_resource(_ATTACH_ENDPOINT, {"subscription_id": subscription_id}, service=_SERVICE)
+        manager.post_resource(ATTACH_ENDPOINT, {"subscription_id": subscription_id}, service=_SERVICE)
 
-        updated_config = manager.search_api(_CONFIG_ENDPOINT)
+        updated_config = manager.search_api(CONFIG_ENDPOINT)
         result.update({
             "changed": True,
             "license_info": updated_config.get("license_info", {}),
