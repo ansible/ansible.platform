@@ -1470,6 +1470,23 @@ class PlatformService(BaseAPIClient):
             return response.json() if response.content else {}
         except Exception:
             return {}
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        self.record_activity()
+        url = self._build_url(endpoint, service=service)
+        response = self.session.post(url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        if response.status_code == 204 or not response.content:
+            return {}
+        return response.json()
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        self.record_activity()
+        url = self._build_url(endpoint, service=service)
+        response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        return {"changed": True}
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

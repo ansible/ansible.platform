@@ -170,6 +170,13 @@ class ManagerRPCClient:
             Parsed JSON response dict (empty dict on empty body)
         """
         return self.service_proxy.direct_request(method, path, data)
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
+        """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""
+        return self.service_proxy.post_resource(endpoint, data, service)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an endpoint via the manager process. See PlatformService.delete_resource()."""
+        return self.service_proxy.delete_resource(endpoint, service)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
