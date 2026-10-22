@@ -346,6 +346,17 @@ class Store:
                     "REMOTE_HOST_HEADERS": [],
                 }
 
+        # Seed instances for Controller association tests
+        inst_store = self._resources.get(("controller", "instances"))
+        if inst_store and not inst_store._items:
+            inst_store.seed(
+                "2",
+                [
+                    {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
+                ],
+            )
+
         # Seed feature flags with runtime-toggleable flags
         ff_store = self._resources.get(("gateway", "feature_flags"))
         if ff_store and not ff_store._items:
@@ -427,18 +438,6 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
-        # Seed instances for Controller association tests
-        inst_store = self._resources.get(("controller", "instances"))
-        if inst_store and not inst_store._items:
-            inst_store.seed(
-                "2",
-                [
-                    {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
-                    {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
-                ],
-            )
-
-        # Seed settings
         with self._settings_lock:
             if not self._settings:
                 self._settings = {
