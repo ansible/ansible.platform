@@ -67,7 +67,9 @@ no_api_parameter_ok = {
 # Modules that need to be developed. If the module is found on the file system it will auto-detect
 # that the work is being done and will bypass this check.
 needs_development = ["ui_plugin_route"]
-needs_param_development = {}
+needs_param_development = {
+    "inventory": ["opa_query_path"],
+}
 # -----------------------------------------------------------------------------------------------------------
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
