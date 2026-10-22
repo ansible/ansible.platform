@@ -133,9 +133,9 @@ class ManagerRPCClient:
             base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service, preserve_existing
         )
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
-        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data, service)
 
     def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
         """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""

@@ -635,10 +635,10 @@ class DirectHTTPClient(BaseAPIClient):
                     status_code=e.status_code,
                     response_body=e.response_body,
                 ) from e
-            changed = True
+
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -654,7 +654,7 @@ class DirectHTTPClient(BaseAPIClient):
         if data is None:
             return False
         self._ensure_authenticated()
-        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/", service=service)
 
         if data == {}:
             try:

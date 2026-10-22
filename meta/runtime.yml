@@ -47,4 +47,5 @@ action_groups:
     - bulk_host_create
     - job_cancel
     - workflow_approval
+    - job_wait
 ...

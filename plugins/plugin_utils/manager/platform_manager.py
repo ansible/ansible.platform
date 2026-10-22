@@ -867,7 +867,8 @@ class PlatformService(BaseAPIClient):
         Returns:
             Found resource as dict (Ansible format)
         """
-        operations = mixin_class.get_endpoint_operations()
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
@@ -1253,7 +1254,7 @@ class PlatformService(BaseAPIClient):
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -1269,7 +1270,7 @@ class PlatformService(BaseAPIClient):
         if data is None:
             return False
         self.record_activity()
-        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/", service=service)
 
         if data == {}:
             response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)

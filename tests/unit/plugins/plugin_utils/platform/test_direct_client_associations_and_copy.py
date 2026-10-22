@@ -207,6 +207,16 @@ class TestManageAssociations(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
             with self.assertRaises(json.JSONDecodeError):
                 self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"results": [{"id": 1}]})) as mock_request:
+            changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [1], "credentials", "name")
+
+        self.assertFalse(changed)
+        mock_request.assert_called_once_with(
+            "GET",
+            "https://gw.example.com/api/controller/v2/job_templates/42/credentials/",
+            operation="search",
+            resource="/api/controller/v2/job_templates/42/credentials/",
+        )
 
 
 class TestManageSubResource(unittest.TestCase):
