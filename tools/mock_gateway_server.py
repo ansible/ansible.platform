@@ -707,6 +707,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
         """
+        self.store.seed_defaults()
         store = self.store.resource(service, resource_name)
         if store is None:
             return False
