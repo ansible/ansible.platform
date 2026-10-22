@@ -26,6 +26,7 @@ action_groups:
     - user
   controller:
     - controller_credential
+    - subscriptions
     - job_template
     - controller_credential_type
     - credential_input_source

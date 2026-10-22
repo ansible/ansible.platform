@@ -10,6 +10,10 @@ module_test_name_overrides = {"label": "label_test", "inventory": "inventory_tes
 module_test_name_overrides = {"label": "label_test", "controller_project": "controller_project_test"}
 module_test_name_overrides = {"label": "label_test", "execution_environment": "execution_environment_test"}
 module_test_name_overrides = {"label": "label_test", "schedule": "schedule_test"}
+modules_without_live_integration = {
+    "subscriptions": "requires dedicated Red Hat subscription-account credentials not available in the Gateway integration environment"
+}
+module_test_name_overrides = {"label": "label_test"}
 tests_to_ignore = [
     "lookup_test",
     "setup_gateway",
