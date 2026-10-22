@@ -13,14 +13,28 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "instance"
     MODEL_CLASS = AnsibleInstance
 
-    def _detect_operation(self, args: dict) -> str:
-        state = args.get("state", "present")
+    def run(self, tmp=None, task_vars=None):
+        if task_vars is None:
+            task_vars = {}
+
+        state = self._task.args.get("state", "present")
+
         if state in ("absent", "deleted"):
-            if not args.get("id"):
-                return "delete"
-            # Instances cannot be deleted — state=absent means deprovision.
-            # Convert to an update that sets node_state=deprovisioning.
-            args["node_state"] = "deprovisioning"
-            args["state"] = "present"
-            return "update"
-        return super()._detect_operation(args)
+            # Instances cannot be deleted via the API — state=absent triggers
+            # deprovisioning by PATCHing node_state=deprovisioning.
+            # First check if the instance exists; if not, treat as already absent.
+            self._task.args["state"] = "exists"
+            result = super().run(tmp, task_vars)
+            if result.get("failed"):
+                return result
+            if not result.get("exists", False):
+                return {
+                    "changed": False,
+                    "msg": "Instance does not exist (already absent)",
+                    "instance": {"state": "absent"},
+                }
+            # Instance exists — update with deprovisioning.
+            self._task.args["state"] = "present"
+            self._task.args["node_state"] = "deprovisioning"
+
+        return super().run(tmp, task_vars)
