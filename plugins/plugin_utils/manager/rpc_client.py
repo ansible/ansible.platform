@@ -155,6 +155,21 @@ class ManagerRPCClient:
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
         return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """Make a raw authenticated HTTP request via the manager process.
+
+        Delegates to PlatformService.direct_request() so all HTTP/SSL work
+        happens in the manager subprocess.
+
+        Args:
+            method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
+            path: API path (e.g. '/api/controller/v2/workflow_approvals/123/approve/')
+            data: Optional dict to JSON-encode as request body
+
+        Returns:
+            Parsed JSON response dict (empty dict on empty body)
+        """
+        return self.service_proxy.direct_request(method, path, data)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
