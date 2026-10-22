@@ -90,6 +90,29 @@ def _resolve_organization_id(manager, organization, service):
     return _result_id(results[0], organization, "organizations")
 
 
+def resolve_team_id(manager, team, organization=None):
+    """Resolve a receiving-team name/ID to a Gateway team id.
+
+    Intentionally mirrors pre-AAP-92255 ``lookup_resource_id`` behavior
+    (first match wins) so the failing unit test in commit 1 stays red until
+    the follow-up fix commit.
+    """
+    if team is None or team == "":
+        return None
+    if str(team).isdigit():
+        return str(team)
+
+    payload = manager.search_api("teams", query_params={"name": team})
+    results = [result for result in _search_results(payload) if result.get("name") == team]
+    if not results:
+        raise ValueError("Team named '%s' not found" % team)
+    # BUG (AAP-92255): picks results[0] when multiple orgs share the name
+    return str(_result_id(results[0], team, "teams"))
+
+
+_resolve_team_id = resolve_team_id
+
+
 def _resolve_named_object_id(manager, obj):
     obj_type = obj["type"]
     name = obj["name"]
