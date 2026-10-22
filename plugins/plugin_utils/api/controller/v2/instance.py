@@ -53,7 +53,14 @@ class InstanceTransformMixin_v2(BaseTransformMixin):
             if hostname is not None and not str(hostname).strip().isdigit():
                 api_data["hostname"] = hostname
 
-        for field in ("capacity_adjustment", "enabled", "managed_by_policy", "node_type", "node_state", "listener_port", "peers_from_control_nodes"):
+        cap_adj = getattr(ansible_instance, "capacity_adjustment", None)
+        if cap_adj is not None:
+            try:
+                api_data["capacity_adjustment"] = float(cap_adj)
+            except (ValueError, TypeError):
+                api_data["capacity_adjustment"] = cap_adj
+
+        for field in ("enabled", "managed_by_policy", "node_type", "node_state", "listener_port", "peers_from_control_nodes"):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
