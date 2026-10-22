@@ -36,4 +36,5 @@ action_groups:
     - group
     - inventory
     - controller_project
+    - execution_environment
 ...
