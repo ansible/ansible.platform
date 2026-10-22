@@ -729,6 +729,11 @@ class DirectHTTPClient(BaseAPIClient):
         last_result = {}
 
         while True:
+            if last_result:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
             response = self._make_request("GET", url, operation="wait_poll", resource="launch")
             last_result = json.loads(response.read())
 
