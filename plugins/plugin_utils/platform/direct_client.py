@@ -708,6 +708,7 @@ class DirectHTTPClient(BaseAPIClient):
         self._ensure_authenticated()
         url = self._build_url(launch_url, service=service)
         response = self._make_request("POST", url, operation="launch_resource", resource="launch", json=payload)
+        response = self._make_request("POST", url, operation="launch", resource="job", json=payload)
         return json.loads(response.read())
 
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
@@ -739,6 +740,7 @@ class DirectHTTPClient(BaseAPIClient):
                     raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
 
             response = self._make_request("GET", url, operation="wait_poll", resource="launch")
+            response = self._make_request("GET", url, operation="wait_poll", resource="job")
             last_result = json.loads(response.read())
 
             status = last_result.get("status", "")
