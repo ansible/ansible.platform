@@ -37,4 +37,5 @@ action_groups:
     - inventory
     - controller_project
     - execution_environment
+    - notification_template
 ...
