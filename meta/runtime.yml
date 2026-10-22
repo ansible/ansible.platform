@@ -40,4 +40,5 @@ action_groups:
     - execution_environment
     - notification_template
     - schedule
+    - workflow_job_template
 ...

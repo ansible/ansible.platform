@@ -38,6 +38,7 @@ no_endpoint_for_module = [
 # is set via a separate endpoint. Pre-populated so migrators don't need to investigate.
 controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
+    "workflow_job_template": ["organization", "survey_spec"],
     "host": [],
     "controller_credential_type": [],
 }
