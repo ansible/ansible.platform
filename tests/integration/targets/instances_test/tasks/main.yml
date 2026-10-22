@@ -22,7 +22,7 @@
 
 - name: Choose a different capacity adjustment
   ansible.builtin.set_fact:
-    test_capacity_adjustment: "{{ 0.8 if original_capacity_adjustment != 0.8 else 0.7 }}"
+    test_capacity_adjustment: "{{ 0.8 if (original_capacity_adjustment | float) != 0.8 else 0.7 }}"
 
 - name: Run Test
   module_defaults:
