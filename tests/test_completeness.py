@@ -42,6 +42,7 @@ no_endpoint_for_module = [
     "job_cancel",
     "project_update",
     "inventory_source_update",
+    "workflow_launch",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
