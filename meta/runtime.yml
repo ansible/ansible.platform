@@ -49,4 +49,6 @@ action_groups:
     - workflow_approval
     - job_wait
     - license
+    - job_cancel
+    - project_update
 ...

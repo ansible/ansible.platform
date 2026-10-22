@@ -716,6 +716,9 @@ class DirectHTTPClient(BaseAPIClient):
             cancel_info = json.loads(response_body) if response_body else {}
         except Exception:
             cancel_info = {}
+        response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+        response_body = response.read()
+        cancel_info = json.loads(response_body) if response_body else {}
 
         if not cancel_info.get("can_cancel", False):
             if fail_if_not_running:
@@ -790,6 +793,7 @@ class DirectHTTPClient(BaseAPIClient):
 
             response = self._make_request("GET", url, operation="wait_poll", resource="launch")
             response = self._make_request("GET", url, operation="wait_poll", resource="job")
+            response = self._make_request("GET", url, operation="wait_poll", resource="launch")
             last_result = json.loads(response.read())
 
             status = last_result.get("status", "")

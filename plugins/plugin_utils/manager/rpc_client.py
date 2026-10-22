@@ -141,6 +141,10 @@ class ManagerRPCClient:
         """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""
         return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
 
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""
+        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
+
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
