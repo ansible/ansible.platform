@@ -1319,6 +1319,11 @@ class PlatformService(BaseAPIClient):
         last_result = {}
 
         while True:
+            if last_result:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
             response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
             response.raise_for_status()
             last_result = response.json()
@@ -1333,6 +1338,7 @@ class PlatformService(BaseAPIClient):
                 raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
 
             time.sleep(min(interval, max(0, timeout - elapsed)))
+            self.record_activity()
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
