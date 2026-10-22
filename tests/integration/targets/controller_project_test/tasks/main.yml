@@ -152,6 +152,9 @@
         name: "{{ name_prefix }}-Renamed"
         state: absent
       register: deleted_proj
+      retries: 10
+      delay: 5
+      until: deleted_proj is not failed
 
     - name: Assert deleting project changed
       ansible.builtin.assert:
@@ -174,11 +177,19 @@
       ansible.platform.controller_project:
         name: "{{ name_prefix }}-Renamed"
         state: absent
+      register: _cleanup_renamed
+      retries: 10
+      delay: 5
+      until: _cleanup_renamed is not failed
       failed_when: false
 
     - name: Delete project (original, in case rename failed)
       ansible.platform.controller_project:
         name: "{{ name_prefix }}-Test"
         state: absent
+      register: _cleanup_original
+      retries: 10
+      delay: 5
+      until: _cleanup_original is not failed
       failed_when: false
 ...
