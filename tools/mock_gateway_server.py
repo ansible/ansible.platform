@@ -346,6 +346,29 @@ class Store:
                     "REMOTE_HOST_HEADERS": [],
                 }
 
+        # Seed hosts for Controller group association tests
+        host_store = self._resources.get(("controller", "hosts"))
+        if host_store and not host_store._items:
+            host_store.seed(
+                "2",
+                [
+                    {"id": 6001, "name": "web1.example.com", "inventory": 1},
+                    {"id": 6002, "name": "web2.example.com", "inventory": 1},
+                    {"id": 6003, "name": "db1.example.com", "inventory": 1},
+                ],
+            )
+
+        # Seed instances for Controller instance_group association tests
+        inst_store = self._resources.get(("controller", "instances"))
+        if inst_store and not inst_store._items:
+            inst_store.seed(
+                "2",
+                [
+                    {"id": 5901, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 5902, "hostname": "node2.example.com", "node_type": "execution"},
+                ],
+            )
+
         # Seed feature flags with runtime-toggleable flags
         ff_store = self._resources.get(("gateway", "feature_flags"))
         if ff_store and not ff_store._items:
@@ -427,27 +450,6 @@ class Store:
             if template_id in self._jt_surveys:
                 self._jt_surveys[copied["id"]] = dict(self._jt_surveys[template_id])
         return copied
-        # Seed hosts for Controller group association tests
-        host_store = self._resources.get(("controller", "hosts"))
-        if host_store and not host_store._items:
-            host_store.seed(
-                "2",
-                [
-                    {"id": 5701, "name": "web1.example.com", "inventory": 1},
-                    {"id": 5702, "name": "web2.example.com", "inventory": 1},
-                    {"id": 5703, "name": "db1.example.com", "inventory": 1},
-                ],
-            )
-
-        # Seed settings
-        with self._settings_lock:
-            if not self._settings:
-                self._settings = {
-                    "RUNTIME_FEATURE_FLAGS": "True",
-                    "SESSION_COOKIE_AGE": 1800,
-                    "MAX_PAGE_SIZE": 200,
-                    "REMOTE_HOST_HEADERS": [],
-                }
 
     # ------------------------------------------------------------------ Users
     def create_user(self, version: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -709,6 +711,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
         """
+        self.store.seed_defaults()
         store = self.store.resource(service, resource_name)
         if store is None:
             return False
