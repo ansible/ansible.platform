@@ -53,4 +53,5 @@ action_groups:
     - project_update
     - inventory_source_update
     - workflow_launch
+    - ad_hoc_command
 ...

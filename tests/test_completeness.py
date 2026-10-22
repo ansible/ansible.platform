@@ -43,6 +43,7 @@ no_endpoint_for_module = [
     "project_update",
     "inventory_source_update",
     "workflow_launch",
+    "ad_hoc_command",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
@@ -54,6 +55,7 @@ controller_no_api_parameter_ok = {
     "host": [],
     "controller_credential_type": [],
     "group": ["preserve_existing_children", "preserve_existing_hosts"],
+    "ad_hoc_command": ["wait", "interval", "timeout"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
