@@ -25,6 +25,8 @@ class ActionModule(BaseResourceActionPlugin):
             # First check if the instance exists; if not, treat as already absent.
             self._task.args["state"] = "exists"
             result = super().run(tmp, task_vars)
+            if result.get("failed"):
+                return result
             if not result.get("exists", False):
                 return {
                     "changed": False,
