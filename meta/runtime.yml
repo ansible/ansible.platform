@@ -50,7 +50,6 @@ action_groups:
     - workflow_approval
     - job_wait
     - license
-    - job_cancel
     - project_update
     - inventory_source_update
     - workflow_launch

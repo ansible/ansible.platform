@@ -1446,6 +1446,7 @@ class PlatformService(BaseAPIClient):
         if response.status_code != 201:
             raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
+
     def direct_request(self, method: str, path: str, data=None) -> dict:
         """
         Make a raw authenticated HTTP request and return parsed JSON.
@@ -1472,6 +1473,7 @@ class PlatformService(BaseAPIClient):
             return response.json() if response.content else {}
         except Exception:
             return {}
+
     def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
         """POST JSON data to an API endpoint and return the response."""
         self.record_activity()

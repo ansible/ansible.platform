@@ -141,10 +141,6 @@ class ManagerRPCClient:
         """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""
         return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
 
-    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
-        """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""
-        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
-
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
@@ -156,9 +152,11 @@ class ManagerRPCClient:
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
         return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
+
     def direct_request(self, method: str, path: str, data=None) -> dict:
         """Make a raw authenticated HTTP request via the manager process.
 
@@ -174,6 +172,7 @@ class ManagerRPCClient:
             Parsed JSON response dict (empty dict on empty body)
         """
         return self.service_proxy.direct_request(method, path, data)
+
     def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
         """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""
         return self.service_proxy.post_resource(endpoint, data, service)

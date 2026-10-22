@@ -73,11 +73,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _is_licensed(self, config):
         license_info = config.get("license_info", {})
-        return (
-            license_info.get("instance_count", 0) > 0
-            and license_info.get("valid_key", False)
-            and not license_info.get("trial", True)
-        )
+        return license_info.get("instance_count", 0) > 0 and license_info.get("valid_key", False) and not license_info.get("trial", True)
 
     def _handle_absent(self, manager, result):
         config = manager.search_api(_CONFIG_ENDPOINT)
@@ -103,11 +99,13 @@ class ActionModule(BaseResourceActionPlugin):
 
         config = manager.search_api(_CONFIG_ENDPOINT)
         if self._is_licensed(config) and not force:
-            result.update({
-                "changed": False,
-                "license_info": config.get("license_info", {}),
-                "msg": "Already licensed. Use force=true to re-apply.",
-            })
+            result.update(
+                {
+                    "changed": False,
+                    "license_info": config.get("license_info", {}),
+                    "msg": "Already licensed. Use force=true to re-apply.",
+                }
+            )
             return result
 
         if self._task.check_mode:
@@ -117,20 +115,24 @@ class ActionModule(BaseResourceActionPlugin):
         manager.post_resource(_CONFIG_ENDPOINT, {"manifest": manifest_b64}, service=_SERVICE)
 
         updated_config = manager.search_api(_CONFIG_ENDPOINT)
-        result.update({
-            "changed": True,
-            "license_info": updated_config.get("license_info", {}),
-        })
+        result.update(
+            {
+                "changed": True,
+                "license_info": updated_config.get("license_info", {}),
+            }
+        )
         return result
 
     def _handle_subscription(self, manager, result, subscription_id, force):
         config = manager.search_api(_CONFIG_ENDPOINT)
         if self._is_licensed(config) and not force:
-            result.update({
-                "changed": False,
-                "license_info": config.get("license_info", {}),
-                "msg": "Already licensed. Use force=true to re-apply.",
-            })
+            result.update(
+                {
+                    "changed": False,
+                    "license_info": config.get("license_info", {}),
+                    "msg": "Already licensed. Use force=true to re-apply.",
+                }
+            )
             return result
 
         if self._task.check_mode:
@@ -140,8 +142,10 @@ class ActionModule(BaseResourceActionPlugin):
         manager.post_resource(_ATTACH_ENDPOINT, {"subscription_id": subscription_id}, service=_SERVICE)
 
         updated_config = manager.search_api(_CONFIG_ENDPOINT)
-        result.update({
-            "changed": True,
-            "license_info": updated_config.get("license_info", {}),
-        })
+        result.update(
+            {
+                "changed": True,
+                "license_info": updated_config.get("license_info", {}),
+            }
+        )
         return result

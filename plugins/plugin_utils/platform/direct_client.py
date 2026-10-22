@@ -805,6 +805,7 @@ class DirectHTTPClient(BaseAPIClient):
                 raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
 
             time.sleep(min(interval, max(0, timeout - elapsed)))
+
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """
         Create hosts in bulk via the Controller bulk/host_create endpoint.
@@ -827,6 +828,7 @@ class DirectHTTPClient(BaseAPIClient):
         response_body = response.read()
         response_data = json.loads(response_body) if response_body else {}
         return response_data
+
     def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
         """POST JSON data to an API endpoint and return the response."""
         self._ensure_authenticated()

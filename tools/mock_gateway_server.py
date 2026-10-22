@@ -296,173 +296,35 @@ class Store:
         # alphabetically so Molecule tests catch order-sensitivity regressions.
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
-        controller_resources = (
+        controller_defs: List[tuple] = [
             ("job_templates", ["name"], 5000),
             ("inventories", ["name", "organization"], 5100),
-            ("inventories", ["name"], 5100),
             ("projects", ["name"], 5200),
             ("execution_environments", ["name"], 5300),
-            ("credentials", ["name"], 5400),
-            ("labels", ["name"], 5500),
+            ("credentials", ["name", "credential_type"], 5400),
+            ("labels", ["name", "organization"], 5500),
             ("instance_groups", ["name"], 5600),
-            ("notification_templates", ["name"], 5700),
-            ("job_templates", 5000),
-            ("inventories", 5100),
-            ("projects", 5200),
-            ("execution_environments", 5300),
-            ("instance_groups", 5600),
-            ("notification_templates", 5700),
-            ("jobs", 5800),
-            ("project_updates", 5900),
-            ("inventory_updates", 6000),
-            ("workflow_jobs", 6100),
-        )
-        for endpoint, required_fields, start_id in controller_resources:
-        for endpoint, start_id in controller_resources:
-            required_fields = ["name", "organization"] if endpoint == "inventories" else ["name"]
-            required_fields = ["name", "image"] if endpoint == "execution_environments" else ["name"]
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required_fields,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
             ("notification_templates", ["name", "organization", "notification_type"], 5700),
+            ("jobs", ["name"], 5800),
             ("schedules", ["name"], 5900),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("credentials", ["name", "credential_type"], 5800),
-            ("schedules", ["name"], 5900),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("schedules", ["name"], 5900),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("instances", ["hostname"], 6200),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-            ("inventory_sources", ["name", "source", "inventory"], 5800),
-        )
-        for endpoint, required, start_id in controller_resources:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("inventory_sources", ["name", "source", "inventory"], 5000),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("labels", ["name", "organization"], 5100),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("credential_input_sources", ["input_field_name", "target_credential"], 5400),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("hosts", ["name", "inventory"], 5000),
-            ("groups", ["name", "inventory"], 5800),
-            ("credential_types", ["name", "kind"], 5900),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            ("labels", ["name", "organization"], 5500),
-            ("instance_groups", ["name"], 5600),
-            ("notification_templates", ["name"], 5700),
-            ("inventory_sources", ["name", "source", "inventory"], 5800),
-            ("instances", ["hostname"], 5900),
             ("hosts", ["name", "inventory"], 6000),
             ("groups", ["name", "inventory"], 6100),
             ("credential_types", ["name", "kind"], 6200),
             ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
-        )
-        for endpoint, required, start_id in controller_resources:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("workflow_job_templates", ["name"], 6000),
+            ("inventory_sources", ["name", "source", "inventory"], 6400),
+            ("instances", ["hostname"], 6500),
+            ("workflow_job_templates", ["name"], 6600),
+            ("project_updates", ["name"], 6700),
+            ("inventory_updates", ["name"], 6800),
+            ("workflow_jobs", ["name"], 6900),
         ]
         for endpoint, required, start_id in controller_defs:
-            ("labels", ["name", "organization"], 5500),
-            ("instance_groups", ["name"], 5600),
-            ("notification_templates", ["name"], 5700),
-            ("inventory_sources", ["name", "source", "inventory"], 5800),
-            ("instances", ["hostname"], 5900),
-            ("hosts", ["name", "inventory"], 6000),
-            ("groups", ["name", "inventory"], 6100),
-            ("credential_types", ["name", "kind"], 6200),
-            ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
-        )
-        for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
                 service="controller",
             )
-        self._resources[("controller", "inventories")] = GenericResource(
-            resource_name="inventories",
-            required_fields=["name"],
-            start_id=5000,
-            service="controller",
-        )
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
         return self._resources.get((service, name))
@@ -994,8 +856,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 .replace("notification_templates_success", "notification_templates")
                 .replace("notification_templates_error", "notification_templates")
             )
-            assoc_store = self.store.resource(service, assoc_endpoint)
-            assoc_store = self.store.resource(service, assoc_field) or self.store.resource(service, resource_name)
+            assoc_store = self.store.resource(service, assoc_endpoint) or self.store.resource(service, assoc_field)
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
                 return True
