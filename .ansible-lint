@@ -1,4 +1,5 @@
 ---
+profile: production
 exclude_paths:
   - 'changelogs/'
   # base_action.py is an internal base class, not a user-facing action plugin
