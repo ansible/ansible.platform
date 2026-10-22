@@ -48,6 +48,7 @@ no_endpoint_for_module = [
     "ad_hoc_command_wait",
     "bulk_host_delete",
     "bulk_job_launch",
+    "workflow_node_wait",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.

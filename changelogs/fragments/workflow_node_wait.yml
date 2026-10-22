@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - workflow_node_wait - new module migrated from ``awx.awx`` to wait for a workflow node to finish (https://issues.redhat.com/browse/AAP-95874).
+...
