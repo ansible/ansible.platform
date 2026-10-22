@@ -208,6 +208,8 @@
           - renamed_group is changed
           - renamed_group.group.id == created_group.group.id
           - renamed_group.group.name == (name_prefix ~ '-Renamed')
+          - renamed_group.group.description == 'Updated integration test group'
+          - "renamed_group.group.variables | from_json == {'env': 'updated'}"
 
     - name: Check exists
       ansible.platform.group:
