@@ -281,8 +281,12 @@ class Store:
             ("notification_templates", 5700),
         )
         for endpoint, start_id in controller_resources:
+            required_fields = ["name", "image"] if endpoint == "execution_environments" else ["name"]
             self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
+                resource_name=endpoint,
+                required_fields=required_fields,
+                start_id=start_id,
+                service="controller",
             )
         # Controller resources
         controller_defs: List[tuple] = [
@@ -390,7 +394,7 @@ class Store:
         controller_fixtures = {
             "inventories": [{"id": 5101, "name": "Mock Inventory"}],
             "projects": [{"id": 5201, "name": "Mock Project", "organization": 1}],
-            "execution_environments": [{"id": 5301, "name": "Mock EE"}],
+            "execution_environments": [{"id": 5301, "name": "Mock EE", "image": "quay.io/ansible/mock-ee:latest"}],
             "credentials": [{"id": 5401, "name": "Mock Credential"}, {"id": 5402, "name": "Mock Vault Credential"}],
             "labels": [{"id": 5501, "name": "Mock Label 1"}, {"id": 5502, "name": "Mock Label 2"}, {"id": 5503, "name": "Mock Label 3"}],
             "instance_groups": [{"id": 5601, "name": "Mock Instance Group"}],

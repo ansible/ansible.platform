@@ -1173,7 +1173,11 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.fields:
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
-                    if value is None or value == "":
+                    if value is None:
+                        if context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}:
+                            request_data[field] = None
+                        continue
+                    if value == "":
                         continue
                     request_data[field] = value
 
