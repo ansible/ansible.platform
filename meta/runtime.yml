@@ -39,4 +39,5 @@ action_groups:
     - controller_project
     - execution_environment
     - notification_template
+    - schedule
 ...

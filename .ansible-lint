@@ -24,5 +24,6 @@ exclude_paths:
   - 'extensions/molecule/notification_template_mock/inventory.yml'
   - 'extensions/molecule/schedule_mock/inventory.yml'
   - 'extensions/molecule/group_mock/inventory.yml'
+  - 'extensions/molecule/schedule_mock/inventory.yml'
 use_default_rules: true
 ...
