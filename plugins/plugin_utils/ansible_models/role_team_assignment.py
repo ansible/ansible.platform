@@ -22,6 +22,8 @@ class AnsibleRoleTeamAssignment:
     # Target team (mutually exclusive: team name OR team_ansible_id)
     team: Optional[str] = None
     team_ansible_id: Optional[str] = None
+    # Lookup-only: scopes team name resolution when the same name exists in multiple orgs
+    organization: Optional[str] = None
 
     # Object selector (mutually exclusive groups)
     object_id: Optional[int] = None
