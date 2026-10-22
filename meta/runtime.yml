@@ -25,6 +25,8 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
+    - controller_credential
+    - subscriptions
     - job_template
     - controller_credential_type
     - credential_input_source
@@ -34,4 +36,27 @@ action_groups:
     - inventory_source
     - job_list
     - group
+    - inventory
+    - controller_project
+    - execution_environment
+    - notification_template
+    - schedule
+    - workflow_job_template
+    - instance
+    - job_launch
+    - bulk_host_create
+    - bulk_job_launch
+    - job_cancel
+    - workflow_approval
+    - job_wait
+    - license
+    - project_update
+    - inventory_source_update
+    - workflow_launch
+    - ad_hoc_command
+    - ad_hoc_command_cancel
+    - ad_hoc_command_wait
+    - bulk_host_delete
+    - workflow_node_wait
+    - controller_meta
 ...

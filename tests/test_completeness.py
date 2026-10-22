@@ -19,7 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Normally a read-only endpoint should not have a module (e.g. /api/gateway/v1/me/) but sometimes we reuse a name.
 # For example, we have a role module but /api/gateway/v1/roles/ is a read-only endpoint.
 # This list indicates which read-only endpoints have associated modules with them.
-read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key"]
+read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key", "project_update"]
 
 # If a module should not be created for an endpoint and the endpoint is not read-only add it here
 # THINK HARD ABOUT DOING THIS
@@ -30,6 +30,25 @@ no_endpoint_for_module = [
     "token",
     "job_template",
     "job_list",
+    "controller_credential",
+    "group",
+    "job_launch",
+    "bulk_host_create",
+    "subscriptions",
+    "job_cancel",
+    "workflow_approval",
+    "job_wait",
+    "license",
+    "job_cancel",
+    "project_update",
+    "inventory_source_update",
+    "workflow_launch",
+    "ad_hoc_command",
+    "ad_hoc_command_cancel",
+    "ad_hoc_command_wait",
+    "bulk_host_delete",
+    "bulk_job_launch",
+    "workflow_node_wait",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
@@ -37,8 +56,11 @@ no_endpoint_for_module = [
 # is set via a separate endpoint. Pre-populated so migrators don't need to investigate.
 controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
+    "workflow_job_template": ["organization", "survey_spec"],
     "host": [],
     "controller_credential_type": [],
+    "group": ["preserve_existing_children", "preserve_existing_hosts"],
+    "ad_hoc_command": ["wait", "interval", "timeout"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
@@ -67,7 +89,9 @@ no_api_parameter_ok = {
 # Modules that need to be developed. If the module is found on the file system it will auto-detect
 # that the work is being done and will bypass this check.
 needs_development = ["ui_plugin_route"]
-needs_param_development = {}
+needs_param_development = {
+    "inventory": ["opa_query_path"],
+}
 # -----------------------------------------------------------------------------------------------------------
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))

@@ -137,7 +137,15 @@ class PlatformService(BaseAPIClient):
                 return False
         return self.seconds_since_last_activity() >= self.config.idle_timeout
 
-    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = "http_request",
+        resource: str = "unknown",
+        retry_request: bool = True,
+        **kwargs,
+    ) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -148,6 +156,7 @@ class PlatformService(BaseAPIClient):
             url: Request URL
             operation: Operation name for error context
             resource: Resource type for error context
+            retry_request: Whether to retry transient request failures
             **kwargs: Additional arguments for requests method
 
         Returns:
@@ -158,7 +167,9 @@ class PlatformService(BaseAPIClient):
         """
         self.record_activity()
 
-        @retry_http_request(config=self.retry_config)
+        retry_config = self.retry_config if retry_request else RetryConfig(max_attempts=1)
+
+        @retry_http_request(config=retry_config)
         def _execute_with_retry():
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
@@ -642,13 +653,21 @@ class PlatformService(BaseAPIClient):
                 if getattr(api_data, field, None) is None and current_value is not None:
                     setattr(api_data, field, current_value)
 
+        # Enforced updates must clear omitted organization and credential
+        # associations after the merge restores values from the current resource.
+        fields_to_null: set = set()
+        if context.include_nulls_for_update:
+            for field in ("organization", "credential"):
+                if field in user_unset_fields and hasattr(api_data, field):
+                    setattr(api_data, field, None)
+                    fields_to_null.add(field)
+
         # After the merge, let the mixin declare which fields must be sent as
         # null to clear server-side values that are incompatible with the new
         # resource state (e.g. role/team when map_type changes to is_superuser).
         # Only fields the user did NOT explicitly provide are eligible — if the
         # user provided an incompatible field the API will reject it with a clear
         # validation error, which is the correct behaviour.
-        fields_to_null: set = set()
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
             candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
             for field in candidate_fields:
@@ -848,7 +867,8 @@ class PlatformService(BaseAPIClient):
         Returns:
             Found resource as dict (Ansible format)
         """
-        operations = mixin_class.get_endpoint_operations()
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
@@ -990,6 +1010,8 @@ class PlatformService(BaseAPIClient):
                     # Include as explicit null only for fields declared by the mixin
                     # as needing to be cleared (e.g. role/team on map_type change).
                     if field in _fields_to_null:
+                        request_data[field] = None
+                    elif context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}:
                         request_data[field] = None
                     continue
                 request_data[field] = val
@@ -1180,6 +1202,7 @@ class PlatformService(BaseAPIClient):
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        preserve_existing: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -1187,7 +1210,8 @@ class PlatformService(BaseAPIClient):
         Generic across any resource with a list-style association sub-endpoint (credentials,
         instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
-        current associations, and associates/disassociates to reconcile.
+        current associations, and associates/disassociates to reconcile. Set
+        preserve_existing=True to retain already-associated items.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -1209,6 +1233,8 @@ class PlatformService(BaseAPIClient):
             assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        if preserve_existing:
+            desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
@@ -1228,7 +1254,7 @@ class PlatformService(BaseAPIClient):
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -1244,7 +1270,7 @@ class PlatformService(BaseAPIClient):
         if data is None:
             return False
         self.record_activity()
-        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/", service=service)
 
         if data == {}:
             response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
@@ -1261,6 +1287,64 @@ class PlatformService(BaseAPIClient):
         response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         return True
+
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """
+        Cancel a resource via its /cancel/ sub-endpoint.
+
+        Checks whether the resource can be canceled (GET), and if so,
+        POSTs to {cancel_endpoint_path}/{resource_id}/cancel/.
+        Already-finished resources return success with changed=False.
+
+        Args:
+            resource_id: ID of the resource (job) to cancel
+            cancel_endpoint_path: Base endpoint path (e.g., 'jobs')
+            fail_if_not_running: If True, raise ValueError when the
+                resource cannot be canceled (already finished)
+            service: Service name (default: 'controller')
+
+        Returns:
+            dict with 'changed', 'id', and 'status' keys
+
+        Raises:
+            ValueError: If resource not found or fail_if_not_running
+                is True and the resource cannot be canceled
+        """
+        self.record_activity()
+        svc_version = self.get_api_version(service)
+        cancel_url = self._build_url(
+            f"/{cancel_endpoint_path}/{resource_id}/cancel/",
+            service=service,
+            api_version=svc_version,
+        )
+
+        # GET to check if the resource can be canceled
+        try:
+            response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+            cancel_info = response.json()
+        except Exception:
+            cancel_info = {}
+        response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+        cancel_info = response.json()
+
+        if not cancel_info.get("can_cancel", False):
+            if fail_if_not_running:
+                raise ValueError("Job %d is not running and cannot be canceled" % resource_id)
+            return {"changed": False, "id": resource_id, "status": "already_completed"}
+
+        # POST to cancel
+        response = self._make_request(
+            "POST",
+            cancel_url,
+            operation="cancel_resource",
+            resource=cancel_endpoint_path,
+            retry_request=False,
+            json={},
+        )
+        if response.status_code not in (200, 202):
+            response.raise_for_status()
+
+        return {"changed": True, "id": resource_id, "status": "canceled"}
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """
@@ -1287,6 +1371,126 @@ class PlatformService(BaseAPIClient):
         response = self.session.post(copy_url, json={"name": new_name}, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         return response.json()
+
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint and return the created resource."""
+        self.record_activity()
+        url = self._build_url(launch_url, service=service)
+        response = self.session.post(url, json=payload, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        return response.json()
+
+    def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
+        """Poll a resource URL until it reaches a terminal status.
+
+        Raises WaitTimeoutError if the timeout is exceeded, with last_result
+        populated so the caller can still report the job's id/status.
+        """
+        import time
+
+        from ..platform.base_client import DEFAULT_WAIT_INTERVAL, DEFAULT_WAIT_TIMEOUT, TERMINAL_STATUSES, WaitTimeoutError
+
+        if timeout is None:
+            timeout = DEFAULT_WAIT_TIMEOUT
+        if interval is None:
+            interval = DEFAULT_WAIT_INTERVAL
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
+
+        self.record_activity()
+        url = self._build_url(resource_url, service=service)
+        start = time.monotonic()
+        last_result = {}
+
+        while True:
+            if last_result:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
+            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
+            last_result = response.json()
+            self.record_activity()
+
+            status = last_result.get("status", "")
+            if status in TERMINAL_STATUSES:
+                return last_result
+
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
+            time.sleep(min(interval, max(0, timeout - elapsed)))
+            self.record_activity()
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        self.record_activity()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
+        if response.status_code != 201:
+            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
+        return response.json()
+
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """
+        Make a raw authenticated HTTP request and return parsed JSON.
+
+        Used by action plugins for non-standard endpoints (e.g. workflow
+        approval approve/deny sub-endpoints, settings/all/).
+
+        Args:
+            method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
+            path: API path (e.g. '/api/controller/v2/workflow_approvals/123/approve/')
+            data: Optional dict to JSON-encode as request body
+
+        Returns:
+            Parsed JSON response dict (empty dict on empty body)
+        """
+        self.record_activity()
+        url = self._build_url(path)
+        kwargs = {}
+        if data is not None:
+            kwargs["json"] = data
+
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
+        try:
+            return response.json() if response.content else {}
+        except Exception:
+            return {}
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        self.record_activity()
+        url = self._build_url(endpoint, service=service)
+        response = self.session.post(url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        if response.status_code == 204 or not response.content:
+            return {}
+        return response.json()
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        self.record_activity()
+        url = self._build_url(endpoint, service=service)
+        response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
+        response.raise_for_status()
+        return {"changed": True}
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

@@ -1,0 +1,10 @@
+---
+- name: Verify — bulk_host_create results
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Verify converge completed (no-op — assertions are in converge.yml)
+      ansible.builtin.debug:
+        msg: "Bulk host create converge assertions passed."
+...

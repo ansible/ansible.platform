@@ -15,8 +15,8 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   service_types, services, tokens, ui_plugin_routes,
   settings (singleton), settings/all (flat dict read)
 
-Controller endpoints include job_templates CRUD, associations, survey_spec,
-copy, and the related resources needed by the job_template Molecule scenario.
+Controller endpoints include jobs, job_templates CRUD, associations,
+survey_spec, copy, and the related resources needed by Molecule scenarios.
 
 Notes
 -----
@@ -79,6 +79,7 @@ class GenericResource:
         self.sort_list_fields: List[str] = sort_list_fields or []
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
+        self._associations: Dict[int, Dict[str, set]] = {}
 
     def _normalize_item(self, item: Dict[str, Any]) -> None:
         """Sort list fields in-place to match real Gateway alphabetical ordering."""
@@ -182,6 +183,31 @@ class GenericResource:
             if item_id not in self._items:
                 raise KeyError("not found")
             del self._items[item_id]
+            self._associations.pop(item_id, None)
+
+    def list_associations(self, item_id: int, assoc_field: str, assoc_store: "GenericResource") -> Dict[str, Any]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            ids = self._associations.get(item_id, {}).get(assoc_field, set())
+        items = [assoc_store.get(aid) for aid in ids if aid in assoc_store._items]
+        return {"count": len(items), "results": items}
+
+    def handle_association(self, item_id: int, assoc_field: str, payload: Dict[str, Any]) -> None:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            assoc_id = payload.get("id")
+            if assoc_id is None:
+                raise ValueError("'id' is required")
+            if item_id not in self._associations:
+                self._associations[item_id] = {}
+            if assoc_field not in self._associations[item_id]:
+                self._associations[item_id][assoc_field] = set()
+            if payload.get("disassociate"):
+                self._associations[item_id][assoc_field].discard(assoc_id)
+            else:
+                self._associations[item_id][assoc_field].add(assoc_id)
 
     def seed(self, version: str, items: List[Dict[str, Any]]) -> None:
         """Pre-populate with seed data (used for orgs, feature_flags, etc.)."""
@@ -270,57 +296,27 @@ class Store:
         # alphabetically so Molecule tests catch order-sensitivity regressions.
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
-        controller_resources = (
-            ("job_templates", 5000),
-            ("inventories", 5100),
-            ("projects", 5200),
-            ("execution_environments", 5300),
-            ("credentials", 5400),
-            ("labels", 5500),
-            ("instance_groups", 5600),
-            ("notification_templates", 5700),
-        )
-        for endpoint, start_id in controller_resources:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
-            )
-        # Controller resources
         controller_defs: List[tuple] = [
-            ("inventory_sources", ["name", "source", "inventory"], 5000),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("labels", ["name", "organization"], 5100),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("credential_input_sources", ["input_field_name", "target_credential"], 5400),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("hosts", ["name", "inventory"], 5000),
-            ("groups", ["name", "inventory"], 5800),
-            ("credential_types", ["name", "kind"], 5900),
+            ("job_templates", ["name"], 5000),
+            ("inventories", ["name", "organization"], 5100),
+            ("projects", ["name"], 5200),
+            ("execution_environments", ["name"], 5300),
+            ("credentials", ["name", "credential_type"], 5400),
+            ("labels", ["name", "organization"], 5500),
+            ("instance_groups", ["name"], 5600),
+            ("notification_templates", ["name"], 5700),
+            ("jobs", ["name"], 5800),
+            ("schedules", ["name"], 5900),
+            ("hosts", ["name", "inventory"], 6000),
+            ("groups", ["name", "inventory"], 6100),
+            ("credential_types", ["name", "kind"], 6200),
+            ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
+            ("inventory_sources", ["name", "source", "inventory"], 6400),
+            ("instances", ["hostname"], 6500),
+            ("workflow_job_templates", ["name"], 6600),
+            ("project_updates", ["name"], 6700),
+            ("inventory_updates", ["name"], 6800),
+            ("workflow_jobs", ["name"], 6900),
         ]
         for endpoint, required, start_id in controller_defs:
             self._resources[("controller", endpoint)] = GenericResource(
@@ -356,6 +352,32 @@ class Store:
                     "REMOTE_HOST_HEADERS": [],
                 }
 
+        # Seed instances for Controller association tests
+        # Seed hosts for Controller group association tests
+        host_store = self._resources.get(("controller", "hosts"))
+        if host_store and not host_store._items:
+            host_store.seed(
+                "2",
+                [
+                    {"id": 6001, "name": "web1.example.com", "inventory": 1},
+                    {"id": 6002, "name": "web2.example.com", "inventory": 1},
+                    {"id": 6003, "name": "db1.example.com", "inventory": 1},
+                ],
+            )
+
+        # Seed instances for Controller instance_group association tests
+        inst_store = self._resources.get(("controller", "instances"))
+        if inst_store and not inst_store._items:
+            inst_store.seed(
+                "2",
+                [
+                    {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
+                    {"id": 5901, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 5902, "hostname": "node2.example.com", "node_type": "execution"},
+                ],
+            )
+
         # Seed feature flags with runtime-toggleable flags
         ff_store = self._resources.get(("gateway", "feature_flags"))
         if ff_store and not ff_store._items:
@@ -390,11 +412,67 @@ class Store:
         controller_fixtures = {
             "inventories": [{"id": 5101, "name": "Mock Inventory"}],
             "projects": [{"id": 5201, "name": "Mock Project", "organization": 1}],
-            "execution_environments": [{"id": 5301, "name": "Mock EE"}],
+            "execution_environments": [{"id": 5301, "name": "Mock EE", "image": "quay.io/ansible/mock-ee:latest"}],
             "credentials": [{"id": 5401, "name": "Mock Credential"}, {"id": 5402, "name": "Mock Vault Credential"}],
             "labels": [{"id": 5501, "name": "Mock Label 1"}, {"id": 5502, "name": "Mock Label 2"}, {"id": 5503, "name": "Mock Label 3"}],
             "instance_groups": [{"id": 5601, "name": "Mock Instance Group"}],
             "notification_templates": [{"id": 5701, "name": "Mock Notification"}],
+            "jobs": [
+                {
+                    "id": 5801,
+                    "name": "Mock Successful Job",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                },
+                {
+                    "id": 5802,
+                    "name": "Mock Failed Job",
+                    "status": "failed",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                },
+                {
+                    "id": 5803,
+                    "name": "Mock Running Job",
+                    "status": "running",
+                    "elapsed": 0.0,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": None,
+                },
+            ],
+            "project_updates": [
+                {
+                    "id": 5901,
+                    "name": "Mock Successful Project Update",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                }
+            ],
+            "inventory_updates": [
+                {
+                    "id": 6001,
+                    "name": "Mock Successful Inventory Update",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                }
+            ],
+            "workflow_jobs": [
+                {
+                    "id": 6101,
+                    "name": "Mock Successful Workflow Job",
+                    "status": "successful",
+                    "elapsed": 1.25,
+                    "started": "2026-01-01T00:00:00Z",
+                    "finished": "2026-01-01T00:00:01Z",
+                }
+            ],
         }
         for endpoint, items in controller_fixtures.items():
             resource = self.resource("controller", endpoint)
@@ -424,11 +502,11 @@ class Store:
             ids = self._jt_associations.setdefault(template_id, {}).setdefault(field_name, set())
             (ids.add if associate else ids.discard)(item_id)
 
-    def copy_job_template(self, version: str, template_id: int, name: str) -> Dict[str, Any]:
-        resource = self.resource("controller", "job_templates")
+    def copy_job_template(self, version: str, template_id: int, name: str, resource_name: str = "job_templates") -> Dict[str, Any]:
+        resource = self.resource("controller", resource_name)
         source = resource.get(template_id)
         if any(item["name"] == name for item in resource.list_items()["results"]):
-            raise ValueError(f"Job template '{name}' already exists")
+            raise ValueError(f"Resource '{name}' already exists")
         payload = {key: value for key, value in source.items() if key not in ("id", "created", "modified", "url")}
         payload["name"] = name
         copied = resource.create(version, payload)
@@ -698,6 +776,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
         """
+        self.store.seed_defaults()
         store = self.store.resource(service, resource_name)
         if store is None:
             return False
@@ -713,6 +792,40 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     payload = self._parse_json_body()
                     created = store.create(version, payload)
                     self._send_json(201, created)
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                return True
+
+        # Association sub-endpoint:  /api/{service}/vX/{resource}/{id}/{assoc_field}/
+        if len(parts) == 6:
+            try:
+                item_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return True
+            assoc_field = parts[5]
+            assoc_endpoint = (
+                assoc_field.replace("notification_templates_started", "notification_templates")
+                .replace("notification_templates_success", "notification_templates")
+                .replace("notification_templates_error", "notification_templates")
+            )
+            assoc_store = self.store.resource(service, assoc_endpoint) or self.store.resource(service, assoc_field) or self.store.resource(service, resource_name)
+            if assoc_store is None:
+                self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
+                return True
+            if self.command == "GET":
+                try:
+                    self._send_json(200, store.list_associations(item_id, assoc_field, assoc_store))
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return True
+            if self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                    store.handle_association(item_id, assoc_field, payload)
+                    self._send_empty(204)
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
                 except ValueError as e:
                     self._send_json(400, {"detail": str(e)})
                 return True
@@ -804,16 +917,16 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         resource = parts[3] if len(parts) >= 4 else None
 
-        if service == "controller" and resource == "job_templates" and len(parts) >= 5:
+        if service == "controller" and resource in ("job_templates", "workflow_job_templates") and len(parts) >= 5:
             try:
                 template_id = int(parts[4])
-                self.store.resource("controller", "job_templates").get(template_id)
+                self.store.resource("controller", resource).get(template_id)
             except (ValueError, KeyError):
                 self._send_json(404, {"detail": "Not Found"})
                 return
 
             if len(parts) == 5 and self.command == "DELETE":
-                self.store.resource("controller", "job_templates").delete(template_id)
+                self.store.resource("controller", resource).delete(template_id)
                 with self.store._jt_lock:
                     self.store._jt_associations.pop(template_id, None)
                     self.store._jt_surveys.pop(template_id, None)
@@ -829,6 +942,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     "notification_templates_started",
                     "notification_templates_success",
                     "notification_templates_error",
+                    "notification_templates_approvals",
                 }
                 if subresource in association_names:
                     if self.command == "GET":
@@ -862,7 +976,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         return
                 if subresource == "copy" and self.command == "POST":
                     try:
-                        copied = self.store.copy_job_template(version, template_id, self._parse_json_body()["name"])
+                        copied = self.store.copy_job_template(version, template_id, self._parse_json_body()["name"], resource_name=resource)
                         self._send_json(201, copied)
                     except (KeyError, ValueError) as error:
                         self._send_json(400, {"detail": str(error)})
@@ -1019,6 +1133,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         self._send_json(404, {"detail": "Not Found"})
                     return
+
+        # ---- Controller bulk/host_create ----
+        if service == "controller" and resource == "bulk" and len(parts) >= 5 and parts[4] == "host_create" and self.command == "POST":
+            try:
+                payload = self._parse_json_body()
+                inv_id = payload.get("inventory")
+                hosts = payload.get("hosts", [])
+                if not inv_id or not hosts:
+                    self._send_json(400, {"detail": "inventory and hosts are required"})
+                    return
+                self._send_json(201, {"inventory": inv_id, "hosts": hosts})
+            except ValueError as e:
+                self._send_json(400, {"detail": str(e)})
+            return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:

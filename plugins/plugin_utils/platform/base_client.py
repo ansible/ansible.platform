@@ -15,6 +15,18 @@ from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_WAIT_TIMEOUT = 3600.0
+DEFAULT_WAIT_INTERVAL = 10.0
+TERMINAL_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
+
+
+class WaitTimeoutError(Exception):
+    """Raised when wait_for_completion exceeds the configured timeout."""
+
+    def __init__(self, message, last_result=None):
+        super().__init__(message)
+        self.last_result = last_result or {}
+
 
 class BaseAPIClient(ABC):
     """
@@ -284,6 +296,31 @@ class BaseAPIClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """
+        Cancel a resource via its /cancel/ sub-endpoint.
+
+        Checks whether the resource can be canceled (GET), and if so,
+        POSTs to {cancel_endpoint_path}/{resource_id}/cancel/.
+        Already-finished resources return success with changed=False.
+
+        Args:
+            resource_id: ID of the resource (job) to cancel
+            cancel_endpoint_path: Base endpoint path (e.g., 'jobs')
+            fail_if_not_running: If True, raise ValueError when the
+                resource cannot be canceled (already finished)
+            service: Service name (default: 'controller')
+
+        Returns:
+            dict with 'changed', 'id', and 'status' keys
+
+        Raises:
+            ValueError: If resource not found or fail_if_not_running
+                is True and the resource cannot be canceled
+        """
+        pass
+
     def lookup_organization_ids(self, names: list) -> list:
         """
         Lookup organization IDs from names (shared helper).
@@ -297,6 +334,23 @@ class BaseAPIClient(ABC):
         # This is a shared helper that both modes can use
         # Implementation will be in the shared CRUD layer
         pass
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        raise NotImplementedError
 
     def lookup_organization_names(self, ids: list) -> list:
         """

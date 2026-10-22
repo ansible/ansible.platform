@@ -98,6 +98,49 @@
       vars:
         ansible_connection: local
 
+    - name: Create child group for association test (connection local)
+      ansible.platform.group:
+        name: "child-group-local"
+        inventory: "1"
+      vars:
+        ansible_connection: local
+
+    - name: Add host and child associations (connection local)
+      ansible.platform.group:
+        name: "{{ group_name_local }}"
+        inventory: "1"
+        hosts:
+          - "web1.example.com"
+        children:
+          - "child-group-local"
+      register: assoc_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert associations changed (connection local)
+      ansible.builtin.assert:
+        that: assoc_result_local is changed
+      vars:
+        ansible_connection: local
+
+    - name: Re-run same associations for idempotency (connection local)
+      ansible.platform.group:
+        name: "{{ group_name_local }}"
+        inventory: "1"
+        hosts:
+          - "web1.example.com"
+        children:
+          - "child-group-local"
+      register: assoc_idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert associations idempotent (connection local)
+      ansible.builtin.assert:
+        that: assoc_idem_result_local is not changed
+      vars:
+        ansible_connection: local
+
 - name: Converge — group (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http

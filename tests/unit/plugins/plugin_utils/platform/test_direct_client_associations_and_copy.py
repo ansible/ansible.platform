@@ -26,6 +26,8 @@ def _client(base_url="https://gw.example.com"):
     client.session.headers = {}
     client.lookup_resource_id = MagicMock()
     client.search_api = MagicMock()
+    client.lookup_resource_id = MagicMock()
+    client.search_api = MagicMock()
     return client
 
 
@@ -60,6 +62,28 @@ class TestManageAssociations(unittest.TestCase):
         payloads = [c.kwargs["json"] for c in post_calls]
         self.assertIn({"id": 3, "associate": True}, payloads)
         self.assertIn({"id": 2, "disassociate": True}, payloads)
+
+    def test_preserve_existing_keeps_unrequested_associations(self):
+        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-c": 3}[value]
+        self.client.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+            changed = self.client.manage_associations(
+                "/api/controller/v2/job_templates",
+                42,
+                "credentials",
+                ["cred-c"],
+                "credentials",
+                "name",
+                service="controller",
+                preserve_existing=True,
+            )
+
+        self.assertTrue(changed)
+        payloads = [call.kwargs["json"] for call in mock_request.call_args_list]
+        self.assertIn({"id": 3, "associate": True}, payloads)
+        self.assertNotIn({"id": 1, "disassociate": True}, payloads)
+        self.assertNotIn({"id": 2, "disassociate": True}, payloads)
 
     def test_no_change_when_already_in_sync(self):
         self.client.search_api.return_value = {"results": [{"id": 1}]}
@@ -183,6 +207,16 @@ class TestManageAssociations(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
             with self.assertRaises(json.JSONDecodeError):
                 self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"results": [{"id": 1}]})) as mock_request:
+            changed = self.client.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [1], "credentials", "name")
+
+        self.assertFalse(changed)
+        mock_request.assert_called_once_with(
+            "GET",
+            "https://gw.example.com/api/controller/v2/job_templates/42/credentials/",
+            operation="search",
+            resource="/api/controller/v2/job_templates/42/credentials/",
+        )
 
 
 class TestManageSubResource(unittest.TestCase):
@@ -274,6 +308,7 @@ class TestSearchApi(unittest.TestCase):
         self.client.base_url = "https://gw.example.com"
         self.client.api_versions = {}
         self.client.api_version = "2"
+        self.client.api_versions = {"gateway": "2"}
         self.client.cache = {}
 
     def _bad_json_response(self):

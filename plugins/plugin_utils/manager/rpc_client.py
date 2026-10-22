@@ -113,6 +113,10 @@ class ManagerRPCClient:
         """
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service)
 
+    def lookup_organization_names(self, organization_ids: list) -> list:
+        """Resolve organization IDs to names via the manager process."""
+        return self.service_proxy.lookup_organization_names(organization_ids)
+
     def manage_associations(
         self,
         base_path: str,
@@ -122,17 +126,60 @@ class ManagerRPCClient:
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        preserve_existing: bool = False,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
-        return self.service_proxy.manage_associations(base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service)
+        return self.service_proxy.manage_associations(
+            base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service, preserve_existing
+        )
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
-        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data, service)
+
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""
+        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
+
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint via the manager process. See PlatformService.launch_resource()."""
+        return self.service_proxy.launch_resource(launch_url, payload, service)
+
+    def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
+        """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
+        return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
+        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
+
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """Make a raw authenticated HTTP request via the manager process.
+
+        Delegates to PlatformService.direct_request() so all HTTP/SSL work
+        happens in the manager subprocess.
+
+        Args:
+            method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
+            path: API path (e.g. '/api/controller/v2/workflow_approvals/123/approve/')
+            data: Optional dict to JSON-encode as request body
+
+        Returns:
+            Parsed JSON response dict (empty dict on empty body)
+        """
+        return self.service_proxy.direct_request(method, path, data)
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
+        """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""
+        return self.service_proxy.post_resource(endpoint, data, service)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an endpoint via the manager process. See PlatformService.delete_resource()."""
+        return self.service_proxy.delete_resource(endpoint, service)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

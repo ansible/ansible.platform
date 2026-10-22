@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - license - migrate license module from awx_collection for applying or removing Controller subscription manifests (https://issues.redhat.com/browse/AAP-95863).
+
+...

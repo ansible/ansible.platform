@@ -123,14 +123,43 @@ collection-test-all-connections: collection-install
 ## Run a single Molecule scenario (mock tests, no real Gateway needed).
 ## Usage: make molecule-test SCENARIO=role_user_assignment_mock
 ##        make molecule-test SCENARIO=users_mock
-## Runs from inside the scenario directory so molecule finds molecule.yml regardless of version.
 SCENARIO ?= default
 molecule-test:
-	cd extensions/molecule/$(SCENARIO) && molecule test
+	molecule test -s $(SCENARIO)
 
 ## Run all Molecule mock scenarios (starts mock server via default scenario, runs all, tears down).
 molecule-test-all:
-	cd extensions && molecule test --all
+	cd extensions && \
+	trap 'molecule destroy -s default' EXIT; \
+	molecule create -s default && \
+	for scenario in molecule/*_mock; do \
+		molecule test -s "$${scenario##*/}" || exit $$?; \
+	done
+	@cd extensions && \
+	result=0; \
+	molecule create -s default || result=$$?; \
+	if [ $$result -eq 0 ]; then \
+		for scenario_dir in molecule/*; do \
+			[ -f "$$scenario_dir/molecule.yml" ] || continue; \
+			scenario=$${scenario_dir##*/}; \
+			[ "$$scenario" = default ] && continue; \
+			molecule test -s "$$scenario" || { result=$$?; break; }; \
+		done; \
+	fi; \
+	molecule destroy -s default || { destroy_result=$$?; [ $$result -ne 0 ] || result=$$destroy_result; }; \
+	exit $$result
+	@set -e; \
+	cd extensions; \
+	trap 'molecule destroy -s default' EXIT; \
+	molecule create -s default; \
+	failed=0; \
+	for scenario in molecule/*_mock; do \
+		if ! molecule test -s "$${scenario#molecule/}"; then \
+			failed=1; \
+		fi; \
+	done; \
+	exit "$$failed"
+	molecule test --all
 
 ## Run the collections test-integration check to see if all modules have integration tests
 collection-test-integration-check:

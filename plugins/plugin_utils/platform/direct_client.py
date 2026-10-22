@@ -572,6 +572,7 @@ class DirectHTTPClient(BaseAPIClient):
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        preserve_existing: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -579,7 +580,8 @@ class DirectHTTPClient(BaseAPIClient):
         Generic across any resource with a list-style association sub-endpoint (credentials,
         instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
-        current associations, and associates/disassociates to reconcile.
+        current associations, and associates/disassociates to reconcile. Set
+        preserve_existing=True to retain already-associated items.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -601,6 +603,8 @@ class DirectHTTPClient(BaseAPIClient):
             assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        if preserve_existing:
+            desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
@@ -631,10 +635,10 @@ class DirectHTTPClient(BaseAPIClient):
                     status_code=e.status_code,
                     response_body=e.response_body,
                 ) from e
-            changed = True
+
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -650,7 +654,7 @@ class DirectHTTPClient(BaseAPIClient):
         if data is None:
             return False
         self._ensure_authenticated()
-        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
+        sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/", service=service)
 
         if data == {}:
             try:
@@ -675,6 +679,57 @@ class DirectHTTPClient(BaseAPIClient):
         self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
         return True
 
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """
+        Cancel a resource via its /cancel/ sub-endpoint.
+
+        Checks whether the resource can be canceled (GET), and if so,
+        POSTs to {cancel_endpoint_path}/{resource_id}/cancel/.
+        Already-finished resources return success with changed=False.
+
+        Args:
+            resource_id: ID of the resource (job) to cancel
+            cancel_endpoint_path: Base endpoint path (e.g., 'jobs')
+            fail_if_not_running: If True, raise ValueError when the
+                resource cannot be canceled (already finished)
+            service: Service name (default: 'controller')
+
+        Returns:
+            dict with 'changed', 'id', and 'status' keys
+
+        Raises:
+            ValueError: If resource not found or fail_if_not_running
+                is True and the resource cannot be canceled
+        """
+        self._ensure_authenticated()
+        svc_version = self.get_api_version(service)
+        cancel_url = self._build_url(
+            f"/{cancel_endpoint_path}/{resource_id}/cancel/",
+            service=service,
+            api_version=svc_version,
+        )
+
+        # GET to check if the resource can be canceled
+        try:
+            response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+            response_body = response.read()
+            cancel_info = json.loads(response_body) if response_body else {}
+        except Exception:
+            cancel_info = {}
+        response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+        response_body = response.read()
+        cancel_info = json.loads(response_body) if response_body else {}
+
+        if not cancel_info.get("can_cancel", False):
+            if fail_if_not_running:
+                raise ValueError("Job %d is not running and cannot be canceled" % resource_id)
+            return {"changed": False, "id": resource_id, "status": "already_completed"}
+
+        # POST to cancel
+        self._make_request("POST", cancel_url, operation="cancel_resource", resource=cancel_endpoint_path, json={})
+
+        return {"changed": True, "id": resource_id, "status": "canceled"}
+
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """
         Copy a resource via its /copy/ sub-endpoint.
@@ -690,7 +745,8 @@ class DirectHTTPClient(BaseAPIClient):
         else:
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
-            results = json.loads(response.read()).get("results", [])
+            response_body = response.read()
+            results = json.loads(response_body).get("results", []) if response_body else []
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
@@ -698,6 +754,97 @@ class DirectHTTPClient(BaseAPIClient):
         copy_url = self._build_url(f"{copy_endpoint_path}/{source_id}/copy/", service=service)
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
         return json.loads(response.read())
+
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint and return the created resource."""
+        self._ensure_authenticated()
+        url = self._build_url(launch_url, service=service)
+        response = self._make_request("POST", url, operation="launch_resource", resource="launch", json=payload)
+        response = self._make_request("POST", url, operation="launch", resource="job", json=payload)
+        return json.loads(response.read())
+
+    def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
+        """Poll a resource URL until it reaches a terminal status.
+
+        Raises WaitTimeoutError if the timeout is exceeded, with last_result
+        populated so the caller can still report the job's id/status.
+        """
+        import time
+
+        from .base_client import DEFAULT_WAIT_INTERVAL, DEFAULT_WAIT_TIMEOUT, TERMINAL_STATUSES, WaitTimeoutError
+
+        if timeout is None:
+            timeout = DEFAULT_WAIT_TIMEOUT
+        if interval is None:
+            interval = DEFAULT_WAIT_INTERVAL
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
+
+        self._ensure_authenticated()
+        url = self._build_url(resource_url, service=service)
+        start = time.monotonic()
+        last_result = {}
+
+        while True:
+            if last_result:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
+            response = self._make_request("GET", url, operation="wait_poll", resource="launch")
+            response = self._make_request("GET", url, operation="wait_poll", resource="job")
+            response = self._make_request("GET", url, operation="wait_poll", resource="launch")
+            last_result = json.loads(response.read())
+
+            status = last_result.get("status", "")
+            if status in TERMINAL_STATUSES:
+                return last_result
+
+            elapsed = time.monotonic() - start
+            if elapsed >= timeout:
+                raise WaitTimeoutError(f"Timed out waiting after {timeout}s", last_result=last_result)
+
+            time.sleep(min(interval, max(0, timeout - elapsed)))
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        self._ensure_authenticated()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
+        response_body = response.read()
+        response_data = json.loads(response_body) if response_body else {}
+        return response_data
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        response = self._make_request("POST", url, operation="post_resource", resource="config", json=data)
+        body = response.read()
+        if not body:
+            return {}
+        return json.loads(body)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        self._make_request("DELETE", url, operation="delete_resource", resource="config")
+        return {"changed": True}
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
@@ -764,7 +911,6 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
-
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.
@@ -1173,7 +1319,11 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.fields:
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
-                    if value is None or value == "":
+                    if value is None:
+                        if context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}:
+                            request_data[field] = None
+                        continue
+                    if value == "":
                         continue
                     request_data[field] = value
 
