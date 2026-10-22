@@ -1304,8 +1304,11 @@ class PlatformService(BaseAPIClient):
         )
 
         # GET to check if the resource can be canceled
-        response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
-        cancel_info = response.json()
+        try:
+            response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+            cancel_info = response.json()
+        except Exception:
+            cancel_info = {}
 
         if not cancel_info.get("can_cancel", False):
             if fail_if_not_running:
