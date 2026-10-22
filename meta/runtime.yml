@@ -41,4 +41,5 @@ action_groups:
     - notification_template
     - schedule
     - workflow_job_template
+    - instance
 ...
