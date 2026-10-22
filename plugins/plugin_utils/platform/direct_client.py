@@ -699,6 +699,23 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
         return json.loads(response.read())
 
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway") -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        response = self._make_request("POST", url, operation="post_resource", resource="config", json=data)
+        body = response.read()
+        if not body:
+            return {}
+        return json.loads(body)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        self._make_request("DELETE", url, operation="delete_resource", resource="config")
+        return {"changed": True}
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
