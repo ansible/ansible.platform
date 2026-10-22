@@ -79,6 +79,7 @@ class GenericResource:
         self.sort_list_fields: List[str] = sort_list_fields or []
         self._next_id = start_id
         self._items: Dict[int, Dict[str, Any]] = {}
+        self._associations: Dict[int, Dict[str, set]] = {}
 
     def _normalize_item(self, item: Dict[str, Any]) -> None:
         """Sort list fields in-place to match real Gateway alphabetical ordering."""
@@ -182,6 +183,31 @@ class GenericResource:
             if item_id not in self._items:
                 raise KeyError("not found")
             del self._items[item_id]
+            self._associations.pop(item_id, None)
+
+    def list_associations(self, item_id: int, assoc_field: str, assoc_store: "GenericResource") -> Dict[str, Any]:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            ids = self._associations.get(item_id, {}).get(assoc_field, set())
+        items = [assoc_store.get(aid) for aid in ids if aid in assoc_store._items]
+        return {"count": len(items), "results": items}
+
+    def handle_association(self, item_id: int, assoc_field: str, payload: Dict[str, Any]) -> None:
+        with self.lock:
+            if item_id not in self._items:
+                raise KeyError("not found")
+            assoc_id = payload.get("id")
+            if assoc_id is None:
+                raise ValueError("'id' is required")
+            if item_id not in self._associations:
+                self._associations[item_id] = {}
+            if assoc_field not in self._associations[item_id]:
+                self._associations[item_id][assoc_field] = set()
+            if payload.get("disassociate"):
+                self._associations[item_id][assoc_field].discard(assoc_id)
+            else:
+                self._associations[item_id][assoc_field].add(assoc_id)
 
     def seed(self, version: str, items: List[Dict[str, Any]]) -> None:
         """Pre-populate with seed data (used for orgs, feature_flags, etc.)."""
@@ -271,58 +297,22 @@ class Store:
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
         controller_resources = (
-            ("job_templates", 5000),
-            ("inventories", 5100),
-            ("projects", 5200),
-            ("execution_environments", 5300),
-            ("credentials", 5400),
-            ("labels", 5500),
-            ("instance_groups", 5600),
-            ("notification_templates", 5700),
+            ("job_templates", ["name"], 5000),
+            ("inventories", ["name"], 5100),
+            ("projects", ["name"], 5200),
+            ("execution_environments", ["name"], 5300),
+            ("credentials", ["name"], 5400),
+            ("labels", ["name", "organization"], 5500),
+            ("instance_groups", ["name"], 5600),
+            ("notification_templates", ["name"], 5700),
+            ("inventory_sources", ["name", "source", "inventory"], 5800),
+            ("instances", ["hostname"], 5900),
+            ("hosts", ["name", "inventory"], 6000),
+            ("groups", ["name", "inventory"], 6100),
+            ("credential_types", ["name", "kind"], 6200),
+            ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
         )
-        for endpoint, start_id in controller_resources:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint, required_fields=["name"], start_id=start_id, service="controller"
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("inventory_sources", ["name", "source", "inventory"], 5000),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("labels", ["name", "organization"], 5100),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("credential_input_sources", ["input_field_name", "target_credential"], 5400),
-        ]
-        for endpoint, required, start_id in controller_defs:
-            self._resources[("controller", endpoint)] = GenericResource(
-                resource_name=endpoint,
-                required_fields=required,
-                start_id=start_id,
-                service="controller",
-            )
-        # Controller resources
-        controller_defs: List[tuple] = [
-            ("hosts", ["name", "inventory"], 5000),
-            ("groups", ["name", "inventory"], 5800),
-            ("credential_types", ["name", "kind"], 5900),
-        ]
-        for endpoint, required, start_id in controller_defs:
+        for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
@@ -355,6 +345,29 @@ class Store:
                     "MAX_PAGE_SIZE": 200,
                     "REMOTE_HOST_HEADERS": [],
                 }
+
+        # Seed hosts for Controller group association tests
+        host_store = self._resources.get(("controller", "hosts"))
+        if host_store and not host_store._items:
+            host_store.seed(
+                "2",
+                [
+                    {"id": 6001, "name": "web1.example.com", "inventory": 1},
+                    {"id": 6002, "name": "web2.example.com", "inventory": 1},
+                    {"id": 6003, "name": "db1.example.com", "inventory": 1},
+                ],
+            )
+
+        # Seed instances for Controller instance_group association tests
+        inst_store = self._resources.get(("controller", "instances"))
+        if inst_store and not inst_store._items:
+            inst_store.seed(
+                "2",
+                [
+                    {"id": 5901, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 5902, "hostname": "node2.example.com", "node_type": "execution"},
+                ],
+            )
 
         # Seed feature flags with runtime-toggleable flags
         ff_store = self._resources.get(("gateway", "feature_flags"))
@@ -698,6 +711,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         Handle CRUD for any generic resource.
         Returns True if the request was handled, False otherwise.
         """
+        self.store.seed_defaults()
         store = self.store.resource(service, resource_name)
         if store is None:
             return False
@@ -713,6 +727,35 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     payload = self._parse_json_body()
                     created = store.create(version, payload)
                     self._send_json(201, created)
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                return True
+
+        # Association sub-endpoint:  /api/{service}/vX/{resource}/{id}/{assoc_field}/
+        if len(parts) == 6:
+            try:
+                item_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return True
+            assoc_field = parts[5]
+            assoc_store = self.store.resource(service, assoc_field) or self.store.resource(service, resource_name)
+            if assoc_store is None:
+                self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
+                return True
+            if self.command == "GET":
+                try:
+                    self._send_json(200, store.list_associations(item_id, assoc_field, assoc_store))
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                return True
+            if self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                    store.handle_association(item_id, assoc_field, payload)
+                    self._send_empty(204)
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
                 except ValueError as e:
                     self._send_json(400, {"detail": str(e)})
                 return True

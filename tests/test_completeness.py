@@ -39,6 +39,7 @@ controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
     "host": [],
     "controller_credential_type": [],
+    "group": ["preserve_existing_children", "preserve_existing_hosts"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
