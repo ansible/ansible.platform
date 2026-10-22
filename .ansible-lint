@@ -1,4 +1,5 @@
 ---
+profile: production
 exclude_paths:
   - 'changelogs/'
   # base_action.py is an internal base class, not a user-facing action plugin
@@ -17,6 +18,5 @@ exclude_paths:
   - 'extensions/molecule/instance_group_mock/inventory.yml'
   - 'extensions/molecule/inventory_source_mock/inventory.yml'
   - 'extensions/molecule/label_mock/inventory.yml'
-  - 'extensions/molecule/schedule_mock/inventory.yml'
 use_default_rules: true
 ...
