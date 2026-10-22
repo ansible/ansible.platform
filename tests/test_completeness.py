@@ -55,6 +55,7 @@ ignore_api_parameters = {
     "team": ["users", "admins"],  # TODO: remove when removed from API
     "organization": ["users", "admins"],  # TODO: remove when removed from API
     "role_team_assignment": ["object_ansible_id", "object_id"],  # TODO: remove when removed from API
+    "instance": ["peers"],
 }
 
 # Some modules take additional parameters that do not appear in the API
