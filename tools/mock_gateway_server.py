@@ -435,6 +435,17 @@ class Store:
             ("workflow_job_templates", ["name"], 6000),
         ]
         for endpoint, required, start_id in controller_defs:
+            ("labels", ["name", "organization"], 5500),
+            ("instance_groups", ["name"], 5600),
+            ("notification_templates", ["name"], 5700),
+            ("inventory_sources", ["name", "source", "inventory"], 5800),
+            ("instances", ["hostname"], 5900),
+            ("hosts", ["name", "inventory"], 6000),
+            ("groups", ["name", "inventory"], 6100),
+            ("credential_types", ["name", "kind"], 6200),
+            ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
+        )
+        for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
@@ -469,6 +480,19 @@ class Store:
                 }
 
         # Seed instances for Controller association tests
+        # Seed hosts for Controller group association tests
+        host_store = self._resources.get(("controller", "hosts"))
+        if host_store and not host_store._items:
+            host_store.seed(
+                "2",
+                [
+                    {"id": 6001, "name": "web1.example.com", "inventory": 1},
+                    {"id": 6002, "name": "web2.example.com", "inventory": 1},
+                    {"id": 6003, "name": "db1.example.com", "inventory": 1},
+                ],
+            )
+
+        # Seed instances for Controller instance_group association tests
         inst_store = self._resources.get(("controller", "instances"))
         if inst_store and not inst_store._items:
             inst_store.seed(
@@ -476,6 +500,8 @@ class Store:
                 [
                     {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
                     {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
+                    {"id": 5901, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 5902, "hostname": "node2.example.com", "node_type": "execution"},
                 ],
             )
 
@@ -902,6 +928,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 .replace("notification_templates_error", "notification_templates")
             )
             assoc_store = self.store.resource(service, assoc_endpoint)
+            assoc_store = self.store.resource(service, assoc_field) or self.store.resource(service, resource_name)
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
                 return True

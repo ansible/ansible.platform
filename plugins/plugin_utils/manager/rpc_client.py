@@ -126,9 +126,12 @@ class ManagerRPCClient:
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        preserve_existing: bool = False,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
-        return self.service_proxy.manage_associations(base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service)
+        return self.service_proxy.manage_associations(
+            base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service, preserve_existing
+        )
 
     def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
