@@ -464,13 +464,22 @@ All 22 modules have a corresponding mock scenario:
 
 **Location**: `tests/integration/targets/`  
 **Runner**: `ansible-test integration <target>_test --venv --requirements`  
-**Requires**: Live AAP Gateway instance + credentials in `integration_config.yml`
+**Requires**: Live AAP instance + credentials in `integration_config.yml`
 
-Integration tests run against a real AAP Gateway API. They validate:
-- The collection works against the actual API version deployed
+Integration tests run against a real AAP deployment. The **primary CI environment**
+is the Konflux pipeline, which deploys a **full AAP instance** (Gateway + Controller +
+Hub + EDA) and runs tests across three connection modes in parallel. This validates
+modules that interact with any AAP service, not just Gateway.
+
+A secondary GitHub Actions environment tests against a gateway-only deployment for
+faster feedback on gateway-specific changes.
+
+Integration tests validate:
+- The collection works against all AAP services (Gateway, Controller, Hub, EDA)
 - Name-to-ID resolution works against real data
 - Multi-step operations (create → associate → verify) work in sequence
 - Error paths (create duplicate, update non-existent) are handled correctly
+- All three connection modes produce identical results (local, http-direct, http-persistent)
 
 ### Prerequisites
 
@@ -510,8 +519,13 @@ Each integration test target follows this 9-phase sequence:
 
 The test ID ensures:
 - Resource names are unique per run (e.g., `test-app-abc123def`)
-- Concurrent test runs don't collide
+- Parallel test runs across connection modes don't collide on the same AAP instance
 - Failed runs don't leave orphaned resources with predictable names
+
+**Important**: All uniquely-constrained values (port numbers, health check intervals,
+service node names) must also be derived from `test_id` using `random(seed=test_id)`.
+Hardcoded port numbers or names will collide when tests run in parallel. See
+`routes_test`, `services_test`, `http_ports_test` for examples of the pattern.
 
 **Phase 2: Pre-Cleanup (cleanup from failed runs)**
 
@@ -683,17 +697,23 @@ Critical for test hygiene:
 
 ### Important Test Hygiene Rules
 
-**1. Always use `test_id` for unique names**
+**1. Always use `test_id` for unique names AND values**
 
 ```yaml
-# WRONG — hardcoded name, conflicts on second run
-- ansible.platform.application:
-    name: test-app
+# WRONG — hardcoded name and port, conflicts in parallel
+- ansible.platform.http_port:
+    name: test-port
+    number: 9082
     state: present
 
-# RIGHT — unique per run, safe for concurrent execution
-- ansible.platform.application:
-    name: "test-app-{{ test_id }}"
+# RIGHT — unique per run, safe for parallel execution
+- name: Compute unique port numbers from test_id
+  set_fact:
+    _port_base: "{{ range(10000, 50000) | random(seed=test_id) }}"
+
+- ansible.platform.http_port:
+    name: "{{ test_id }}-port"
+    number: "{{ _port_base | int }}"
     state: present
 ```
 
@@ -792,30 +812,18 @@ ansible-test integration applications_test --venv --requirements -vvv 2>&1 | tee
 
 ## Linting Tests
 
-**Location**: `tox.ini` (envlist: `black`, `flake8`, `isort`)  
-**Runner**: `python -m tox -e black,flake8,isort`
+**Location**: `tox.ini`  
+**Runner**: `tox -e ruff` (lint + format), `tox -e mypy`, `tox -e pydoclint`
 
 ```bash
-# Run all linters
-python -m tox -e black,flake8,isort
+# Run all linters via Makefile
+make check_ruff check_mypy check_pydoclint
 
-# Check formatting only (what CI runs)
-black --check --line-length 160 plugins/ tests/
-
-# Auto-fix formatting
-black --line-length 160 plugins/ tests/
-isort --profile black --line-length 160 plugins/ tests/
-
-# Style check
-flake8 plugins/ tests/
+# Or via tox directly
+tox -e ruff
+tox -e mypy
+tox -e pydoclint
 ```
-
-### Important: `tox.ini` has `skip_install = true`
-
-The `[testenv]` section in `tox.ini` includes `skip_install = true`. This prevents
-tox from trying to build and install the collection as a Python package (which would
-fail because an Ansible collection is not a Python package). Linting tools do not
-need the project installed — they read source files directly.
 
 ---
 
@@ -871,14 +879,61 @@ curl http://localhost:8080/api/gateway/v1/organizations/
 
 ## SECTION 5: CI Pipeline
 
-### GitHub Actions Workflows
+### Two CI Systems
+
+Integration tests run in **two environments** with different scopes:
+
+| System | AAP Environment | Trigger | Connection Modes | Scope |
+|--------|----------------|---------|-----------------|-------|
+| **Konflux (primary)** | Full AAP (Gateway + Controller + Hub + EDA) | Every PR to `devel` | local, http-direct, http-persistent (parallel) | All modules |
+| **GitHub Actions (secondary)** | Gateway only (podman-compose) | Every PR to `devel` | local, http-direct, http-persistent (matrix) | Gateway modules only |
+
+Konflux is the **source of truth** for integration test results because it tests against
+a complete AAP deployment. Modules that interact with Controller (e.g. `host`,
+`job_template`, `controller_credential_type`) or other services can only be fully
+validated in Konflux.
+
+### Konflux Pipeline (Primary)
+
+Defined in `.tekton/run-collection-integration-tests-pull-request.yaml`, the pipeline:
+
+1. Provisions an AWS EC2 instance with a Kind Kubernetes cluster
+2. Deploys a full AAP production-like instance
+3. Clones the collection source (shared across all test tasks)
+4. Runs integration tests in **3 parallel tasks** (one per connection mode)
+5. Runs **sanity checks** in parallel:
+   - **Integration coverage** (`test_integration_check.py`): verifies every module has a test target
+   - **Completeness** (`test_completeness.py`): verifies module parameters match the API schema
+     (auto-detects Controller API when available and validates controller modules)
+6. Reports results as a PR comment with per-mode breakdown and failed test names
+7. Cleans up infrastructure
+
+```
+resolve-aap-version ──┐
+clone-aap-repo ───────┤
+                      ├── provision-kind-cluster ── deploy-aap ──┬── run-tests-local
+clone-collection ─────┤                                          ├── run-tests-http-direct
+                      │                                          ├── run-tests-http-persistent
+                      │                                          ├── run-completeness-check
+                      │                                          └── run-integration-check
+                      └── finally: report-test-results ── deprovision
+```
+
+### GitHub Actions Workflows (Secondary — Planned for Deprecation)
+
+> **Note**: The GitHub Actions integration test workflow is planned for deprecation.
+> Konflux will become the single source of truth for integration testing. The GH Actions
+> workflow only tests against a gateway-only deployment and cannot validate controller
+> or multi-service modules.
 
 | Workflow | File | Trigger | What runs |
 |----------|------|---------|-----------|
 | Unit tests | `.github/workflows/unit.yml` | Every commit | `pytest tests/unit/ -v` |
 | Linting | `.github/workflows/lint.yml` | Every commit | `tox + ansible-lint` |
 | Molecule mock | `.github/workflows/molecule.yml` | Every commit | All `*_mock` scenarios |
-| Integration | `.github/workflows/integration.yml` | Manual or on tag | All `*_test` targets (requires AAP) |
+| Integration | `.github/workflows/integration.yml` | PR with `safe to test` label | Gateway-only integration tests |
+| Integration check | `.github/workflows/integration.yml` | PR with `safe to test` label | `test_integration_check.py` |
+| Completeness | `.github/workflows/integration.yml` | PR with `safe to test` label | `test_completeness.py` (gateway modules only) |
 
 ### Execution Order
 
@@ -891,22 +946,30 @@ curl http://localhost:8080/api/gateway/v1/organizations/
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 2. Linting (fast, ~5s)                                          │
-│    black, isort, flake8, ansible-lint                           │
+│    ruff, mypy, pydoclint, ansible-lint                          │
 │    MUST PASS before proceeding                                   │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 3. Molecule Mock Tests (medium, ~1-2 min for all scenarios)     │
-│    All 22 *_mock scenarios run in parallel (if CI allows)       │
+│    All *_mock scenarios run in parallel                          │
 │    MUST PASS before proceeding                                   │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. Integration Tests (slow, ~5-15 min, requires live AAP)       │
-│    Only runs on manual trigger or tagged releases                │
-│    Requires valid AAP instance + credentials                    │
+│ 4. Integration Tests — Konflux (primary, full AAP)              │
+│    3 connection modes in parallel + sanity checks                │
+│    Tests all modules including controller                        │
+│    MUST PASS before merge                                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 5. Integration Tests — GitHub Actions (secondary, gateway-only) │
+│    3 connection modes in matrix + sanity checks                  │
+│    Tests gateway modules only                                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
