@@ -45,4 +45,5 @@ action_groups:
     - instance
     - job_launch
     - bulk_host_create
+    - job_cancel
 ...

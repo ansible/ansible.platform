@@ -137,7 +137,15 @@ class PlatformService(BaseAPIClient):
                 return False
         return self.seconds_since_last_activity() >= self.config.idle_timeout
 
-    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = "http_request",
+        resource: str = "unknown",
+        retry_request: bool = True,
+        **kwargs,
+    ) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -148,6 +156,7 @@ class PlatformService(BaseAPIClient):
             url: Request URL
             operation: Operation name for error context
             resource: Resource type for error context
+            retry_request: Whether to retry transient request failures
             **kwargs: Additional arguments for requests method
 
         Returns:
@@ -158,7 +167,9 @@ class PlatformService(BaseAPIClient):
         """
         self.record_activity()
 
-        @retry_http_request(config=self.retry_config)
+        retry_config = self.retry_config if retry_request else RetryConfig(max_attempts=1)
+
+        @retry_http_request(config=retry_config)
         def _execute_with_retry():
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
@@ -1275,6 +1286,62 @@ class PlatformService(BaseAPIClient):
         response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         return True
+
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """
+        Cancel a resource via its /cancel/ sub-endpoint.
+
+        Checks whether the resource can be canceled (GET), and if so,
+        POSTs to {cancel_endpoint_path}/{resource_id}/cancel/.
+        Already-finished resources return success with changed=False.
+
+        Args:
+            resource_id: ID of the resource (job) to cancel
+            cancel_endpoint_path: Base endpoint path (e.g., 'jobs')
+            fail_if_not_running: If True, raise ValueError when the
+                resource cannot be canceled (already finished)
+            service: Service name (default: 'controller')
+
+        Returns:
+            dict with 'changed', 'id', and 'status' keys
+
+        Raises:
+            ValueError: If resource not found or fail_if_not_running
+                is True and the resource cannot be canceled
+        """
+        self.record_activity()
+        svc_version = self.get_api_version(service)
+        cancel_url = self._build_url(
+            f"/{cancel_endpoint_path}/{resource_id}/cancel/",
+            service=service,
+            api_version=svc_version,
+        )
+
+        # GET to check if the resource can be canceled
+        try:
+            response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+            cancel_info = response.json()
+        except Exception:
+            cancel_info = {}
+
+        if not cancel_info.get("can_cancel", False):
+            if fail_if_not_running:
+                raise ValueError("Job %d is not running and cannot be canceled" % resource_id)
+            return {"changed": False, "id": resource_id, "status": "already_completed"}
+
+        # POST to cancel
+        response = self._make_request(
+            "POST",
+            cancel_url,
+            operation="cancel_resource",
+            resource=cancel_endpoint_path,
+            retry_request=False,
+            json={},
+        )
+        if response.status_code not in (200, 202):
+            response.raise_for_status()
+
+        return {"changed": True, "id": resource_id, "status": "canceled"}
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """

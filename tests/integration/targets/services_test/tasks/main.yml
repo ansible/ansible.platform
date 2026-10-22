@@ -11,6 +11,7 @@
 - name: Preset vars
   ansible.builtin.set_fact:
     name_prefix: "GW-Collection-Test-Services-{{ test_id }}"
+    controller_api_slug: "ctl-{{ test_id | lower }}"
 
 - name: Get existing service clusters
   ansible.builtin.set_fact:
