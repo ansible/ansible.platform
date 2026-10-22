@@ -41,9 +41,7 @@ class ActionModule(BaseResourceActionPlugin):
             if str(ident).strip().isdigit():
                 resolved.append(int(ident))
                 continue
-            data = manager.search_api(
-                f"{BASE_PATH}/?identifier={ident}&workflow_job_template={workflow_id}"
-            )
+            data = manager.search_api(f"{BASE_PATH}/?identifier={ident}&workflow_job_template={workflow_id}")
             nodes = data.get("results", [])
             if not nodes:
                 raise ValueError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
@@ -84,9 +82,7 @@ class ActionModule(BaseResourceActionPlugin):
                     continue
                 if field in _NODE_ASSOC_FIELDS and wfjt_id:
                     desired = self._resolve_node_ids_in_workflow(manager, wfjt_id, desired)
-                if manager.manage_associations(
-                    BASE_PATH, node_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE
-                ):
+                if manager.manage_associations(BASE_PATH, node_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
                     changed = True
         except Exception as exc:
             result["failed"] = True

@@ -80,8 +80,17 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
                 api_data["unified_job_template"] = int(ujt) if ujt is not None else None
 
         _SCALAR_FIELDS = (
-            "all_parents_must_converge", "scm_branch", "job_type", "job_tags",
-            "skip_tags", "limit", "diff_mode", "verbosity", "forks", "job_slice_count", "timeout",
+            "all_parents_must_converge",
+            "scm_branch",
+            "job_type",
+            "job_tags",
+            "skip_tags",
+            "limit",
+            "diff_mode",
+            "verbosity",
+            "forks",
+            "job_slice_count",
+            "timeout",
         )
         for field in _SCALAR_FIELDS:
             val = getattr(ansible_instance, field, None)
@@ -108,9 +117,7 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         execution_environment = getattr(ansible_instance, "execution_environment", None)
         if execution_environment is not None:
             if manager is not None and not str(execution_environment).strip().isdigit():
-                api_data["execution_environment"] = manager.lookup_resource_id(
-                    "execution_environments", "name", execution_environment, service="controller"
-                )
+                api_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", execution_environment, service="controller")
             else:
                 api_data["execution_environment"] = int(execution_environment)
         elif include_nulls:
@@ -134,10 +141,23 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
                 path="/api/controller/v2/workflow_job_template_nodes/",
                 method="POST",
                 fields=[
-                    "identifier", "workflow_job_template", "unified_job_template",
-                    "all_parents_must_converge", "extra_data", "inventory", "scm_branch",
-                    "job_type", "job_tags", "skip_tags", "limit", "diff_mode", "verbosity",
-                    "forks", "job_slice_count", "timeout", "execution_environment",
+                    "identifier",
+                    "workflow_job_template",
+                    "unified_job_template",
+                    "all_parents_must_converge",
+                    "extra_data",
+                    "inventory",
+                    "scm_branch",
+                    "job_type",
+                    "job_tags",
+                    "skip_tags",
+                    "limit",
+                    "diff_mode",
+                    "verbosity",
+                    "forks",
+                    "job_slice_count",
+                    "timeout",
+                    "execution_environment",
                 ],
                 required_for="create",
                 order=1,
@@ -146,10 +166,23 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
                 path="/api/controller/v2/workflow_job_template_nodes/{id}/",
                 method="PATCH",
                 fields=[
-                    "identifier", "workflow_job_template", "unified_job_template",
-                    "all_parents_must_converge", "extra_data", "inventory", "scm_branch",
-                    "job_type", "job_tags", "skip_tags", "limit", "diff_mode", "verbosity",
-                    "forks", "job_slice_count", "timeout", "execution_environment",
+                    "identifier",
+                    "workflow_job_template",
+                    "unified_job_template",
+                    "all_parents_must_converge",
+                    "extra_data",
+                    "inventory",
+                    "scm_branch",
+                    "job_type",
+                    "job_tags",
+                    "skip_tags",
+                    "limit",
+                    "diff_mode",
+                    "verbosity",
+                    "forks",
+                    "job_slice_count",
+                    "timeout",
+                    "execution_environment",
                 ],
                 path_params=["id"],
                 required_for="update",
