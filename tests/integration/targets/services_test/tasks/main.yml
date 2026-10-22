@@ -19,9 +19,7 @@
 - name: Fail if more than one service cluster or that cluster is not a gateway cluster
   ansible.builtin.fail:
     msg: "This test works with 3 service clusters: gateway, eda and hub. It appears you might already have one or more of those, failing"
-  when:
-    - _sc_query | length > 1
-    - _sc_query | length == 1 and sc_query[0].type != 'gateway'
+  when: _sc_query | length > 1 or (_sc_query | length == 1 and _sc_query[0].type != 'gateway')
 
 - name: See if there is an existing is_api_port
   # We need one to create an http_port and there can only be one
