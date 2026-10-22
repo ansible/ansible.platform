@@ -8,11 +8,11 @@ This directory holds Molecule scenarios for the ansible.platform collection.
 
 ## Layout
 
-- **config.yml** – Base config: `shared_state: true`, `prerun: false`. `make molecule-test-all` starts the **default** scenario before running mock scenarios and stops it afterward.
+- **config.yml** – Base config: `shared_state: true`, `prerun: false`, so the **default** scenario runs create first and destroy last when using `molecule test --all`. Other scenarios share the mock server.
 - **inventory.yml** – Shared inventory: `localhost` with `gateway_*` vars.
-- **default/** – Lifecycle scenario: **create** (start mock Gateway server) and **destroy** (stop it). No converge. `make molecule-test-all` runs create, then each `*_mock` scenario, then destroy.
+- **default/** – Lifecycle scenario: **create** (start mock Gateway server) and **destroy** (stop it). No converge. With `molecule test --all`, default runs create first, then other scenarios, then default destroy.
 - **users/** – Scenario for `ansible.platform.user` against a **real AAP Gateway**: create, update, idempotency, verify, cleanup. Requires a running Gateway (or skip in CI when none).
-- **users_mock/** – Scenario for `ansible.platform.user` against the **mock** server (`http://127.0.0.1:8000`). No real AAP required. Use `make molecule-test-all` or start `python3 tools/mock_gateway_server.py` manually.
+- **users_mock/** – Scenario for `ansible.platform.user` against the **mock** server (`http://127.0.0.1:8000`). No real AAP required. Use with `molecule test --all` (mock started by default) or start `python3 tools/mock_gateway_server.py` manually.
 - **organization_mock/** – Scenario for `ansible.platform.organization` against the **mock** server. Create, idempotency, update, verify, cleanup. No real AAP required.
 - **controller_ping_mock/** – Routing/plumbing check: confirms the mock server serves the **Controller API prefix** (`/api/controller/vN/`, used by ported `awx_collection`/Controller resources) alongside the existing `/api/gateway/vN/` prefix. No ansible.platform module is exercised and no state is created; this exists so future Controller resource mock scenarios have a prefix to register against.
 - **job_template_mock/** – Exercises Controller job template create, update, associations, survey, copy, check mode, and cleanup against the mock API in all three connection modes. The `molecule (mock)` CI workflow discovers it automatically.
@@ -82,13 +82,13 @@ export ANSIBLE_COLLECTIONS_PATH="$(cd ../.. && pwd)"
 ```
 
 **Option A — All scenarios with mock (no real AAP):**  
-The Make target starts the mock, runs each `*_mock` scenario, and stops the mock even if a scenario fails.
+Default starts the mock, then runs `users_mock` (and optionally `users` if you have a Gateway). Default destroy stops the mock at the end.
 
 ```bash
-make molecule-test-all
+molecule test --all
 ```
 
-To see detailed Ansible output (task args, module I/O), run `ANSIBLE_VERBOSITY=2 make molecule-test-all` (use 1–4 for -v through -vvvv).
+To see detailed Ansible output (task args, module I/O): `ANSIBLE_VERBOSITY=2 molecule test --all` (use 1–4 for -v through -vvvv). See [docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md](../../docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md).
 
 **Option B — Only mock-based tests (user + organization):**  
 Start the mock yourself, then run the scenarios:
