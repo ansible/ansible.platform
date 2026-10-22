@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - instance_group - add instance association support for managing Controller instance group memberships (https://issues.redhat.com/browse/AAP-95854).
+...

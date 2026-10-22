@@ -95,6 +95,38 @@
       vars:
         ansible_connection: local
 
+    - name: Associate instances to group (connection local)
+      ansible.platform.instance_group:
+        name: "{{ ig_name_local }}"
+        instances:
+          - "node1.example.com"
+          - "node2.example.com"
+      register: assoc_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert association changed (connection local)
+      ansible.builtin.assert:
+        that: assoc_result_local is changed
+      vars:
+        ansible_connection: local
+
+    - name: Re-run same instances for idempotency (connection local)
+      ansible.platform.instance_group:
+        name: "{{ ig_name_local }}"
+        instances:
+          - "node1.example.com"
+          - "node2.example.com"
+      register: assoc_idem_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert instances association idempotent (connection local)
+      ansible.builtin.assert:
+        that: assoc_idem_result_local is not changed
+      vars:
+        ansible_connection: local
+
 - name: Converge — instance_group (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http
