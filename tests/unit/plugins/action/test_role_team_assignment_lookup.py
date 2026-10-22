@@ -220,3 +220,25 @@ def test_resolved_id_flows_through_execute_without_lookup_metadata_in_api_payloa
         "created": None,
         "modified": None,
     }
+
+
+def test_from_ansible_rejects_ambiguous_team_name_without_organization():
+    """AAP-92255: must not pick results[0] when duplicate team names exist.
+
+    This test is expected to FAIL until the fix commit lands.
+    """
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.search_api.return_value = {
+        "results": [
+            {"id": 9, "name": "J Team", "organization": 38, "summary_fields": {"organization": {"id": 38, "name": "OrgA"}}},
+            {"id": 10, "name": "J Team", "organization": 39, "summary_fields": {"organization": {"id": 39, "name": "OrgB"}}},
+        ]
+    }
+
+    with pytest.raises(ValueError, match="Multiple teams named 'J Team'"):
+        resolve_team_id(manager, "J Team")
+    manager.lookup_resource_id.assert_not_called()
