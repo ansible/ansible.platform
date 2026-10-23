@@ -9,6 +9,7 @@ modules_without_live_integration = {
     "subscriptions": "requires dedicated Red Hat subscription-account credentials not available in the Gateway integration environment",
     "licenses": "requires a manifest or subscription ID not available in the Gateway integration environment",
     "controller_metas": "metadata-only module with no API interaction to test against live instance",
+    "imports": "covered by export_import_test (shared with export module)",
 }
 module_test_name_overrides = {
     "label": "label_test",
@@ -16,6 +17,7 @@ module_test_name_overrides = {
     "controller_project": "controller_project_test",
     "execution_environment": "execution_environment_test",
     "schedule": "schedule_test",
+    "export": "export_import_test",
 }
 tests_to_ignore = [
     "lookup_test",
