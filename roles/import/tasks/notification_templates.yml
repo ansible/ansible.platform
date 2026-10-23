@@ -1,0 +1,13 @@
+---
+- name: Create or update notification templates
+  ansible.platform.notification_template:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    organization: "{{ item.organization | default(omit) }}"
+    notification_type: "{{ item.notification_type | default(omit) }}"
+    notification_configuration: "{{ item.notification_configuration | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.notification_templates }}"
+  loop_control:
+    label: "{{ item.name }}"
+...

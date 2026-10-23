@@ -1,0 +1,18 @@
+---
+- name: Create or update inventory sources
+  ansible.platform.inventory_source:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    inventory: "{{ item.inventory }}"
+    source: "{{ item.source | default(omit) }}"
+    credential: "{{ item.credential | default(omit) }}"
+    execution_environment: "{{ item.execution_environment | default(omit) }}"
+    source_project: "{{ item.source_project | default(omit) }}"
+    notification_templates_started: "{{ item.notification_templates_started | default(omit) }}"
+    notification_templates_success: "{{ item.notification_templates_success | default(omit) }}"
+    notification_templates_error: "{{ item.notification_templates_error | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.inventory_sources }}"
+  loop_control:
+    label: "{{ item.name }}"
+...

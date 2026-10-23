@@ -1,0 +1,41 @@
+---
+- name: Create or update inventories
+  ansible.platform.inventory:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    organization: "{{ item.organization | default(omit) }}"
+    kind: "{{ item.kind | default(omit) }}"
+    host_filter: "{{ item.host_filter | default(omit) }}"
+    variables: "{{ item.variables | default(omit) }}"
+    instance_groups: "{{ item.instance_groups | default(omit) }}"
+    prevent_instance_group_fallback: "{{ item.prevent_instance_group_fallback | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.inventory }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Import hosts
+  ansible.platform.host:
+    name: "{{ item.1.name | default(item.1.hostname) }}"
+    description: "{{ item.1.description | default(omit) }}"
+    inventory: "{{ item.0.name }}"
+    enabled: "{{ item.1.enabled | default(omit) }}"
+    variables: "{{ item.1.variables | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.inventory | subelements('hosts', skip_missing=true) }}"
+  loop_control:
+    label: "{{ item.0.name }}/{{ item.1.name | default(item.1.hostname) }}"
+
+- name: Import groups
+  ansible.platform.group:
+    name: "{{ item.1.name }}"
+    description: "{{ item.1.description | default(omit) }}"
+    inventory: "{{ item.0.name }}"
+    variables: "{{ item.1.variables | default(omit) }}"
+    hosts: "{{ item.1.hosts | default(omit) }}"
+    children: "{{ item.1.children | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.inventory | subelements('groups', skip_missing=true) }}"
+  loop_control:
+    label: "{{ item.0.name }}/{{ item.1.name }}"
+...

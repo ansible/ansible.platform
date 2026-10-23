@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - import - add ``import`` module, ``import`` role, and ``from_awxkit_export`` filter for importing Controller and Gateway resources from awxkit/awx CLI exports (https://issues.redhat.com/browse/AAP-95849).
+...

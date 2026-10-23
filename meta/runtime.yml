@@ -59,4 +59,5 @@ action_groups:
     - bulk_host_delete
     - workflow_node_wait
     - controller_meta
+    - import
 ...
