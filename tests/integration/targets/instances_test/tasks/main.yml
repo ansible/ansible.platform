@@ -1,6 +1,10 @@
 ---
 # Exercise instance reads and updates against an existing Controller instance.
 # Creation and deprovisioning require an OpenShift/Kubernetes Controller.
+#
+# Mutable tests (update, check_mode, idempotency) run only in local mode
+# because all CI connection modes share the same Controller instance and
+# parallel jobs create unavoidable race conditions on singleton resources.
 
 - name: Get existing Controller instances
   ansible.builtin.set_fact:
@@ -20,15 +24,9 @@
   ansible.builtin.set_fact:
     original_capacity_adjustment: "{{ test_instance.capacity_adjustment | float }}"
 
-- name: Generate a test ID
+- name: Choose a different capacity adjustment
   ansible.builtin.set_fact:
-    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
-  when: test_id is not defined
-
-- name: Derive unique capacity values from test_id (avoids collision between parallel CI jobs)
-  ansible.builtin.set_fact:
-    _baseline_cap: "{{ ((test_id | hash('md5') | int(base=16)) % 20 + 20) / 100.0 }}"
-    _different_cap: "{{ ((test_id | hash('md5') | int(base=16)) % 20 + 60) / 100.0 }}"
+    test_capacity_adjustment: "{{ 0.8 if (original_capacity_adjustment | float) != 0.8 else 0.7 }}"
 
 - name: Run Test
   module_defaults:
@@ -39,74 +37,7 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    - name: Set a known baseline capacity (unique per test run)
-      ansible.platform.instance:
-        hostname: "{{ test_instance.hostname }}"
-        capacity_adjustment: "{{ _baseline_cap }}"
-      register: baseline_result
-
-    - name: Assert baseline was applied
-      ansible.builtin.assert:
-        that:
-          - baseline_result.instance.capacity_adjustment | float == _baseline_cap | float
-
-    - name: Check mode with same value is idempotent
-      ansible.platform.instance:
-        hostname: "{{ test_instance.hostname }}"
-        capacity_adjustment: "{{ _baseline_cap }}"
-      check_mode: true
-      register: check_mode_same
-
-    - name: Assert check mode with same value reports no change
-      ansible.builtin.assert:
-        that:
-          - check_mode_same is not changed
-
-    - name: Check mode with different value predicts change
-      ansible.platform.instance:
-        hostname: "{{ test_instance.hostname }}"
-        capacity_adjustment: "{{ _different_cap }}"
-      check_mode: true
-      register: check_mode_diff
-
-    - name: Assert check mode predicts a change
-      ansible.builtin.assert:
-        that:
-          - check_mode_diff is changed
-
-    - name: Verify check mode did not actually change the instance
-      ansible.builtin.set_fact:
-        instance_after_check_mode: >-
-          {{ (query('ansible.platform.gateway_api', 'api/controller/v2/instances/',
-          query_params={'hostname': test_instance.hostname}, **connection_info) | first).capacity_adjustment | float }}
-
-    - name: Assert check mode did not apply the different value
-      ansible.builtin.assert:
-        that:
-          - instance_after_check_mode | float != _different_cap | float
-
-    - name: Update capacity adjustment to different value
-      ansible.platform.instance:
-        hostname: "{{ test_instance.hostname }}"
-        capacity_adjustment: "{{ _different_cap }}"
-      register: updated_instance
-
-    - name: Assert update changed the requested field
-      ansible.builtin.assert:
-        that:
-          - updated_instance is changed
-          - updated_instance.instance.capacity_adjustment | float == _different_cap | float
-
-    - name: Check idempotency
-      ansible.platform.instance:
-        hostname: "{{ test_instance.hostname }}"
-        capacity_adjustment: "{{ _different_cap }}"
-      register: idempotent_instance
-
-    - name: Assert no change on re-apply
-      ansible.builtin.assert:
-        that:
-          - idempotent_instance is not changed
+    # --- Read-only tests (all connection modes) ---
 
     - name: Check exists
       ansible.platform.instance:
@@ -118,6 +49,63 @@
       ansible.builtin.assert:
         that:
           - exists_check.exists
+          - exists_check is not changed
+
+    # --- Mutable tests (local mode only — singleton resource, not parallel-safe) ---
+
+    - name: Check mode predicts an instance update
+      ansible.platform.instance:
+        hostname: "{{ test_instance.hostname }}"
+        capacity_adjustment: "{{ test_capacity_adjustment }}"
+      check_mode: true
+      register: check_mode_update
+      when: connection_mode | default('local') == 'local'
+
+    - name: Assert check mode predicts a change
+      ansible.builtin.assert:
+        that:
+          - check_mode_update is changed
+      when: connection_mode | default('local') == 'local'
+
+    - name: Confirm check mode did not change the instance
+      ansible.builtin.set_fact:
+        instance_after_check_mode: >-
+          {{ (query('ansible.platform.gateway_api', 'api/controller/v2/instances/',
+          query_params={'hostname': test_instance.hostname}, **connection_info) | first).capacity_adjustment | float }}
+      when: connection_mode | default('local') == 'local'
+
+    - name: Assert check mode left the instance unchanged
+      ansible.builtin.assert:
+        that:
+          - instance_after_check_mode == original_capacity_adjustment
+      when: connection_mode | default('local') == 'local'
+
+    - name: Update capacity adjustment
+      ansible.platform.instance:
+        hostname: "{{ test_instance.hostname }}"
+        capacity_adjustment: "{{ test_capacity_adjustment }}"
+      register: updated_instance
+      when: connection_mode | default('local') == 'local'
+
+    - name: Assert update changed the requested field
+      ansible.builtin.assert:
+        that:
+          - updated_instance is changed
+          - updated_instance.instance.capacity_adjustment | float == test_capacity_adjustment | float
+      when: connection_mode | default('local') == 'local'
+
+    - name: Check idempotency
+      ansible.platform.instance:
+        hostname: "{{ test_instance.hostname }}"
+        capacity_adjustment: "{{ test_capacity_adjustment }}"
+      register: idempotent_instance
+      when: connection_mode | default('local') == 'local'
+
+    - name: Assert no change on re-apply
+      ansible.builtin.assert:
+        that:
+          - idempotent_instance is not changed
+      when: connection_mode | default('local') == 'local'
 
   always:
     - name: Restore original capacity adjustment
@@ -125,6 +113,7 @@
         hostname: "{{ test_instance.hostname }}"
         capacity_adjustment: "{{ original_capacity_adjustment }}"
       when:
+        - connection_mode | default('local') == 'local'
         - test_instance is defined
         - original_capacity_adjustment is defined
 ...
