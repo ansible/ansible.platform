@@ -12,8 +12,8 @@ import base64
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 
-_CONFIG_ENDPOINT = "/api/controller/v2/config/"
-_ATTACH_ENDPOINT = "/api/controller/v2/config/attach/"
+_CONFIG_ENDPOINT = "api/controller/v2/config/"
+_ATTACH_ENDPOINT = "api/controller/v2/config/attach/"
 _SERVICE = "controller"
 
 

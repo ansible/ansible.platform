@@ -60,7 +60,6 @@
       vars:
         ansible_connection: local
 
-    - name: Determine system temporary directory
     - name: Determine system temp directory
       ansible.builtin.command: python3 -c 'import tempfile; print(tempfile.gettempdir())'
       register: temp_dir

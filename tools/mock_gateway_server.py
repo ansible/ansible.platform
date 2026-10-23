@@ -809,7 +809,11 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 .replace("notification_templates_success", "notification_templates")
                 .replace("notification_templates_error", "notification_templates")
             )
-            assoc_store = self.store.resource(service, assoc_endpoint) or self.store.resource(service, assoc_field) or self.store.resource(service, resource_name)
+            assoc_store = (
+                self.store.resource(service, assoc_endpoint)
+                or self.store.resource(service, assoc_field)
+                or self.store.resource(service, resource_name)
+            )
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
                 return True
