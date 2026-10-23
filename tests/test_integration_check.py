@@ -7,6 +7,9 @@ base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 # CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
 modules_without_live_integration = {
     "subscriptions": "requires dedicated Red Hat subscription-account credentials not available in the Gateway integration environment",
+    "licenses": "requires a manifest or subscription ID not available in the Gateway integration environment",
+    "controller_metas": "metadata-only module with no API interaction to test against live instance",
+    "imports": "covered by export_import_test (shared with export module)",
 }
 module_test_name_overrides = {
     "label": "label_test",
@@ -18,6 +21,7 @@ module_test_name_overrides = {
     "job_launch": "job_launches_test",
     # Both activation modules are exercised by the shared CRUD target.
     "rulebook_activation_copy": "rulebook_activations_test",
+    "export": "export_import_test",
 }
 tests_to_ignore = [
     "lookup_test",
