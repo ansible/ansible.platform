@@ -36,7 +36,13 @@ IMPORT_ORDER = [
 ]
 
 # Fields from legacy/API data that are not module parameters.
-STRIP_FIELDS = frozenset({"id", "type", "url", "related", "summary_fields", "created", "modified", "natural_key"})
+STRIP_FIELDS = frozenset({
+    "id", "type", "url", "related", "summary_fields", "created", "modified",
+    "natural_key", "managed", "user_capabilities", "object_roles",
+})
+
+# Fields that are inline children, not direct module params — popped and handled separately.
+INLINE_CHILDREN_FIELDS = frozenset({"hosts", "groups"})
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -78,7 +84,7 @@ class ActionModule(BaseResourceActionPlugin):
                     if not isinstance(resource_data, dict):
                         continue
 
-                    clean_data = {k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and v is not None}
+                    clean_data = {k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and v is not None}
                     resource_name = clean_data.get("name") or clean_data.get("username") or clean_data.get("hostname") or "unknown"
 
                     if check_mode:
@@ -140,7 +146,7 @@ class ActionModule(BaseResourceActionPlugin):
             existing = manager.execute(
                 operation="find",
                 module_name=module_name,
-                ansible_data_dict=dict(resource_data),
+                ansible_data=dict(resource_data),
             )
         except (ValueError, Exception):
             existing = None
@@ -151,14 +157,14 @@ class ActionModule(BaseResourceActionPlugin):
             manager.execute(
                 operation="update",
                 module_name=module_name,
-                ansible_data_dict=update_data,
+                ansible_data=update_data,
             )
             return True
         else:
             manager.execute(
                 operation="create",
                 module_name=module_name,
-                ansible_data_dict=dict(resource_data),
+                ansible_data=dict(resource_data),
             )
             return True
 
