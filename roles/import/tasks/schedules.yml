@@ -1,0 +1,12 @@
+---
+- name: Create or update schedules
+  ansible.platform.schedule:
+    name: "{{ item.name }}"
+    rrule: "{{ item.rrule }}"
+    unified_job_template: "{{ item.unified_job_template }}"
+    enabled: "{{ item.enabled | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.schedules }}"
+  loop_control:
+    label: "{{ item.name }}"
+...

@@ -1,0 +1,14 @@
+---
+- name: Create or update execution environments
+  ansible.platform.execution_environment:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    image: "{{ item.image }}"
+    organization: "{{ item.organization | default(omit) }}"
+    credential: "{{ item.credential | default(omit) }}"
+    pull: "{{ item.pull | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.execution_environments }}"
+  loop_control:
+    label: "{{ item.name }}"
+...

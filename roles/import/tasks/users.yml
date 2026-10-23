@@ -1,0 +1,14 @@
+---
+- name: Create or update users
+  ansible.platform.user:
+    username: "{{ item.username }}"
+    email: "{{ item.email | default(omit) }}"
+    first_name: "{{ item.first_name | default(omit) }}"
+    last_name: "{{ item.last_name | default(omit) }}"
+    is_superuser: "{{ item.is_superuser | default(omit) }}"
+    password: "{{ item.password | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.users }}"
+  loop_control:
+    label: "{{ item.username }}"
+...

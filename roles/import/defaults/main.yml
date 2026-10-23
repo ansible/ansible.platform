@@ -1,0 +1,26 @@
+---
+# Assets dict to import. Top-level keys are resource type names matching
+# the awxkit EXPORTABLE_RESOURCES list. Values are lists of resource dicts
+# whose keys map directly to ansible.platform module parameters.
+#
+# Example:
+#   import_assets:
+#     organizations:
+#       - name: Default
+#         description: "Default organization"
+#     credentials:
+#       - name: My Cred
+#         credential_type: Machine
+#         organization: Default
+#
+# To import from a legacy awxkit/awx-cli export, pipe through the filter:
+#   import_assets: "{{ legacy_export | ansible.platform.from_awxkit_export }}"
+import_assets: {}
+
+# Whether to convert legacy awxkit format automatically.
+# When true, the role applies from_awxkit_export before processing.
+import_auto_convert_legacy: false
+
+# State to apply to all imported resources. Typically "present".
+import_state: present
+...

@@ -1,0 +1,18 @@
+---
+- name: Create or update projects
+  ansible.platform.controller_project:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    organization: "{{ item.organization | default(omit) }}"
+    scm_type: "{{ item.scm_type | default(omit) }}"
+    scm_url: "{{ item.scm_url | default(omit) }}"
+    scm_branch: "{{ item.scm_branch | default(omit) }}"
+    credential: "{{ item.credential | default(omit) }}"
+    notification_templates_started: "{{ item.notification_templates_started | default(omit) }}"
+    notification_templates_success: "{{ item.notification_templates_success | default(omit) }}"
+    notification_templates_error: "{{ item.notification_templates_error | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.projects }}"
+  loop_control:
+    label: "{{ item.name }}"
+...
