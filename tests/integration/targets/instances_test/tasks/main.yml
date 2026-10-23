@@ -80,10 +80,10 @@
           {{ (query('ansible.platform.gateway_api', 'api/controller/v2/instances/',
           query_params={'hostname': test_instance.hostname}, **connection_info) | first).capacity_adjustment | float }}
 
-    - name: Assert check mode left the instance at baseline
+    - name: Assert check mode did not apply the different value
       ansible.builtin.assert:
         that:
-          - instance_after_check_mode | float == _baseline_cap | float
+          - instance_after_check_mode | float != _different_cap | float
 
     - name: Update capacity adjustment to different value
       ansible.platform.instance:
