@@ -17,6 +17,13 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
+        cap_adj = self._task.args.get("capacity_adjustment")
+        if cap_adj is not None:
+            try:
+                self._task.args["capacity_adjustment"] = float(cap_adj)
+            except (ValueError, TypeError):
+                pass
+
         state = self._task.args.get("state", "present")
 
         if state in ("absent", "deleted"):
