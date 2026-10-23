@@ -220,3 +220,122 @@ def test_resolved_id_flows_through_execute_without_lookup_metadata_in_api_payloa
         "created": None,
         "modified": None,
     }
+
+
+def test_from_ansible_rejects_ambiguous_team_name_without_organization():
+    """AAP-92255: do not pick results[0] when duplicate team names exist."""
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.search_api.return_value = {
+        "results": [
+            {"id": 9, "name": "J Team", "organization": 38, "summary_fields": {"organization": {"id": 38, "name": "OrgA"}}},
+            {"id": 10, "name": "J Team", "organization": 39, "summary_fields": {"organization": {"id": 39, "name": "OrgB"}}},
+        ]
+    }
+
+    with pytest.raises(ValueError, match="Multiple teams named 'J Team'"):
+        resolve_team_id(manager, "J Team")
+    manager.lookup_resource_id.assert_not_called()
+
+
+def test_from_ansible_resolves_team_with_organization_scope():
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        RoleTeamAssignmentTransformMixin_v1,
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.lookup_resource_id.return_value = 39
+    manager.search_api.return_value = {
+        "results": [
+            {"id": 10, "name": "J Team", "organization": 39, "summary_fields": {"organization": {"id": 39, "name": "OrgB"}}},
+        ]
+    }
+
+    assert resolve_team_id(manager, "J Team", organization="OrgB") == "10"
+    manager.search_api.assert_called_once_with("teams", query_params={"name": "J Team", "organization": 39})
+
+    api = RoleTeamAssignmentTransformMixin_v1.from_ansible_data(
+        {"role_definition": "22", "team": "J Team", "organization": "OrgB", "object_id": "38"},
+        {"manager": manager},
+    )
+    assert api.team == "10"
+    assert not hasattr(api, "organization") or "organization" not in asdict(api)
+
+
+def test_numeric_team_id_skips_name_lookup():
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    assert resolve_team_id(manager, "10", organization="OrgB") == "10"
+    manager.search_api.assert_not_called()
+    manager.lookup_resource_id.assert_not_called()
+
+
+def test_unique_team_name_without_organization_succeeds():
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.search_api.return_value = {
+        "results": [
+            {"id": 7, "name": "unique-team", "organization": 1, "summary_fields": {"organization": {"name": "OnlyOrg"}}},
+        ]
+    }
+    assert resolve_team_id(manager, "unique-team") == "7"
+
+
+def test_scoped_team_not_in_organization_raises():
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.lookup_resource_id.return_value = 99
+    manager.search_api.return_value = {"results": []}
+    with pytest.raises(ValueError, match="Expected exactly one team named 'J Team' in organization 'MissingOrg'"):
+        resolve_team_id(manager, "J Team", organization="MissingOrg")
+
+
+def test_organization_lookup_only_not_in_api_wire_format():
+    """Top-level organization must never appear on the Gateway POST body."""
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        RoleTeamAssignmentTransformMixin_v1,
+    )
+
+    manager = MagicMock()
+    manager.lookup_resource_id.return_value = 39
+    manager.search_api.return_value = {"results": [{"id": 10, "name": "J Team", "organization": 39}]}
+
+    api = RoleTeamAssignmentTransformMixin_v1.from_ansible_data(
+        {
+            "role_definition": "22",
+            "team": "J Team",
+            "organization": "OrgB",
+            "object_id": "38",
+        },
+        {"manager": manager},
+    )
+    payload = asdict(api)
+    assert "organization" not in payload
+    assert payload["team"] == "10"
+    assert payload["object_id"] == "38"
+
+
+def test_unscoped_assignment_object_teams_also_rejects_ambiguity():
+    """assignment_objects type=teams without organization must not pick results[0]."""
+    service = _service()
+    service.search_api.return_value = {
+        "results": [
+            {"id": 9, "name": "J Team", "organization": 38, "summary_fields": {"organization": {"name": "OrgA"}}},
+            {"id": 10, "name": "J Team", "organization": 39, "summary_fields": {"organization": {"name": "OrgB"}}},
+        ]
+    }
+    with pytest.raises(ValueError, match="Multiple teams named 'J Team'"):
+        _resolve(service, {"type": "teams", "name": "J Team"})
