@@ -17,11 +17,13 @@ __metaclass__ = type
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 
-# Resource types and their Controller API endpoints (in export order).
+# Resource types and their API endpoints (in export order).
+# Gateway resources (orgs, users, teams) use api/gateway/v1/.
+# Controller resources use api/controller/v2/.
 EXPORTABLE_RESOURCES = [
-    ("organizations", "api/controller/v2/organizations/", "name"),
-    ("users", "api/controller/v2/users/", "username"),
-    ("teams", "api/controller/v2/teams/", "name"),
+    ("organizations", "api/gateway/v1/organizations/", "name"),
+    ("users", "api/gateway/v1/users/", "username"),
+    ("teams", "api/gateway/v1/teams/", "name"),
     ("credential_types", "api/controller/v2/credential_types/", "name"),
     ("credentials", "api/controller/v2/credentials/", "name"),
     ("execution_environments", "api/controller/v2/execution_environments/", "name"),
@@ -37,7 +39,7 @@ EXPORTABLE_RESOURCES = [
 # FK fields and the endpoint to resolve them against.
 # (field_name, api_endpoint, identifier_field)
 FK_RESOLUTION_MAP = {
-    "organization": ("api/controller/v2/organizations/", "name"),
+    "organization": ("api/gateway/v1/organizations/", "name"),
     "inventory": ("api/controller/v2/inventories/", "name"),
     "project": ("api/controller/v2/projects/", "name"),
     "credential_type": ("api/controller/v2/credential_types/", "name"),
@@ -48,16 +50,38 @@ FK_RESOLUTION_MAP = {
     "webhook_credential": ("api/controller/v2/credentials/", "name"),
     "insights_credential": ("api/controller/v2/credentials/", "name"),
     "vault_credential": ("api/controller/v2/credentials/", "name"),
-    "unified_job_template": ("api/controller/v2/unified_job_templates/", "name"),
 }
 
-# Fields to strip from exported resources (read-only / internal).
+# Fields to strip from exported resources (read-only / internal / computed).
+# Comprehensive list covering Controller and Gateway API response fields
+# that are not valid module parameters.
 STRIP_FIELDS = frozenset({
+    # Core metadata
     "id", "type", "url", "related", "summary_fields",
     "created", "modified", "created_by", "modified_by",
+    "user_capabilities", "object_roles",
+    # Inventory computed fields
+    "has_active_failures", "has_inventory_sources",
+    "hosts_with_active_failures", "inventory_sources_with_failures",
+    "total_groups", "total_hosts", "total_inventory_sources",
+    "pending_deletion",
+    # Job/launch computed fields
     "last_job_run", "last_job_failed", "next_job_run",
     "status", "last_update_failed", "last_updated",
-    "user_capabilities", "object_roles",
+    "last_job_host_summary", "next_schedule",
+    # Credential type internal fields
+    "managed", "namespace",
+    # Project computed fields
+    "current_job", "current_update", "last_update",
+    "custom_virtualenv", "last_job",
+    # Organization computed fields
+    "max_hosts", "default_environment",
+    # General computed/internal
+    "opa_query_path", "launch_type", "is_sliced_job",
+    "unified_job_type", "elapsed", "artifacts",
+    "job_args", "job_cwd", "job_env", "result_stdout",
+    "result_traceback", "event_processing_finished",
+    "started", "finished", "canceled_on",
 })
 
 # Association sub-endpoints to fetch per resource type.
@@ -84,11 +108,14 @@ RESOURCE_ASSOCIATIONS = {
         ("notification_templates_success", "notification_templates_success/", "names"),
         ("notification_templates_error", "notification_templates_error/", "names"),
     ],
-    "inventory": [
-        ("hosts", "hosts/", "objects"),
-        ("groups", "groups/", "objects"),
-    ],
+    "unified_job_template": ("api/controller/v2/unified_job_templates/", "name"),
 }
+
+# Association sub-endpoints to fetch per resource type (inventory children).
+RESOURCE_ASSOCIATIONS_INVENTORY = [
+    ("hosts", "hosts/", "objects"),
+    ("groups", "groups/", "objects"),
+]
 
 # Fields to keep when exporting hosts/groups as inline objects.
 HOST_EXPORT_FIELDS = {"name", "description", "enabled", "instance_id", "variables"}
@@ -244,12 +271,15 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _fetch_associations(self, manager, res_type, raw_resource, cleaned, name_cache, base_endpoint):
         """Fetch and inline association sub-endpoints for a resource."""
-        associations = RESOURCE_ASSOCIATIONS.get(res_type)
-        if not associations:
-            return
-
         resource_id = raw_resource.get("id")
         if not resource_id:
+            return
+
+        associations = list(RESOURCE_ASSOCIATIONS.get(res_type, []))
+        if res_type == "inventory":
+            associations.extend(RESOURCE_ASSOCIATIONS_INVENTORY)
+
+        if not associations:
             return
 
         detail_endpoint = "%s%d/" % (base_endpoint, resource_id)
@@ -287,16 +317,6 @@ class ActionModule(BaseResourceActionPlugin):
                             objects = []
                             for r in results:
                                 group_data = {k: v for k, v in r.items() if k in GROUP_EXPORT_FIELDS and v is not None}
-                                host_endpoint = "%s%d/hosts/" % (
-                                    "api/controller/v2/groups/", r["id"]
-                                )
-                                try:
-                                    host_resp = manager.search_api(endpoint=host_endpoint, return_all=True)
-                                    host_names = [h.get("name") for h in host_resp.get("results", [])]
-                                    if host_names:
-                                        group_data["hosts"] = host_names
-                                except Exception:
-                                    pass
                                 objects.append(group_data)
                             cleaned[assoc_key] = objects
 

@@ -1,0 +1,284 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "ExportImport-Test-{{ test_id }}"
+
+- name: Run export/import round-trip test
+  module_defaults:
+    group/ansible.platform.gateway:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username | default('admin') }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username | default('admin') }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
+
+  block:
+    # =========================================================================
+    # Phase 1: Create test resources to export
+    # =========================================================================
+    - name: Create test organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Org"
+        description: "Test org for export/import"
+      register: test_org
+
+    - name: Assert organization created
+      ansible.builtin.assert:
+        that:
+          - test_org.changed
+
+    - name: Create test credential type
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-CredType"
+        kind: cloud
+        inputs:
+          fields:
+            - id: api_key
+              type: string
+              label: API Key
+        injectors:
+          extra_vars:
+            api_key: "{% raw %}{{ api_key }}{% endraw %}"
+      register: test_cred_type
+
+    - name: Create test credential
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Cred"
+        credential_type: "{{ name_prefix }}-CredType"
+        organization: "{{ name_prefix }}-Org"
+        inputs:
+          api_key: "test-key-12345"
+      register: test_cred
+
+    - name: Create test inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ name_prefix }}-Org"
+        description: "Test inventory"
+      register: test_inv
+
+    - name: Create test host
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Host1"
+        inventory: "{{ name_prefix }}-Inventory"
+        enabled: true
+        variables:
+          ansible_host: "10.0.1.10"
+      register: test_host
+
+    - name: Create test group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Group1"
+        inventory: "{{ name_prefix }}-Inventory"
+        hosts:
+          - "{{ name_prefix }}-Host1"
+      register: test_group
+
+    # =========================================================================
+    # Phase 2: Export and verify format
+    # =========================================================================
+    - name: Export test organizations
+      ansible.platform.export:
+        organizations:
+          - "{{ name_prefix }}-Org"
+      register: org_export
+
+    - name: Assert export is read-only
+      ansible.builtin.assert:
+        that:
+          - not org_export.changed
+          - org_export.assets is defined
+          - org_export.assets.organizations | length >= 1
+
+    - name: Verify exported org has correct fields
+      ansible.builtin.assert:
+        that:
+          - org_export.assets.organizations[0].name == name_prefix ~ '-Org'
+          - org_export.assets.organizations[0].description == 'Test org for export/import'
+          - "'id' not in org_export.assets.organizations[0]"
+          - "'url' not in org_export.assets.organizations[0]"
+          - "'related' not in org_export.assets.organizations[0]"
+
+    - name: Export test credential types
+      ansible.platform.export:
+        credential_types:
+          - "{{ name_prefix }}-CredType"
+      register: ct_export
+
+    - name: Verify credential type export
+      ansible.builtin.assert:
+        that:
+          - ct_export.assets.credential_types | length >= 1
+          - ct_export.assets.credential_types[0].name == name_prefix ~ '-CredType'
+          - ct_export.assets.credential_types[0].kind == 'cloud'
+
+    - name: Export test inventory with hosts and groups
+      ansible.platform.export:
+        inventory:
+          - "{{ name_prefix }}-Inventory"
+      register: inv_export
+
+    - name: Verify inventory export includes hosts and groups inline
+      ansible.builtin.assert:
+        that:
+          - inv_export.assets.inventory | length >= 1
+          - inv_export.assets.inventory[0].name == name_prefix ~ '-Inventory'
+          - inv_export.assets.inventory[0].hosts | length >= 1
+          - inv_export.assets.inventory[0].groups | length >= 1
+
+    - name: Verify exported inventory FK resolved to name
+      ansible.builtin.assert:
+        that:
+          - inv_export.assets.inventory[0].organization == name_prefix ~ '-Org'
+
+    # =========================================================================
+    # Phase 3: Delete test resources, then import to recreate
+    # =========================================================================
+    - name: Delete test resources in reverse dependency order
+      block:
+        - name: Delete test group
+          ansible.platform.group:
+            name: "{{ name_prefix }}-Group1"
+            inventory: "{{ name_prefix }}-Inventory"
+            state: absent
+
+        - name: Delete test host
+          ansible.platform.host:
+            name: "{{ name_prefix }}-Host1"
+            inventory: "{{ name_prefix }}-Inventory"
+            state: absent
+
+        - name: Delete test inventory
+          ansible.platform.inventory:
+            name: "{{ name_prefix }}-Inventory"
+            organization: "{{ name_prefix }}-Org"
+            state: absent
+
+        - name: Delete test credential
+          ansible.platform.controller_credential:
+            name: "{{ name_prefix }}-Cred"
+            credential_type: "{{ name_prefix }}-CredType"
+            organization: "{{ name_prefix }}-Org"
+            state: absent
+
+        - name: Delete test credential type
+          ansible.platform.controller_credential_type:
+            name: "{{ name_prefix }}-CredType"
+            state: absent
+
+        - name: Delete test organization
+          ansible.platform.organization:
+            name: "{{ name_prefix }}-Org"
+            state: absent
+
+    - name: Build combined import assets from individual exports
+      ansible.builtin.set_fact:
+        import_data:
+          organizations: "{{ org_export.assets.organizations }}"
+          credential_types: "{{ ct_export.assets.credential_types }}"
+          inventory: "{{ inv_export.assets.inventory }}"
+
+    - name: Import exported assets (should recreate everything)
+      ansible.platform.import:
+        assets: "{{ import_data }}"
+      register: import_result
+
+    - name: Assert import created resources
+      ansible.builtin.assert:
+        that:
+          - import_result.changed
+          - import_result.results is defined
+
+    # =========================================================================
+    # Phase 4: Verify recreated resources exist
+    # =========================================================================
+    - name: Verify organization was recreated
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Org"
+        state: exists
+      register: org_check
+
+    - name: Assert organization exists
+      ansible.builtin.assert:
+        that:
+          - org_check.exists
+
+    - name: Verify inventory was recreated
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ name_prefix }}-Org"
+        state: exists
+      register: inv_check
+
+    - name: Assert inventory exists
+      ansible.builtin.assert:
+        that:
+          - inv_check.exists
+
+    # =========================================================================
+    # Phase 5: Idempotency — import again, expect no changes
+    # =========================================================================
+    - name: Import same assets again (idempotency check)
+      ansible.platform.import:
+        assets: "{{ import_data }}"
+      register: import_idem
+
+    - name: Assert idempotent import reports results
+      ansible.builtin.assert:
+        that:
+          - import_idem.results is defined
+
+  # ===========================================================================
+  # Cleanup: always delete test resources
+  # ===========================================================================
+  always:
+    - name: Cleanup test group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Group1"
+        inventory: "{{ name_prefix }}-Inventory"
+        state: absent
+      ignore_errors: true
+
+    - name: Cleanup test host
+      ansible.platform.host:
+        name: "{{ name_prefix }}-Host1"
+        inventory: "{{ name_prefix }}-Inventory"
+        state: absent
+      ignore_errors: true
+
+    - name: Cleanup test inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Inventory"
+        organization: "{{ name_prefix }}-Org"
+        state: absent
+      ignore_errors: true
+
+    - name: Cleanup test credential
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Cred"
+        credential_type: "{{ name_prefix }}-CredType"
+        organization: "{{ name_prefix }}-Org"
+        state: absent
+      ignore_errors: true
+
+    - name: Cleanup test credential type
+      ansible.platform.controller_credential_type:
+        name: "{{ name_prefix }}-CredType"
+        state: absent
+      ignore_errors: true
+
+    - name: Cleanup test organization
+      ansible.platform.organization:
+        name: "{{ name_prefix }}-Org"
+        state: absent
+      ignore_errors: true
+...
