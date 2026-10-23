@@ -1,0 +1,73 @@
+---
+# Main orchestrator — imports resources in dependency order.
+#
+# Dependency order mirrors awxkit's EXPORTABLE_RESOURCES creation order,
+# ensuring FK references resolve correctly (e.g. orgs before teams,
+# credential_types before credentials, projects before job_templates).
+
+- name: Prepare import assets
+  ansible.builtin.set_fact:
+    _import_assets: >-
+      {{ import_auto_convert_legacy | bool
+         | ternary(import_assets | ansible.platform.from_awxkit_export,
+                   import_assets) }}
+
+# --- Tier 1: no FK dependencies ---
+- name: Import organizations
+  ansible.builtin.include_tasks: organizations.yml
+  when: _import_assets.organizations is defined and _import_assets.organizations | length > 0
+
+- name: Import users
+  ansible.builtin.include_tasks: users.yml
+  when: _import_assets.users is defined and _import_assets.users | length > 0
+
+# --- Tier 2: depends on organizations ---
+- name: Import teams
+  ansible.builtin.include_tasks: teams.yml
+  when: _import_assets.teams is defined and _import_assets.teams | length > 0
+
+- name: Import credential types
+  ansible.builtin.include_tasks: credential_types.yml
+  when: _import_assets.credential_types is defined and _import_assets.credential_types | length > 0
+
+# --- Tier 3: depends on organizations + credential types ---
+- name: Import credentials
+  ansible.builtin.include_tasks: credentials.yml
+  when: _import_assets.credentials is defined and _import_assets.credentials | length > 0
+
+- name: Import execution environments
+  ansible.builtin.include_tasks: execution_environments.yml
+  when: _import_assets.execution_environments is defined and _import_assets.execution_environments | length > 0
+
+- name: Import notification templates
+  ansible.builtin.include_tasks: notification_templates.yml
+  when: _import_assets.notification_templates is defined and _import_assets.notification_templates | length > 0
+
+# --- Tier 4: depends on credentials + organizations ---
+- name: Import projects
+  ansible.builtin.include_tasks: projects.yml
+  when: _import_assets.projects is defined and _import_assets.projects | length > 0
+
+- name: Import inventories
+  ansible.builtin.include_tasks: inventories.yml
+  when: _import_assets.inventory is defined and _import_assets.inventory | length > 0
+
+# --- Tier 5: depends on inventories + projects + credentials ---
+- name: Import inventory sources
+  ansible.builtin.include_tasks: inventory_sources.yml
+  when: _import_assets.inventory_sources is defined and _import_assets.inventory_sources | length > 0
+
+- name: Import job templates
+  ansible.builtin.include_tasks: job_templates.yml
+  when: _import_assets.job_templates is defined and _import_assets.job_templates | length > 0
+
+# --- Tier 6: depends on job templates ---
+- name: Import workflow job templates
+  ansible.builtin.include_tasks: workflow_job_templates.yml
+  when: _import_assets.workflow_job_templates is defined and _import_assets.workflow_job_templates | length > 0
+
+# --- Tier 7: depends on unified job templates ---
+- name: Import schedules
+  ansible.builtin.include_tasks: schedules.yml
+  when: _import_assets.schedules is defined and _import_assets.schedules | length > 0
+...

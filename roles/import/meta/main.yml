@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: import
+  namespace: ansible.platform
+  author: Red Hat
+  description: >-
+    Import Controller resources from a structured asset dict.
+    Accepts native format (module-parameter dicts) or legacy awxkit
+    export format (auto-converted via the from_awxkit_export filter).
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+    - name: Fedora
+      versions:
+        - all
+  galaxy_tags:
+    - aap
+    - controller
+    - import
+    - export
+    - migration
+
+dependencies: []
+...

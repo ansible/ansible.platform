@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - export - add ``export`` module for exporting Controller and Gateway resources with FK resolution and association fetching (https://issues.redhat.com/browse/AAP-95849).
+  - import - add ``import`` module, ``import`` role, and ``from_awxkit_export`` filter for importing Controller and Gateway resources from awxkit/awx CLI exports (https://issues.redhat.com/browse/AAP-95849).
+...

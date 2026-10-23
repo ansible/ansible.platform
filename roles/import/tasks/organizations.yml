@@ -1,0 +1,10 @@
+---
+- name: Create or update organizations
+  ansible.platform.organization:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    state: "{{ import_state }}"
+  loop: "{{ _import_assets.organizations }}"
+  loop_control:
+    label: "{{ item.name }}"
+...
