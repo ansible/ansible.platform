@@ -24,6 +24,15 @@
   ansible.builtin.set_fact:
     test_capacity_adjustment: "{{ 0.8 if (original_capacity_adjustment | float) != 0.8 else 0.7 }}"
 
+- name: "DEBUG: Show capacity adjustment values before test"
+  ansible.builtin.debug:
+    msg: >-
+      original={{ original_capacity_adjustment }} (type={{ original_capacity_adjustment | type_debug }})
+      | test={{ test_capacity_adjustment }} (type={{ test_capacity_adjustment | type_debug }})
+      | instance_hostname={{ test_instance.hostname }}
+      | instance_cap_adj={{ test_instance.capacity_adjustment }} (type={{ test_instance.capacity_adjustment | type_debug }})
+      | connection_mode={{ connection_mode | default('unknown') }}
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.controller:
@@ -40,10 +49,18 @@
       check_mode: true
       register: check_mode_update
 
+    - name: "DEBUG: Show check_mode_update result"
+      ansible.builtin.debug:
+        var: check_mode_update
+
     - name: Assert check mode predicts a change
       ansible.builtin.assert:
         that:
           - check_mode_update is changed
+        fail_msg: >-
+          check_mode returned changed={{ check_mode_update.changed }}
+          | desired_cap_adj={{ test_capacity_adjustment }} (type={{ test_capacity_adjustment | type_debug }})
+          | result={{ check_mode_update }}
 
     - name: Confirm check mode did not change the instance
       ansible.builtin.set_fact:
