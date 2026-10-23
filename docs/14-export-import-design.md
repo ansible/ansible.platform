@@ -577,20 +577,124 @@ tests, this is not blocked by infrastructure.
 
 ---
 
-## SECTION 7: Future Work (Phase 2+)
+## SECTION 7: Export Module Design
 
-### Export role
+The `ansible.platform.export` module is implemented as a Shape 7 action plugin
+(`plugins/action/export.py`) that reads resources via `manager.search_api()`
+using a single manager connection.
 
-An export role using the `gateway_api` lookup plugin to fetch resources and
-produce the native format. Challenges:
+### Architecture
 
-- **FK-ID-to-name resolution** — API responses return FK fields as IDs. Each
-  ID needs a reverse lookup to get the name. The `gateway_api` lookup can do
-  this but it's O(n) additional API calls per FK field per resource.
-- **Related objects** — survey_spec, credentials, labels, notification template
-  associations each require a sub-endpoint query per parent resource.
-- **Performance** — many sequential API calls. Could be mitigated by caching
-  resource-type → {id: name} maps.
+```
+User calls ansible.platform.export
+  └─ action plugin _prepare_action() → one manager connection
+      ├─ 1. Build FK name cache (pre-fetch all resource types)
+      ├─ 2. For each requested resource type:
+      │     a. search_api() to list resources
+      │     b. Strip read-only fields (id, url, related, summary_fields, ...)
+      │     c. Resolve FK IDs → names via cache
+      │     d. Fetch association sub-endpoints (credentials, labels, survey_spec, ...)
+      └─ 3. Return {assets: {...}, changed: false}
+```
+
+### FK Name Cache
+
+The export module pre-fetches all resource types referenced by FK fields and
+builds `{endpoint: {id: name}}` lookup tables. This costs ~10 API calls at
+startup (deduplicated across FK targets) and gives O(1) resolution per field.
+
+```python
+FK_RESOLUTION_MAP = {
+    "organization":          ("api/controller/v2/organizations/", "name"),
+    "inventory":             ("api/controller/v2/inventories/", "name"),
+    "project":               ("api/controller/v2/projects/", "name"),
+    "credential_type":       ("api/controller/v2/credential_types/", "name"),
+    "execution_environment": ("api/controller/v2/execution_environments/", "name"),
+    "credential":            ("api/controller/v2/credentials/", "name"),
+    "webhook_credential":    ("api/controller/v2/credentials/", "name"),
+    "unified_job_template":  ("api/controller/v2/unified_job_templates/", "name"),
+    # ... additional FK fields
+}
+```
+
+On cache miss (FK ID not found), the raw integer ID is preserved in the
+output — the export does not fail, it degrades gracefully.
+
+### Association Fetching
+
+For resource types with sub-endpoints, the export module queries each:
+
+| Resource type | Sub-endpoints fetched | Mode |
+|---|---|---|
+| `job_templates` | credentials, labels, instance_groups, survey_spec | names / dict |
+| `workflow_job_templates` | labels, survey_spec | names / dict |
+| `projects` | notification_templates_started/success/error | names |
+| `inventory_sources` | notification_templates_started/success/error | names |
+| `inventory` | hosts, groups (+ group→host membership) | objects |
+
+Modes:
+- **names**: extract `name` field from each result → flat list of strings
+- **dict**: include the sub-endpoint response as-is (e.g. survey_spec)
+- **objects**: include filtered objects inline (hosts/groups under inventory)
+
+### Parameters
+
+Matches the legacy `awx.awx.export` interface:
+
+```yaml
+- ansible.platform.export:
+    all: true                    # Export everything
+
+- ansible.platform.export:
+    job_templates: [Deploy App]  # Export specific resources
+    credentials: all             # "all" keyword per type
+```
+
+When no resource type parameters are specified and `all: false`, the module
+exports nothing (empty assets dict). This matches the legacy behavior where
+omitting all resource types with `all: false` is a no-op.
+
+### Performance Characteristics
+
+| Phase | API calls | Notes |
+|---|---|---|
+| FK cache build | ~10 | One per unique FK target endpoint, deduplicated |
+| Resource listing | 1 per requested type | Paginated via `return_all=True` |
+| Associations | N per resource with assocs | N = number of resources of that type |
+| **Typical full export** | **~50–200** | Depends on resource count |
+
+Compared to awxkit's `export_assets()`, which makes similar numbers of calls
+but also queries OPTIONS endpoints for field type detection, the platform
+export module is comparable in API call count but avoids the awxkit dependency.
+
+### Output Format
+
+Native format — identical to `ansible.platform.import` input. Round-trip:
+
+```yaml
+- ansible.platform.export:
+    all: true
+  register: backup
+
+- ansible.platform.import:
+    assets: "{{ backup.assets }}"
+```
+
+### Known Limitations
+
+1. **No legacy format output** — output is native format only. Users who need
+   awxkit-compatible format would need a reverse filter (not yet implemented).
+2. **Managed resources skipped** — credential types marked `managed: true` are
+   excluded from export (matches awxkit behavior).
+3. **Encrypted fields** — credential inputs export as `$encrypted$` sentinel
+   values. The import module passes these through; Controller handles the
+   semantics (ignored on update, rejected on create).
+4. **Workflow job template nodes** — not exported. The WF node DAG structure
+   requires separate design (see Future Work below).
+
+---
+
+## SECTION 8: Future Work
 
 ### RBAC export/import
 

@@ -60,4 +60,5 @@ action_groups:
     - workflow_node_wait
     - controller_meta
     - import
+    - export
 ...
