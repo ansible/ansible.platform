@@ -35,7 +35,7 @@ except ImportError:
     def version_parse(v: str):
         return SimpleVersion(v)
 
-    version = type("version", (), {"parse": version_parse})()
+    version = type("version", (), {"parse": staticmethod(version_parse)})()
 
 
 DEFAULT_SERVICE = "gateway"
