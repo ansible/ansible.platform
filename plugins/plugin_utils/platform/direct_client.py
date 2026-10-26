@@ -708,7 +708,6 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("POST", copy_url, operation="copy_resource", resource=module_name, json={"name": new_name})
         return json.loads(response.read())
 
-<<<<<<< HEAD
     def _get_json(self, url: str, operation: str = "http_request", resource: str = "unknown") -> dict:
         """GET a URL via _make_request and return parsed JSON."""
         self._ensure_authenticated()
@@ -720,22 +719,9 @@ class DirectHTTPClient(BaseAPIClient):
         self._ensure_authenticated()
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         return json.loads(response.read())
-=======
+
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """
-        Create hosts in bulk via the Controller bulk/host_create endpoint.
-
-        Args:
-            inventory_id: Numeric ID of the target inventory
-            hosts: List of host dicts (name, description, enabled, variables, instance_id)
-            service: Service name (default: controller)
-
-        Returns:
-            API response dict
-
-        Raises:
-            ValueError: If the API returns a non-201 status
-        """
+        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
         self._ensure_authenticated()
         url = self._build_url("/bulk/host_create/", service=service)
         payload = {"inventory": inventory_id, "hosts": hosts}
@@ -743,7 +729,6 @@ class DirectHTTPClient(BaseAPIClient):
         response_body = response.read()
         response_data = json.loads(response_body) if response_body else {}
         return response_data
->>>>>>> 8be2d722 ([ANSTRAT-1874] Migrate bulk_host_create from awx_collection)
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

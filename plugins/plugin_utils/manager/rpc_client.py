@@ -149,7 +149,6 @@ class ManagerRPCClient:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
 
-<<<<<<< HEAD
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
         """POST to a launch endpoint via the manager process. See PlatformService.launch_resource()."""
         return self.service_proxy.launch_resource(launch_url, payload, service)
@@ -157,11 +156,10 @@ class ManagerRPCClient:
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
-=======
+
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
         return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
->>>>>>> 8be2d722 ([ANSTRAT-1874] Migrate bulk_host_create from awx_collection)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
