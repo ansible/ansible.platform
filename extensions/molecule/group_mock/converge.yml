@@ -105,7 +105,7 @@
       vars:
         ansible_connection: local
 
-    - name: Add host and child associations (connection local)
+    - name: Add host and child associations with preserve_existing_groups alias (connection local)
       ansible.platform.group:
         name: "{{ group_name_local }}"
         inventory: "1"
@@ -113,6 +113,7 @@
           - "web1.example.com"
         children:
           - "child-group-local"
+        preserve_existing_groups: true
       register: assoc_result_local
       vars:
         ansible_connection: local
@@ -131,6 +132,7 @@
           - "web1.example.com"
         children:
           - "child-group-local"
+        preserve_existing_groups: true
       register: assoc_idem_result_local
       vars:
         ansible_connection: local
@@ -189,6 +191,41 @@
       ansible.builtin.assert:
         that: update_result_http_direct is changed
 
+    - name: Create child group for association test (http direct)
+      ansible.platform.group:
+        name: "child-group-http-direct"
+        inventory: "1"
+
+    - name: Add host and child associations with preserve_existing_groups alias (http direct)
+      ansible.platform.group:
+        name: "{{ group_name_http_direct }}"
+        inventory: "1"
+        hosts:
+          - "web1.example.com"
+        children:
+          - "child-group-http-direct"
+        preserve_existing_groups: true
+      register: assoc_result_http_direct
+
+    - name: Assert associations changed (http direct)
+      ansible.builtin.assert:
+        that: assoc_result_http_direct is changed
+
+    - name: Re-run same associations for idempotency (http direct)
+      ansible.platform.group:
+        name: "{{ group_name_http_direct }}"
+        inventory: "1"
+        hosts:
+          - "web1.example.com"
+        children:
+          - "child-group-http-direct"
+        preserve_existing_groups: true
+      register: assoc_idem_result_http_direct
+
+    - name: Assert associations idempotent (http direct)
+      ansible.builtin.assert:
+        that: assoc_idem_result_http_direct is not changed
+
 - name: Converge — group (mock, http persistent)
   hosts: localhost
   connection: ansible.platform.http
@@ -236,4 +273,39 @@
     - name: Assert update changed (http persistent)
       ansible.builtin.assert:
         that: update_result_http_persistent is changed
+
+    - name: Create child group for association test (http persistent)
+      ansible.platform.group:
+        name: "child-group-http-persistent"
+        inventory: "1"
+
+    - name: Add host and child associations with preserve_existing_groups alias (http persistent)
+      ansible.platform.group:
+        name: "{{ group_name_http_persistent }}"
+        inventory: "1"
+        hosts:
+          - "web1.example.com"
+        children:
+          - "child-group-http-persistent"
+        preserve_existing_groups: true
+      register: assoc_result_http_persistent
+
+    - name: Assert associations changed (http persistent)
+      ansible.builtin.assert:
+        that: assoc_result_http_persistent is changed
+
+    - name: Re-run same associations for idempotency (http persistent)
+      ansible.platform.group:
+        name: "{{ group_name_http_persistent }}"
+        inventory: "1"
+        hosts:
+          - "web1.example.com"
+        children:
+          - "child-group-http-persistent"
+        preserve_existing_groups: true
+      register: assoc_idem_result_http_persistent
+
+    - name: Assert associations idempotent (http persistent)
+      ansible.builtin.assert:
+        that: assoc_idem_result_http_persistent is not changed
 ...

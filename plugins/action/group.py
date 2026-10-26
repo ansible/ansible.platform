@@ -13,9 +13,17 @@ _ASSOCIATION_FIELDS = {
     "children": ("groups", "name"),
 }
 
+_ASSOCIATION_ALIASES = {
+    "groups": "children",
+}
+
 _PRESERVE_FIELDS = {
     "hosts": "preserve_existing_hosts",
     "children": "preserve_existing_children",
+}
+
+_PRESERVE_ALIASES = {
+    "preserve_existing_groups": "preserve_existing_children",
 }
 
 
@@ -23,17 +31,25 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "group"
     MODEL_CLASS = AnsibleGroup
 
-    _WRITE_ONLY_FIELDS = frozenset(list(_ASSOCIATION_FIELDS) + list(_PRESERVE_FIELDS.values()))
+    _WRITE_ONLY_FIELDS = frozenset(list(_ASSOCIATION_FIELDS) + list(_PRESERVE_FIELDS.values()) + list(_ASSOCIATION_ALIASES) + list(_PRESERVE_ALIASES))
 
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")
 
         association_data = {}
         preserve_flags = {}
+        for alias, canonical in _ASSOCIATION_ALIASES.items():
+            val = self._task.args.pop(alias, None)
+            if val is not None:
+                self._task.args.setdefault(canonical, val)
         for field in _ASSOCIATION_FIELDS:
             val = self._task.args.pop(field, None)
             if val is not None:
                 association_data[field] = val
+        for alias, canonical in _PRESERVE_ALIASES.items():
+            val = self._task.args.pop(alias, None)
+            if val is not None:
+                self._task.args.setdefault(canonical, val)
         for assoc_field, preserve_field in _PRESERVE_FIELDS.items():
             preserve_flags[assoc_field] = self._task.args.pop(preserve_field, False)
 
@@ -43,7 +59,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
 
-        if resource_id and state not in ("absent", "deleted", "exists") and association_data:
+        if resource_id and state not in ("absent", "deleted", "exists") and association_data and not self._task.check_mode:
             for field, (lookup_ep, lookup_field) in _ASSOCIATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
