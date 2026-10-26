@@ -272,7 +272,7 @@ class TestWorkflowNodeWaitActionModule:
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
     def test_phase2_timeout(self, mock_time, action_module):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
         mock_time.time.side_effect = [0.0, 0.5, 1.0]
 

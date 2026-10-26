@@ -23,7 +23,7 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_node_wait import AnsibleWorkflowNodeWait
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_node_wait import CONTROLLER_V2_PREFIX, WORKFLOW_NODES_LIST_ENDPOINT
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
 
