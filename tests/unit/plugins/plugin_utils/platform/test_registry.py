@@ -161,6 +161,12 @@ def test_get_api_version_allows_reprobe_after_transient_failure():
         def execute(self, operation, module_name, ansible_data_dict):
             pass
 
+        def _get_json(self, url, operation="http_request", resource="unknown"):
+            pass
+
+        def _post_json(self, url, payload, operation="http_request", resource="unknown"):
+            pass
+
     client = _ConcreteClient.__new__(_ConcreteClient)
     client.api_versions = {}
     client.registry = MagicMock()

@@ -1288,6 +1288,18 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return response.json()
 
+    def _get_json(self, url: str, operation: str = "http_request", resource: str = "unknown") -> dict:
+        """GET a URL via _make_request and return parsed JSON."""
+        self.record_activity()
+        response = self._make_request("get", url, operation=operation, resource=resource)
+        return response.json()
+
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
+        """POST JSON via _make_request and return parsed JSON."""
+        self.record_activity()
+        response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
+        return response.json()
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.

@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - api - add generic SDK methods ``launch_resource`` and ``wait_for_completion`` to the platform
+    manager/direct-HTTP clients, with shared wait timeout, poll interval and terminal status
+    constants, laying the groundwork for launch and wait modules migrated from ``awx_collection``
+    (https://issues.redhat.com/browse/AAP-95859).
+...

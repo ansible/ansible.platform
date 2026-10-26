@@ -232,6 +232,32 @@ class TimeoutError(PlatformError):
             return "Operation timed out. Consider increasing gateway_request_timeout or check network/gateway performance."
 
 
+class WaitTimeoutError(PlatformError):
+    """Raised when wait_for_completion exceeds the configured timeout.
+
+    The remote job keeps running on the server; only the client stopped watching.
+    The last polled result is available via ``last_result`` so callers can still
+    report the job's id/status to the user.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        operation: Optional[str] = None,
+        resource: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        timeout_seconds: Optional[float] = None,
+        last_result: Optional[Dict[str, Any]] = None,
+    ):
+        _details = dict(details or {})
+        if last_result is not None:
+            _details["last_result"] = last_result
+        super().__init__(message, operation, resource, _details)
+        self.retryable = False
+        self.timeout_seconds = timeout_seconds
+        self.last_result = last_result or {}
+
+
 def classify_exception(exception: Exception, operation: Optional[str] = None, resource: Optional[str] = None) -> PlatformError:
     """
     Classify a generic exception into platform error taxonomy.

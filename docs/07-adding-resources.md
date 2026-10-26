@@ -386,14 +386,36 @@ POST a job-like resource and optionally block until completion. These are **not*
 resources — every invocation creates a new execution — but they still must obey SDK
 consumer parity ([#206](https://github.com/ansible/ansible.platform/pull/206)).
 
+### SDK API
+
+Two shared methods on `BaseAPIClient` (available to both connection modes via
+`PlatformService` and `DirectHTTPClient`):
+
+```python
+client.launch_resource(launch_url, payload, service="controller")  # POST, returns created resource
+client.wait_for_completion(resource_url, timeout=3600, interval=10, service="controller")  # poll loop
+```
+
+Terminal statuses are defined in `base_client.TERMINAL_STATUSES`:
+`{"successful", "failed", "error", "canceled"}`. These match the Controller job status
+vocabulary. If a future service uses different terminal states, the set should be
+parameterised (e.g. via a mixin hook); for now, all launch modules target Controller.
+
+`WaitTimeoutError` (in `plugins/plugin_utils/platform/exceptions.py`) is a `PlatformError`
+subclass carrying `last_result` — the remote job keeps running, only the client stopped
+watching. See [06-foundation-components.md](06-foundation-components.md) Component 6 for
+the three-timeout disambiguation.
+
+### Guidelines
+
 **Do**:
 
 - Document `wait`, `interval`, and `timeout` in module `DOCUMENTATION` when parity with
   `awx.awx` / `ansible.controller` requires them.
-- Implement wait semantics in **`PlatformService.execute()`**: pop action-only params
-  before instantiating the Ansible dataclass, call create via the mixin, then poll with a
-  **shared** SDK helper (mixin hooks supply `is_finished()` / failure status rules).
-- Keep the action plugin thin — Pattern A is enough when the SDK handles launch + wait.
+- Use `client.launch_resource()` and `client.wait_for_completion()` from the action plugin's
+  `run()` method (Pattern C). Pop `wait`, `interval`, and `timeout` from module params before
+  building the Ansible dataclass.
+- Keep the action plugin thin — delegate all HTTP work to the SDK methods above.
 
 **Do not**:
 
