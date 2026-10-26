@@ -10,6 +10,24 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-IG-{{ test_id }}"
 
+- name: Get existing Controller instances for the association test
+  ansible.builtin.set_fact:
+    all_instances: "{{ query('ansible.platform.gateway_api', 'api/controller/v2/instances/', **connection_info) }}"
+
+- name: Filter for associable instances (hybrid or execution nodes)
+  ansible.builtin.set_fact:
+    associable_instances: "{{ all_instances | selectattr('node_type', 'in', ['hybrid', 'execution']) | list }}"
+
+- name: Select a Controller instance for the association test
+  ansible.builtin.set_fact:
+    controller_instance: "{{ associable_instances | first }}"
+  when: associable_instances | length > 0
+
+- name: Warn if no associable instances available
+  ansible.builtin.debug:
+    msg: "No hybrid or execution instances available — skipping association tests"
+  when: associable_instances | length == 0
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.controller:
@@ -102,6 +120,81 @@
           - renamed_ig is changed
           - renamed_ig.instance_group.id == created_ig.instance_group.id
           - renamed_ig.instance_group.name == (name_prefix ~ '-Renamed')
+
+    - name: Associate an existing instance with the group
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        instances:
+          - "{{ controller_instance.hostname }}"
+      register: associated_ig
+      when: controller_instance is defined
+
+    - name: Assert instance association changed
+      ansible.builtin.assert:
+        that:
+          - associated_ig is changed
+      when: controller_instance is defined
+
+    - name: Read the instance group instance association
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/{{ renamed_ig.instance_group.id }}/instances/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: associated_instances
+      delegate_to: localhost
+      when: controller_instance is defined
+
+    - name: Assert the expected instance is associated
+      ansible.builtin.assert:
+        that:
+          - associated_instances.json.results | selectattr('hostname', 'equalto', controller_instance.hostname) | list | length == 1
+      when: controller_instance is defined
+
+    - name: Check instance association idempotency
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        instances:
+          - "{{ controller_instance.hostname }}"
+      register: idempotent_association
+      when: controller_instance is defined
+
+    - name: Assert the instance association is idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_association is not changed
+      when: controller_instance is defined
+
+    - name: Set policy_instance_list on the group (works with all node types)
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        policy_instance_list:
+          - "{{ all_instances[0].hostname }}"
+      register: policy_list_ig
+      when: all_instances | length > 0
+
+    - name: Assert policy_instance_list changed
+      ansible.builtin.assert:
+        that:
+          - policy_list_ig is changed
+      when: all_instances | length > 0
+
+    - name: Check policy_instance_list idempotency
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        policy_instance_list:
+          - "{{ all_instances[0].hostname }}"
+      register: policy_list_idem
+      when: all_instances | length > 0
+
+    - name: Assert policy_instance_list idempotent
+      ansible.builtin.assert:
+        that:
+          - policy_list_idem is not changed
+      when: all_instances | length > 0
 
     - name: Check exists
       ansible.platform.instance_group:

@@ -34,6 +34,7 @@ class PlatformError(Exception):
         self.operation = operation
         self.resource = resource
         self.details = details or {}
+        self.retryable = False
 
     def __str__(self) -> str:
         """Return formatted error message."""
