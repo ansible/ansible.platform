@@ -531,6 +531,45 @@ def should_exit_for_idle(self, idle_timeout: float) -> bool:
     return self.seconds_since_last_activity() >= idle_timeout
 ```
 
+### `launch_resource` and `wait_for_completion` Methods
+
+Shared SDK methods (defined on `BaseAPIClient`, inherited by both `PlatformService` and `DirectHTTPClient`) for launching remote jobs and polling until completion:
+
+```python
+def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+    """POST to a launch endpoint and return the created resource."""
+
+def wait_for_completion(
+    self,
+    resource_url: str,
+    timeout: Optional[float] = None,
+    interval: Optional[float] = None,
+    service: str = "gateway",
+) -> dict:
+    """Poll a resource URL until it reaches a terminal status.
+
+    Raises WaitTimeoutError (a PlatformError subclass) if timeout is exceeded.
+    The exception carries last_result so callers can report the job's id/status.
+    The remote job keeps running on the server; only the client stopped watching.
+
+    Terminal statuses: successful, failed, error, canceled
+    Defaults: timeout=3600s, interval=10s
+    Negative timeout means 'no timeout' (poll indefinitely).
+    """
+```
+
+Both methods delegate HTTP work to abstract `_get_json()`/`_post_json()` methods that each client implements over its own `_make_request()` layer, ensuring retry, 401 re-auth, and `PlatformError` classification are applied consistently in both connection modes.
+
+**Three timeouts distinguished**:
+
+| Name | Default | What it bounds | Enforced by |
+|------|---------|---------------|-------------|
+| `request_timeout` | 10s | A single HTTP request | Socket layer |
+| `idle_timeout` | 3600s | Manager process lifetime | Monitor thread, `os._exit(0)` |
+| `wait timeout` | 3600s | One remote job across many requests | The loop in `wait_for_completion` |
+
+The wait timeout is unique: it bounds no I/O, and when it fires nothing has failed — the AAP job keeps running and only the client stops watching. That is why the exception carries `last_result`.
+
 ### Update with `fields_to_null`
 
 Before PATCH requests, the service calls `mixin.get_fields_to_null_for_update()` to determine which fields must be sent as empty strings to clear incompatible server-side values:
@@ -619,6 +658,14 @@ class ManagerRPCClient:
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """Execute raw API GET via manager (avoids fork-safety issues on macOS)."""
         return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects)
+
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint via the manager process."""
+        return self.service_proxy.launch_resource(launch_url, payload, service)
+
+    def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
+        """Poll until terminal status via the manager process."""
+        return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
 
     def shutdown_manager(self) -> dict:
         """Request manager to shutdown gracefully."""

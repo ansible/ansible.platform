@@ -6,6 +6,7 @@ error handling, credential management, CRUD operations) is used by both modes.
 """
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -18,14 +19,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_WAIT_TIMEOUT = 3600.0
 DEFAULT_WAIT_INTERVAL = 10.0
 TERMINAL_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
-
-
-class WaitTimeoutError(Exception):
-    """Raised when wait_for_completion exceeds the configured timeout."""
-
-    def __init__(self, message, last_result=None):
-        super().__init__(message)
-        self.last_result = last_result or {}
 
 
 class BaseAPIClient(ABC):
@@ -295,6 +288,107 @@ class BaseAPIClient(ABC):
             ValueError: If operation is unknown or execution fails
         """
         pass
+
+    @abstractmethod
+    def _get_json(self, url: str, operation: str = "http_request", resource: str = "unknown") -> dict:
+        """GET a URL and return parsed JSON.
+
+        Each client routes this through its own HTTP layer (_make_request),
+        gaining retry, 401 re-auth, and PlatformError classification.
+        """
+        pass
+
+    @abstractmethod
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
+        """POST JSON to a URL and return parsed JSON.
+
+        Each client routes this through its own HTTP layer (_make_request).
+        """
+        pass
+
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint and return the created resource."""
+        url = self._build_url(launch_url, service=service)
+        return self._post_json(url, payload, operation="launch_resource", resource="launch")
+
+    def wait_for_completion(
+        self,
+        resource_url: str,
+        timeout: Optional[float] = None,
+        interval: Optional[float] = None,
+        service: str = "gateway",
+    ) -> dict:
+        """Poll a resource URL until it reaches a terminal status.
+
+        Args:
+            resource_url: API path to the resource (e.g. /api/controller/v2/jobs/99/).
+            timeout: Maximum seconds to wait. None means DEFAULT_WAIT_TIMEOUT.
+                Negative values are treated as "no timeout" (wait indefinitely).
+            interval: Seconds between polls. None means DEFAULT_WAIT_INTERVAL.
+            service: API service name for URL construction.
+
+        Raises:
+            WaitTimeoutError: If timeout is exceeded. The exception carries
+                ``last_result`` so callers can still report the job's id/status.
+                The remote job keeps running; only the client stopped watching.
+            ValueError: If interval is not positive.
+        """
+        from .exceptions import WaitTimeoutError
+
+        if timeout is None:
+            timeout = DEFAULT_WAIT_TIMEOUT
+        if interval is None:
+            interval = DEFAULT_WAIT_INTERVAL
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
+
+        url = self._build_url(resource_url, service=service)
+        start = time.monotonic()
+        last_result: dict = {}
+        polled = False
+        prev_status = ""
+
+        while True:
+            if polled and timeout >= 0:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    raise WaitTimeoutError(
+                        "Timed out waiting after %ss" % timeout,
+                        operation="wait_for_completion",
+                        resource=resource_url,
+                        timeout_seconds=timeout,
+                        last_result=last_result,
+                    )
+
+            last_result = self._get_json(url, operation="wait_poll", resource="launch")
+            polled = True
+
+            status = last_result.get("status", "")
+            if not status:
+                logger.warning("wait_for_completion: response has no 'status' field, url=%s", url)
+
+            if status != prev_status:
+                logger.debug("wait_for_completion: %s -> %s (url=%s)", prev_status or "(initial)", status, url)
+                prev_status = status
+
+            if status in TERMINAL_STATUSES:
+                return last_result
+
+            if timeout >= 0:
+                elapsed = time.monotonic() - start
+                if elapsed >= timeout:
+                    raise WaitTimeoutError(
+                        "Timed out waiting after %ss" % timeout,
+                        operation="wait_for_completion",
+                        resource=resource_url,
+                        timeout_seconds=timeout,
+                        last_result=last_result,
+                    )
+                sleep_time = min(interval, max(0, timeout - elapsed))
+            else:
+                sleep_time = interval
+
+            time.sleep(sleep_time)
 
     def lookup_organization_ids(self, names: list) -> list:
         """

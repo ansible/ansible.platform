@@ -20,6 +20,9 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_cli
     DEFAULT_WAIT_INTERVAL,
     DEFAULT_WAIT_TIMEOUT,
     TERMINAL_STATUSES,
+)
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import (  # noqa: E402
+    PlatformError,
     WaitTimeoutError,
 )
 
@@ -34,6 +37,31 @@ class TestWaitTimeoutError(unittest.TestCase):
     def test_default_last_result_is_empty_dict(self):
         exc = WaitTimeoutError("timed out")
         self.assertEqual(exc.last_result, {})
+
+    def test_is_platform_error(self):
+        exc = WaitTimeoutError("timed out", last_result={"id": 1})
+        self.assertIsInstance(exc, PlatformError)
+
+    def test_last_result_in_details(self):
+        result = {"id": 42, "status": "pending"}
+        exc = WaitTimeoutError("timed out", last_result=result)
+        self.assertEqual(exc.details["last_result"], result)
+
+    def test_survives_pickle_roundtrip(self):
+        """WaitTimeoutError must survive multiprocessing RPC (BaseException.__reduce__)."""
+        import pickle
+
+        original = WaitTimeoutError(
+            "timed out",
+            operation="wait_for_completion",
+            resource="/jobs/1/",
+            timeout_seconds=60.0,
+            last_result={"id": 1, "status": "running"},
+        )
+        restored = pickle.loads(pickle.dumps(original))
+        self.assertEqual(str(restored), str(original))
+        self.assertEqual(restored.last_result, {"id": 1, "status": "running"})
+        self.assertEqual(restored.timeout_seconds, 60.0)
 
 
 class TestConstants(unittest.TestCase):
@@ -50,62 +78,52 @@ class TestConstants(unittest.TestCase):
         self.assertNotIn("running", TERMINAL_STATUSES)
 
 
+def _make_platform_service():
+    """Create a PlatformService with enough attributes for _get_json/_post_json."""
+    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+
+    config = MagicMock()
+    config.base_url = "https://gw.example.com"
+    config.verify_ssl = False
+    config.ca_bundle = None
+    config.request_timeout = 30
+    config.requests_verify = False
+    config.connection_mode = "persistent"
+    mgr = PlatformService.__new__(PlatformService)
+    mgr.config = config
+    mgr.session = MagicMock()
+    mgr.request_timeout = 30
+    mgr.base_url = "https://gw.example.com"
+    mgr._activity_lock = threading.Lock()
+    mgr._last_activity_monotonic = time.monotonic()
+    mgr.registry = MagicMock()
+    mgr.api_versions = {}
+    mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/jobs/99/")
+    return mgr
+
+
 class TestPlatformManagerLaunchResource(unittest.TestCase):
-    def _make_manager(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
-
-        config = MagicMock()
-        config.base_url = "https://gw.example.com"
-        config.verify_ssl = False
-        config.ca_bundle = None
-        config.request_timeout = 30
-        config.requests_verify = False
-        config.connection_mode = "direct"
-        mgr = PlatformService.__new__(PlatformService)
-        mgr.config = config
-        mgr.session = MagicMock()
-        mgr.request_timeout = 30
-        mgr.base_url = "https://gw.example.com"
-        mgr._last_activity = time.time()
-        mgr._activity_lock = threading.Lock()
-        mgr._last_activity_monotonic = time.monotonic()
-        mgr.registry = MagicMock()
-        mgr.api_versions = {}
-        return mgr
-
     def test_launch_posts_payload(self):
-        mgr = self._make_manager()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"id": 99, "status": "pending", "url": "/api/controller/v2/jobs/99/"}
-        mock_response.raise_for_status = MagicMock()
-        mgr.session.post.return_value = mock_response
-        mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/job_templates/1/launch/")
+        mgr = _make_platform_service()
+        mgr._post_json = MagicMock(return_value={"id": 99, "status": "pending", "url": "/api/controller/v2/jobs/99/"})
 
         result = mgr.launch_resource("/api/controller/v2/job_templates/1/launch/", {"extra_vars": "{}"}, service="controller")
 
         self.assertEqual(result["id"], 99)
         self.assertEqual(result["status"], "pending")
-        mgr.session.post.assert_called_once()
+        mgr._post_json.assert_called_once()
 
     def test_wait_returns_on_successful(self):
-        mgr = self._make_manager()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"id": 99, "status": "successful"}
-        mock_response.raise_for_status = MagicMock()
-        mgr.session.get.return_value = mock_response
-        mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/jobs/99/")
+        mgr = _make_platform_service()
+        mgr._get_json = MagicMock(return_value={"id": 99, "status": "successful"})
 
         result = mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=30, interval=1, service="controller")
 
         self.assertEqual(result["status"], "successful")
 
     def test_wait_returns_on_failed(self):
-        mgr = self._make_manager()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"id": 99, "status": "failed"}
-        mock_response.raise_for_status = MagicMock()
-        mgr.session.get.return_value = mock_response
-        mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/jobs/99/")
+        mgr = _make_platform_service()
+        mgr._get_json = MagicMock(return_value={"id": 99, "status": "failed"})
 
         result = mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=30, interval=1, service="controller")
 
@@ -113,17 +131,13 @@ class TestPlatformManagerLaunchResource(unittest.TestCase):
 
     @patch("time.sleep")
     def test_wait_polls_until_terminal(self, mock_sleep):
-        mgr = self._make_manager()
+        mgr = _make_platform_service()
         responses = [
             {"id": 99, "status": "pending"},
             {"id": 99, "status": "running"},
             {"id": 99, "status": "successful"},
         ]
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.side_effect = responses
-        mgr.session.get.return_value = mock_response
-        mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/jobs/99/")
+        mgr._get_json = MagicMock(side_effect=responses)
 
         result = mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=60, interval=1, service="controller")
 
@@ -131,18 +145,95 @@ class TestPlatformManagerLaunchResource(unittest.TestCase):
         self.assertEqual(mock_sleep.call_count, 2)
 
     def test_wait_timeout_raises_with_last_result(self):
-        mgr = self._make_manager()
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"id": 99, "status": "pending"}
-        mock_response.raise_for_status = MagicMock()
-        mgr.session.get.return_value = mock_response
-        mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/jobs/99/")
+        mgr = _make_platform_service()
+        mgr._get_json = MagicMock(return_value={"id": 99, "status": "pending"})
 
         with self.assertRaises(WaitTimeoutError) as ctx:
             mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=0, interval=1, service="controller")
 
         self.assertEqual(ctx.exception.last_result.get("id"), 99)
         self.assertEqual(ctx.exception.last_result.get("status"), "pending")
+
+    def test_wait_timeout_error_has_timeout_seconds(self):
+        mgr = _make_platform_service()
+        mgr._get_json = MagicMock(return_value={"id": 99, "status": "pending"})
+
+        with self.assertRaises(WaitTimeoutError) as ctx:
+            mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=0, interval=1, service="controller")
+
+        self.assertEqual(ctx.exception.timeout_seconds, 0)
+
+    def test_wait_negative_timeout_polls_indefinitely(self):
+        """Negative timeout means 'no timeout' — poll until terminal."""
+        mgr = _make_platform_service()
+        responses = [
+            {"id": 99, "status": "pending"},
+            {"id": 99, "status": "successful"},
+        ]
+        mgr._get_json = MagicMock(side_effect=responses)
+
+        with patch("time.sleep"):
+            result = mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=-1, interval=1, service="controller")
+
+        self.assertEqual(result["status"], "successful")
+
+    def test_wait_invalid_interval_raises(self):
+        mgr = _make_platform_service()
+        with self.assertRaises(ValueError):
+            mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=30, interval=0, service="controller")
+        with self.assertRaises(ValueError):
+            mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=30, interval=-1, service="controller")
+
+    def test_wait_no_status_field_logs_warning(self):
+        """Resources with no status field should log a warning, not loop silently."""
+        mgr = _make_platform_service()
+        mgr._get_json = MagicMock(return_value={"id": 99})
+
+        with self.assertRaises(WaitTimeoutError):
+            mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=0, interval=1, service="controller")
+
+    @patch("time.sleep")
+    def test_wait_clamps_sleep_to_remaining(self, mock_sleep):
+        """When timeout - elapsed < interval, sleep should be clamped."""
+        mgr = _make_platform_service()
+        call_count = [0]
+
+        def fake_get_json(url, operation="http_request", resource="unknown"):
+            call_count[0] += 1
+            if call_count[0] >= 3:
+                return {"id": 99, "status": "successful"}
+            return {"id": 99, "status": "pending"}
+
+        mgr._get_json = MagicMock(side_effect=fake_get_json)
+
+        result = mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=3600, interval=10, service="controller")
+        self.assertEqual(result["status"], "successful")
+
+
+class TestPlatformServiceGetJsonRoutesThroughMakeRequest(unittest.TestCase):
+    """Verify _get_json and _post_json route through _make_request (retry, re-auth)."""
+
+    def test_get_json_uses_make_request(self):
+        mgr = _make_platform_service()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": 1, "status": "running"}
+        mgr._make_request = MagicMock(return_value=mock_response)
+
+        result = mgr._get_json("https://gw.example.com/api/controller/v2/jobs/1/", operation="wait_poll", resource="launch")
+
+        mgr._make_request.assert_called_once_with("get", "https://gw.example.com/api/controller/v2/jobs/1/", operation="wait_poll", resource="launch")
+        self.assertEqual(result["id"], 1)
+
+    def test_post_json_uses_make_request(self):
+        mgr = _make_platform_service()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": 1, "status": "pending"}
+        mgr._make_request = MagicMock(return_value=mock_response)
+
+        result = mgr._post_json("https://gw.example.com/api/controller/v2/job_templates/1/launch/", {"extra_vars": "{}"})
+
+        mgr._make_request.assert_called_once()
+        self.assertEqual(result["id"], 1)
 
 
 class TestRPCClientWrappers(unittest.TestCase):

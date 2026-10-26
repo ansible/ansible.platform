@@ -215,6 +215,25 @@ Whichever triggers first wins. The watchdog catches crashes; the idle timeout
 catches forgotten processes after clean Ansible exits where the manager was not
 explicitly shut down.
 
+### Relationship to other timeouts
+
+The collection has three timeouts with overlapping names. This section disambiguates them:
+
+| Name | Default | What it bounds | Enforced by |
+|------|---------|---------------|-------------|
+| `request_timeout` | 10s | A single HTTP request | Socket layer (`timeout=` kwarg) |
+| `idle_timeout` | 3600s | Manager process lifetime (no RPC traffic) | Monitor thread → `os._exit(0)` |
+| wait timeout | 3600s | One remote job across many HTTP requests | `wait_for_completion()` poll loop |
+
+The **wait timeout** is the odd one out: it bounds no I/O at all, and when it fires nothing
+has failed — the AAP job keeps running on the server and only the client stops watching.
+That is exactly why `WaitTimeoutError` carries `last_result`.
+
+The **idle timeout** counts wall-clock silence between any RPC calls. During a
+`wait_for_completion()` loop, each poll resets the idle clock via `record_activity()`,
+so the idle monitor never fires as long as polls are flowing. The gap between polls is
+bounded by `interval` (default 10s), well under the default idle timeout.
+
 ---
 
 ## Testing
