@@ -20,7 +20,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
     AD_HOC_COMMANDS_DETAIL_ENDPOINT,
     AD_HOC_COMMANDS_ENDPOINT,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 _SERVICE = "controller"
 
