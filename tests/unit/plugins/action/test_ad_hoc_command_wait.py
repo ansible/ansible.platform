@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 from ansible.playbook.task import Task
 from ansible_collections.ansible.platform.plugins.action.ad_hoc_command_wait import ActionModule
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ad_hoc_command_wait import AnsibleAdHocCommandWait
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
 def _make_module(args=None, check_mode=False):
