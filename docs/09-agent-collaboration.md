@@ -527,12 +527,14 @@ them produces Ansible-only modules that break MCP and other SDK consumers
 6. **Review gate** — If an action plugin exceeds ~50 lines, references `manager.session`,
    implements a poll loop, or fully overrides `run()` without delegating to the base class,
    stop and move logic into the transform mixin / `PlatformService`.
-7. **Wait and poll in PlatformService** — Module options such as `wait`, `interval`, and
-   `timeout` (common on launch/job controller modules) must be handled inside
-   `PlatformService.execute()` — pop them before building the Ansible dataclass, launch via
-   the mixin, then poll with a **shared** SDK helper. Action plugins must not define
-   `_wait_for_completion()` or use `time.sleep()` to poll job status. MCP and other SDK
-   consumers call `execute()` only; wait logic trapped in an action plugin is Ansible-only
+7. **Wait and poll via SDK methods** — Module options such as `wait`, `interval`, and
+   `timeout` (common on launch/job controller modules) must use the shared SDK methods
+   `client.launch_resource()` and `client.wait_for_completion()` (defined on `BaseAPIClient`).
+   The action plugin's `run()` pops these options before building the Ansible dataclass,
+   then calls launch/wait via the client (Pattern C — thin `run()`). Field mapping and FK
+   resolution still belong in the transform mixin; only launch/wait orchestration lives in
+   `run()`. Action plugins must not define `_wait_for_completion()` or use `time.sleep()`
+   to poll job status — MCP and other SDK consumers must be able to call the same methods
    (see [#227](https://github.com/ansible/ansible.platform/pull/227) for a concrete example).
 
 CI enforces invariants 2 and 7 locally and in PR checks:
@@ -582,9 +584,10 @@ def _wait_for_completion(self, manager, command_id, ...):
         time.sleep(interval)
 ```
 
-**Right:** Pop `wait` / `interval` / `timeout` in `PlatformService.execute()`, launch via
-the transform mixin, then call a shared `wait_for_completion()` helper in the SDK. The
-action plugin stays thin (Pattern A or B) or passes params through without polling.
+**Right:** Pop `wait` / `interval` / `timeout` in the action plugin's `run()`, then call
+`client.launch_resource()` and `client.wait_for_completion()` (shared SDK methods on
+`BaseAPIClient`). Field mapping and FK resolution stay in the transform mixin; only
+launch/wait orchestration lives in `run()` (Pattern C — thin `run()`).
 See [07-adding-resources.md](07-adding-resources.md) §4c.
 
 This is a **documentation and placement** issue, not a ban on `manager.execute()` — #227

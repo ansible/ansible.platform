@@ -103,7 +103,7 @@ Logic trapped in a custom action plugin (especially direct `manager.session` HTT
 |------|----------------|---------------|
 | Field mapping, FK resolution | Transform mixin | Pattern A (default) |
 | Associations, surveys, copy, secondary endpoints | Mixin `get_endpoint_operations()` / hooks | Pattern B hooks only |
-| Launch/job wait (`wait`, `interval`, `timeout`) | `PlatformService.execute()` + shared poller | Pattern A (pass-through) |
+| Launch/job wait (`wait`, `interval`, `timeout`) | `client.launch_resource()` / `client.wait_for_completion()` | Pattern C (thin `run()`) |
 | Multi-step Ansible orchestration | Thin custom `run()` calling `manager.execute()` | Pattern C |
 
 **Test**: If MCP `execute` mode (or a standalone SDK script) cannot perform the same
