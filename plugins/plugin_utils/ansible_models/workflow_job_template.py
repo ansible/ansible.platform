@@ -2,9 +2,8 @@
 Ansible WorkflowJobTemplate dataclass - user-facing stable interface.
 """
 
-import json
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -18,7 +17,7 @@ class AnsibleWorkflowJobTemplate:
     new_name: Optional[str] = None
     description: Optional[str] = None
     organization: Optional[str] = None
-    extra_vars: Optional[Any] = None
+    extra_vars: Optional[Dict[str, Any]] = None
     survey_enabled: Optional[bool] = None
     allow_simultaneous: Optional[bool] = None
     ask_variables_on_launch: Optional[bool] = None
@@ -48,7 +47,3 @@ class AnsibleWorkflowJobTemplate:
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None
-
-    def __post_init__(self):
-        if isinstance(self.extra_vars, dict):
-            self.extra_vars = json.dumps(self.extra_vars)

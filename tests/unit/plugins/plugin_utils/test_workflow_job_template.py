@@ -5,7 +5,6 @@
 
 from __future__ import absolute_import, division, print_function
 
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -26,14 +25,10 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 class TestWorkflowJobTemplateTransform(unittest.TestCase):
     """Ansible <-> API round-trip tests for workflow_job_template."""
 
-    def test_post_init_normalizes_extra_vars_dict(self):
+    def test_extra_vars_stays_as_dict(self):
         ansible = AnsibleWorkflowJobTemplate(name="wf", extra_vars={"foo": "bar"})
-        self.assertIsInstance(ansible.extra_vars, str)
-        self.assertEqual(json.loads(ansible.extra_vars), {"foo": "bar"})
-
-    def test_post_init_preserves_extra_vars_string(self):
-        ansible = AnsibleWorkflowJobTemplate(name="wf", extra_vars='{"foo": "bar"}')
-        self.assertEqual(ansible.extra_vars, '{"foo": "bar"}')
+        self.assertIsInstance(ansible.extra_vars, dict)
+        self.assertEqual(ansible.extra_vars, {"foo": "bar"})
 
     def test_create_includes_all_fields(self):
         ansible = AnsibleWorkflowJobTemplate(
@@ -114,7 +109,7 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         self.assertIsNone(ansible.organization)
         self.assertIsNone(ansible.inventory)
         self.assertIsNone(ansible.webhook_credential)
-        self.assertEqual(ansible.extra_vars, '{"key": "val"}')
+        self.assertEqual(ansible.extra_vars, {"key": "val"})
 
     def test_from_api_resolves_fk_ids_to_names(self):
         def _mock_search(path):
@@ -150,11 +145,11 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         WorkflowJobTemplateTransformMixin_v2.from_api(api_data, context)
         mock_manager.search_api.assert_called_once()
 
-    def test_from_api_parses_extra_vars_json(self):
+    def test_from_api_parses_extra_vars_json_to_dict(self):
         api_data = {"name": "wf", "extra_vars": '{"key": "val"}'}
         ansible = WorkflowJobTemplateTransformMixin_v2.from_api(api_data, {})
-        self.assertIsInstance(ansible.extra_vars, str)
-        self.assertEqual(json.loads(ansible.extra_vars), {"key": "val"})
+        self.assertIsInstance(ansible.extra_vars, dict)
+        self.assertEqual(ansible.extra_vars, {"key": "val"})
 
     def test_from_api_handles_invalid_extra_vars(self):
         api_data = {"name": "wf", "extra_vars": "not valid json{"}
@@ -183,6 +178,38 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         ansible = AnsibleWorkflowJobTemplate(name="wf", id=99)
         api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
+
+    def test_get_find_list_query_params_with_org(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeAPI:
+            organization: int = 42
+
+        params = WorkflowJobTemplateTransformMixin_v2.get_find_list_query_params(FakeAPI(organization=42))
+        self.assertEqual(params, {"organization": 42})
+
+    def test_get_find_list_query_params_without_org(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeAPI:
+            organization: int = None
+
+        params = WorkflowJobTemplateTransformMixin_v2.get_find_list_query_params(FakeAPI())
+        self.assertEqual(params, {})
+
+    def test_from_ansible_data_serializes_extra_vars_dict(self):
+        ansible = AnsibleWorkflowJobTemplate(name="wf", extra_vars={"foo": "bar"})
+        api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.extra_vars, '{"foo": "bar"}')
+
+    def test_extra_vars_round_trip_preserves_dict(self):
+        api_data = {"name": "wf", "extra_vars": '{"foo": "bar"}'}
+        ansible = WorkflowJobTemplateTransformMixin_v2.from_api(api_data, {})
+        self.assertEqual(ansible.extra_vars, {"foo": "bar"})
+        api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
+        self.assertEqual(api.extra_vars, '{"foo": "bar"}')
 
 
 if __name__ == "__main__":

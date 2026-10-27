@@ -35,6 +35,19 @@ class ActionModule(BaseResourceActionPlugin):
         | set(_ASSOC_MAP)
     )
 
+    def _should_update(self, desired_data, current_data):
+        desired = dict(desired_data)
+        desired.pop("organization", None)
+        for field, endpoint in (
+            ("inventory", "inventories"),
+            ("webhook_credential", "credentials"),
+        ):
+            value = desired.get(field)
+            if value is not None and str(value).isdigit() and current_data.get(field) is not None:
+                resource = self._client.search_api(f"{BASE_PATH.rsplit('/', 1)[0]}/{endpoint}/{value}/")
+                desired[field] = resource.get("name", value)
+        return super()._should_update(desired, current_data)
+
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}

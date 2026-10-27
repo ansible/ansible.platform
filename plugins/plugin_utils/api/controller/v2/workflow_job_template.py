@@ -223,6 +223,16 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
         }
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        organization_id = getattr(api_data, "organization", None)
+        if organization_id is not None:
+            try:
+                return {"organization": int(str(organization_id).strip())}
+            except Exception:
+                pass
+        return {}
+
+    @classmethod
     def get_lookup_field(cls) -> str:
         return "name"
 
