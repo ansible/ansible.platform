@@ -85,6 +85,8 @@ options:
     description:
       - Prompt user for labels on launch.
     type: bool
+    aliases:
+      - ask_labels
 
   ask_tags_on_launch:
     description:
@@ -97,6 +99,8 @@ options:
     description:
       - Prompt user for skip tags on launch.
     type: bool
+    aliases:
+      - ask_skip_tags
 
   inventory:
     description:
@@ -126,7 +130,7 @@ options:
   webhook_service:
     description:
       - Service that webhook requests will be accepted from.
-    choices: ['github', 'gitlab']
+    choices: ['github', 'gitlab', 'bitbucket_dc']
     type: str
 
   webhook_credential:
@@ -146,6 +150,8 @@ options:
       - JSON/YAML dict formatted survey definition.
       - Pass an empty dict C({}) to delete an existing survey.
     type: dict
+    aliases:
+      - survey
 
   labels:
     description:
