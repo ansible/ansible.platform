@@ -44,7 +44,6 @@ controller_no_api_parameter_ok = {
     "host": [],
     "controller_credential_type": [],
     "controller_project": ["wait", "update_project", "interval"],
-    "workflow_job_template": ["organization", "survey_spec"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
