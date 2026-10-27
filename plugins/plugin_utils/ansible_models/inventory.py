@@ -32,4 +32,11 @@ class AnsibleInventory:
 
     def __post_init__(self):
         if isinstance(self.variables, dict):
-            self.variables = json.dumps(self.variables)
+            self.variables = json.dumps(self.variables, sort_keys=True)
+        elif isinstance(self.variables, str) and self.variables.strip():
+            try:
+                parsed = json.loads(self.variables)
+                if isinstance(parsed, dict):
+                    self.variables = json.dumps(parsed, sort_keys=True)
+            except (json.JSONDecodeError, ValueError):
+                pass

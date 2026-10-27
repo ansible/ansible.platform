@@ -138,6 +138,16 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        organization_id = getattr(api_data, "organization", None)
+        if organization_id is not None:
+            try:
+                return {"organization": int(str(organization_id).strip())}
+            except (ValueError, TypeError):
+                pass
+        return {}
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
@@ -158,13 +168,22 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
             except Exception:
                 pass
 
+        variables = api_data.get("variables")
+        if isinstance(variables, str) and variables.strip():
+            try:
+                parsed = json.loads(variables)
+                if isinstance(parsed, dict):
+                    variables = json.dumps(parsed, sort_keys=True)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         return AnsibleInventory(
             name=api_data.get("name", ""),
             organization=organization,
             description=api_data.get("description"),
             kind=api_data.get("kind"),
             host_filter=api_data.get("host_filter"),
-            variables=api_data.get("variables"),
+            variables=variables,
             prevent_instance_group_fallback=api_data.get("prevent_instance_group_fallback"),
             id=api_data.get("id"),
         )

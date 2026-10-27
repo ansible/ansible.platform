@@ -7,6 +7,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import json
+
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory import AnsibleInventory
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import BASE_PATH
@@ -38,10 +40,15 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
+        variables = self._task.args.get("variables")
+        if isinstance(variables, dict):
+            self._task.args["variables"] = json.dumps(variables, sort_keys=True)
+
         copy_from = self._task.args.pop("copy_from", None)
         association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
 
         name = self._task.args.get("name")
+        organization = self._task.args.get("organization")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
 
@@ -52,7 +59,13 @@ class ActionModule(BaseResourceActionPlugin):
                 self._task_vars = task_vars
                 manager, facts_to_set = self._get_or_spawn_manager(task_vars)
                 self._client = manager
-                existing = manager.search_api(BASE_PATH, query_params={"name": name})
+                query_params = {"name": name}
+                if organization is not None:
+                    if str(organization).strip().isdigit():
+                        query_params["organization"] = int(organization)
+                    else:
+                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                existing = manager.search_api(BASE_PATH, query_params=query_params)
                 if not any(item.get("name") == name for item in existing.get("results", [])):
                     manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
                     copied = True

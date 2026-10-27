@@ -160,6 +160,45 @@ class TestInventoryTransform(unittest.TestCase):
         api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
 
+    def test_get_find_list_query_params_with_org_id(self):
+        """Lookup should be scoped by organization to avoid cross-org collisions."""
+        ansible = AnsibleInventory(name="inv", organization="1")
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        params = InventoryTransformMixin_v2.get_find_list_query_params(api)
+        self.assertEqual(params, {"organization": 1})
+
+    def test_get_find_list_query_params_without_org(self):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import APIInventory_v2
+
+        api = APIInventory_v2(name="inv")
+        params = InventoryTransformMixin_v2.get_find_list_query_params(api)
+        self.assertEqual(params, {})
+
+    def test_post_init_sorts_variables_keys(self):
+        """Canonical JSON with sorted keys for idempotent comparison."""
+        ansible = AnsibleInventory(name="inv", organization="Default", variables={"z": 1, "a": 2})
+        self.assertEqual(ansible.variables, '{"a": 2, "z": 1}')
+
+    def test_post_init_normalizes_json_string_key_order(self):
+        """A JSON string with unsorted keys gets re-serialized with sorted keys."""
+        ansible = AnsibleInventory(name="inv", organization="Default", variables='{"z": 1, "a": 2}')
+        self.assertEqual(ansible.variables, '{"a": 2, "z": 1}')
+
+    def test_variables_idempotency_dict_vs_api_string(self):
+        """A dict from the task and a JSON string from the API should compare equal after normalization."""
+        task_vars = {"foo": "bar", "num": 42}
+        api_vars = '{"num": 42, "foo": "bar"}'
+
+        task_model = AnsibleInventory(name="inv", organization="1", variables=task_vars)
+        api_model = InventoryTransformMixin_v2.from_api({"name": "inv", "organization": 1, "variables": api_vars}, {})
+        self.assertEqual(task_model.variables, api_model.variables)
+
+    def test_from_api_normalizes_variables_key_order(self):
+        """from_api should return variables with sorted keys for canonical comparison."""
+        api_data = {"name": "inv", "organization": 1, "variables": '{"z": 1, "a": 2}'}
+        ansible = InventoryTransformMixin_v2.from_api(api_data, {})
+        self.assertEqual(ansible.variables, '{"a": 2, "z": 1}')
+
 
 if __name__ == "__main__":
     unittest.main()
