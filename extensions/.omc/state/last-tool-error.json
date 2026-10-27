@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -A 3 \\\"gateway_host\\\\|gateway_admin\\\" /Users/asala/ansible.platform/container-startup.yml 2>/dev/null\",\"description\":\"Check container-startup.yml for connection info\"}",
-  "error": "Exit code 2",
-  "timestamp": "2026-10-26T10:56:55.763Z",
-  "retry_count": 2
-}

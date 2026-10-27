@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"make check_ruff 2>&1\",\"description\":\"Run make check_ruff locally\"}",
-  "error": "Exit code 2\ntox -e ruff\nruff: commands[0]> ruff check .\nAll checks passed!\nruff: commands[1]> ruff format --check .\nunformatted: File would be reformatted\n    --> plugins/plugin_utils/manager/platform_manager.py:1161:14\n     |\n1160 |     def lookup_resource_id(\n     -         self, endpoint: str, lookup_field: str, lookup_value: str, service: str = \"gateway\", extra_query_params: dict = None,\n1161 +         self,\n1162 +         endpoint: str,\n1163 +         lookup_field: str,\n1164 +         looku...",
-  "timestamp": "2026-10-27T16:55:57.642Z",
-  "retry_count": 1
-}
