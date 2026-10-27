@@ -113,6 +113,10 @@ class ManagerRPCClient:
         """
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service)
 
+    def lookup_organization_names(self, organization_ids: list) -> list:
+        """Resolve organization IDs to names via the manager process."""
+        return self.service_proxy.lookup_organization_names(organization_ids)
+
     def manage_associations(
         self,
         base_path: str,
