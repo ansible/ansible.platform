@@ -29,6 +29,14 @@ class ActionModule(BaseResourceActionPlugin):
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from", "wait", "update_project", "interval"} | set(_ASSOC_MAP))
 
+    def _resolve_lookup(self, resource, resource_data, validated_params):
+        organization = getattr(resource, "organization", None)
+        if organization is not None and str(organization).strip().isdigit():
+            names = self._client.lookup_organization_names([int(organization)])
+            if names:
+                resource.organization = names[0]
+                resource_data["organization"] = names[0]
+
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}

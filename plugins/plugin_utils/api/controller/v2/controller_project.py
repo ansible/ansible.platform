@@ -105,10 +105,14 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
             else:
                 api_data["signature_validation_credential"] = int(sig_cred) if sig_cred is not None else None
 
+        # scm_type: Controller uses "" for manual projects, not "manual"
+        scm_type = getattr(ansible_instance, "scm_type", None)
+        if scm_type is not None:
+            api_data["scm_type"] = "" if scm_type == "manual" else scm_type
+
         # Scalar fields
         for field in (
             "description",
-            "scm_type",
             "scm_url",
             "local_path",
             "scm_branch",
@@ -256,7 +260,7 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
         return AnsibleControllerProject(
             name=api_data.get("name", ""),
             description=api_data.get("description"),
-            scm_type=api_data.get("scm_type"),
+            scm_type="manual" if api_data.get("scm_type") == "" else api_data.get("scm_type"),
             scm_url=api_data.get("scm_url"),
             local_path=api_data.get("local_path"),
             scm_branch=api_data.get("scm_branch"),

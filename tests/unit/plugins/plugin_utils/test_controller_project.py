@@ -85,6 +85,29 @@ class TestControllerProjectTransform(unittest.TestCase):
         ControllerProjectTransformMixin_v2.from_ansible_data(ansible, context)
         mock_manager.lookup_resource_id.assert_any_call("credentials", "name", "Sig Cred", service="controller")
 
+    def test_scm_type_manual_sent_as_empty_string(self):
+        """Controller uses '' for manual projects, not 'manual'."""
+        ansible = AnsibleControllerProject(name="proj", scm_type="manual")
+        api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.scm_type, "")
+
+    def test_scm_type_git_passed_through(self):
+        ansible = AnsibleControllerProject(name="proj", scm_type="git")
+        api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.scm_type, "git")
+
+    def test_from_api_empty_scm_type_returns_manual(self):
+        """API returns '' for manual projects; model should store 'manual'."""
+        ansible = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "scm_type": ""}, {})
+        self.assertEqual(ansible.scm_type, "manual")
+
+    def test_scm_type_manual_idempotent(self):
+        """Task with scm_type=manual should match API's '' after round-trip."""
+        ansible_task = AnsibleControllerProject(name="proj", scm_type="manual")
+        ControllerProjectTransformMixin_v2.from_ansible_data(ansible_task, {"operation": "create"})
+        ansible_from_api = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "scm_type": ""}, {})
+        self.assertEqual(ansible_task.scm_type, ansible_from_api.scm_type)
+
     def test_update_with_new_name(self):
         ansible = AnsibleControllerProject(name="old", new_name="new")
         api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
