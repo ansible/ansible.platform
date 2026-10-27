@@ -312,6 +312,8 @@ class Store:
             ("credential_types", ["name", "kind"], 6200),
             ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
             ("schedules", ["name"], 6400),
+            ("workflow_job_templates", ["name"], 6500),
+            ("workflow_job_template_nodes", ["identifier", "workflow_job_template"], 6600),
         )
         for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
