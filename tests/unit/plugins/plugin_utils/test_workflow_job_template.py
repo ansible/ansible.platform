@@ -95,7 +95,7 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.name, "keep")
 
-    def test_from_api_returns_ansible_instance(self):
+    def test_from_api_without_manager_returns_none_for_fks(self):
         api_data = {
             "id": 99,
             "name": "My Workflow",
@@ -111,9 +111,55 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         self.assertIsInstance(ansible, AnsibleWorkflowJobTemplate)
         self.assertEqual(ansible.id, 99)
         self.assertEqual(ansible.name, "My Workflow")
-        self.assertEqual(ansible.organization, "5")
-        self.assertEqual(ansible.inventory, "10")
+        self.assertIsNone(ansible.organization)
+        self.assertIsNone(ansible.inventory)
+        self.assertIsNone(ansible.webhook_credential)
         self.assertEqual(ansible.extra_vars, '{"key": "val"}')
+
+    def test_from_api_resolves_fk_ids_to_names(self):
+        def _mock_search(path):
+            lookup = {
+                "/api/gateway/v1/organizations/5/": {"name": "Default"},
+                "/api/controller/v2/inventories/10/": {"name": "Prod Inventory"},
+                "/api/controller/v2/credentials/3/": {"name": "GH Token"},
+            }
+            return lookup.get(path, {})
+
+        mock_manager = MagicMock()
+        mock_manager.search_api.side_effect = _mock_search
+        context = {"manager": mock_manager, "cache": {}}
+        api_data = {
+            "id": 99,
+            "name": "My Workflow",
+            "organization": 5,
+            "inventory": 10,
+            "webhook_credential": 3,
+        }
+        ansible = WorkflowJobTemplateTransformMixin_v2.from_api(api_data, context)
+        self.assertEqual(ansible.organization, "Default")
+        self.assertEqual(ansible.inventory, "Prod Inventory")
+        self.assertEqual(ansible.webhook_credential, "GH Token")
+
+    def test_from_api_caches_resolved_fk_names(self):
+        mock_manager = MagicMock()
+        mock_manager.search_api.return_value = {"name": "Default"}
+        cache = {}
+        context = {"manager": mock_manager, "cache": cache}
+        api_data = {"name": "wf1", "organization": 5}
+        WorkflowJobTemplateTransformMixin_v2.from_api(api_data, context)
+        WorkflowJobTemplateTransformMixin_v2.from_api(api_data, context)
+        mock_manager.search_api.assert_called_once()
+
+    def test_from_api_parses_extra_vars_json(self):
+        api_data = {"name": "wf", "extra_vars": '{"key": "val"}'}
+        ansible = WorkflowJobTemplateTransformMixin_v2.from_api(api_data, {})
+        self.assertIsInstance(ansible.extra_vars, str)
+        self.assertEqual(json.loads(ansible.extra_vars), {"key": "val"})
+
+    def test_from_api_handles_invalid_extra_vars(self):
+        api_data = {"name": "wf", "extra_vars": "not valid json{"}
+        ansible = WorkflowJobTemplateTransformMixin_v2.from_api(api_data, {})
+        self.assertIsNone(ansible.extra_vars)
 
     def test_from_api_handles_missing_fields(self):
         ansible = WorkflowJobTemplateTransformMixin_v2.from_api({"name": "bare"}, {})

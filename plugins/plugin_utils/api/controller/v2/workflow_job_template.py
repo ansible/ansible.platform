@@ -234,20 +234,44 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
     ):
         from ....ansible_models.workflow_job_template import AnsibleWorkflowJobTemplate
 
-        organization_val = api_data.get("organization")
-        organization_str = str(organization_val) if organization_val is not None else None
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        cache = getattr(context, "cache", None) if isinstance(context, TransformContext) else context.get("cache")
 
-        inventory_val = api_data.get("inventory")
-        inventory_str = str(inventory_val) if inventory_val is not None else None
+        def _resolve_fk_name(api_path: str, resource_id: Optional[int]) -> Optional[str]:
+            if resource_id is None or manager is None:
+                return None
+            cache_key = f"id:{api_path}:{resource_id}"
+            if cache is not None and cache_key in cache:
+                return cache[cache_key]
+            try:
+                result = manager.search_api(f"{api_path}{resource_id}/")
+                name = result.get("name")
+            except Exception as e:
+                logger.warning("Failed to resolve FK at %s%s: %s", api_path, resource_id, e)
+                return None
+            if name is None:
+                logger.warning("Could not resolve FK at %s%s: response did not contain a name", api_path, resource_id)
+                return None
+            if cache is not None:
+                cache[cache_key] = name
+            return name
 
-        webhook_credential_val = api_data.get("webhook_credential")
-        webhook_credential_str = str(webhook_credential_val) if webhook_credential_val is not None else None
+        extra_vars = None
+        raw_extra = api_data.get("extra_vars")
+        if isinstance(raw_extra, dict):
+            extra_vars = raw_extra
+        elif isinstance(raw_extra, str) and raw_extra.strip():
+            try:
+                extra_vars = json.loads(raw_extra)
+            except ValueError as e:
+                logger.warning("Could not parse extra_vars JSON for workflow job template ID %s: %s", api_data.get("id"), e)
+                extra_vars = None
 
         return AnsibleWorkflowJobTemplate(
             name=api_data.get("name", ""),
             description=api_data.get("description"),
-            organization=organization_str,
-            extra_vars=api_data.get("extra_vars"),
+            organization=_resolve_fk_name("/api/gateway/v1/organizations/", api_data.get("organization")),
+            extra_vars=extra_vars,
             survey_enabled=api_data.get("survey_enabled"),
             allow_simultaneous=api_data.get("allow_simultaneous"),
             ask_variables_on_launch=api_data.get("ask_variables_on_launch"),
@@ -257,12 +281,12 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
             ask_labels_on_launch=api_data.get("ask_labels_on_launch"),
             ask_tags_on_launch=api_data.get("ask_tags_on_launch"),
             ask_skip_tags_on_launch=api_data.get("ask_skip_tags_on_launch"),
-            inventory=inventory_str,
+            inventory=_resolve_fk_name("/api/controller/v2/inventories/", api_data.get("inventory")),
             limit=api_data.get("limit"),
             scm_branch=api_data.get("scm_branch"),
             job_tags=api_data.get("job_tags"),
             skip_tags=api_data.get("skip_tags"),
             webhook_service=api_data.get("webhook_service"),
-            webhook_credential=webhook_credential_str,
+            webhook_credential=_resolve_fk_name("/api/controller/v2/credentials/", api_data.get("webhook_credential")),
             id=api_data.get("id"),
         )
