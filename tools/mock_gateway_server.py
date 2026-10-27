@@ -358,6 +358,10 @@ class Store:
             ("schedules", ["name"], 6400),
             ("workflow_job_templates", ["name"], 6500),
             ("workflow_job_template_nodes", ["identifier", "workflow_job_template"], 6600),
+            ("jobs", [], 6700),
+            ("project_updates", [], 6800),
+            ("inventory_updates", [], 6900),
+            ("workflow_jobs", [], 7000),
         )
         for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
@@ -417,7 +421,21 @@ class Store:
                 ],
             )
 
-        # Seed instances for Controller instance_group association tests
+        # Seed completed jobs for job_wait mock tests
+        _job_seed = {"status": "successful", "elapsed": 1.25, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:01Z"}
+        for ep, seed_id in (("jobs", 5801), ("project_updates", 5901), ("inventory_updates", 6001), ("workflow_jobs", 6101)):
+            store = self._resources.get(("controller", ep))
+            if store and seed_id not in store._items:
+                store.seed("2", [{"id": seed_id, **_job_seed}])
+        # Seed a failed and a running job for job_wait tests
+        fail_store = self._resources.get(("controller", "jobs"))
+        if fail_store and 5802 not in fail_store._items:
+            fail_store.seed("2", [
+                {"id": 5802, "status": "failed", "elapsed": 0.5, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:00Z"},
+                {"id": 5803, "status": "running", "elapsed": 0.0, "started": "2026-01-01T00:00:00Z", "finished": None},
+            ])
+
+        # Seed instances for Controller association tests
         inst_store = self._resources.get(("controller", "instances"))
         if inst_store and not inst_store._items:
             inst_store.seed(
