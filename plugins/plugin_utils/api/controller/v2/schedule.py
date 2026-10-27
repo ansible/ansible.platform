@@ -207,8 +207,35 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        ujt_id = getattr(api_data, "unified_job_template", None)
+        if ujt_id is not None:
+            try:
+                return {"unified_job_template": int(str(ujt_id).strip())}
+            except (ValueError, TypeError):
+                pass
+        return {}
+
+    @staticmethod
+    def _resolve_fk_name(manager, endpoint: str, fk_id, service: str = "controller") -> Optional[str]:
+        if manager is None or fk_id is None:
+            return str(fk_id) if fk_id is not None else None
+        try:
+            results = manager.search_api(
+                f"/api/{service}/v2/{endpoint}/",
+                query_params={"id": int(fk_id)},
+            ).get("results", [])
+            if results:
+                return results[0].get("name", str(fk_id))
+        except Exception:
+            pass
+        return str(fk_id)
+
+    @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]):
         from ....ansible_models.schedule import AnsibleSchedule
+
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
 
         ujt_val = api_data.get("unified_job_template")
         ujt_str = str(ujt_val) if ujt_val is not None else None
@@ -224,8 +251,8 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
         elif not isinstance(extra_data, dict):
             extra_data = None
 
-        inv_val = api_data.get("inventory")
-        ee_val = api_data.get("execution_environment")
+        inventory = cls._resolve_fk_name(manager, "inventories", api_data.get("inventory"))
+        execution_environment = cls._resolve_fk_name(manager, "execution_environments", api_data.get("execution_environment"))
 
         return AnsibleSchedule(
             name=api_data.get("name", ""),
@@ -233,8 +260,8 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
             rrule=api_data.get("rrule"),
             unified_job_template=ujt_str,
             enabled=api_data.get("enabled"),
-            extra_data=extra_data if extra_data else None,
-            inventory=str(inv_val) if inv_val is not None else None,
+            extra_data=extra_data,
+            inventory=inventory,
             scm_branch=api_data.get("scm_branch") or None,
             job_type=api_data.get("job_type") or None,
             job_tags=api_data.get("job_tags") or None,
@@ -245,6 +272,6 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
             forks=api_data.get("forks"),
             job_slice_count=api_data.get("job_slice_count"),
             timeout=api_data.get("timeout"),
-            execution_environment=str(ee_val) if ee_val is not None else None,
+            execution_environment=execution_environment,
             id=api_data.get("id"),
         )
