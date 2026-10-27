@@ -28,6 +28,7 @@ action_groups:
     - job_template
     - controller_credential_type
     - credential_input_source
+    - execution_environment
     - host
     - instance_group
     - label
