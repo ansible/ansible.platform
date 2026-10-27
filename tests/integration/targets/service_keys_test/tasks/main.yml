@@ -8,14 +8,6 @@
 - name: Set test variables
   ansible.builtin.set_fact:
     non_existent_service_key_name: "GW-Collection-Test-Service-Key-{{ test_id }}-DNE"
-# The service-key API no longer creates keys, so edit tests need a key seeded
-# by the integration environment.
-- name: Generate a missing service key name
-  ansible.builtin.set_fact:
-    test_service_key_name: "{{ test_service_key_name }}"
-    non_existent_service_key_name: "{{ test_service_key_name }}-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
-  vars:
-    test_service_key_name: "GW-Collection-Test-Service-Key"
 
 - name: Look up existing bootstrap service keys
   ansible.builtin.set_fact:
@@ -45,59 +37,31 @@
 
   block:
     - name: Verify the bootstrap service key exists
-    - name: Look up the fixture service key
-      ansible.builtin.set_fact:
-        fixture_service_keys: >-
-          {{ query(
-               'ansible.platform.gateway_api',
-               'service_keys',
-               query_params={'name': test_service_key_name},
-               **connection_info
-             ) }}
-
-    - name: Save the fixture service key's initial active state
-      ansible.builtin.set_fact:
-        fixture_service_key_initial_is_active: "{{ fixture_service_keys[0].is_active }}"
-      when: fixture_service_keys | length > 0
-
-    - name: Explain why service key edit tests are skipped
-      ansible.builtin.debug:
-        msg: >-
-          Skipping service key edit tests because the integration environment
-          did not provide the required pre-existing service key.
-      when: fixture_service_keys | length == 0
-
-    - name: Verify the fixture service key exists
       ansible.platform.service_key:
         name: "{{ test_service_key_name }}"
         state: exists
       register: service_key
-      when: fixture_service_keys | length > 0
 
     - name: Assert the bootstrap service key exists
       ansible.builtin.assert:
         that:
           - service_key.exists
-      when: fixture_service_keys | length > 0
 
     - name: Set the service key is_active to true to ensure starting state
       ansible.platform.service_key:
         name: "{{ test_service_key_name }}"
         is_active: true
-      when: fixture_service_keys | length > 0
 
     - name: Verify an unchanged service key is idempotent
       ansible.platform.service_key:
         name: "{{ test_service_key_name }}"
         is_active: true
       register: unchanged_service_key
-      when: fixture_service_keys | length > 0
 
     - name: Assert the unchanged service key was not modified
       ansible.builtin.assert:
         that:
           - unchanged_service_key is not changed
-      when: fixture_service_keys | length > 0
 
     - name: Warn and ignore deprecated service key creation fields
       ansible.platform.service_key:
@@ -109,14 +73,12 @@
         mark_previous_inactive: true
         algorithm: HS256
       register: deprecated_service_key_fields
-      when: fixture_service_keys | length > 0
 
     - name: Assert deprecated creation fields are ignored
       ansible.builtin.assert:
         that:
           - deprecated_service_key_fields is not changed
           - deprecated_service_key_fields.deprecations | length == 5
-      when: fixture_service_keys | length > 0
 
     - name: Verify check mode detects a service key update
       ansible.platform.service_key:
@@ -124,26 +86,22 @@
         is_active: false
       check_mode: true
       register: planned_service_key_update
-      when: fixture_service_keys | length > 0
 
     - name: Assert check mode would modify the service key
       ansible.builtin.assert:
         that:
           - planned_service_key_update is changed
-      when: fixture_service_keys | length > 0
 
     - name: Update the service key active state
       ansible.platform.service_key:
         name: "{{ test_service_key_name }}"
         is_active: false
       register: updated_service_key
-      when: fixture_service_keys | length > 0
 
     - name: Assert the service key was updated
       ansible.builtin.assert:
         that:
           - updated_service_key is changed
-      when: fixture_service_keys | length > 0
 
     - name: Attempt to use a missing service key
       ansible.platform.service_key:
@@ -175,18 +133,4 @@
         is_active: "{{ original_is_active | bool }}"
       when: test_service_key_name is defined
       failed_when: false
-        state: absent
-      register: deleted_service_key
-      when: fixture_service_keys | length > 0
-
-    - name: Assert deletion of the mock service key worked
-      ansible.builtin.assert:
-        that:
-          - deleted_service_key is changed
-      when: fixture_service_keys | length > 0
-    - name: Restore the fixture service key's initial active state
-      ansible.platform.service_key:
-        name: "{{ test_service_key_name }}"
-        is_active: "{{ fixture_service_key_initial_is_active }}"
-      when: fixture_service_key_initial_is_active is defined
 ...
