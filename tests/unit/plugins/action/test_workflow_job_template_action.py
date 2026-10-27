@@ -52,6 +52,37 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
+    def test_labels_scoped_by_organization(self, mock_super_run):
+        mock_super_run.return_value = {
+            "changed": True,
+            "failed": False,
+            "id": 10,
+            "organization": 42,
+            "workflow_job_template": {"id": 10, "name": "wf1"},
+        }
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "labels": ["prod"],
+            }
+        )
+        action._client.manage_associations.return_value = True
+
+        action.run(task_vars={})
+
+        action._client.manage_associations.assert_any_call(
+            "/api/controller/v2/workflow_job_templates/",
+            10,
+            "labels",
+            ["prod"],
+            "labels",
+            "name",
+            service="controller",
+            extra_query_params={"organization": 42},
+        )
+
+    @patch.object(BaseResourceActionPlugin, "run")
     def test_notification_templates_called(self, mock_super_run):
         mock_super_run.return_value = {
             "changed": False,
