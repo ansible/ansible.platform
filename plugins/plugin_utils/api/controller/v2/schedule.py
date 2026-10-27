@@ -211,7 +211,7 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
         from ....ansible_models.schedule import AnsibleSchedule
 
         ujt_val = api_data.get("unified_job_template")
-        ujt_str = str(ujt_val) if ujt_val is not None else ""
+        ujt_str = str(ujt_val) if ujt_val is not None else None
 
         extra_data = api_data.get("extra_data")
         if isinstance(extra_data, str) and extra_data.strip():
