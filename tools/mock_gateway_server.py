@@ -430,10 +430,13 @@ class Store:
         # Seed a failed and a running job for job_wait tests
         fail_store = self._resources.get(("controller", "jobs"))
         if fail_store and 5802 not in fail_store._items:
-            fail_store.seed("2", [
-                {"id": 5802, "status": "failed", "elapsed": 0.5, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:00Z"},
-                {"id": 5803, "status": "running", "elapsed": 0.0, "started": "2026-01-01T00:00:00Z", "finished": None},
-            ])
+            fail_store.seed(
+                "2",
+                [
+                    {"id": 5802, "status": "failed", "elapsed": 0.5, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:00Z"},
+                    {"id": 5803, "status": "running", "elapsed": 0.0, "started": "2026-01-01T00:00:00Z", "finished": None},
+                ],
+            )
 
         # Seed instances for Controller association tests
         inst_store = self._resources.get(("controller", "instances"))
