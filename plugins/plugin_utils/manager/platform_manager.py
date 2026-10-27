@@ -1315,62 +1315,6 @@ class PlatformService(BaseAPIClient):
         response.raise_for_status()
         return True
 
-    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
-        """
-        Cancel a resource via its /cancel/ sub-endpoint.
-
-        Checks whether the resource can be canceled (GET), and if so,
-        POSTs to {cancel_endpoint_path}/{resource_id}/cancel/.
-        Already-finished resources return success with changed=False.
-
-        Args:
-            resource_id: ID of the resource (job) to cancel
-            cancel_endpoint_path: Base endpoint path (e.g., 'jobs')
-            fail_if_not_running: If True, raise ValueError when the
-                resource cannot be canceled (already finished)
-            service: Service name (default: 'controller')
-
-        Returns:
-            dict with 'changed', 'id', and 'status' keys
-
-        Raises:
-            ValueError: If resource not found or fail_if_not_running
-                is True and the resource cannot be canceled
-        """
-        self.record_activity()
-        svc_version = self.get_api_version(service)
-        cancel_url = self._build_url(
-            f"/{cancel_endpoint_path}/{resource_id}/cancel/",
-            service=service,
-            api_version=svc_version,
-        )
-
-        # GET to check if the resource can be canceled
-        try:
-            response = self._make_request("GET", cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
-            cancel_info = response.json()
-        except Exception:
-            cancel_info = {}
-
-        if not cancel_info.get("can_cancel", False):
-            if fail_if_not_running:
-                raise ValueError("Job %d is not running and cannot be canceled" % resource_id)
-            return {"changed": False, "id": resource_id, "status": "already_completed"}
-
-        # POST to cancel
-        response = self._make_request(
-            "POST",
-            cancel_url,
-            operation="cancel_resource",
-            resource=cancel_endpoint_path,
-            retry_config=RetryConfig(max_attempts=1),
-            json={},
-        )
-        if response.status_code not in (200, 202):
-            response.raise_for_status()
-
-        return {"changed": True, "id": resource_id, "status": "canceled"}
-
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """
         Copy a resource via its /copy/ sub-endpoint.

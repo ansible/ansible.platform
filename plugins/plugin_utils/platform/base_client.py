@@ -413,6 +413,23 @@ class BaseAPIClient(ABC):
 
             time.sleep(sleep_time)
 
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """Cancel a resource via its /cancel/ sub-endpoint.
+
+        GETs the cancel URL to check can_cancel, then POSTs to cancel.
+        Already-finished resources return changed=False.
+        """
+        cancel_url = self._build_url(f"/{cancel_endpoint_path}/{resource_id}/cancel/", service=service)
+        cancel_info = self._get_json(cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+
+        if not cancel_info.get("can_cancel", False):
+            if fail_if_not_running:
+                raise ValueError("Job %d is not running and cannot be canceled" % resource_id)
+            return {"changed": False, "id": resource_id, "status": "already_completed"}
+
+        self._post_json(cancel_url, {}, operation="cancel_resource", resource=cancel_endpoint_path)
+        return {"changed": True, "id": resource_id, "status": "canceled"}
+
     def lookup_organization_ids(self, names: list) -> list:
         """
         Lookup organization IDs from names (shared helper).

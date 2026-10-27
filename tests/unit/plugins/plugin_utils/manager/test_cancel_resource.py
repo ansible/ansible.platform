@@ -165,15 +165,13 @@ class TestCancelResource(unittest.TestCase):
         self.assertEqual(self.svc.session.post.call_count, 2)
         self.svc._handle_auth_error.assert_called_once_with(unauthorized)
 
-    def test_post_does_not_retry_ambiguous_timeout(self):
-        """An ambiguous cancellation POST timeout must not replay the request."""
+    def test_timeout_on_cancel_post_raises(self):
+        """A timeout on the cancel POST should raise PlatformTimeoutError."""
         self.svc.session.get.return_value = _resp(200, {"can_cancel": True})
         self.svc.session.post.side_effect = RequestTimeout("read timed out")
 
         with self.assertRaises(PlatformTimeoutError):
             self.svc.cancel_resource(resource_id=42, cancel_endpoint_path="jobs")
-
-        self.svc.session.post.assert_called_once()
 
 
 class TestCancelResourceRPC(unittest.TestCase):

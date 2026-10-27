@@ -531,9 +531,9 @@ def should_exit_for_idle(self, idle_timeout: float) -> bool:
     return self.seconds_since_last_activity() >= idle_timeout
 ```
 
-### `launch_resource` and `wait_for_completion` Methods
+### `launch_resource`, `wait_for_completion`, and `cancel_resource` Methods
 
-Shared SDK methods (defined on `BaseAPIClient`, inherited by both `PlatformService` and `DirectHTTPClient`) for launching remote jobs and polling until completion:
+Shared SDK methods (defined on `BaseAPIClient`, inherited by both `PlatformService` and `DirectHTTPClient`) for launching, polling, and cancelling remote jobs:
 
 ```python
 def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
@@ -556,9 +556,23 @@ def wait_for_completion(
     Defaults: timeout=3600s, interval=10s
     Negative timeout means 'no timeout' (poll indefinitely).
     """
+
+def cancel_resource(
+    self,
+    resource_id: int,
+    cancel_endpoint_path: str,
+    fail_if_not_running: bool = False,
+    service: str = "controller",
+) -> dict:
+    """Cancel a resource via its /cancel/ sub-endpoint.
+
+    GETs the cancel URL to check can_cancel, then POSTs to cancel.
+    Already-finished resources return changed=False.
+    Returns dict with 'changed', 'id', and 'status' keys.
+    """
 ```
 
-Both methods delegate HTTP work to abstract `_get_json()`/`_post_json()` methods that each client implements over its own `_make_request()` layer, ensuring retry, 401 re-auth, and `PlatformError` classification are applied consistently in both connection modes.
+All three methods delegate HTTP work to abstract `_get_json()`/`_post_json()` methods that each client implements over its own `_make_request()` layer, ensuring retry, 401 re-auth, and `PlatformError` classification are applied consistently in both connection modes.
 
 **Three timeouts distinguished**:
 
@@ -666,6 +680,10 @@ class ManagerRPCClient:
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """Cancel a running job via the manager process."""
+        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
 
     def shutdown_manager(self) -> dict:
         """Request manager to shutdown gracefully."""
