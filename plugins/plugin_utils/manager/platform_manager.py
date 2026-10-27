@@ -1351,6 +1351,9 @@ class PlatformService(BaseAPIClient):
         """POST JSON via _make_request and return parsed JSON."""
         self.record_activity()
         response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
+        if not response.content:
+            response.raise_for_status()
+            return {}
         return response.json()
 
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
