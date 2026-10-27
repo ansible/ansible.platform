@@ -37,4 +37,5 @@ action_groups:
     - group
     - inventory
     - controller_project
+    - notification_template
 ...
