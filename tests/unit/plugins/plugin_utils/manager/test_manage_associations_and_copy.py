@@ -196,12 +196,22 @@ class TestManageAssociations(unittest.TestCase):
         self.svc.search_api.return_value = {"results": []}
 
         self.svc.manage_associations(
-            "/api/controller/v2/workflow_job_templates", 10, "labels", ["my-label"], "labels", "name",
-            service="controller", extra_query_params={"organization": 42},
+            "/api/controller/v2/workflow_job_templates",
+            10,
+            "labels",
+            ["my-label"],
+            "labels",
+            "name",
+            service="controller",
+            extra_query_params={"organization": 42},
         )
 
         self.svc.lookup_resource_id.assert_called_once_with(
-            "labels", "name", "my-label", service="controller", extra_query_params={"organization": 42},
+            "labels",
+            "name",
+            "my-label",
+            service="controller",
+            extra_query_params={"organization": 42},
         )
 
     def test_extra_query_params_in_batch_query(self):
@@ -212,8 +222,14 @@ class TestManageAssociations(unittest.TestCase):
         ]
 
         self.svc.manage_associations(
-            "/api/controller/v2/workflow_job_templates", 10, "labels", ["label-a", "label-b"], "labels", "name",
-            service="controller", extra_query_params={"organization": 42},
+            "/api/controller/v2/workflow_job_templates",
+            10,
+            "labels",
+            ["label-a", "label-b"],
+            "labels",
+            "name",
+            service="controller",
+            extra_query_params={"organization": 42},
         )
 
         batch_call = self.svc.search_api.call_args_list[0]

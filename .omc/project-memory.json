@@ -1,0 +1,307 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1793098959659,
+  "projectRoot": "/Users/asala/ansible.platform",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      },
+      {
+        "name": "C/C++",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "Makefile"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "django",
+        "version": null,
+        "category": "backend"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "make build",
+    "testCommand": "make test",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "examples",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "devel",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1793098959578,
+      "keyFiles": [
+        "conftest.cpython-312-pytest-9.0.3.pyc",
+        "conftest.cpython-312-pytest-9.1.1.pyc"
+      ]
+    },
+    "changelogs": {
+      "path": "changelogs",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1793098959578,
+      "keyFiles": [
+        "changelog.yaml",
+        "config.yaml"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 14,
+      "lastAccessed": 1793098959578,
+      "keyFiles": [
+        "01-overview.md",
+        "02-action-plugin-pattern.md",
+        "03-sdk-architecture.md",
+        "04-data-model-transformation.md",
+        "05-design-principles.md"
+      ]
+    },
+    "examples": {
+      "path": "examples",
+      "purpose": "Example code",
+      "fileCount": 1,
+      "lastAccessed": 1793098959578,
+      "keyFiles": [
+        "feature_flag_management.yml"
+      ]
+    },
+    "extensions": {
+      "path": "extensions",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1793098959579,
+      "keyFiles": []
+    },
+    "meta": {
+      "path": "meta",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1793098959579,
+      "keyFiles": [
+        "runtime.yml"
+      ]
+    },
+    "plugins": {
+      "path": "plugins",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1793098959579,
+      "keyFiles": []
+    },
+    "requirements": {
+      "path": "requirements",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1793098959580,
+      "keyFiles": [
+        "requirements_dev.txt"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 5,
+      "lastAccessed": 1793098959580,
+      "keyFiles": [
+        "__init__.py",
+        "config.yml",
+        "gateway_test.yml",
+        "test_completeness.py",
+        "test_integration_check.py"
+      ]
+    },
+    "tools": {
+      "path": "tools",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1793098959580,
+      "keyFiles": [
+        "check_action_plugin_invariants.sh",
+        "check_gateway_up.yaml",
+        "generate_resource.py",
+        "mock_gateway_server.py",
+        "validate_spec.py"
+      ]
+    },
+    "tools/scripts": {
+      "path": "tools/scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1793098959582,
+      "keyFiles": [
+        "get_aap_gateway_and_dab.py"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": ".ansible-lint",
+      "accessCount": 12,
+      "lastAccessed": 1793118305091,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/plugins/plugin_utils/test_workflow_job_template.py",
+      "accessCount": 10,
+      "lastAccessed": 1793118645343,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_completeness.py",
+      "accessCount": 10,
+      "lastAccessed": 1793119118268,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/plugins/plugin_utils/manager/test_manage_associations_and_copy.py",
+      "accessCount": 10,
+      "lastAccessed": 1793119854745,
+      "type": "file"
+    },
+    {
+      "path": "meta/runtime.yml",
+      "accessCount": 9,
+      "lastAccessed": 1793118264674,
+      "type": "file"
+    },
+    {
+      "path": "plugins/modules/workflow_job_template.py",
+      "accessCount": 9,
+      "lastAccessed": 1793118976430,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/platform/base_client.py",
+      "accessCount": 9,
+      "lastAccessed": 1793119371264,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/platform/direct_client.py",
+      "accessCount": 8,
+      "lastAccessed": 1793119423239,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/plugins/plugin_utils/platform/test_direct_client_associations_and_copy.py",
+      "accessCount": 8,
+      "lastAccessed": 1793119819725,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/plugins/action/test_workflow_job_template_action.py",
+      "accessCount": 7,
+      "lastAccessed": 1793119791744,
+      "type": "file"
+    },
+    {
+      "path": "tools/mock_gateway_server.py",
+      "accessCount": 6,
+      "lastAccessed": 1793102262440,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_integration_check.py",
+      "accessCount": 5,
+      "lastAccessed": 1793113853207,
+      "type": "file"
+    },
+    {
+      "path": "plugins/action/workflow_job_template.py",
+      "accessCount": 5,
+      "lastAccessed": 1793119478324,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/manager/platform_manager.py",
+      "accessCount": 5,
+      "lastAccessed": 1793119495545,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/manager/rpc_client.py",
+      "accessCount": 5,
+      "lastAccessed": 1793119497118,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/ansible_models/workflow_job_template.py",
+      "accessCount": 4,
+      "lastAccessed": 1793118556455,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/api/controller/v2/workflow_job_template.py",
+      "accessCount": 4,
+      "lastAccessed": 1793118563987,
+      "type": "file"
+    },
+    {
+      "path": "tests/unit/plugins/plugin_utils/manager/test_rpc_client_associations_and_copy.py",
+      "accessCount": 2,
+      "lastAccessed": 1793119544520,
+      "type": "file"
+    },
+    {
+      "path": "tests/integration/targets/service_keys_test/tasks/main.yml",
+      "accessCount": 1,
+      "lastAccessed": 1793102693046,
+      "type": "file"
+    },
+    {
+      "path": "plugins/plugin_utils/api/controller/v2/job_template.py",
+      "accessCount": 1,
+      "lastAccessed": 1793116837726,
+      "type": "file"
+    },
+    {
+      "path": "plugins/action/job_template.py",
+      "accessCount": 1,
+      "lastAccessed": 1793118387155,
+      "type": "file"
+    },
+    {
+      "path": "plugins/action/base_action.py",
+      "accessCount": 1,
+      "lastAccessed": 1793118400905,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

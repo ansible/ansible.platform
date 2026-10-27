@@ -184,15 +184,20 @@ class TestManageAssociations(unittest.TestCase):
             with self.assertRaises(json.JSONDecodeError):
                 self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
 
-
     def test_extra_query_params_passed_to_lookup(self):
         self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"my-label": 7}[value]
         self.client.search_api.return_value = {"results": []}
 
         with unittest.mock.patch.object(self.client, "_make_request"):
             self.client.manage_associations(
-                "/api/controller/v2/workflow_job_templates", 10, "labels", ["my-label"], "labels", "name",
-                service="controller", extra_query_params={"organization": 42},
+                "/api/controller/v2/workflow_job_templates",
+                10,
+                "labels",
+                ["my-label"],
+                "labels",
+                "name",
+                service="controller",
+                extra_query_params={"organization": 42},
             )
 
         self.client.lookup_resource_id.assert_called_once_with("labels", "name", "my-label", service="controller", extra_query_params={"organization": 42})
@@ -206,8 +211,14 @@ class TestManageAssociations(unittest.TestCase):
 
         with unittest.mock.patch.object(self.client, "_make_request"):
             self.client.manage_associations(
-                "/api/controller/v2/workflow_job_templates", 10, "labels", ["label-a", "label-b"], "labels", "name",
-                service="controller", extra_query_params={"organization": 42},
+                "/api/controller/v2/workflow_job_templates",
+                10,
+                "labels",
+                ["label-a", "label-b"],
+                "labels",
+                "name",
+                service="controller",
+                extra_query_params={"organization": 42},
             )
 
         batch_call = self.client.search_api.call_args_list[0]

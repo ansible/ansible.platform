@@ -117,7 +117,12 @@ class BaseAPIClient(ABC):
         """Allow clients to prepare transport headers before a batch lookup."""
 
     def _lookup_resource_ids(
-        self, endpoint: str, lookup_field: str, lookup_values: list, service: str = "gateway", extra_query_params: dict = None,
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_values: list,
+        service: str = "gateway",
+        extra_query_params: dict = None,
     ) -> dict:
         """Resolve several names with bounded ``__in`` queries where possible."""
         values = list(dict.fromkeys(str(value) for value in lookup_values if value and not str(value).isdigit()))

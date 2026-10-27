@@ -1158,7 +1158,12 @@ class PlatformService(BaseAPIClient):
         return self.lookup_org_names(ids)
 
     def lookup_resource_id(
-        self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None,
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str = "gateway",
+        extra_query_params: dict = None,
     ) -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
