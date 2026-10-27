@@ -91,13 +91,33 @@ class NotificationTemplateTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        organization_id = getattr(api_data, "organization", None)
+        if organization_id is not None:
+            try:
+                return {"organization": int(str(organization_id).strip())}
+            except (ValueError, TypeError):
+                pass
+        return {}
+
+    @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]):
         from ....ansible_models.notification_template import AnsibleNotificationTemplate
 
-        org = api_data.get("organization")
+        org_id = api_data.get("organization")
+        organization = str(org_id) if org_id is not None else None
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        if manager and org_id is not None:
+            try:
+                names = manager.lookup_organization_names([org_id])
+                if names:
+                    organization = names[0]
+            except Exception:
+                pass
+
         return AnsibleNotificationTemplate(
             name=api_data.get("name", ""),
-            organization=str(org) if org is not None else "",
+            organization=organization,
             description=api_data.get("description"),
             notification_type=api_data.get("notification_type"),
             notification_configuration=api_data.get("notification_configuration"),

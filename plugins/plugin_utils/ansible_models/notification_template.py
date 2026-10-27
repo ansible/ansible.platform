@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 @dataclass
 class AnsibleNotificationTemplate:
     name: str
-    organization: str
+    organization: Optional[str] = None
     new_name: Optional[str] = None
     description: Optional[str] = None
     notification_type: Optional[str] = None

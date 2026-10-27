@@ -32,14 +32,15 @@ options:
     type: str
   organization:
     description: Organization name or ID the notification template belongs to.
-    required: true
     type: str
   notification_type:
     description: The type of notification to be sent.
     choices: [awssns, email, grafana, irc, mattermost, pagerduty, rocketchat, slack, twilio, webhook]
     type: str
   notification_configuration:
-    description: The notification configuration as a dictionary.
+    description:
+      - The notification configuration as a dictionary.
+      - This field may contain sensitive values (tokens, passwords) and is excluded from module return data.
     type: dict
   messages:
     description: Optional custom messages for the notification template.
