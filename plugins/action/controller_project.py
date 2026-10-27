@@ -37,6 +37,7 @@ class ActionModule(BaseResourceActionPlugin):
         association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
 
         name = self._task.args.get("name")
+        organization = self._task.args.get("organization")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
 
@@ -47,7 +48,13 @@ class ActionModule(BaseResourceActionPlugin):
                 self._task_vars = task_vars
                 manager, facts_to_set = self._get_or_spawn_manager(task_vars)
                 self._client = manager
-                existing = manager.search_api(BASE_PATH, query_params={"name": name})
+                query_params = {"name": name}
+                if organization is not None:
+                    if str(organization).strip().isdigit():
+                        query_params["organization"] = int(organization)
+                    else:
+                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                existing = manager.search_api(BASE_PATH, query_params=query_params)
                 if not any(item.get("name") == name for item in existing.get("results", [])):
                     manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
                     copied = True

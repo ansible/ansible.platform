@@ -203,6 +203,31 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        organization_id = getattr(api_data, "organization", None)
+        if organization_id is not None:
+            try:
+                return {"organization": int(str(organization_id).strip())}
+            except (ValueError, TypeError):
+                pass
+        return {}
+
+    @staticmethod
+    def _resolve_fk_name(manager, endpoint: str, fk_id, service: str = "controller") -> Optional[str]:
+        if manager is None or fk_id is None:
+            return str(fk_id) if fk_id is not None else None
+        try:
+            results = manager.search_api(
+                f"/api/{service}/v2/{endpoint}/",
+                query_params={"id": int(fk_id)},
+            ).get("results", [])
+            if results:
+                return results[0].get("name", str(fk_id))
+        except Exception:
+            pass
+        return str(fk_id)
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
@@ -210,8 +235,23 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
     ):
         from ....ansible_models.controller_project import AnsibleControllerProject
 
-        def _str_or_none(val):
-            return str(val) if val is not None else None
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+
+        # Resolve organization ID → name (Gateway-owned)
+        org_id = api_data.get("organization")
+        organization = str(org_id) if org_id is not None else None
+        if manager and org_id is not None:
+            try:
+                names = manager.lookup_organization_names([org_id])
+                if names:
+                    organization = names[0]
+            except Exception:
+                pass
+
+        # Resolve Controller FK IDs → names for idempotent comparison
+        credential = cls._resolve_fk_name(manager, "credentials", api_data.get("credential"))
+        default_environment = cls._resolve_fk_name(manager, "execution_environments", api_data.get("default_environment"))
+        sig_cred = cls._resolve_fk_name(manager, "credentials", api_data.get("signature_validation_credential"))
 
         return AnsibleControllerProject(
             name=api_data.get("name", ""),
@@ -221,7 +261,7 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
             local_path=api_data.get("local_path"),
             scm_branch=api_data.get("scm_branch"),
             scm_refspec=api_data.get("scm_refspec"),
-            credential=_str_or_none(api_data.get("credential")),
+            credential=credential,
             scm_clean=api_data.get("scm_clean"),
             scm_delete_on_update=api_data.get("scm_delete_on_update"),
             scm_track_submodules=api_data.get("scm_track_submodules"),
@@ -229,8 +269,8 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
             scm_update_cache_timeout=api_data.get("scm_update_cache_timeout"),
             allow_override=api_data.get("allow_override"),
             timeout=api_data.get("timeout"),
-            default_environment=_str_or_none(api_data.get("default_environment")),
-            organization=_str_or_none(api_data.get("organization")),
-            signature_validation_credential=_str_or_none(api_data.get("signature_validation_credential")),
+            default_environment=default_environment,
+            organization=organization,
+            signature_validation_credential=sig_cred,
             id=api_data.get("id"),
         )

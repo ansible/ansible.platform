@@ -115,10 +115,33 @@ class TestControllerProjectTransform(unittest.TestCase):
         self.assertIsInstance(ansible, AnsibleControllerProject)
         self.assertEqual(ansible.id, 99)
         self.assertEqual(ansible.name, "My Project")
+        # Without manager, FK IDs returned as strings
         self.assertEqual(ansible.organization, "1")
         self.assertEqual(ansible.credential, "5")
         self.assertEqual(ansible.default_environment, "10")
         self.assertIsNone(ansible.signature_validation_credential)
+
+    def test_from_api_resolves_org_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_organization_names.return_value = ["Default"]
+        mock_manager.search_api.return_value = {"results": []}
+        ansible = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "organization": 1, "credential": None}, {"manager": mock_manager})
+        mock_manager.lookup_organization_names.assert_called_once_with([1])
+        self.assertEqual(ansible.organization, "Default")
+
+    def test_from_api_resolves_credential_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_organization_names.return_value = []
+        mock_manager.search_api.return_value = {"results": [{"name": "Machine", "id": 5}]}
+        ansible = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "credential": 5}, {"manager": mock_manager})
+        self.assertEqual(ansible.credential, "Machine")
+
+    def test_from_api_resolves_default_environment_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_organization_names.return_value = []
+        mock_manager.search_api.return_value = {"results": [{"name": "Default EE", "id": 10}]}
+        ansible = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "default_environment": 10}, {"manager": mock_manager})
+        self.assertEqual(ansible.default_environment, "Default EE")
 
     def test_from_api_handles_missing_fields(self):
         ansible = ControllerProjectTransformMixin_v2.from_api({"name": "bare"}, {})
@@ -126,6 +149,28 @@ class TestControllerProjectTransform(unittest.TestCase):
         self.assertIsNone(ansible.scm_type)
         self.assertIsNone(ansible.credential)
         self.assertIsNone(ansible.id)
+
+    def test_get_find_list_query_params_with_org(self):
+        ansible = AnsibleControllerProject(name="proj", organization="1")
+        api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        params = ControllerProjectTransformMixin_v2.get_find_list_query_params(api)
+        self.assertEqual(params, {"organization": 1})
+
+    def test_get_find_list_query_params_without_org(self):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_project import APIControllerProject_v2
+
+        api = APIControllerProject_v2(name="proj")
+        params = ControllerProjectTransformMixin_v2.get_find_list_query_params(api)
+        self.assertEqual(params, {})
+
+    def test_fk_idempotency_name_vs_resolved_name(self):
+        """Task name and from_api resolved name should match for idempotent comparison."""
+        mock_manager = MagicMock()
+        mock_manager.lookup_organization_names.return_value = ["Default"]
+        mock_manager.search_api.return_value = {"results": [{"name": "My Cred", "id": 5}]}
+        ansible_from_api = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "organization": 1, "credential": 5}, {"manager": mock_manager})
+        self.assertEqual(ansible_from_api.credential, "My Cred")
+        self.assertEqual(ansible_from_api.organization, "Default")
 
     def test_endpoint_operations_use_controller_paths(self):
         ops = ControllerProjectTransformMixin_v2.get_endpoint_operations()
