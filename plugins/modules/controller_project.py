@@ -136,6 +136,29 @@ options:
       - If provided, signature validation will be enabled.
     type: str
 
+  wait:
+    description:
+      - Wait for the project sync to complete after create or update.
+      - When a new project is created or updated and the SCM type triggers an automatic sync,
+        this option waits for that sync to finish before returning.
+      - Also used with O(update_project) to wait for a forced sync.
+    type: bool
+    default: true
+
+  update_project:
+    description:
+      - Force a project update/sync after changes.
+      - Used in conjunction with O(wait), O(interval), and O(timeout).
+    type: bool
+    default: false
+
+  interval:
+    description:
+      - Polling interval in seconds when waiting for the project sync to complete.
+      - Requires O(wait=true).
+    type: float
+    default: 2
+
   notification_templates_started:
     description:
       - List of notification template names, IDs, or named URLs to trigger on start.
@@ -205,6 +228,24 @@ EXAMPLES = """
       - "Success Notification"
     notification_templates_error:
       - "Error Notification"
+
+- name: Add a project and wait for initial sync
+  ansible.platform.controller_project:
+    name: "Synced Project"
+    organization: "Default"
+    scm_type: git
+    scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+    wait: true
+    timeout: 120
+
+- name: Force update a project and wait for sync
+  ansible.platform.controller_project:
+    name: "My Project"
+    organization: "Default"
+    update_project: true
+    wait: true
+    interval: 5
+    timeout: 300
 
 - name: Delete a project
   ansible.platform.controller_project:

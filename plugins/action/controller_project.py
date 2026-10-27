@@ -27,7 +27,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleControllerProject
     LOOKUP_FIELD = "name"
 
-    _WRITE_ONLY_FIELDS = frozenset({"copy_from"} | set(_ASSOC_MAP))
+    _WRITE_ONLY_FIELDS = frozenset({"copy_from", "wait", "update_project", "interval"} | set(_ASSOC_MAP))
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -36,8 +36,13 @@ class ActionModule(BaseResourceActionPlugin):
         copy_from = self._task.args.pop("copy_from", None)
         association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
 
+        wait = self._task.args.pop("wait", True)
+        update_project = self._task.args.pop("update_project", False)
+        interval = self._task.args.pop("interval", 2.0)
+
         name = self._task.args.get("name")
         organization = self._task.args.get("organization")
+        timeout = self._task.args.get("timeout")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
 
@@ -73,7 +78,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
         if check_mode:
-            if reconcile_fields:
+            if reconcile_fields or update_project:
                 result["changed"] = True
             return result
 
@@ -91,4 +96,69 @@ class ActionModule(BaseResourceActionPlugin):
 
         if changed:
             result["changed"] = True
+
+        # --- Project sync / update logic ---
+        if state not in ("absent", "exists"):
+            try:
+                self._handle_project_sync(result, manager, project_id, wait, update_project, interval, timeout)
+            except Exception as exc:
+                result["failed"] = True
+                result["msg"] = "Project sync failed: %s" % exc
+
         return result
+
+    def _handle_project_sync(self, result, manager, project_id, wait, update_project, interval, timeout):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+
+        project_data = result.get(self.MODULE_NAME) or {}
+        summary_fields = project_data.get("summary_fields", {})
+        current_update = summary_fields.get("current_update", {})
+        scm_revision_before = project_data.get("scm_revision", "")
+
+        if current_update.get("id"):
+            if wait:
+                update_result = manager.wait_for_completion(
+                    "project_updates/%d" % current_update["id"],
+                    timeout=float(timeout) if timeout is not None else None,
+                    interval=interval,
+                    service=_SERVICE,
+                )
+                if update_result.get("status") not in ("successful",):
+                    raise ValueError("Project sync finished with status '%s'" % update_result.get("status"))
+
+        elif update_project:
+            launch_result = manager.launch_resource(
+                "projects/%d/update" % project_id,
+                {},
+                service=_SERVICE,
+            )
+
+            if not wait:
+                result["changed"] = True
+                return
+
+            update_url = launch_result.get("url", "project_updates/%d" % launch_result.get("id", project_id))
+            update_id = launch_result.get("id")
+            if update_id:
+                update_url = "project_updates/%d" % update_id
+
+            try:
+                update_result = manager.wait_for_completion(
+                    update_url,
+                    timeout=float(timeout) if timeout is not None else None,
+                    interval=interval,
+                    service=_SERVICE,
+                )
+            except WaitTimeoutError:
+                result["failed"] = True
+                result["msg"] = "Timed out waiting for project sync"
+                return
+
+            final_status = update_result.get("status", "")
+            if final_status != "successful":
+                raise ValueError("Project sync finished with status '%s'" % final_status)
+
+            if update_result.get("scm_revision", "") != scm_revision_before:
+                result["changed"] = True
+            else:
+                result["changed"] = True

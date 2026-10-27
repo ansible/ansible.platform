@@ -136,6 +136,79 @@
           - exists_by_id_check.exists
           - exists_by_id_check is not changed
 
+    # -- update_project / wait / interval tests --
+
+    - name: Force project update and wait for sync
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-Renamed"
+        organization: "Default"
+        update_project: true
+        wait: true
+        interval: 2
+        timeout: 120
+      register: update_proj
+
+    - name: Assert forced update reports changed
+      ansible.builtin.assert:
+        that:
+          - update_proj is changed
+
+    - name: Create project with wait for initial sync
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-WaitSync"
+        organization: "Default"
+        scm_type: git
+        scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+        wait: true
+        timeout: 120
+        state: present
+      register: wait_proj
+
+    - name: Assert project with wait was created
+      ansible.builtin.assert:
+        that:
+          - wait_proj is changed
+          - wait_proj.controller_project.id is defined
+
+    - name: Force update with wait=false returns immediately
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-WaitSync"
+        organization: "Default"
+        update_project: true
+        wait: false
+      register: nowait_update
+
+    - name: Assert no-wait update reports changed
+      ansible.builtin.assert:
+        that:
+          - nowait_update is changed
+
+    - name: Wait for no-wait update to finish before cleanup
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ wait_proj.controller_project.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: proj_status
+      delegate_to: localhost
+      until: proj_status.json.summary_fields.current_update is not defined or proj_status.json.related.current_update is not defined
+      retries: 60
+      delay: 2
+      ignore_errors: true
+
+    - name: Delete wait-sync project
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-WaitSync"
+        organization: "Default"
+        state: absent
+      register: _cleanup_waitsync
+      retries: 10
+      delay: 5
+      until: _cleanup_waitsync is not failed
+      failed_when: false
+
     - name: Delete a non-existent project
       ansible.platform.controller_project:
         name: "{{ name_prefix }}-DoesNotExist"
@@ -191,5 +264,16 @@
       retries: 10
       delay: 5
       until: _cleanup_original is not failed
+      failed_when: false
+
+    - name: Delete wait-sync project (in case mid-test failure)
+      ansible.platform.controller_project:
+        name: "{{ name_prefix }}-WaitSync"
+        organization: "Default"
+        state: absent
+      register: _cleanup_waitsync_final
+      retries: 10
+      delay: 5
+      until: _cleanup_waitsync_final is not failed
       failed_when: false
 ...
