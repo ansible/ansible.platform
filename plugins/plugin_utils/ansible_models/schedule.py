@@ -29,6 +29,5 @@ class AnsibleSchedule:
     job_slice_count: Optional[int] = None
     timeout: Optional[int] = None
     execution_environment: Optional[str] = None
-    organization: Optional[str] = None
     state: str = "present"
     id: Optional[int] = None

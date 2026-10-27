@@ -122,11 +122,6 @@ options:
       - Execution environment name or ID for the scheduled launch.
     type: str
 
-  organization:
-    description:
-      - Organization name or ID to scope the unified_job_template lookup.
-    type: str
-
   credentials:
     description:
       - List of credential names or IDs to associate with this schedule.
