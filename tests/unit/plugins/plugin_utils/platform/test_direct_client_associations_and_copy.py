@@ -41,7 +41,7 @@ class TestManageAssociations(unittest.TestCase):
         self.client = _client()
 
     def test_associates_and_disassociates_to_reconcile(self):
-        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-a": 3}[value]
+        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-a": 3}[value]
         self.client.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
 
         with unittest.mock.patch.object(self.client, "_make_request") as mock_request:

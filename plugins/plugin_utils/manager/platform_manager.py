@@ -1157,7 +1157,9 @@ class PlatformService(BaseAPIClient):
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway") -> Optional[int]:
+    def lookup_resource_id(
+        self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None,
+    ) -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
@@ -1167,10 +1169,13 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
-        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value)
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
         if cache_key in self.cache:
             return self.cache[cache_key]
-        url = self._build_url(f"/{endpoint}", query_params={lookup_field: lookup_value}, service=service)
+        query = {lookup_field: lookup_value}
+        if extra_query_params:
+            query.update(extra_query_params)
+        url = self._build_url(f"/{endpoint}", query_params=query, service=service)
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         results = response.json().get("results", [])
@@ -1190,6 +1195,7 @@ class PlatformService(BaseAPIClient):
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        extra_query_params: dict = None,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -1208,7 +1214,7 @@ class PlatformService(BaseAPIClient):
         what the declarative create/update flow covers.
         """
         self.record_activity()
-        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service)
+        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service, extra_query_params=extra_query_params)
         desired_ids = {int(item) if str(item).isdigit() else resolved_names.get(str(item)) if item else None for item in desired_items}
 
         # Follow pagination so associations beyond the first page aren't silently

@@ -48,6 +48,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "labels",
             "name",
             service="controller",
+            extra_query_params=None,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -79,6 +80,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "notification_templates",
             "name",
             service="controller",
+            extra_query_params=None,
         )
         action._client.manage_associations.assert_any_call(
             "/api/controller/v2/workflow_job_templates/",
@@ -88,6 +90,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "notification_templates",
             "name",
             service="controller",
+            extra_query_params=None,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")

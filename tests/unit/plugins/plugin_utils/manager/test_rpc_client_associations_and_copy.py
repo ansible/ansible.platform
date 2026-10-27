@@ -28,7 +28,7 @@ class TestRPCWrappers(unittest.TestCase):
 
         self.assertTrue(result)
         client.service_proxy.manage_associations.assert_called_once_with(
-            "/api/controller/v2/job_templates", 42, "credentials", ["a"], "credentials", "name", "controller"
+            "/api/controller/v2/job_templates", 42, "credentials", ["a"], "credentials", "name", "controller", {},
         )
 
     def test_manage_sub_resource_delegates_to_service_proxy(self):

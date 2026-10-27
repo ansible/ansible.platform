@@ -93,9 +93,13 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             manager = self._client
             changed = False
+            org_id = result.get("organization") or (result.get(self.MODULE_NAME) or {}).get("organization")
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(BASE_PATH, wjt_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                if desired is None:
+                    continue
+                extra = {"organization": org_id} if field == "labels" and org_id is not None else None
+                if manager.manage_associations(BASE_PATH, wjt_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, extra_query_params=extra):
                     changed = True
             if survey_spec is not None and manager.manage_sub_resource(BASE_PATH, wjt_id, "survey_spec", survey_spec):
                 changed = True
