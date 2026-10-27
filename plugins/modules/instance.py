@@ -66,6 +66,15 @@ options:
       - Port that Receptor will listen for incoming connections on.
     type: int
 
+  peers:
+    description:
+      - List of peers to connect outbound to.
+      - Only configurable for hop and execution nodes.
+      - Each item can be a receptor address string or a numeric ID.
+      - To remove all current peers, set value to an empty list C([]).
+    type: list
+    elements: str
+
   peers_from_control_nodes:
     description:
       - If enabled, control plane nodes will automatically peer to this node.

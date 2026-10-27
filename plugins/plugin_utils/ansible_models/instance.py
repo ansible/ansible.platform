@@ -6,7 +6,7 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -23,6 +23,7 @@ class AnsibleInstance:
     node_type: Optional[str] = None
     node_state: Optional[str] = None
     listener_port: Optional[int] = None
+    peers: Optional[List[str]] = None
     peers_from_control_nodes: Optional[bool] = None
     state: str = "present"
 

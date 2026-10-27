@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
@@ -109,6 +110,63 @@ class TestInstanceTransform(unittest.TestCase):
         ansible = AnsibleInstance(hostname="exec01.example.com", node_state="deprovisioning")
         api = InstanceTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.node_state, "deprovisioning")
+
+    def test_peers_field_in_model(self):
+        ansible = AnsibleInstance(hostname="exec01.example.com", peers=["addr1.example.com", "42"])
+        self.assertEqual(ansible.peers, ["addr1.example.com", "42"])
+
+    def test_peers_field_none_by_default(self):
+        ansible = AnsibleInstance(hostname="exec01.example.com")
+        self.assertIsNone(ansible.peers)
+
+    def test_peers_in_endpoint_fields(self):
+        ops = InstanceTransformMixin_v2.get_endpoint_operations()
+        self.assertIn("peers", ops["create"].fields)
+        self.assertIn("peers", ops["update"].fields)
+
+
+class TestInstancePeerResolution(unittest.TestCase):
+    """Tests for ActionModule._resolve_peers."""
+
+    def test_resolve_numeric_ids(self):
+        from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
+
+        manager = MagicMock()
+        result = ActionModule._resolve_peers(manager, ["42", "99"])
+        self.assertEqual(result, [42, 99])
+        manager.lookup_resource_id.assert_not_called()
+
+    def test_resolve_address_to_id(self):
+        from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
+
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 10
+        result = ActionModule._resolve_peers(manager, ["peer1.example.com"])
+        self.assertEqual(result, [10])
+        manager.lookup_resource_id.assert_called_once_with("receptor_addresses", "address", "peer1.example.com", service="controller")
+
+    def test_resolve_mixed_ids_and_addresses(self):
+        from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
+
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 20
+        result = ActionModule._resolve_peers(manager, ["42", "hop.example.com"])
+        self.assertEqual(result, [42, 20])
+
+    def test_resolve_unknown_address_raises(self):
+        from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
+
+        manager = MagicMock()
+        manager.lookup_resource_id.side_effect = ValueError("Not found")
+        with self.assertRaises(ValueError):
+            ActionModule._resolve_peers(manager, ["unknown.example.com"])
+
+    def test_resolve_empty_list(self):
+        from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
+
+        manager = MagicMock()
+        result = ActionModule._resolve_peers(manager, [])
+        self.assertEqual(result, [])
 
 
 if __name__ == "__main__":

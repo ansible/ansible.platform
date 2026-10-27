@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
@@ -27,6 +27,7 @@ class APIInstance_v2(BaseTransformMixin):
     node_type: Optional[str] = None
     node_state: Optional[str] = None
     listener_port: Optional[int] = None
+    peers: Optional[List[int]] = None
     peers_from_control_nodes: Optional[bool] = None
 
     # Read-only fields from API
@@ -87,6 +88,7 @@ class InstanceTransformMixin_v2(BaseTransformMixin):
                     "node_type",
                     "node_state",
                     "listener_port",
+                    "peers",
                     "peers_from_control_nodes",
                 ],
                 required_for="create",
@@ -103,6 +105,7 @@ class InstanceTransformMixin_v2(BaseTransformMixin):
                     "node_type",
                     "node_state",
                     "listener_port",
+                    "peers",
                     "peers_from_control_nodes",
                 ],
                 path_params=["id"],
