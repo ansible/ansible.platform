@@ -18,15 +18,21 @@ author: Red Hat (@RedHatOfficial)
 short_description: Bulk create hosts in Automation Controller
 description:
   - Create many hosts at once in an Automation Controller inventory via a single API request.
-  - This is a non-idempotent operation — every invocation creates hosts (or overwrites
-    existing hosts with the same name in the target inventory).
+  - This is a non-idempotent operation — every invocation creates hosts.
+  - The API rejects requests containing duplicate hostnames, both within the
+    request and against hosts already in the target inventory (HTTP 400).
   - Migrated from the C(awx.awx.bulk_host_create) / C(ansible.controller.bulk_host_create) module.
 version_added: "2.8.0"
 
 options:
+  organization:
+    description:
+      - Organization name or ID to scope the inventory lookup by name.
+      - Required when multiple inventories share the same name across organizations.
+    type: str
   inventory:
     description:
-      - Inventory name, ID, or named URL to add hosts to.
+      - Inventory name or ID to add hosts to.
     required: true
     type: str
   hosts:

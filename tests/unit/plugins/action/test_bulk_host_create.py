@@ -42,7 +42,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
 
         self.assertTrue(result["changed"])
         self.assertFalse(result.get("failed", False))
-        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "My Inventory", service="controller")
+        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "My Inventory", service="controller", extra_query_params=None)
         manager.bulk_host_create.assert_called_once_with(
             inventory_id=42,
             hosts=[
@@ -52,9 +52,10 @@ class TestBulkHostCreateAction(unittest.TestCase):
             service="controller",
         )
 
-    def test_check_mode_short_circuits(self):
+    def test_check_mode_validates_inventory(self):
         action = self._make_action(check_mode=True)
         manager = MagicMock()
+        manager.lookup_resource_id.return_value = 42
 
         hosts = [{"name": "host1.example.com"}]
         prepared = {
@@ -72,8 +73,29 @@ class TestBulkHostCreateAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertFalse(result.get("failed", False))
         self.assertIn("Would create 1 host(s)", result["msg"])
-        manager.lookup_resource_id.assert_not_called()
+        manager.lookup_resource_id.assert_called_once()
         manager.bulk_host_create.assert_not_called()
+
+    def test_check_mode_fails_on_bad_inventory(self):
+        action = self._make_action(check_mode=True)
+        manager = MagicMock()
+        manager.lookup_resource_id.side_effect = ValueError("Resource 'inventories' with name=bad not found")
+
+        hosts = [{"name": "host1.example.com"}]
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"inventory": {}, "hosts": {}}},
+            "validated_params": {"inventory": "bad", "hosts": hosts},
+            "resource_data": {"inventory": "bad", "hosts": hosts},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("not found", result["msg"])
 
     def test_variables_serialized_to_json(self):
         action = self._make_action()
@@ -123,7 +145,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         self.assertFalse(result.get("failed", False))
-        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "99", service="controller")
+        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "99", service="controller", extra_query_params=None)
 
     def test_api_error_reported(self):
         action = self._make_action()

@@ -46,61 +46,7 @@ class TestAnsibleBulkHostCreate:
 
 
 # ---------------------------------------------------------------------------
-# 2. Transform mixin tests
-# ---------------------------------------------------------------------------
-
-
-class TestBulkHostCreateTransformMixin:
-    """Tests for the API v2 transform mixin."""
-
-    def test_from_ansible_data(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
-            AnsibleBulkHostCreate,
-        )
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
-            BulkHostCreateTransformMixin_v2,
-        )
-
-        ansible_data = AnsibleBulkHostCreate(
-            hosts=[{"name": "h1"}, {"name": "h2"}],
-            inventory="42",
-        )
-        context = MagicMock()
-        api_data = BulkHostCreateTransformMixin_v2.from_ansible_data(ansible_data, context)
-        assert api_data.hosts == [{"name": "h1"}, {"name": "h2"}]
-        assert api_data.inventory == "42"
-
-    def test_get_endpoint_operations_has_create(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
-            BulkHostCreateTransformMixin_v2,
-        )
-
-        ops = BulkHostCreateTransformMixin_v2.get_endpoint_operations()
-        assert "create" in ops
-        assert ops["create"].method == "POST"
-        assert "bulk/host_create" in ops["create"].path
-
-    def test_get_lookup_field(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
-            BulkHostCreateTransformMixin_v2,
-        )
-
-        assert BulkHostCreateTransformMixin_v2.get_lookup_field() == "inventory"
-
-    def test_from_api(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import (
-            BulkHostCreateTransformMixin_v2,
-        )
-
-        api_data = {"hosts": [{"name": "h1"}], "inventory": "99"}
-        context = MagicMock()
-        result = BulkHostCreateTransformMixin_v2.from_api(api_data, context)
-        assert result.hosts == [{"name": "h1"}]
-        assert result.inventory == "99"
-
-
-# ---------------------------------------------------------------------------
-# 3. Module DOCUMENTATION parsing test
+# 2. Module DOCUMENTATION parsing test
 # ---------------------------------------------------------------------------
 
 

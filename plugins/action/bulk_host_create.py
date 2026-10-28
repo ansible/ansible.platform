@@ -21,6 +21,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bu
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "bulk_host_create"
     MODEL_CLASS = AnsibleBulkHostCreate
+    _WRITE_ONLY_FIELDS = frozenset({"organization"})
 
     def run(self, tmp=None, task_vars=None):
         result = {}
@@ -32,6 +33,17 @@ class ActionModule(BaseResourceActionPlugin):
 
             hosts = validated_params.get("hosts", [])
             inventory = validated_params.get("inventory")
+            organization = validated_params.get("organization")
+
+            org_id = None
+            if organization is not None:
+                if not str(organization).strip().isdigit():
+                    org_id = manager.lookup_resource_id("organizations", "name", str(organization))
+                else:
+                    org_id = int(organization)
+            org_scope = {"organization": org_id} if org_id is not None else None
+
+            inv_id = manager.lookup_resource_id("inventories", "name", inventory, service="controller", extra_query_params=org_scope)
 
             if self._task.check_mode:
                 result.update(
@@ -43,8 +55,6 @@ class ActionModule(BaseResourceActionPlugin):
                     }
                 )
                 return result
-
-            inv_id = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
 
             prepared_hosts = []
             for h in hosts:

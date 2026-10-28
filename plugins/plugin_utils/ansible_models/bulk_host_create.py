@@ -22,3 +22,4 @@ class AnsibleBulkHostCreate:
     # Required fields
     hosts: List[dict] = field(default_factory=list)
     inventory: Optional[str] = None
+    organization: Optional[str] = None

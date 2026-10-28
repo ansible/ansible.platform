@@ -69,7 +69,7 @@
 
     - name: Bulk create hosts in check_mode (connection local)
       ansible.platform.bulk_host_create:
-        inventory: "Test Inventory"
+        inventory: "Mock Inventory"
         hosts:
           - name: checkmode_host.example.com
       register: check_result_local
