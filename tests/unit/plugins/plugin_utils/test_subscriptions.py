@@ -124,5 +124,87 @@ class TestSubscriptionsTransformMixin(unittest.TestCase):
         self.assertEqual(result.subscriptions, [])
 
 
+class TestSubscriptionsSingletonFind(unittest.TestCase):
+    """Test that the singleton find path sends POST with credentials."""
+
+    def test_platform_service_singleton_find_posts_credentials(self):
+        import threading
+
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
+
+        svc = PlatformService.__new__(PlatformService)
+        svc.record_activity = unittest.mock.MagicMock()
+        svc.session = unittest.mock.MagicMock()
+        svc.cache = {}
+        svc.base_url = "https://gw.example.com"
+        svc.request_timeout = 30
+        svc.config = None
+        svc.verify_ssl = True
+        svc.ca_bundle = None
+        svc.api_versions = {"controller": "2"}
+        svc.registry = unittest.mock.MagicMock()
+        svc.registry.get_supported_versions.return_value = ["2"]
+        svc.retry_config = RetryConfig(max_attempts=1)
+        svc._lock = threading.Lock()
+        svc._http_request_count = 0
+        svc._handle_auth_error = unittest.mock.MagicMock(return_value=False)
+
+        mock_resp = unittest.mock.MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [{"id": 1, "product_name": "AAP"}]
+        svc.session.post.return_value = mock_resp
+
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
+
+        context = TransformContext(manager=svc, session=svc.session, cache={}, api_version="2", service="controller", operation="find")
+        ansible_data = AnsibleSubscriptions(username="admin", password="secret")
+        result = svc._find_resource(ansible_data, SubscriptionsTransformMixin_v2, context)
+
+        svc.session.post.assert_called_once()
+        call_kwargs = svc.session.post.call_args
+        self.assertIn("json", call_kwargs.kwargs)
+        payload = call_kwargs.kwargs["json"]
+        self.assertEqual(payload["subscriptions_username"], "admin")
+        self.assertEqual(payload["subscriptions_password"], "secret")
+        self.assertIn("subscriptions", result)
+
+    def test_direct_client_singleton_find_posts_credentials(self):
+        import json as json_mod
+        import threading
+
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+
+        client = DirectHTTPClient.__new__(DirectHTTPClient)
+        client._authenticated = True
+        client.base_url = "https://gw.example.com"
+        client.cache = {}
+        client.api_versions = {"controller": "2"}
+        client.api_version = "2"
+        client.session = unittest.mock.MagicMock()
+        client.session.headers = {}
+        client._lock = threading.Lock()
+        client._http_request_count = 0
+
+        mock_resp = unittest.mock.MagicMock()
+        mock_resp.read.return_value = json_mod.dumps([{"id": 1, "product_name": "AAP"}]).encode()
+        client._make_request = unittest.mock.MagicMock(return_value=mock_resp)
+
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
+
+        context = TransformContext(manager=client, session=client.session, cache={}, api_version="2", service="controller", operation="find")
+        ansible_data = AnsibleSubscriptions(client_id="cid", client_secret="csec")
+        result = client._find_resource(ansible_data, SubscriptionsTransformMixin_v2, context)
+
+        client._make_request.assert_called_once()
+        call_kwargs = client._make_request.call_args
+        self.assertEqual(call_kwargs.args[0], "POST")
+        self.assertIn("json", call_kwargs.kwargs)
+        payload = call_kwargs.kwargs["json"]
+        self.assertEqual(payload["subscriptions_client_id"], "cid")
+        self.assertEqual(payload["subscriptions_client_secret"], "csec")
+        self.assertIn("subscriptions", result)
+
+
 if __name__ == "__main__":
     unittest.main()

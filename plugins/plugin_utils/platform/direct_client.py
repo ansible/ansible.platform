@@ -1026,14 +1026,18 @@ class DirectHTTPClient(BaseAPIClient):
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             with self._lock:
                 self._http_request_count += 1
-            response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
+            request_kwargs = {"operation": "find", "resource": mixin_class.__name__}
+            if get_op.method.upper() == "POST" and get_op.fields:
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
+            response = self._make_request(get_op.method, url, **request_kwargs)
             try:
                 response_body = response.read()
                 api_result = json.loads(response_body) if response_body else {}
