@@ -46,7 +46,7 @@
   tasks:
     - name: Bulk create hosts (connection local)
       ansible.platform.bulk_host_create:
-        inventory: "5001"
+        inventory: "5101"
         hosts:
           - name: host1.example.com
             description: "First host"
@@ -100,7 +100,7 @@
   tasks:
     - name: Bulk create hosts (http direct)
       ansible.platform.bulk_host_create:
-        inventory: "5001"
+        inventory: "5101"
         hosts:
           - name: direct_host1.example.com
           - name: direct_host2.example.com
