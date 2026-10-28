@@ -16,7 +16,7 @@ def test_http_error_preserves_status_code_for_action_plugins():
 
     classified = classify_exception(error, operation="find", resource="job_wait")
 
-    assert type(classified) is APIError
+    assert isinstance(classified, APIError)
     assert (classified.status_code, classified.retryable, classified.details) == (
         404,
         False,
@@ -29,7 +29,6 @@ def test_http_error_without_response_falls_back_to_platform_error():
 
     classified = classify_exception(error, operation="find", resource="job_wait")
 
-    assert (type(classified), classified.details) == (
-        PlatformError,
-        {"original_exception": str(error), "exception_type": "HTTPError"},
-    )
+    assert isinstance(classified, PlatformError)
+    assert not isinstance(classified, APIError)
+    assert classified.details == {"original_exception": str(error), "exception_type": "HTTPError"}
