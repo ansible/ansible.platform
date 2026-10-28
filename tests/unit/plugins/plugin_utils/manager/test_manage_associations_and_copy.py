@@ -64,7 +64,7 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_preserve_existing_keeps_unrequested_associations(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
-        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-c": 3}[value]
+        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-c": 3}[value]
 
         changed = self.svc.manage_associations(
             "/api/controller/v2/job_templates",
