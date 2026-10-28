@@ -15,6 +15,7 @@ class AnsibleWorkflowJobTemplateNode:
     identifier: str
     workflow_job_template: str
 
+    organization: Optional[str] = None
     unified_job_template: Optional[str] = None
     all_parents_must_converge: Optional[bool] = None
     extra_data: Optional[dict] = None

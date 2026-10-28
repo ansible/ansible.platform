@@ -31,7 +31,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleWorkflowJobTemplateNode
     LOOKUP_FIELD = "identifier"
 
-    _WRITE_ONLY_FIELDS = frozenset(_ASSOC_MAP)
+    _WRITE_ONLY_FIELDS = frozenset(set(_ASSOC_MAP) | {"organization"})
 
     @staticmethod
     def _resolve_node_ids_in_workflow(manager, workflow_id, identifiers):
@@ -55,6 +55,7 @@ class ActionModule(BaseResourceActionPlugin):
             task_vars = {}
 
         association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+        organization = self._task.args.pop("organization", None)
 
         result = super().run(tmp, task_vars)
 
@@ -79,6 +80,15 @@ class ActionModule(BaseResourceActionPlugin):
             manager = self._client
             if wfjt_id is not None and not str(wfjt_id).strip().isdigit():
                 wfjt_id = manager.lookup_resource_id("workflow_job_templates", "name", str(wfjt_id), service=_SERVICE)
+
+            org_id = None
+            if organization is not None:
+                if not str(organization).strip().isdigit():
+                    org_id = manager.lookup_resource_id("organizations", "name", str(organization))
+                else:
+                    org_id = int(organization)
+            org_scope = {"organization": org_id} if org_id is not None else None
+
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
@@ -86,7 +96,8 @@ class ActionModule(BaseResourceActionPlugin):
                     continue
                 if field in _NODE_ASSOC_FIELDS and wfjt_id:
                     desired = self._resolve_node_ids_in_workflow(manager, wfjt_id, desired)
-                if manager.manage_associations(BASE_PATH, node_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                extra = org_scope if field == "labels" and org_scope else None
+                if manager.manage_associations(BASE_PATH, node_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, extra_query_params=extra):
                     changed = True
         except Exception as exc:
             result["failed"] = True

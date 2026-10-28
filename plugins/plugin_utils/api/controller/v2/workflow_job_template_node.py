@@ -91,23 +91,34 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         if identifier is not None:
             api_data["identifier"] = identifier
 
-        # FK resolution: workflow_job_template name → ID
-        # NOTE: name lookups are not scoped by organization — duplicate names
-        # across organizations will match the first result.  Adding an optional
-        # ``organization`` parameter (like the legacy awx_collection module) is
-        # tracked as a follow-up enhancement.
+        # FK resolution: organization name → ID (Gateway-owned, default service)
+        organization = getattr(ansible_instance, "organization", None)
+        org_id = None
+        if organization is not None:
+            if manager is not None and not str(organization).strip().isdigit():
+                org_id = manager.lookup_resource_id("organizations", "name", organization)
+            else:
+                org_id = int(organization) if organization is not None else None
+
+        org_scope = {"organization": org_id} if org_id is not None else None
+
+        # FK resolution: workflow_job_template name → ID (scoped by org when provided)
         wfjt = getattr(ansible_instance, "workflow_job_template", None)
         if wfjt is not None:
             if manager is not None and not str(wfjt).strip().isdigit():
-                api_data["workflow_job_template"] = manager.lookup_resource_id("workflow_job_templates", "name", wfjt, service="controller")
+                api_data["workflow_job_template"] = manager.lookup_resource_id(
+                    "workflow_job_templates", "name", wfjt, service="controller", extra_query_params=org_scope
+                )
             else:
                 api_data["workflow_job_template"] = int(wfjt) if wfjt is not None else None
 
-        # FK resolution: unified_job_template name → ID
+        # FK resolution: unified_job_template name → ID (scoped by org when provided)
         ujt = getattr(ansible_instance, "unified_job_template", None)
         if ujt is not None:
             if manager is not None and not str(ujt).strip().isdigit():
-                api_data["unified_job_template"] = manager.lookup_resource_id("unified_job_templates", "name", ujt, service="controller")
+                api_data["unified_job_template"] = manager.lookup_resource_id(
+                    "unified_job_templates", "name", ujt, service="controller", extra_query_params=org_scope
+                )
             else:
                 api_data["unified_job_template"] = int(ujt) if ujt is not None else None
 
@@ -140,7 +151,7 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         inventory = getattr(ansible_instance, "inventory", None)
         if inventory is not None:
             if manager is not None and not str(inventory).strip().isdigit():
-                api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
+                api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller", extra_query_params=org_scope)
             else:
                 api_data["inventory"] = int(inventory)
         elif include_nulls:
@@ -149,7 +160,9 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         execution_environment = getattr(ansible_instance, "execution_environment", None)
         if execution_environment is not None:
             if manager is not None and not str(execution_environment).strip().isdigit():
-                api_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", execution_environment, service="controller")
+                api_data["execution_environment"] = manager.lookup_resource_id(
+                    "execution_environments", "name", execution_environment, service="controller", extra_query_params=org_scope
+                )
             else:
                 api_data["execution_environment"] = int(execution_environment)
         elif include_nulls:

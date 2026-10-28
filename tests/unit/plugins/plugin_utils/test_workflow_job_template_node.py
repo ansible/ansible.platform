@@ -52,7 +52,7 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="My Workflow")
         api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("workflow_job_templates", "name", "My Workflow", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call("workflow_job_templates", "name", "My Workflow", service="controller", extra_query_params=None)
         self.assertEqual(api.workflow_job_template, 42)
 
     def test_ujt_name_resolves_via_manager(self):
@@ -61,8 +61,18 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="1", unified_job_template="Demo Job Template")
         api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("unified_job_templates", "name", "Demo Job Template", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call("unified_job_templates", "name", "Demo Job Template", service="controller", extra_query_params=None)
         self.assertEqual(api.unified_job_template, 99)
+
+    def test_org_scoped_wfjt_lookup(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+        context = {"operation": "create", "manager": mock_manager}
+        ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="My Workflow", organization="My Org")
+        WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, context)
+        mock_manager.lookup_resource_id.assert_any_call(
+            "workflow_job_templates", "name", "My Workflow", service="controller", extra_query_params={"organization": 42}
+        )
 
     def test_wfjt_id_skips_lookup(self):
         ansible = AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="42")

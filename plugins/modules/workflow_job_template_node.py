@@ -32,6 +32,13 @@ options:
     required: true
     type: str
 
+  organization:
+    description:
+      - Organization name or ID to scope the workflow_job_template and
+        unified_job_template lookups by name.
+      - Required when multiple resources share the same name across organizations.
+    type: str
+
   workflow_job_template:
     description:
       - The workflow job template name or ID that this node belongs to.
