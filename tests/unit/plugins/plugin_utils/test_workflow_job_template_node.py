@@ -123,6 +123,72 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
 
+    def test_from_api_resolves_fk_names_from_summary_fields(self):
+        api_data = {
+            "id": 77,
+            "identifier": "node_101",
+            "workflow_job_template": 5,
+            "unified_job_template": 10,
+            "inventory": 3,
+            "execution_environment": 7,
+            "all_parents_must_converge": False,
+            "summary_fields": {
+                "workflow_job_template": {"id": 5, "name": "My Workflow"},
+                "unified_job_template": {"id": 10, "name": "Demo Job Template", "unified_job_type": "job"},
+                "inventory": {"id": 3, "name": "Demo Inventory"},
+                "execution_environment": {"id": 7, "name": "Default EE"},
+            },
+        }
+        ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api(api_data, {})
+        self.assertEqual(ansible.workflow_job_template, "My Workflow")
+        self.assertEqual(ansible.unified_job_template, "Demo Job Template")
+        self.assertEqual(ansible.inventory, "Demo Inventory")
+        self.assertEqual(ansible.execution_environment, "Default EE")
+
+    def test_from_api_falls_back_to_manager_when_no_summary_fields(self):
+        mock_manager = MagicMock()
+
+        def _search_api(url):
+            lookup = {
+                "/api/controller/v2/workflow_job_templates/5/": {"id": 5, "name": "My Workflow"},
+                "/api/controller/v2/inventories/3/": {"id": 3, "name": "Demo Inventory"},
+            }
+            return lookup.get(url, {})
+
+        mock_manager.search_api.side_effect = _search_api
+
+        api_data = {
+            "identifier": "n1",
+            "workflow_job_template": 5,
+            "inventory": 3,
+        }
+        ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api(api_data, {"manager": mock_manager})
+        self.assertEqual(ansible.workflow_job_template, "My Workflow")
+        self.assertEqual(ansible.inventory, "Demo Inventory")
+
+    def test_from_api_falls_back_to_string_id_without_manager(self):
+        api_data = {
+            "identifier": "n1",
+            "workflow_job_template": 5,
+            "unified_job_template": 10,
+            "inventory": 3,
+        }
+        ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api(api_data, {})
+        self.assertEqual(ansible.workflow_job_template, "5")
+        self.assertEqual(ansible.unified_job_template, "10")
+        self.assertEqual(ansible.inventory, "3")
+
+    def test_from_api_falls_back_on_api_error(self):
+        mock_manager = MagicMock()
+        mock_manager.search_api.side_effect = ValueError("Not found")
+
+        api_data = {
+            "identifier": "n1",
+            "workflow_job_template": 999,
+        }
+        ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api(api_data, {"manager": mock_manager})
+        self.assertEqual(ansible.workflow_job_template, "999")
+
 
 if __name__ == "__main__":
     unittest.main()

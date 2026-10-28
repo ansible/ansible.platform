@@ -10,7 +10,10 @@
   ansible.builtin.set_fact:
     organization_name: "Workflow Node Test {{ test_id }}"
     workflow_name: "Workflow Node Test {{ test_id }}"
+    ujt_name: "UJT Node Test {{ test_id }}"
+    ujt_name_2: "UJT Node Test 2 {{ test_id }}"
     node_identifier: "workflow-node-{{ test_id }}"
+    second_node_identifier: "workflow-node-2-{{ test_id }}"
     check_mode_node_identifier: "workflow-node-check-{{ test_id }}"
 
 - name: Run Test
@@ -48,6 +51,22 @@
       register: test_workflow
       delegate_to: localhost
 
+    - name: Create workflow JT for unified_job_template test
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ujt_name }}"
+          organization: "{{ test_organization.id }}"
+        status_code: [200, 201]
+      register: test_ujt
+      delegate_to: localhost
+
     - name: Check mode predicts node creation
       ansible.platform.workflow_job_template_node:
         identifier: "{{ check_mode_node_identifier }}"
@@ -72,10 +91,11 @@
         that:
           - not (check_mode_node_exists.exists | default(false) | bool)
 
-    - name: Create workflow node
+    - name: Create workflow node with FK names
       ansible.platform.workflow_job_template_node:
         identifier: "{{ node_identifier }}"
         workflow_job_template: "{{ workflow_name }}"
+        unified_job_template: "{{ ujt_name }}"
         all_parents_must_converge: false
         state: present
       register: created_node
@@ -87,23 +107,119 @@
           - created_node.workflow_job_template_node.id is defined
           - created_node.workflow_job_template_node.identifier == node_identifier
 
-    - name: Check idempotency
+    - name: Check idempotency using names (not IDs)
       ansible.platform.workflow_job_template_node:
         identifier: "{{ node_identifier }}"
-        workflow_job_template: "{{ test_workflow.json.id }}"
+        workflow_job_template: "{{ workflow_name }}"
+        unified_job_template: "{{ ujt_name }}"
         all_parents_must_converge: false
         state: present
       register: idempotent_node
 
-    - name: Assert no change on re-apply
+    - name: Assert no change on re-apply with names
       ansible.builtin.assert:
         that:
           - idempotent_node is not changed
 
+    # -- FK change detection --------------------------------------------------
+
+    - name: Create second workflow JT for FK change test
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ ujt_name_2 }}"
+          organization: "{{ test_organization.id }}"
+        status_code: [200, 201]
+      register: test_ujt_2
+      delegate_to: localhost
+
+    - name: Change unified_job_template to second workflow JT
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        unified_job_template: "{{ ujt_name_2 }}"
+      register: fk_change_node
+
+    - name: Assert FK change detected
+      ansible.builtin.assert:
+        that:
+          - fk_change_node is changed
+
+    - name: Re-run with same second workflow JT (idempotency)
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        unified_job_template: "{{ ujt_name_2 }}"
+      register: fk_change_idem
+
+    - name: Assert FK change is idempotent
+      ansible.builtin.assert:
+        that:
+          - fk_change_idem is not changed
+
+    # -- Association tests ----------------------------------------------------
+
+    - name: Create second node for association test
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ second_node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+      register: second_node
+
+    - name: Assert second node created
+      ansible.builtin.assert:
+        that:
+          - second_node is changed
+
+    - name: Set success_nodes association on first node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        success_nodes:
+          - "{{ second_node_identifier }}"
+      register: assoc_set
+
+    - name: Assert association changed
+      ansible.builtin.assert:
+        that:
+          - assoc_set is changed
+
+    - name: Re-run same success_nodes (idempotency)
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        success_nodes:
+          - "{{ second_node_identifier }}"
+      register: assoc_idem
+
+    - name: Assert association is idempotent
+      ansible.builtin.assert:
+        that:
+          - assoc_idem is not changed
+
+    - name: Clear success_nodes association
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        success_nodes: []
+      register: assoc_clear
+
+    - name: Assert clearing association changed
+      ansible.builtin.assert:
+        that:
+          - assoc_clear is changed
+
+    # -- Scalar update --------------------------------------------------------
+
     - name: Update node
       ansible.platform.workflow_job_template_node:
         identifier: "{{ node_identifier }}"
-        workflow_job_template: "{{ test_workflow.json.id }}"
+        workflow_job_template: "{{ workflow_name }}"
         all_parents_must_converge: true
       register: updated_node
 
@@ -151,6 +267,17 @@
           - absent_node is not changed
 
   always:
+    - name: Delete second workflow node if created
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ second_node_identifier }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        state: absent
+      when:
+        - test_workflow is defined
+        - test_workflow.json is defined
+        - test_workflow.json.id is defined
+      ignore_errors: true
+
     - name: Delete workflow node if created
       ansible.platform.workflow_job_template_node:
         identifier: "{{ node_identifier }}"
@@ -160,6 +287,37 @@
         - test_workflow is defined
         - test_workflow.json is defined
         - test_workflow.json.id is defined
+      ignore_errors: true
+
+    - name: Delete second workflow JT prerequisite
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ test_ujt_2.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - test_ujt_2 is defined
+        - test_ujt_2.json is defined
+        - test_ujt_2.json.id is defined
+      delegate_to: localhost
+
+    - name: Delete workflow JT prerequisite
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ test_ujt.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - test_ujt is defined
+        - test_ujt.json is defined
+        - test_ujt.json.id is defined
+      delegate_to: localhost
 
     - name: Delete workflow job template prerequisite
       ansible.builtin.uri:

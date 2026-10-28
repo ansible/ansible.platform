@@ -17,6 +17,34 @@ logger = logging.getLogger(__name__)
 
 BASE_PATH = "/api/controller/v2/workflow_job_template_nodes"
 
+_FK_ENDPOINTS = {
+    "workflow_job_template": "workflow_job_templates",
+    "unified_job_template": "unified_job_templates",
+    "inventory": "inventories",
+    "execution_environment": "execution_environments",
+}
+
+
+def _resolve_fk_name(fk_id, sf_key, summary_fields, manager=None, endpoint=None):
+    """Resolve an FK integer ID to its human-readable name.
+
+    Prefers ``summary_fields`` from the API response (zero extra HTTP calls).
+    Falls back to a detail GET when ``manager`` and ``endpoint`` are given
+    and summary_fields lacks the key (e.g. ``inventory``, ``execution_environment``).
+    """
+    if fk_id is None:
+        return None
+    sf = summary_fields.get(sf_key, {})
+    if isinstance(sf, dict) and sf.get("name"):
+        return sf["name"]
+    if manager is not None and endpoint is not None:
+        try:
+            resource = manager.search_api(f"/api/controller/v2/{endpoint}/{fk_id}/")
+            return resource.get("name", str(fk_id))
+        except Exception:
+            pass
+    return str(fk_id)
+
 
 @dataclass
 class APIWorkflowJobTemplateNode_v2(BaseTransformMixin):
@@ -64,6 +92,10 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
             api_data["identifier"] = identifier
 
         # FK resolution: workflow_job_template name → ID
+        # NOTE: name lookups are not scoped by organization — duplicate names
+        # across organizations will match the first result.  Adding an optional
+        # ``organization`` parameter (like the legacy awx_collection module) is
+        # tracked as a follow-up enhancement.
         wfjt = getattr(ansible_instance, "workflow_job_template", None)
         if wfjt is not None:
             if manager is not None and not str(wfjt).strip().isdigit():
@@ -233,11 +265,13 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
     ):
         from ....ansible_models.workflow_job_template_node import AnsibleWorkflowJobTemplateNode
 
-        wfjt_val = api_data.get("workflow_job_template")
-        wfjt_str = str(wfjt_val) if wfjt_val is not None else ""
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        summary_fields = api_data.get("summary_fields", {})
 
+        wfjt_val = api_data.get("workflow_job_template")
         ujt_val = api_data.get("unified_job_template")
-        ujt_str = str(ujt_val) if ujt_val is not None else None
+        inv_val = api_data.get("inventory")
+        ee_val = api_data.get("execution_environment")
 
         extra_data = api_data.get("extra_data")
         if isinstance(extra_data, str) and extra_data.strip():
@@ -250,16 +284,13 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         elif not isinstance(extra_data, dict):
             extra_data = None
 
-        inv_val = api_data.get("inventory")
-        ee_val = api_data.get("execution_environment")
-
         return AnsibleWorkflowJobTemplateNode(
             identifier=api_data.get("identifier", ""),
-            workflow_job_template=wfjt_str,
-            unified_job_template=ujt_str,
+            workflow_job_template=_resolve_fk_name(wfjt_val, "workflow_job_template", summary_fields, manager, "workflow_job_templates") or "",
+            unified_job_template=_resolve_fk_name(ujt_val, "unified_job_template", summary_fields, manager),
             all_parents_must_converge=api_data.get("all_parents_must_converge"),
             extra_data=extra_data if extra_data else None,
-            inventory=str(inv_val) if inv_val is not None else None,
+            inventory=_resolve_fk_name(inv_val, "inventory", summary_fields, manager, "inventories"),
             scm_branch=api_data.get("scm_branch") or None,
             job_type=api_data.get("job_type") or None,
             job_tags=api_data.get("job_tags") or None,
@@ -270,6 +301,6 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
             forks=api_data.get("forks"),
             job_slice_count=api_data.get("job_slice_count"),
             timeout=api_data.get("timeout"),
-            execution_environment=str(ee_val) if ee_val is not None else None,
+            execution_environment=_resolve_fk_name(ee_val, "execution_environment", summary_fields, manager, "execution_environments"),
             id=api_data.get("id"),
         )

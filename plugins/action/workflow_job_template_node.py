@@ -35,12 +35,14 @@ class ActionModule(BaseResourceActionPlugin):
 
     @staticmethod
     def _resolve_node_ids_in_workflow(manager, workflow_id, identifiers):
-        """Resolve node identifiers to IDs scoped to a specific workflow."""
+        """Resolve node identifiers to IDs scoped to a specific workflow.
+
+        Always looks up by identifier within the workflow — numeric values
+        are treated as identifiers, not database IDs, because node
+        identifiers can legitimately be numeric strings like ``"123"``.
+        """
         resolved = []
         for ident in identifiers:
-            if str(ident).strip().isdigit():
-                resolved.append(int(ident))
-                continue
             data = manager.search_api(f"{BASE_PATH}/?identifier={ident}&workflow_job_template={workflow_id}")
             nodes = data.get("results", [])
             if not nodes:
@@ -75,6 +77,8 @@ class ActionModule(BaseResourceActionPlugin):
 
         try:
             manager = self._client
+            if wfjt_id is not None and not str(wfjt_id).strip().isdigit():
+                wfjt_id = manager.lookup_resource_id("workflow_job_templates", "name", str(wfjt_id), service=_SERVICE)
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
