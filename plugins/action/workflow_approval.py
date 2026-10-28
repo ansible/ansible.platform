@@ -19,7 +19,6 @@ __metaclass__ = type
 
 import time
 
-from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import (
     BaseResourceActionPlugin,
 )
@@ -31,42 +30,21 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
     WORKFLOW_JOBS_PATH,
 )
 
+_RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_approval"
     MODEL_CLASS = AnsibleWorkflowApproval
 
     def run(self, tmp=None, task_vars=None):
-        """Wait for an approval node and approve or deny it.
-
-        Flow:
-          1. Poll /api/controller/v2/workflow_jobs/{id}/workflow_nodes/
-             filtering by job__name until a pending approval node appears.
-          2. Extract the related job URL from the matching node.
-          3. POST to {related_job_url}/{action}/ to approve or deny.
-        """
-        if task_vars is None:
-            task_vars = {}
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
+        """Wait for an approval node and approve or deny it."""
+        result = {}
         try:
-            # ---- argument validation ----------------------------------------
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-            validated_params = validated_input.validated_parameters
-
-            # ---- connect to manager -----------------------------------------
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            validated_params = prepared["validated_params"]
+            manager = prepared["manager"]
 
             workflow_job_id = validated_params["workflow_job_id"]
             name = validated_params["name"]
@@ -79,16 +57,21 @@ class ActionModule(BaseResourceActionPlugin):
 
             approval_node = None
             start_time = time.time()
+            no_timeout = timeout == 0
 
-            while time.time() - start_time < timeout:
+            while no_timeout or (time.time() - start_time < timeout):
                 try:
                     nodes_response = manager.search_api(
                         nodes_endpoint,
                         query_params={"job__name": name},
                     )
                 except Exception as poll_exc:
-                    self._display.vvv("workflow_approval: poll error: %s" % poll_exc)
-                    remaining = timeout - (time.time() - start_time)
+                    if self._is_retryable(poll_exc):
+                        self._display.vvv("workflow_approval: transient poll error: %s" % poll_exc)
+                    else:
+                        raise
+                    elapsed = time.time() - start_time
+                    remaining = timeout - elapsed if not no_timeout else interval
                     if remaining > 0:
                         time.sleep(min(interval, remaining))
                     continue
@@ -105,7 +88,8 @@ class ActionModule(BaseResourceActionPlugin):
                 if approval_node is not None:
                     break
 
-                remaining = timeout - (time.time() - start_time)
+                elapsed = time.time() - start_time
+                remaining = timeout - elapsed if not no_timeout else interval
                 if remaining > 0:
                     time.sleep(min(interval, remaining))
 
@@ -118,7 +102,6 @@ class ActionModule(BaseResourceActionPlugin):
             # ---- resolve the approval job endpoint --------------------------
             related_job = approval_node.get("related", {}).get("job", "")
             if not related_job:
-                # Fallback: build URL from summary_fields job id
                 job_id = approval_node.get("summary_fields", {}).get("job", {}).get("id")
                 if job_id:
                     related_job = "%s/%d/" % (WORKFLOW_APPROVALS_PATH, job_id)
@@ -128,12 +111,17 @@ class ActionModule(BaseResourceActionPlugin):
                     result["msg"] = "Found approval node '%s' but could not determine the approval job endpoint" % name
                     return result
 
-            # Ensure the related_job path ends with /
             if not related_job.endswith("/"):
                 related_job += "/"
 
             # ---- POST approve or deny ---------------------------------------
             action_url = "%s%s/" % (related_job, action)
+
+            if self._task.check_mode:
+                action_past = "approved" if action == "approve" else "denied"
+                result["changed"] = True
+                result["msg"] = "Workflow approval node '%s' would be %s (check mode)" % (name, action_past)
+                return result
 
             self._display.vvv("workflow_approval: POSTing to %s" % action_url)
 
@@ -141,7 +129,8 @@ class ActionModule(BaseResourceActionPlugin):
 
             result["changed"] = True
             result["failed"] = False
-            result["msg"] = "Workflow approval node '%s' has been %sd" % (name, action)
+            action_past = "approved" if action == "approve" else "denied"
+            result["msg"] = "Workflow approval node '%s' has been %s" % (name, action_past)
 
         except Exception as exc:
             import traceback as _tb
@@ -153,3 +142,14 @@ class ActionModule(BaseResourceActionPlugin):
                 result["exception"] = _tb.format_exc()
 
         return result
+
+    @staticmethod
+    def _is_retryable(exc):
+        status_code = getattr(exc, "status_code", None)
+        if status_code is not None:
+            return status_code in _RETRYABLE_STATUS_CODES
+        retryable = getattr(exc, "retryable", None)
+        if retryable is not None:
+            return retryable
+        exc_str = str(exc).lower()
+        return "timeout" in exc_str or "connection" in exc_str
