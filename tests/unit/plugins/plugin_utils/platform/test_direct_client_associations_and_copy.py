@@ -41,7 +41,7 @@ class TestManageAssociations(unittest.TestCase):
         self.client = _client()
 
     def test_associates_and_disassociates_to_reconcile(self):
-        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-a": 3}[value]
+        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-a": 3}[value]
         self.client.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
 
         with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
@@ -183,6 +183,60 @@ class TestManageAssociations(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
             with self.assertRaises(json.JSONDecodeError):
                 self.client.manage_associations("/api/controller/v2/job_templates", 42, "labels", [1], "labels", "name")
+
+    def test_extra_query_params_passed_to_lookup(self):
+        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"my-label": 7}[value]
+        self.client.search_api.return_value = {"results": []}
+
+        with unittest.mock.patch.object(self.client, "_make_request"):
+            self.client.manage_associations(
+                "/api/controller/v2/workflow_job_templates",
+                10,
+                "labels",
+                ["my-label"],
+                "labels",
+                "name",
+                service="controller",
+                extra_query_params={"organization": 42},
+            )
+
+        self.client.lookup_resource_id.assert_called_once_with("labels", "name", "my-label", service="controller", extra_query_params={"organization": 42})
+
+    def test_extra_query_params_in_batch_query(self):
+        self.client.api_versions["controller"] = "2"
+        self.client.search_api.side_effect = [
+            {"results": [{"id": 7, "name": "label-a"}, {"id": 8, "name": "label-b"}]},
+            {"results": []},
+        ]
+
+        with unittest.mock.patch.object(self.client, "_make_request"):
+            self.client.manage_associations(
+                "/api/controller/v2/workflow_job_templates",
+                10,
+                "labels",
+                ["label-a", "label-b"],
+                "labels",
+                "name",
+                service="controller",
+                extra_query_params={"organization": 42},
+            )
+
+        batch_call = self.client.search_api.call_args_list[0]
+        self.assertEqual(batch_call.kwargs["query_params"], {"name__in": "label-a,label-b", "organization": 42})
+
+    def test_extra_query_params_separate_cache_keys(self):
+        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.get_api_version = MagicMock(return_value="2")
+        responses = [
+            _http_resp(body={"results": [{"id": 10, "name": "shared"}]}),
+            _http_resp(body={"results": [{"id": 20, "name": "shared"}]}),
+        ]
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=responses):
+            id1 = self.client.lookup_resource_id("labels", "name", "shared", service="controller", extra_query_params={"organization": 1})
+            id2 = self.client.lookup_resource_id("labels", "name", "shared", service="controller", extra_query_params={"organization": 2})
+
+        self.assertEqual(id1, 10)
+        self.assertEqual(id2, 20)
 
 
 class TestManageSubResource(unittest.TestCase):

@@ -300,7 +300,7 @@ class Store:
             ("job_templates", ["name"], 5000),
             ("inventories", ["name"], 5100),
             ("projects", ["name"], 5200),
-            ("execution_environments", ["name"], 5300),
+            ("execution_environments", ["name", "image"], 5300),
             ("credentials", ["name"], 5400),
             ("labels", ["name", "organization"], 5500),
             ("instance_groups", ["name"], 5600),
@@ -311,8 +311,22 @@ class Store:
             ("groups", ["name", "inventory"], 6100),
             ("credential_types", ["name", "kind"], 6200),
             ("credential_input_sources", ["input_field_name", "target_credential"], 6300),
+            ("schedules", ["name"], 6400),
+            ("workflow_job_templates", ["name"], 6500),
+            ("workflow_job_template_nodes", ["identifier", "workflow_job_template"], 6600),
         )
         for endpoint, required, start_id in controller_resources:
+            self._resources[("controller", endpoint)] = GenericResource(
+                resource_name=endpoint,
+                required_fields=required,
+                start_id=start_id,
+                service="controller",
+            )
+        # Controller resources
+        controller_defs: List[tuple] = [
+            ("workflow_job_templates", ["name"], 6000),
+        ]
+        for endpoint, required, start_id in controller_defs:
             self._resources[("controller", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
@@ -425,11 +439,11 @@ class Store:
             ids = self._jt_associations.setdefault(template_id, {}).setdefault(field_name, set())
             (ids.add if associate else ids.discard)(item_id)
 
-    def copy_job_template(self, version: str, template_id: int, name: str) -> Dict[str, Any]:
-        resource = self.resource("controller", "job_templates")
+    def copy_job_template(self, version: str, template_id: int, name: str, resource_name: str = "job_templates") -> Dict[str, Any]:
+        resource = self.resource("controller", resource_name)
         source = resource.get(template_id)
         if any(item["name"] == name for item in resource.list_items()["results"]):
-            raise ValueError(f"Job template '{name}' already exists")
+            raise ValueError(f"Resource '{name}' already exists")
         payload = {key: value for key, value in source.items() if key not in ("id", "created", "modified", "url")}
         payload["name"] = name
         copied = resource.create(version, payload)
@@ -840,16 +854,16 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         resource = parts[3] if len(parts) >= 4 else None
 
-        if service == "controller" and resource == "job_templates" and len(parts) >= 5:
+        if service == "controller" and resource in ("job_templates", "workflow_job_templates") and len(parts) >= 5:
             try:
                 template_id = int(parts[4])
-                self.store.resource("controller", "job_templates").get(template_id)
+                self.store.resource("controller", resource).get(template_id)
             except (ValueError, KeyError):
                 self._send_json(404, {"detail": "Not Found"})
                 return
 
             if len(parts) == 5 and self.command == "DELETE":
-                self.store.resource("controller", "job_templates").delete(template_id)
+                self.store.resource("controller", resource).delete(template_id)
                 with self.store._jt_lock:
                     self.store._jt_associations.pop(template_id, None)
                     self.store._jt_surveys.pop(template_id, None)
@@ -865,6 +879,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     "notification_templates_started",
                     "notification_templates_success",
                     "notification_templates_error",
+                    "notification_templates_approvals",
                 }
                 if subresource in association_names:
                     if self.command == "GET":
@@ -898,7 +913,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         return
                 if subresource == "copy" and self.command == "POST":
                     try:
-                        copied = self.store.copy_job_template(version, template_id, self._parse_json_body()["name"])
+                        copied = self.store.copy_job_template(version, template_id, self._parse_json_body()["name"], resource_name=resource)
                         self._send_json(201, copied)
                     except (KeyError, ValueError) as error:
                         self._send_json(400, {"detail": str(error)})

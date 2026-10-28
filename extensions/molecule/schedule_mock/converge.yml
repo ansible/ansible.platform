@@ -1,0 +1,125 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+    - name: Create manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — schedule (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sched_name: "Molecule Test Schedule Local"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create schedule
+      ansible.platform.schedule:
+        name: "{{ sched_name }}"
+        description: "Created by Molecule"
+        rrule: "DTSTART:20261007T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+        unified_job_template: "1"
+        enabled: true
+      register: create_result
+      vars:
+        ansible_connection: local
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.schedule.id is defined
+      vars:
+        ansible_connection: local
+    - name: Idempotency
+      ansible.platform.schedule:
+        name: "{{ sched_name }}"
+        description: "Created by Molecule"
+        rrule: "DTSTART:20261007T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+        unified_job_template: "1"
+        enabled: true
+        state: present
+      register: idem_result
+      vars:
+        ansible_connection: local
+    - name: Assert idempotent
+      ansible.builtin.assert:
+        that: idem_result is not changed
+      vars:
+        ansible_connection: local
+    - name: Update description
+      ansible.platform.schedule:
+        name: "{{ sched_name }}"
+        description: "Updated by Molecule"
+      register: update_result
+      vars:
+        ansible_connection: local
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that: update_result is changed
+      vars:
+        ansible_connection: local
+
+- name: Converge — schedule (mock, http direct)
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    sched_name: "Molecule Test Schedule HTTP Direct"
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Create schedule (http direct)
+      ansible.platform.schedule:
+        name: "{{ sched_name }}"
+        description: "Created by Molecule (http direct)"
+        rrule: "DTSTART:20261007T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+        unified_job_template: "1"
+      register: create_result
+    - name: Assert create changed
+      ansible.builtin.assert:
+        that: create_result is changed
+    - name: Idempotency
+      ansible.platform.schedule:
+        name: "{{ sched_name }}"
+        description: "Created by Molecule (http direct)"
+        rrule: "DTSTART:20261007T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=1"
+        unified_job_template: "1"
+        state: present
+      register: idem_result
+    - name: Assert idempotent
+      ansible.builtin.assert:
+        that: idem_result is not changed
+...

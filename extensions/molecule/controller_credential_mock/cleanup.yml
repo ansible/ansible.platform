@@ -1,0 +1,34 @@
+---
+- name: Cleanup — delete credentials (mock)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Delete credentials
+      ansible.platform.controller_credential:
+        name: "{{ item }}"
+        credential_type: "1"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      loop:
+        - "Molecule Test Credential Local"
+        - "Molecule Test Credential HTTP Direct"
+        - "Molecule Test Credential HTTP Persistent"
+      failed_when: false
+      vars:
+        ansible_connection: local
+    - name: Remove manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: absent
+      vars:
+        ansible_connection: local
+...
