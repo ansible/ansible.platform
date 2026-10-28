@@ -1,7 +1,7 @@
 ---
 # Scenario: test ansible.platform.team against the mock Gateway server (no real AAP).
 # Tests all three connection scenarios: Play 1 direct, Play 2 persistent, Play 3 connection local.
-# Uses mock's pre-seeded organization "Default" (id 1). Requires mock running (make molecule-test-all or default create).
+# Uses mock's pre-seeded organization "Default" (id 1). Requires mock running (molecule test --all or default create).
 driver:
   name: default
 

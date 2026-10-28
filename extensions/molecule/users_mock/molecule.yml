@@ -1,6 +1,6 @@
 ---
 # Scenario: test ansible.platform.user against the mock Gateway server (no real AAP).
-# Requires the mock to be running (e.g. "make molecule-test-all" or default scenario create).
+# Requires the mock to be running (e.g. "molecule test --all" or default scenario create).
 driver:
   name: default
 

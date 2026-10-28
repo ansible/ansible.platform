@@ -1,6 +1,6 @@
 ---
 # Start the mock Gateway server for integration tests (no real AAP required).
-# Started once by make molecule-test-all; other mock scenarios use this server.
+# Used when running molecule test --all with shared_state; other scenarios use this server.
 # connection: local required so tasks run on controller (shared inventory sets ansible.platform.http).
 - name: Create — Start mock Gateway server
   hosts: localhost
