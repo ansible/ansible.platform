@@ -143,9 +143,9 @@ class ManagerRPCClient:
             preserve_existing,
         )
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], service: str = "gateway") -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
-        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data, service)
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""

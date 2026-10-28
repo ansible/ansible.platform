@@ -48,7 +48,7 @@ class TestRPCWrappers(unittest.TestCase):
         result = client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", None)
 
         self.assertFalse(result)
-        client.service_proxy.manage_sub_resource.assert_called_once_with("/api/controller/v2/job_templates", 42, "survey_spec", None, "gateway")
+        client.service_proxy.manage_sub_resource.assert_called_once_with("/api/controller/v2/job_templates", 42, "survey_spec", None)
 
     def test_copy_resource_delegates_to_service_proxy(self):
         client = _rpc_client()

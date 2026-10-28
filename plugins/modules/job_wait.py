@@ -25,13 +25,14 @@ options:
       type: int
     interval:
       description:
-        - The interval in seconds to request an update from the controller.
+        - The polling interval in seconds; must be greater than zero.
       required: False
       default: 2
       type: float
     timeout:
       description:
-        - Maximum time in seconds to wait for a job to finish.
+        - Maximum non-negative time in seconds to wait for a job to finish.
+        - Set to C(0) or omit this option to wait indefinitely.
       type: int
     job_type:
       description:
@@ -79,12 +80,12 @@ started:
     type: str
     sample: "2017-03-01T17:03:53.200234Z"
 finished:
-    description: Whether the job has finished.
+    description: Whether the job has finished running.
     returned: success
     type: bool
     sample: true
 finished_at:
-    description: Timestamp of when the job finished running.
+    description: Timestamp of when the job finished running, or null if it has not finished.
     returned: success
     type: str
     sample: "2017-03-01T17:04:04.078782Z"

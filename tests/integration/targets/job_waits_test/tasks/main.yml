@@ -63,9 +63,12 @@
   ansible.builtin.assert:
     that:
       - wait_results is successful
+      - wait_results.changed == false
       - "'elapsed' in wait_results"
       - "'id' in wait_results"
       - "'status' in wait_results"
+      - wait_results.finished is boolean
+      - wait_results.finished_at is string
       - wait_results.status == "successful"
 
 - name: Wait for already-finished job (should return immediately)

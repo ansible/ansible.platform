@@ -55,6 +55,11 @@
           - completed_jobs.results | map(attribute='id') | list == [5801, 5901, 6001, 6101]
           - completed_jobs.results | map(attribute='status') | list == ['successful', 'successful', 'successful', 'successful']
           - completed_jobs.results | map(attribute='elapsed') | list == [1.25, 1.25, 1.25, 1.25]
+          - completed_jobs.results | map(attribute='finished') | list == [true, true, true, true]
+          - >-
+            completed_jobs.results | map(attribute='finished_at') | list ==
+            ['2026-01-01T00:00:01Z', '2026-01-01T00:00:01Z', '2026-01-01T00:00:01Z', '2026-01-01T00:00:01Z']
+          - completed_jobs.results | map(attribute='changed') | list == [false, false, false, false]
 
     - name: Wait for a failed job
       ansible.platform.job_wait:

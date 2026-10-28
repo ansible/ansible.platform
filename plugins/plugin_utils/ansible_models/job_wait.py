@@ -2,8 +2,12 @@
 Ansible JobWait dataclass - user-facing stable interface.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from dataclasses import dataclass
 from typing import Optional
+
+__metaclass__ = type
 
 
 @dataclass

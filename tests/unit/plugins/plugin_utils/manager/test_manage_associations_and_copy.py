@@ -85,7 +85,6 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_no_change_when_already_in_sync(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}]}
-        self.svc.session.get.return_value = _resp(json_data={"results": [{"id": 1}]})
 
         changed = self.svc.manage_associations(
             "/api/controller/v2/job_templates",
@@ -101,7 +100,6 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_numeric_desired_items_skip_lookup(self):
         self.svc.search_api.return_value = {"results": []}
-        self.svc.session.get.return_value = _resp(json_data={"results": []})
 
         self.svc.manage_associations("/api/controller/v2/job_templates", 42, "credentials", [5], "credentials", "name")
 

@@ -4,12 +4,7 @@
 # (c) 2025, Ansible Platform Collection Contributors
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-"""
-Action plugin for ansible.platform.job_wait module.
-
-Polls a Controller job (or project_update, inventory_update, workflow_job)
-until it reaches a finished state, then reports success or failure.
-"""
+"""Action plugin for waiting for a Controller job to finish."""
 
 from __future__ import absolute_import, division, print_function
 
@@ -17,11 +12,17 @@ __metaclass__ = type
 
 import time
 
+from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_wait import JOB_TYPE_RESOURCE_MAP
 
-# Job statuses that indicate the job has completed
 _FINISHED_STATUSES = frozenset({"successful", "failed", "error", "canceled"})
+_JOB_TYPE_LABELS = {
+    "jobs": "job",
+    "project_updates": "project update",
+    "inventory_updates": "inventory update",
+    "workflow_jobs": "workflow job",
+}
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -29,152 +30,124 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "job_wait"
 
+    @staticmethod
+    def _is_not_found_error(exc):
+        """Return whether the SDK error represents an HTTP 404."""
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            status_code = (getattr(exc, "details", None) or {}).get("status_code")
+        if status_code is None:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        return status_code == 404
+
+    def _find_job(self, manager, job_id, job_type):
+        """Fetch the current job through the SDK's standard find operation."""
+        return manager.execute(
+            operation="find",
+            module_name=self.MODULE_NAME,
+            ansible_data={"job_id": job_id, "job_type": job_type},
+        )
+
+    def _poll_job(self, manager, job_id, job_type, job_data, start_time, timeout, interval):
+        """Poll until the job finishes or the positive timeout expires."""
+        while True:
+            status = job_data.get("status", "")
+            if job_data.get("finished") or status in _FINISHED_STATUSES:
+                return job_data, False
+
+            # AWX treats timeout=0 as unlimited; an omitted timeout does too.
+            timed = timeout is not None and timeout > 0
+            remaining = timeout - (time.monotonic() - start_time) if timed else None
+            if remaining is not None and remaining <= 0:
+                return job_data, True
+
+            time.sleep(min(interval, remaining) if remaining is not None else interval)
+
+            # Do not issue another request after the deadline.
+            if timed and time.monotonic() - start_time >= timeout:
+                return job_data, True
+
+            try:
+                job_data = self._find_job(manager, job_id, job_type)
+            except Exception as exc:
+                label = _JOB_TYPE_LABELS[job_type]
+                raise AnsibleError("Failed to poll %s %s: %s" % (label, job_id, exc)) from exc
+
+    @staticmethod
+    def _set_job_result(result, job_data):
+        """Populate the job result fields using Ansible's task-result naming."""
+        for field in ("id", "status", "elapsed", "started"):
+            result[field] = job_data.get(field)
+        # ansible-core reserves the top-level ``finished`` task-result key as a
+        # boolean, so expose the Controller timestamp under ``finished_at``.
+        result["finished"] = bool(job_data.get("finished"))
+        result["finished_at"] = job_data.get("finished")
+
     def run(self, tmp=None, task_vars=None):
-        if task_vars is None:
-            task_vars = dict()
-
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
+        """Wait for the requested job and return its final Controller fields."""
+        result = {}
         try:
-            # Load and validate arguments from DOCUMENTATION
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            validated_params = prepared["validated_params"]
+            manager = prepared["manager"]
 
-                raise AnsibleError("Could not load DOCUMENTATION for job_wait module")
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
-
-            validated_params = validated_input.validated_parameters
-
-            job_id = validated_params.get("job_id")
+            job_id = validated_params["job_id"]
             job_type = validated_params.get("job_type", "jobs")
             timeout = validated_params.get("timeout")
-            interval = validated_params.get("interval", 2)
+            interval = validated_params.get("interval")
+            if interval is None:
+                interval = 2.0
 
-            # Validate job_type
             if job_type not in JOB_TYPE_RESOURCE_MAP:
-                result["failed"] = True
-                result["msg"] = "Invalid job_type '%s'. Must be one of: %s" % (
-                    job_type,
-                    ", ".join(sorted(JOB_TYPE_RESOURCE_MAP.keys())),
-                )
-                return result
+                raise AnsibleError("Invalid job_type '%s'. Must be one of: %s" % (job_type, ", ".join(sorted(JOB_TYPE_RESOURCE_MAP))))
+            if interval <= 0:
+                raise AnsibleError("interval must be greater than 0")
+            if timeout is not None and timeout < 0:
+                raise AnsibleError("timeout must be 0 or greater")
 
-            # First, verify the job exists
+            label = _JOB_TYPE_LABELS[job_type]
+            start_time = time.monotonic()
             try:
-                job_data = manager.execute(
-                    operation="resolve",
-                    module_name=self.MODULE_NAME,
-                    ansible_data={"job_id": job_id, "job_type": job_type},
-                )
-            except Exception as e:
-                error_msg = str(e)
-                if "404" in error_msg or "not found" in error_msg.lower():
+                job_data = self._find_job(manager, job_id, job_type)
+            except Exception as exc:
+                if self._is_not_found_error(exc):
                     result["failed"] = True
-                    result["msg"] = "Unable to wait, no %s %s found: The requested object could not be found." % (job_type.rstrip("s"), job_id)
-                else:
-                    result["failed"] = True
-                    result["msg"] = "Unable to wait for %s %s: %s" % (
-                        job_type.rstrip("s"),
-                        job_id,
-                        error_msg,
-                    )
-                return result
+                    result["changed"] = False
+                    result["msg"] = "Unable to wait, no %s %s found: The requested object could not be found." % (label, job_id)
+                    return result
+                raise AnsibleError("Unable to wait for %s %s: %s" % (label, job_id, exc)) from exc
 
             if not job_data or not job_data.get("id"):
                 result["failed"] = True
-                result["msg"] = "Unable to wait, no %s %s found: The requested object could not be found." % (job_type.rstrip("s"), job_id)
+                result["changed"] = False
+                result["msg"] = "Unable to wait, no %s %s found: The requested object could not be found." % (label, job_id)
                 return result
 
-            # Poll until the job finishes or timeout
-            start_time = time.monotonic()
+            job_data, timed_out = self._poll_job(manager, job_id, job_type, job_data, start_time, timeout, interval)
+            self._set_job_result(result, job_data)
 
-            while True:
-                # Check if job is finished
-                status = job_data.get("status", "")
-                finished = job_data.get("finished")
+            status = job_data.get("status", "")
+            result["changed"] = False
+            if timed_out:
+                result["failed"] = True
+                result["msg"] = "Monitoring of %s %s aborted due to timeout." % (label, job_id)
+            elif status == "successful":
+                result["failed"] = False
+            elif status == "canceled":
+                result["failed"] = True
+                result["msg"] = "Job %s was canceled." % job_id
+            else:
+                result["failed"] = True
+                result["msg"] = "Job %s finished with status '%s'." % (job_id, status)
 
-                if finished is not None or status in _FINISHED_STATUSES:
-                    # Job is done
-                    result["id"] = job_data.get("id")
-                    result["status"] = status
-                    result["elapsed"] = job_data.get("elapsed")
-                    result["started"] = job_data.get("started")
-                    result["finished"] = finished is not None
-                    result["finished_at"] = finished
+        except Exception as exc:
+            import traceback as _tb
 
-                    if status in ("successful",):
-                        result["changed"] = True
-                        result["failed"] = False
-                    elif status == "canceled":
-                        result["failed"] = True
-                        result["msg"] = "Job %s was canceled." % job_id
-                    else:
-                        result["failed"] = True
-                        result["msg"] = "Job %s finished with status '%s'." % (
-                            job_id,
-                            status,
-                        )
-                    return result
-
-                # Check timeout
-                if timeout is not None:
-                    elapsed_wait = time.monotonic() - start_time
-                    if elapsed_wait >= timeout:
-                        result["failed"] = True
-                        result["id"] = job_data.get("id")
-                        result["status"] = status
-                        result["msg"] = "Monitoring of %s %s aborted due to timeout." % (job_type.rstrip("s"), job_id)
-                        return result
-                    sleep_interval = min(interval, timeout - elapsed_wait)
-                else:
-                    sleep_interval = interval
-
-                # Wait before polling again
-                time.sleep(sleep_interval)
-
-                # Do not make another API request once the timeout has expired.
-                if timeout is not None and time.monotonic() - start_time >= timeout:
-                    result["failed"] = True
-                    result["id"] = job_data.get("id")
-                    result["status"] = status
-                    result["msg"] = "Monitoring of %s %s aborted due to timeout." % (job_type.rstrip("s"), job_id)
-                    return result
-
-                # Poll for updated job data
-                try:
-                    job_data = manager.execute(
-                        operation="resolve",
-                        module_name=self.MODULE_NAME,
-                        ansible_data={"job_id": job_id, "job_type": job_type},
-                    )
-                except Exception as e:
-                    result["failed"] = True
-                    result["msg"] = "Failed to poll %s %s: %s" % (
-                        job_type.rstrip("s"),
-                        job_id,
-                        str(e),
-                    )
-                    return result
-
-        except Exception as e:
-            import traceback
-
-            self._display.vvv("Error in job_wait action plugin: %s" % e)
+            self._display.vvv("Error in job_wait action plugin: %s" % exc)
             result["failed"] = True
-            result["msg"] = str(e)
+            result["msg"] = str(exc)
             if self._display.verbosity >= 3:
-                result["exception"] = traceback.format_exc()
+                result["exception"] = _tb.format_exc()
 
         return result

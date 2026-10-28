@@ -93,11 +93,6 @@ class JobWaitTransformMixin_v2(BaseTransformMixin):
         }
 
     @classmethod
-    def resolve(cls, ansible_instance, context: TransformContext) -> Dict[str, Any]:
-        """Resolve the requested job through the SDK's standard find flow."""
-        return context.manager._find_resource(ansible_instance, cls, context)
-
-    @classmethod
     def get_lookup_field(cls) -> str:
         return "job_id"
 
