@@ -32,6 +32,7 @@ options:
         - Red Hat password to get available subscriptions.
       required: false
       type: str
+      no_log: true
     client_id:
       description:
         - Red Hat service account client ID to get available subscriptions.
@@ -42,6 +43,7 @@ options:
         - Red Hat service account client secret to get available subscriptions.
       required: false
       type: str
+      no_log: true
     filters:
       description:
         - Client side filters to apply to the subscriptions.
@@ -52,6 +54,11 @@ options:
       type: dict
       default: {}
 extends_documentation_fragment: ansible.platform.auth
+required_one_of:
+  - ["username", "client_id"]
+required_together:
+  - ["username", "password"]
+  - ["client_id", "client_secret"]
 ...
 """
 
