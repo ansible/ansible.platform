@@ -41,4 +41,5 @@ action_groups:
     - schedule
     - instance
     - workflow_job_template
+    - controller_credential
 ...
