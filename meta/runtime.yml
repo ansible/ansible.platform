@@ -28,12 +28,21 @@ action_groups:
     - job_template
     - controller_credential_type
     - credential_input_source
+    - execution_environment
     - host
     - instance_group
     - label
     - inventory_source
     - job_list
     - group
+    - inventory
+    - controller_project
+    - notification_template
+    - schedule
+    - instance
+    - workflow_job_template
+    - controller_credential
+    - workflow_job_template_node
     - job_cancel
     - ad_hoc_command_wait
 ...

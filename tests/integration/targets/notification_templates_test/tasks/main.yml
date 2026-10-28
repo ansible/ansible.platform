@@ -1,0 +1,156 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Set notification template name
+  ansible.builtin.set_fact:
+    notification_template_name: "Test-NT-{{ test_id }}"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    - name: Delete a non-existent notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}-Missing"
+        organization: Default
+        state: absent
+      register: missing_notification_template
+
+    - name: Assert deleting a non-existent template does not change anything
+      ansible.builtin.assert:
+        that:
+          - missing_notification_template is not changed
+
+    - name: Create notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: Default
+        description: "Integration test notification template"
+        notification_type: webhook
+        notification_configuration:
+          url: "https://example.invalid/webhook"
+          http_method: POST
+          headers: {}
+        state: present
+      register: created_notification_template
+
+    - name: Assert notification template was created with expected values
+      ansible.builtin.assert:
+        that:
+          - created_notification_template is changed
+          - created_notification_template.notification_template.name == notification_template_name
+          - created_notification_template.notification_template.id is defined
+          - created_notification_template.notification_template.description == 'Integration test notification template'
+          - created_notification_template.notification_template.notification_type == 'webhook'
+          - created_notification_template.notification_template.notification_configuration.url == 'https://example.invalid/webhook'
+          - created_notification_template.notification_template.notification_configuration.http_method == 'POST'
+
+    - name: Reapply notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: Default
+        description: "Integration test notification template"
+        notification_type: webhook
+        # Reuse Controller's canonical configuration, which may include defaults.
+        notification_configuration: "{{ created_notification_template.notification_template.notification_configuration }}"
+      register: idempotent_notification_template
+
+    - name: Assert reapplying notification template makes no changes
+      ansible.builtin.assert:
+        that:
+          - idempotent_notification_template is not changed
+          - idempotent_notification_template.notification_template.id == created_notification_template.notification_template.id
+
+    - name: Update notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: Default
+        description: "Updated integration test notification template"
+        notification_type: webhook
+        notification_configuration:
+          url: "https://example.invalid/updated-webhook"
+          http_method: POST
+          headers: {}
+      register: updated_notification_template
+
+    - name: Assert update changed the existing notification template
+      ansible.builtin.assert:
+        that:
+          - updated_notification_template is changed
+          - updated_notification_template.notification_template.id == created_notification_template.notification_template.id
+          - updated_notification_template.notification_template.description == 'Updated integration test notification template'
+          - updated_notification_template.notification_template.notification_configuration.url == 'https://example.invalid/updated-webhook'
+
+    - name: Reapply updated notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: Default
+        description: "Updated integration test notification template"
+        notification_type: webhook
+        # Reuse Controller's canonical configuration, which may include defaults.
+        notification_configuration: "{{ updated_notification_template.notification_template.notification_configuration }}"
+      register: idempotent_update_notification_template
+
+    - name: Assert reapplying the update makes no changes
+      ansible.builtin.assert:
+        that:
+          - idempotent_update_notification_template is not changed
+
+    - name: Check notification template exists
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: Default
+        state: exists
+      register: exists_notification_template
+
+    - name: Assert notification template exists without changes
+      ansible.builtin.assert:
+        that:
+          - exists_notification_template.exists
+          - exists_notification_template is not changed
+
+    - name: Rename notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        new_name: "{{ notification_template_name }}-Renamed"
+        organization: Default
+      register: renamed_notification_template
+
+    - name: Assert rename changed the existing notification template
+      ansible.builtin.assert:
+        that:
+          - renamed_notification_template is changed
+          - renamed_notification_template.notification_template.id == created_notification_template.notification_template.id
+          - renamed_notification_template.notification_template.name == (notification_template_name ~ '-Renamed')
+          - renamed_notification_template.notification_template.description == 'Updated integration test notification template'
+
+    - name: Delete notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}-Renamed"
+        organization: Default
+        state: absent
+      register: deleted_notification_template
+
+    - name: Assert deleting notification template changes the system
+      ansible.builtin.assert:
+        that:
+          - deleted_notification_template is changed
+
+  always:
+    - name: Delete notification template
+      ansible.platform.notification_template:
+        name: "{{ created_notification_template.notification_template.id }}"
+        organization: Default
+        state: absent
+      when:
+        - created_notification_template is defined
+        - created_notification_template.notification_template.id is defined
+...

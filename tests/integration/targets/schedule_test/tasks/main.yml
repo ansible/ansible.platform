@@ -1,0 +1,138 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-Schedule-{{ test_id }}"
+    schedule_name: "AAP-Collection-Test-Schedule-{{ test_id }}-Test"
+    schedule_rrule: "DTSTART:20990101T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=10"
+
+- name: Run Test
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Create schedule
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        description: "Integration test schedule"
+        unified_job_template: "Demo Job Template"
+        rrule: "{{ schedule_rrule }}"
+        enabled: true
+        state: present
+      register: created
+
+    - name: Assert creation
+      ansible.builtin.assert:
+        that:
+          - created is changed
+          - created.schedule.id is defined
+          - created.schedule.name == schedule_name
+          - created.schedule.description == "Integration test schedule"
+          - created.schedule.rrule == schedule_rrule
+          - created.schedule.unified_job_template is defined
+          - created.schedule.enabled is true
+
+    - name: Idempotency
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        description: "Integration test schedule"
+        unified_job_template: "Demo Job Template"
+        rrule: "{{ schedule_rrule }}"
+        enabled: true
+        state: present
+      register: idem
+
+    - name: Assert idempotent
+      ansible.builtin.assert:
+        that: idem is not changed
+
+    - name: Check schedule exists
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        state: exists
+      register: exists_schedule
+
+    - name: Assert schedule exists without changes
+      ansible.builtin.assert:
+        that:
+          - exists_schedule is not changed
+          - exists_schedule.schedule.id == created.schedule.id
+
+    - name: Update schedule
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        description: "Updated integration test schedule"
+        unified_job_template: "Demo Job Template"
+        rrule: "{{ schedule_rrule }}"
+        enabled: false
+        state: present
+      register: updated
+
+    - name: Assert schedule update
+      ansible.builtin.assert:
+        that:
+          - updated is changed
+          - updated.schedule.id == created.schedule.id
+          - updated.schedule.description == "Updated integration test schedule"
+          - updated.schedule.enabled is false
+
+    - name: Reapply schedule update
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        description: "Updated integration test schedule"
+        unified_job_template: "Demo Job Template"
+        rrule: "{{ schedule_rrule }}"
+        enabled: false
+        state: present
+      register: updated_idem
+
+    - name: Assert schedule update is idempotent
+      ansible.builtin.assert:
+        that: updated_idem is not changed
+
+    - name: Rename schedule
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        new_name: "{{ name_prefix }}-Renamed"
+      register: renamed
+
+    - name: Assert schedule was renamed
+      ansible.builtin.assert:
+        that:
+          - renamed is changed
+          - renamed.schedule.id == created.schedule.id
+          - renamed.schedule.name == (name_prefix ~ '-Renamed')
+
+    - name: Delete a non-existent schedule
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Missing"
+        state: absent
+      register: delete_missing
+
+    - name: Assert deleting a non-existent schedule does not change the system
+      ansible.builtin.assert:
+        that: delete_missing is not changed
+
+    - name: Delete schedule
+      ansible.platform.schedule:
+        name: "{{ name_prefix }}-Renamed"
+        state: absent
+      register: deleted
+
+    - name: Assert schedule was deleted
+      ansible.builtin.assert:
+        that: deleted is changed
+
+  always:
+    - name: Delete schedule
+      ansible.platform.schedule:
+        name: "{{ created.schedule.id if created is defined and created.schedule is defined and created.schedule.id is defined else schedule_name }}"
+        state: absent
+...
