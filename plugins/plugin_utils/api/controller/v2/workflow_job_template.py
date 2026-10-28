@@ -222,6 +222,13 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
             ),
         }
 
+    @staticmethod
+    def get_update_value_from_current_data(field, current_dict):
+        value = current_dict.get(field)
+        if field == "extra_vars" and isinstance(value, dict):
+            return json.dumps(value)
+        return value
+
     @classmethod
     def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
         organization_id = getattr(api_data, "organization", None)
