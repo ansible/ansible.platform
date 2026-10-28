@@ -178,6 +178,17 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         self.assertEqual(ansible.unified_job_template, "10")
         self.assertEqual(ansible.inventory, "3")
 
+    def test_get_update_value_blocks_fk_name_merge(self):
+        current = {"workflow_job_template": "My Workflow", "unified_job_template": "Demo JT", "all_parents_must_converge": True}
+        self.assertIsNone(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("workflow_job_template", current))
+        self.assertIsNone(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("unified_job_template", current))
+        self.assertTrue(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("all_parents_must_converge", current))
+
+    def test_get_update_value_allows_fk_id_merge(self):
+        current = {"workflow_job_template": "42", "unified_job_template": "10"}
+        self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("workflow_job_template", current), "42")
+        self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("unified_job_template", current), "10")
+
     def test_from_api_falls_back_on_api_error(self):
         mock_manager = MagicMock()
         mock_manager.search_api.side_effect = ValueError("Not found")

@@ -65,7 +65,6 @@
         paths:
           - "/tmp/ansible_platform"
           - "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/ansible_platform"
-          - "{{ temp_dir.stdout }}/ansible_platform"
           - "{{ home_dir.stdout }}/.ansible/tmp"
         patterns:
           - "manager_{{ uid.stdout }}_localhost_*.sock"

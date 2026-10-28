@@ -167,6 +167,22 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         return frozenset({"inventory", "execution_environment"})
 
     @classmethod
+    def get_update_value_from_current_data(cls, field, current_dict):
+        """Prevent FK name strings from being merged into PATCH payloads.
+
+        ``from_api()`` resolves FK IDs to human-readable names via
+        ``summary_fields`` so that idempotency comparison works when
+        users pass names.  The SDK merge step would inject these name
+        strings into the PATCH body, but the API requires integer PKs.
+        Return ``None`` for resolved FK fields so the merge is skipped.
+        """
+        if field in _FK_ENDPOINTS:
+            value = current_dict.get(field)
+            if value is not None and not str(value).strip().isdigit():
+                return None
+        return current_dict.get(field)
+
+    @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
             "create": EndpointOperation(
