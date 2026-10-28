@@ -206,5 +206,36 @@ class TestSubscriptionsSingletonFind(unittest.TestCase):
         self.assertIn("subscriptions", result)
 
 
+class TestSubscriptionsActionValidation(unittest.TestCase):
+    """Test action plugin argspec constraints via real docs-based validation."""
+
+    def _build_argspec(self):
+        from ansible_collections.ansible.platform.plugins.action.subscriptions import ActionModule
+
+        action = ActionModule.__new__(ActionModule)
+        action._display = unittest.mock.MagicMock()
+        doc = action._get_documentation()
+        return action._build_argspec_from_docs(doc)
+
+    def test_no_log_applied_to_password_and_client_secret(self):
+        argspec = self._build_argspec()
+        opts = argspec["argument_spec"]
+        self.assertTrue(opts["password"].get("no_log"), "password should have no_log=True")
+        self.assertTrue(opts["client_secret"].get("no_log"), "client_secret should have no_log=True")
+
+    def test_mutually_exclusive_username_client_id(self):
+        argspec = self._build_argspec()
+        self.assertIn(["username", "client_id"], argspec["mutually_exclusive"])
+
+    def test_required_together_pairs(self):
+        argspec = self._build_argspec()
+        self.assertIn(["username", "password"], argspec["required_together"])
+        self.assertIn(["client_id", "client_secret"], argspec["required_together"])
+
+    def test_required_one_of_credential_type(self):
+        argspec = self._build_argspec()
+        self.assertIn(["username", "client_id"], argspec["required_one_of"])
+
+
 if __name__ == "__main__":
     unittest.main()
