@@ -26,6 +26,10 @@ class ActionModule(BaseResourceActionPlugin):
     """Action plugin for subscriptions module."""
 
     MODULE_NAME = "subscriptions"
+    _NO_LOG_FIELDS = frozenset({"password", "client_secret"})
+    _MUTUALLY_EXCLUSIVE = [["username", "client_id"]]
+    _REQUIRED_TOGETHER = [["username", "password"], ["client_id", "client_secret"]]
+    _REQUIRED_ONE_OF = [["username", "client_id"]]
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
