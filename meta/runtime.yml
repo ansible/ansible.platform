@@ -25,7 +25,6 @@ action_groups:
     - ui_plugin_route
     - user
   controller:
-    - subscriptions
     - job_template
     - controller_credential_type
     - credential_input_source

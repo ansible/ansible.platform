@@ -89,8 +89,9 @@ class ActionModule(BaseResourceActionPlugin):
             for subscription in all_subscriptions:
                 add = True
                 for key, value in filters.items():
-                    sub_value = subscription.get(key, None)
-                    if sub_value and value not in sub_value:
+                    if key not in subscription:
+                        continue
+                    if value not in str(subscription[key]):
                         add = False
                         break
                 if add:
