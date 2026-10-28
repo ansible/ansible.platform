@@ -62,7 +62,7 @@
           - updated_wjt is changed
           - updated_wjt.workflow_job_template.id == created_wjt.workflow_job_template.id
           - updated_wjt.workflow_job_template.description == "Updated integration test workflow job template"
-          - (updated_wjt.workflow_job_template.extra_vars | from_json).integration_key == "workflow_job_template_test"
+          - updated_wjt.workflow_job_template.extra_vars.integration_key == "workflow_job_template_test"
           - updated_wjt.workflow_job_template.ask_variables_on_launch is true
 
     - name: Reapply workflow job template settings
