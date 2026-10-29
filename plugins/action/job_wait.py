@@ -72,7 +72,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             label = _JOB_TYPE_LABELS[job_type]
             resource_endpoint = JOB_TYPE_RESOURCE_MAP[job_type]
-            resource_url = "/api/controller/v2/%s/%d/" % (resource_endpoint, job_id)
+            resource_url = "%s/%d/" % (resource_endpoint, job_id)
 
             # Verify the job exists before polling.
             try:

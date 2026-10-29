@@ -43,7 +43,7 @@ class TestJobWaitAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         manager.wait_for_completion.assert_called_once_with(
-            resource_url="/api/controller/v2/jobs/42/",
+            resource_url="jobs/42/",
             timeout=2,
             interval=5,
             service="controller",
@@ -60,7 +60,11 @@ class TestJobWaitAction(unittest.TestCase):
         manager = MagicMock()
         manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
         manager.wait_for_completion.return_value = {
-            "id": 42, "status": "successful", "elapsed": 5.0, "started": "2026-10-14T12:00:00Z", "finished": "2026-10-14T12:00:05Z",
+            "id": 42,
+            "status": "successful",
+            "elapsed": 5.0,
+            "started": "2026-10-14T12:00:00Z",
+            "finished": "2026-10-14T12:00:05Z",
         }
         action = self._make_action(params, manager)
 
@@ -79,7 +83,9 @@ class TestJobWaitAction(unittest.TestCase):
         manager = MagicMock()
         manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
         manager.wait_for_completion.return_value = {
-            "id": 42, "status": "successful", "finished": "2026-10-14T12:00:00Z",
+            "id": 42,
+            "status": "successful",
+            "finished": "2026-10-14T12:00:00Z",
         }
         action = self._make_action(params, manager)
 
@@ -87,7 +93,7 @@ class TestJobWaitAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         manager.wait_for_completion.assert_called_once_with(
-            resource_url="/api/controller/v2/jobs/42/",
+            resource_url="jobs/42/",
             timeout=-1,
             interval=0.1,
             service="controller",
@@ -99,7 +105,9 @@ class TestJobWaitAction(unittest.TestCase):
         manager = MagicMock()
         manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
         manager.wait_for_completion.return_value = {
-            "id": 42, "status": "successful", "finished": "2026-10-14T12:00:00Z",
+            "id": 42,
+            "status": "successful",
+            "finished": "2026-10-14T12:00:00Z",
         }
         action = self._make_action(params, manager)
 
@@ -107,7 +115,7 @@ class TestJobWaitAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         manager.wait_for_completion.assert_called_once_with(
-            resource_url="/api/controller/v2/jobs/42/",
+            resource_url="jobs/42/",
             timeout=-1,
             interval=2,
             service="controller",
@@ -187,7 +195,7 @@ class TestJobWaitAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         manager.wait_for_completion.assert_called_once_with(
-            resource_url="/api/controller/v2/workflow_jobs/99/",
+            resource_url="workflow_jobs/99/",
             timeout=10,
             interval=2,
             service="controller",
