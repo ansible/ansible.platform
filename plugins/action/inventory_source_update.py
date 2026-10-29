@@ -50,7 +50,7 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            launch_result = manager.launch_resource("inventory_sources/%d/update" % source_id, {}, service=_SERVICE)
+            launch_result = manager.launch_resource("inventory_sources/%d/update" % source_id, {}, service=_SERVICE, retry=False)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
             return result
@@ -116,7 +116,7 @@ class ActionModule(BaseResourceActionPlugin):
             if not results:
                 raise AnsibleError("Inventory '%s' not found in organization '%s'" % (inventory, organization))
             return results[0]["id"]
-        return manager.lookup_resource_id("inventories", "name", inventory, service=_SERVICE)
+        return manager.lookup_resource_id("inventories", "name", inventory, service=_SERVICE, require_unique=True)
 
     def _resolve_inventory_source(self, manager, name, inventory_id):
         query_params = {"inventory": inventory_id}

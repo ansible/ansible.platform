@@ -41,4 +41,10 @@
   until: bg_sync.json is defined and bg_sync.json.status | default('') in ['successful', 'failed', 'error', 'canceled']
   retries: 60
   delay: 2
+
+- name: Assert background sync succeeded
+  ansible.builtin.assert:
+    that:
+      - bg_sync.json.status == 'successful'
+    fail_msg: "Background project sync finished with status '{{ bg_sync.json.status }}'"
 ...

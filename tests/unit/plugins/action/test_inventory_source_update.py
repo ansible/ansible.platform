@@ -46,7 +46,7 @@ class TestResolveInventory:
         manager.lookup_resource_id.return_value = 10
         result = action_module._resolve_inventory(manager, "My Inventory", None)
         assert result == 10
-        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "My Inventory", service="controller")
+        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "My Inventory", service="controller", require_unique=True)
 
     def test_name_with_org(self, action_module):
         manager = MagicMock()

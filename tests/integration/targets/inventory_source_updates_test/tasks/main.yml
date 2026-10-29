@@ -8,6 +8,24 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-ISU-{{ test_id }}"
 
+- name: Look up Default organization in Controller
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: default_org
+  delegate_to: localhost
+
+- name: Assert Default organization exists
+  ansible.builtin.assert:
+    that:
+      - default_org.json.count | int > 0
+    fail_msg: "Controller organization 'Default' was not found."
+
 - name: Create a test project for inventory source update
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/"
@@ -19,7 +37,7 @@
     body_format: json
     body:
       name: "{{ name_prefix }}-Project"
-      organization: 1
+      organization: "{{ default_org.json.results[0].id }}"
       scm_type: "git"
       scm_url: "https://github.com/ansible/test-playbooks"
     status_code: [201]
@@ -57,7 +75,7 @@
     body_format: json
     body:
       name: "{{ name_prefix }}-Inventory"
-      organization: 1
+      organization: "{{ default_org.json.results[0].id }}"
     status_code: [201]
   register: test_inventory
   delegate_to: localhost
@@ -105,11 +123,12 @@
   register: wait_result
   ignore_errors: true
 
-- name: Assert the waited sync completed
+- name: Assert the waited sync completed successfully
   ansible.builtin.assert:
     that:
+      - wait_result is not failed
       - wait_result.id is defined
-      - wait_result.status is defined
+      - wait_result.status == "successful"
 
 - name: Trigger update by numeric source ID (validates inventory ownership)
   ansible.platform.inventory_source_update:
@@ -124,8 +143,9 @@
 - name: Assert numeric ID lookup succeeded within correct inventory
   ansible.builtin.assert:
     that:
+      - numeric_id_result is not failed
       - numeric_id_result.id is defined
-      - numeric_id_result.status is defined
+      - numeric_id_result.status == "successful"
 
 - name: Trigger update by numeric source ID in wrong inventory (should fail)
   ansible.platform.inventory_source_update:
