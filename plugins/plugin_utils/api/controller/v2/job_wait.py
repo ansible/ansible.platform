@@ -23,7 +23,7 @@ JOB_TYPE_RESOURCE_MAP = {
 
 
 @dataclass
-class APIJobWait_v2(BaseTransformMixin):
+class APIJobWait_v2:
     """API v2 representation of a job wait operation."""
 
     job_id: Optional[int] = None

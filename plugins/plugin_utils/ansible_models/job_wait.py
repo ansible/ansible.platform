@@ -27,4 +27,5 @@ class AnsibleJobWait:
     status: Optional[str] = None
     elapsed: Optional[float] = None
     started: Optional[str] = None
-    finished: Optional[str] = None
+    finished: Optional[bool] = None
+    finished_at: Optional[str] = None
