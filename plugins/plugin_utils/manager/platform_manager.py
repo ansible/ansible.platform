@@ -137,7 +137,15 @@ class PlatformService(BaseAPIClient):
                 return False
         return self.seconds_since_last_activity() >= self.config.idle_timeout
 
-    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = "http_request",
+        resource: str = "unknown",
+        retry_config: Optional[RetryConfig] = None,
+        **kwargs,
+    ) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -148,6 +156,8 @@ class PlatformService(BaseAPIClient):
             url: Request URL
             operation: Operation name for error context
             resource: Resource type for error context
+            retry_config: Optional per-request retry policy; defaults to the
+                service-wide retry configuration.
             **kwargs: Additional arguments for requests method
 
         Returns:
@@ -158,7 +168,7 @@ class PlatformService(BaseAPIClient):
         """
         self.record_activity()
 
-        @retry_http_request(config=self.retry_config)
+        @retry_http_request(config=retry_config or self.retry_config)
         def _execute_with_retry():
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
@@ -1330,6 +1340,22 @@ class PlatformService(BaseAPIClient):
         """POST JSON via _make_request and return parsed JSON."""
         self.record_activity()
         response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
+        return response.json()
+
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST to a launch endpoint, optionally suppressing transient retries."""
+        if retry:
+            return super().launch_resource(launch_url, payload, service)
+
+        url = self._build_url(launch_url, service=service)
+        response = self._make_request(
+            "post",
+            url,
+            operation="launch_resource",
+            resource="launch",
+            retry_config=RetryConfig(max_attempts=1),
+            json=payload,
+        )
         return response.json()
 
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
