@@ -73,6 +73,9 @@ class ActionModule(BaseResourceActionPlugin):
             launch_result = manager.execute("create", self.MODULE_NAME, model_params)
 
             job_id = launch_result.get("id")
+            if not job_id:
+                result.update({"changed": True, "failed": True, "msg": "Launch response did not include a workflow job ID"})
+                return result
             job_status = launch_result.get("status") or "pending"
 
             result.update(

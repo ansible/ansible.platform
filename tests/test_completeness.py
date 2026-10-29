@@ -19,7 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Normally a read-only endpoint should not have a module (e.g. /api/gateway/v1/me/) but sometimes we reuse a name.
 # For example, we have a role module but /api/gateway/v1/roles/ is a read-only endpoint.
 # This list indicates which read-only endpoints have associated modules with them.
-read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key", "workflow_approval"]
+read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key", "workflow_approval", "project_update"]
 
 # If a module should not be created for an endpoint and the endpoint is not read-only add it here
 # THINK HARD ABOUT DOING THIS
@@ -38,6 +38,10 @@ no_endpoint_for_module = [
     "controller_meta",
     "workflow_node_wait",
     "job_wait",
+    "bulk_host_delete",
+    "bulk_job_launch",
+    "inventory_source_update",
+    "project_update",
     "bulk_job_launch",
 ]
 
