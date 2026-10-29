@@ -9,7 +9,7 @@ __metaclass__ = type
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_team_assignment import AnsibleRoleTeamAssignment
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import resolve_team_id
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import TeamNotFoundError, resolve_team_id
 from ansible_collections.ansible.platform.plugins.plugin_utils.resource_type_map import get_expected_assignment_type
 
 _get_expected_endpoint = get_expected_assignment_type
@@ -21,6 +21,7 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "id"
 
     def _resolve_fks_to_strings(self, manager, data_dict):
+        """Resolve role_definition and team names to numeric IDs; pop lookup-only fields."""
         if "role_definition" in data_dict:
             if not str(data_dict["role_definition"]).isdigit():
                 try:
@@ -39,6 +40,8 @@ class ActionModule(BaseResourceActionPlugin):
         if "team" in data_dict:
             try:
                 data_dict["team"] = resolve_team_id(manager, data_dict["team"], organization)
+            except TeamNotFoundError:
+                raise  # Caller (run/_run_standard) decides based on state
             except Exception as _exc:
                 raise AnsibleError("role_team_assignment: %s" % _exc) from _exc
 
@@ -84,7 +87,13 @@ class ActionModule(BaseResourceActionPlugin):
 
             _skip = self._AUTH_PARAMS | {"assignment_objects", "state", "object_id", "object_ansible_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in _skip}
-            base_data = self._resolve_fks_to_strings(manager, base_data)
+            try:
+                base_data = self._resolve_fks_to_strings(manager, base_data)
+            except TeamNotFoundError as exc:
+                if state != "absent":
+                    raise AnsibleError("role_team_assignment: %s" % exc) from exc
+                result.update({"changed": False, "failed": False, self.MODULE_NAME: {"state": "absent"}})
+                return result
 
             all_changed = False
             assignments = []
@@ -211,10 +220,17 @@ class ActionModule(BaseResourceActionPlugin):
         return result
 
     def _run_standard(self, result, manager, argspec, validated_params, state):
+        """Handle a single role_team_assignment without assignment_objects."""
         from dataclasses import asdict
 
         resource_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"}
-        resource_data = self._resolve_fks_to_strings(manager, resource_data)
+        try:
+            resource_data = self._resolve_fks_to_strings(manager, resource_data)
+        except TeamNotFoundError as exc:
+            if state != "absent":
+                raise AnsibleError("role_team_assignment: %s" % exc) from exc
+            result.update({"changed": False, "failed": False, self.MODULE_NAME: {"state": "absent"}})
+            return result
 
         if "object_id" in resource_data and resource_data["object_id"] is not None:
             resource_data["object_id"] = str(resource_data["object_id"])
