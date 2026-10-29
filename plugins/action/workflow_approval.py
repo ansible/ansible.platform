@@ -66,8 +66,9 @@ class ActionModule(BaseResourceActionPlugin):
                         query_params={"job__name": name},
                     )
                 except Exception as poll_exc:
-                    if self._is_retryable(poll_exc):
-                        self._display.vvv("workflow_approval: transient poll error: %s" % poll_exc)
+                    status_code = getattr(poll_exc, "status_code", None)
+                    if self._is_retryable(poll_exc) or status_code == 404:
+                        self._display.vvv("workflow_approval: poll error (will retry): %s" % poll_exc)
                     else:
                         raise
                     elapsed = time.time() - start_time
