@@ -92,7 +92,15 @@ class ManagerRPCClient:
         # Execute via proxy
         return self.service_proxy.execute(operation, module_name, data_dict)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None):
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        require_unique: bool = False,
+    ):
         """
         Resolve a resource name to its integer ID via the manager process.
 
@@ -105,6 +113,7 @@ class ManagerRPCClient:
             lookup_value: Value to look up
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
             extra_query_params: Additional filter params (e.g. {'organization': 42})
+            require_unique: Reject names that match multiple resources
 
         Returns:
             Integer resource ID
@@ -112,7 +121,7 @@ class ManagerRPCClient:
         Raises:
             ValueError: If the resource is not found
         """
-        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {})
+        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {}, require_unique)
 
     def lookup_organization_names(self, organization_ids: list) -> list:
         """Resolve organization IDs to names via the manager process."""
