@@ -46,5 +46,7 @@ action_groups:
     - subscriptions
     - bulk_host_create
     - controller_meta
+    - workflow_approval
+    - workflow_node_wait
     - job_wait
 ...
