@@ -22,10 +22,11 @@ from typing import Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_node_wait import AnsibleWorkflowNodeWait
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_node_wait import CONTROLLER_V2_PREFIX, WORKFLOW_NODES_LIST_ENDPOINT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
+CONTROLLER_V2_PREFIX = "/api/controller/v2/"
+WORKFLOW_NODES_LIST_ENDPOINT = f"{CONTROLLER_V2_PREFIX}workflow_jobs/{{workflow_job_id}}/workflow_nodes/"
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -50,15 +51,8 @@ class ActionModule(BaseResourceActionPlugin):
                 raise AnsibleError("workflow_job_id is required")
             if not name:
                 raise AnsibleError("name is required")
-
-            if self._task.check_mode:
-                result.update(
-                    {
-                        "changed": False,
-                        "msg": "Would wait for workflow node (check mode)",
-                    }
-                )
-                return result
+            if interval <= 0:
+                raise AnsibleError("interval must be greater than 0")
 
             # Phase 1: poll workflow nodes until matching node appears
             nodes_url = WORKFLOW_NODES_LIST_ENDPOINT.format(workflow_job_id=workflow_job_id)
@@ -67,7 +61,7 @@ class ActionModule(BaseResourceActionPlugin):
             node_data = None
             while True:
                 elapsed = time.time() - start
-                if timeout and elapsed >= timeout:
+                if timeout is not None and timeout >= 0 and elapsed >= timeout:
                     raise AnsibleError(f"Timed out waiting for workflow node '{name}' to appear in workflow job {workflow_job_id} after {timeout}s")
 
                 response = manager.search_api(
@@ -97,7 +91,9 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # Phase 2: wait for the node's underlying job to finish
-            remaining_timeout = timeout - (time.time() - start) if timeout else None
+            remaining_timeout = timeout
+            if timeout is not None and timeout >= 0:
+                remaining_timeout = max(0.0, timeout - (time.time() - start))
 
             # Convert full URL to resource path for wait_for_completion
             # job_url is like "/api/controller/v2/jobs/123/" — strip the prefix

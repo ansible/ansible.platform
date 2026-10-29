@@ -45,6 +45,5 @@ action_groups:
     - workflow_job_template_node
     - subscriptions
     - bulk_host_create
-    - job_cancel
     - workflow_node_wait
 ...

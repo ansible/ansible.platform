@@ -50,7 +50,7 @@
     that:
       - wait_result is not failed
       - wait_result.id is defined
-      - wait_result.status is defined
+      - wait_result.status == "successful"
 
 - name: Wait for non-existent node (should timeout)
   ansible.platform.workflow_node_wait:
