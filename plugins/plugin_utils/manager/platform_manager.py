@@ -856,7 +856,8 @@ class PlatformService(BaseAPIClient):
         Returns:
             Found resource as dict (Ansible format)
         """
-        operations = mixin_class.get_endpoint_operations()
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
