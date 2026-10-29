@@ -14,7 +14,7 @@ from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-from urllib.parse import urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin
 
 if TYPE_CHECKING:
     import requests
@@ -1182,6 +1182,7 @@ class PlatformService(BaseAPIClient):
         lookup_value: str,
         service: str = "gateway",
         extra_query_params: dict = None,
+        require_unique: bool = False,
     ) -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
@@ -1192,8 +1193,22 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
+
+        # AWX accepts Controller named URLs (for example, organization++inventory)
+        # as a direct resource path. Try that before a potentially ambiguous name query.
+        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
+            named_url = self._build_url(f"/{endpoint}/{quote(str(lookup_value), safe='+')}", service=service)
+            named_response = self.session.get(named_url, timeout=self.request_timeout, verify=self.requests_verify)
+            if named_response.status_code == 200:
+                named_resource_id = named_response.json().get("id")
+                if named_resource_id is not None:
+                    return named_resource_id
+            elif named_response.status_code != 404:
+                named_response.raise_for_status()
+
         cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
-        if cache_key in self.cache:
+        # A cached first match cannot prove that the lookup is unique.
+        if not require_unique and cache_key in self.cache:
             return self.cache[cache_key]
         query = {lookup_field: lookup_value}
         if extra_query_params:
@@ -1201,11 +1216,14 @@ class PlatformService(BaseAPIClient):
         url = self._build_url(f"/{endpoint}", query_params=query, service=service)
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
-        results = response.json().get("results", [])
+        response_data = response.json()
+        results = response_data.get("results", [])
         if not results:
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
+            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
         rid = results[0].get("id")
-        if rid is not None:
+        if rid is not None and not require_unique:
             self.cache[cache_key] = rid
         return rid
 

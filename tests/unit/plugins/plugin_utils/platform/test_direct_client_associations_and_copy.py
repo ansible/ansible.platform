@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 import json
 import unittest
 from unittest.mock import MagicMock
+from urllib.parse import parse_qs, urlparse
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
@@ -246,19 +247,61 @@ class TestManageAssociations(unittest.TestCase):
         batch_call = self.client.search_api.call_args_list[0]
         self.assertEqual(batch_call.kwargs["query_params"], {"name__in": "label-a,label-b", "organization": 42})
 
-    def test_extra_query_params_separate_cache_keys(self):
+    def test_same_name_inventory_lookups_are_scoped_by_organization(self):
         self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
-        responses = [
-            _http_resp(body={"results": [{"id": 10, "name": "shared"}]}),
-            _http_resp(body={"results": [{"id": 20, "name": "shared"}]}),
+        inventories = [
+            {"id": 10, "name": "shared", "organization": 1},
+            {"id": 20, "name": "shared", "organization": 2},
         ]
-        with unittest.mock.patch.object(self.client, "_make_request", side_effect=responses):
-            id1 = self.client.lookup_resource_id("labels", "name", "shared", service="controller", extra_query_params={"organization": 1})
-            id2 = self.client.lookup_resource_id("labels", "name", "shared", service="controller", extra_query_params={"organization": 2})
+
+        def find_inventories(method, url, **kwargs):
+            filters = parse_qs(urlparse(url).query)
+            matches = [
+                inventory
+                for inventory in inventories
+                if inventory["name"] == filters["name"][0] and str(inventory["organization"]) == filters["organization"][0]
+            ]
+            return _http_resp(body={"results": matches})
+
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=find_inventories) as mock_request:
+            id1 = self.client.lookup_resource_id(
+                "inventories", "name", "shared", service="controller", extra_query_params={"organization": 1}, require_unique=True
+            )
+            id2 = self.client.lookup_resource_id(
+                "inventories", "name", "shared", service="controller", extra_query_params={"organization": 2}, require_unique=True
+            )
 
         self.assertEqual(id1, 10)
         self.assertEqual(id2, 20)
+        query_filters = [parse_qs(urlparse(call.args[1]).query) for call in mock_request.call_args_list]
+        self.assertEqual(query_filters, [{"name": ["shared"], "organization": ["1"]}, {"name": ["shared"], "organization": ["2"]}])
+
+    def test_lookup_rejects_ambiguous_name_when_unique_required(self):
+        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.get_api_version = MagicMock(return_value="2")
+        cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "shared")
+        self.client.cache[cache_key] = 10
+        duplicate_results = _http_resp(body={"count": 2, "results": [{"id": 10, "name": "shared"}, {"id": 20, "name": "shared"}]})
+
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=duplicate_results) as mock_request:
+            with self.assertRaisesRegex(ValueError, "matched multiple resources"):
+                self.client.lookup_resource_id("inventories", "name", "shared", service="controller", require_unique=True)
+
+        mock_request.assert_called_once()
+        self.assertEqual(self.client.cache[cache_key], 10)
+
+    def test_unique_lookup_does_not_cache_result(self):
+        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.get_api_version = MagicMock(return_value="2")
+        response = _http_resp(body={"count": 1, "results": [{"id": 15, "name": "shared"}]})
+
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=response):
+            result = self.client.lookup_resource_id("inventories", "name", "shared", service="controller", require_unique=True)
+
+        cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "shared")
+        self.assertEqual(result, 15)
+        self.assertNotIn(cache_key, self.client.cache)
 
 
 class TestManageSubResource(unittest.TestCase):

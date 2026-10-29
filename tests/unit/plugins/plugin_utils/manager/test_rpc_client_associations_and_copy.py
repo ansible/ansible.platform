@@ -20,6 +20,14 @@ def _rpc_client():
 
 
 class TestRPCWrappers(unittest.TestCase):
+    def test_lookup_resource_id_passes_uniqueness_requirement_to_service(self):
+        client = _rpc_client()
+
+        result = client.lookup_resource_id("inventories", "name", "shared", service="controller", extra_query_params={"organization": 4}, require_unique=True)
+
+        self.assertEqual(result, client.service_proxy.lookup_resource_id.return_value)
+        client.service_proxy.lookup_resource_id.assert_called_once_with("inventories", "name", "shared", "controller", {"organization": 4}, True)
+
     def test_manage_associations_delegates_to_service_proxy(self):
         client = _rpc_client()
         client.service_proxy.manage_associations.return_value = True
