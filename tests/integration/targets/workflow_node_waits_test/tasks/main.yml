@@ -1,0 +1,69 @@
+---
+- name: Look up Demo Job Template
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_jt
+  delegate_to: localhost
+
+- name: Assert Demo Job Template exists
+  ansible.builtin.assert:
+    that:
+      - demo_jt.json.results | length > 0
+
+- name: Launch a bulk job to create a workflow
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/bulk/job_launch/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "WNW Integration Test"
+      jobs:
+        - unified_job_template: "{{ demo_jt.json.results[0].id }}"
+    status_code: [201]
+  register: bulk_launch
+  delegate_to: localhost
+
+- name: Wait briefly for workflow to initialize
+  ansible.builtin.pause:
+    seconds: 3
+
+- name: Wait for the Demo Job Template node
+  ansible.platform.workflow_node_wait:
+    workflow_job_id: "{{ bulk_launch.json.id }}"
+    name: "Demo Job Template"
+    timeout: 120
+    interval: 2
+  register: wait_result
+
+- name: Assert wait returned node data
+  ansible.builtin.assert:
+    that:
+      - wait_result is not failed
+      - wait_result.id is defined
+      - wait_result.status == "successful"
+
+- name: Wait for non-existent node (should timeout)
+  ansible.platform.workflow_node_wait:
+    workflow_job_id: "{{ bulk_launch.json.id }}"
+    name: "Nonexistent Node"
+    timeout: 5
+    interval: 1
+  register: timeout_result
+  ignore_errors: true
+
+- name: Assert timeout result
+  ansible.builtin.assert:
+    that:
+      - timeout_result is failed
+      - "'Timed out' in timeout_result.msg"
+...

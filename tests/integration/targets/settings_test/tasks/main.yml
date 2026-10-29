@@ -1,4 +1,8 @@
 ---
+- name: Skip settings test for non-http-direct modes (parallel runs race on shared state)
+  ansible.builtin.meta: end_host
+  when: connection_mode | default('local') != 'http-direct'
+
 - name: Get current settings
   ansible.builtin.set_fact:
     current_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/all', **connection_info) }}"

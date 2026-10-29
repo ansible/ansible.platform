@@ -1,0 +1,22 @@
+---
+- name: Verify workflow_node_wait in check mode
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Wait in check mode
+      ansible.platform.workflow_node_wait:
+        workflow_job_id: 8001
+        name: Molecule Wait Node
+        timeout: 10
+        interval: 0.01
+      check_mode: true
+      register: check_mode_result
+
+    - name: Verify check mode completes the read-only wait
+      ansible.builtin.assert:
+        that:
+          - check_mode_result is not failed
+          - check_mode_result is not changed
+          - check_mode_result.id == 8201
+          - check_mode_result.status == "successful"
+...

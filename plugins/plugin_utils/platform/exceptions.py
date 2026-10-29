@@ -304,6 +304,19 @@ def classify_exception(exception: Exception, operation: Optional[str] = None, re
             original_exception=exception,
         )
 
+    elif isinstance(exception, requests.exceptions.HTTPError):
+        status_code = None
+        response = getattr(exception, "response", None)
+        if response is not None:
+            status_code = getattr(response, "status_code", None)
+        return APIError(
+            message=f"{status_code} {str(exception)}" if status_code else str(exception),
+            operation=operation,
+            resource=resource,
+            details={"status_code": status_code, "original_exception": str(exception)},
+            status_code=status_code,
+        )
+
     elif isinstance(exception, ValueError) and ("auth" in str(exception).lower() or "credential" in str(exception).lower()):
         return AuthenticationError(
             message=f"Authentication error: {str(exception)}", operation=operation, resource=resource, details={"original_exception": str(exception)}

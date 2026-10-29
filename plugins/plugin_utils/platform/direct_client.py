@@ -581,6 +581,7 @@ class DirectHTTPClient(BaseAPIClient):
         lookup_field: str,
         service: str = "gateway",
         extra_query_params: dict = None,
+        preserve_existing: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -588,7 +589,8 @@ class DirectHTTPClient(BaseAPIClient):
         Generic across any resource with a list-style association sub-endpoint (credentials,
         instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
-        current associations, and associates/disassociates to reconcile.
+        current associations, and associates/disassociates to reconcile. Set
+        preserve_existing=True to retain already-associated items.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -610,6 +612,8 @@ class DirectHTTPClient(BaseAPIClient):
             assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        if preserve_existing:
+            desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
@@ -699,7 +703,8 @@ class DirectHTTPClient(BaseAPIClient):
         else:
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
-            results = json.loads(response.read()).get("results", [])
+            response_body = response.read()
+            results = json.loads(response_body).get("results", []) if response_body else []
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
@@ -720,7 +725,24 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         return json.loads(response.read())
 
-    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
+        response_body = response.read()
+        response_data = json.loads(response_body) if response_body else {}
+        return response_data
+
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[Dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
@@ -736,6 +758,7 @@ class DirectHTTPClient(BaseAPIClient):
             query_params: Optional key/value filter parameters
             return_all: When True, follow 'next' pagination links
             max_objects: Safety cap when return_all is True
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict.
@@ -756,14 +779,9 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = "1"
             self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Build URL: if endpoint starts with /api/ treat as absolute path,
-        # otherwise prefix with /api/gateway/v{version}/
-        if endpoint.startswith("/api/"):
-            api_path = endpoint
-        else:
-            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
-
-        url = self._build_url(api_path, query_params)
+        if not endpoint.startswith("/api/") and not endpoint.endswith("/"):
+            endpoint = f"{endpoint}/"
+        url = self._build_url(endpoint, query_params, service=service)
         response = self._make_request("GET", url, operation="search", resource=endpoint)
         try:
             response_body = response.read()
@@ -785,7 +803,6 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
-
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.
@@ -1026,14 +1043,18 @@ class DirectHTTPClient(BaseAPIClient):
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             with self._lock:
                 self._http_request_count += 1
-            response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
+            request_kwargs = {"operation": "find", "resource": mixin_class.__name__}
+            if get_op.method.upper() == "POST" and get_op.fields:
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
+            response = self._make_request(get_op.method, url, **request_kwargs)
             try:
                 response_body = response.read()
                 api_result = json.loads(response_body) if response_body else {}
