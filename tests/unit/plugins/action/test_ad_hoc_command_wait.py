@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 from ansible.playbook.task import Task
 from ansible_collections.ansible.platform.plugins.action.ad_hoc_command_wait import ActionModule
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import DEFAULT_WAIT_TIMEOUT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
@@ -73,7 +72,7 @@ class TestCheckMode(unittest.TestCase):
         self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
-            timeout=None,
+            timeout=-1.0,
             interval=2.0,
             service="controller",
         )
@@ -110,7 +109,7 @@ class TestWaitCommand(unittest.TestCase):
         self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
-            timeout=None,
+            timeout=-1.0,
             interval=2.0,
             service="controller",
         )
@@ -230,7 +229,7 @@ class TestWaitCommand(unittest.TestCase):
         )
 
     @patch.object(ActionModule, "_prepare_action")
-    def test_zero_timeout_uses_sdk_default(self, mock_prepare):
+    def test_zero_timeout_waits_indefinitely(self, mock_prepare):
         module = _make_module(args={"command_id": 42, "timeout": 0})
         manager = MagicMock()
         manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
@@ -244,10 +243,26 @@ class TestWaitCommand(unittest.TestCase):
 
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
-            timeout=DEFAULT_WAIT_TIMEOUT,
+            timeout=-1.0,
             interval=2.0,
             service="controller",
         )
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_negative_timeout_fails_before_polling(self, mock_prepare):
+        module = _make_module(args={"command_id": 42, "timeout": -1})
+        manager = MagicMock()
+        mock_prepare.return_value = {
+            "result": {},
+            "validated_params": {"command_id": 42, "interval": 2.0, "timeout": -1},
+            "manager": manager,
+        }
+
+        result = module.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertEqual(result["msg"], "timeout must be 0 or greater")
+        manager.wait_for_completion.assert_not_called()
 
     @patch.object(ActionModule, "_prepare_action")
     def test_missing_command_id(self, mock_prepare):

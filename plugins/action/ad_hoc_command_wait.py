@@ -19,7 +19,6 @@ from typing import Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command_wait import AD_HOC_COMMANDS_DETAIL_ENDPOINT
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import DEFAULT_WAIT_TIMEOUT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
@@ -49,8 +48,10 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 2.0)
             timeout = validated_params.get("timeout")
             wait_timeout = float(timeout) if timeout is not None else None
-            if wait_timeout == 0:
-                wait_timeout = DEFAULT_WAIT_TIMEOUT
+            if wait_timeout is None or wait_timeout == 0:
+                wait_timeout = -1.0
+            elif wait_timeout < 0:
+                raise AnsibleError("timeout must be 0 or greater")
 
             if not command_id:
                 raise AnsibleError("command_id is required")

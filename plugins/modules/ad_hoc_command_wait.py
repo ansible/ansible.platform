@@ -31,7 +31,8 @@ options:
     timeout:
         description:
             - Maximum time in seconds to wait for the ad hoc command to finish.
-            - A value of C(0) means wait indefinitely (up to the internal ceiling of 3600s).
+            - If omitted or set to C(0), wait indefinitely.
+            - Negative values are not allowed.
         required: false
         type: int
 seealso:
