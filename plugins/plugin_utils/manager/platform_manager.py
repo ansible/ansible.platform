@@ -860,12 +860,19 @@ class PlatformService(BaseAPIClient):
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
+            method = getattr(get_op, "method", "GET").upper()
+            kwargs = {"timeout": self.request_timeout, "verify": self.requests_verify}
+            if method == "POST":
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                payload = {f: getattr(api_data, f) for f in (get_op.fields or []) if getattr(api_data, f, None) is not None}
+                kwargs["json"] = payload
+            session_method = getattr(self.session, method.lower())
+            response = session_method(url, **kwargs)
             response.raise_for_status()
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
