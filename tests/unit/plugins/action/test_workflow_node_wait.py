@@ -190,7 +190,7 @@ class TestWorkflowNodeWaitActionModule:
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
     def test_node_found_after_polling(self, mock_time, action_module):
-        mock_time.time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0]
+        mock_time.time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
         mock_manager = MagicMock()
         mock_manager.search_api.side_effect = [
@@ -236,7 +236,7 @@ class TestWorkflowNodeWaitActionModule:
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
     def test_phase1_timeout(self, mock_time, action_module):
-        mock_time.time.side_effect = [0.0, 5.0, 11.0]
+        mock_time.time.side_effect = [0.0, 5.0, 6.0, 11.0]
 
         mock_manager = MagicMock()
         mock_manager.search_api.return_value = {"count": 0, "results": []}
@@ -260,6 +260,51 @@ class TestWorkflowNodeWaitActionModule:
         assert result["failed"] is True
         assert "Timed out" in result["msg"]
         assert "Missing Step" in result["msg"]
+
+    @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
+    def test_phase1_sleep_is_capped_by_remaining_timeout(self, mock_time, action_module):
+        mock_time.time.side_effect = [0.0, 0.0, 9.5, 10.0]
+
+        mock_manager = MagicMock()
+        mock_manager.search_api.return_value = {"count": 0, "results": []}
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {"workflow_job_id": 42, "name": "Missing Step", "interval": 3.0, "timeout": 10},
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(task_vars={})
+
+        assert result["failed"] is True
+        mock_manager.search_api.assert_called_once()
+        mock_time.sleep.assert_called_once_with(0.5)
+
+    @pytest.mark.parametrize("timeout", [None, -1])
+    @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
+    def test_phase1_unbounded_timeout_keeps_full_interval(self, mock_time, timeout, action_module):
+        mock_time.time.side_effect = [0.0, 0.0, 1.0]
+
+        mock_manager = MagicMock()
+        mock_manager.search_api.side_effect = [
+            {"count": 0, "results": []},
+            {"count": 1, "results": [{"id": 100, "related": {}}]},
+        ]
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {"workflow_job_id": 42, "name": "Step", "interval": 3.0, "timeout": timeout},
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(task_vars={})
+
+        assert result["status"] == "unknown"
+        mock_time.sleep.assert_called_once_with(3.0)
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
     def test_expired_phase1_timeout_is_clamped_before_phase2(self, mock_time, action_module):

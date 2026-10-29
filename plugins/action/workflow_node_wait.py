@@ -74,7 +74,11 @@ class ActionModule(BaseResourceActionPlugin):
                     node_data = response["results"][0]
                     break
 
-                time.sleep(interval)
+                if timeout is not None and timeout >= 0:
+                    remaining_timeout = max(0.0, timeout - (time.time() - start))
+                    time.sleep(min(interval, remaining_timeout))
+                else:
+                    time.sleep(interval)
 
             # Extract the node's job URL from related links
             related = node_data.get("related", {})
