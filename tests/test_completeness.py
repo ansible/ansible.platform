@@ -35,6 +35,7 @@ no_endpoint_for_module = [
     "workflow_job_template",
     "subscriptions",
     "bulk_host_create",
+    "controller_meta",
     "workflow_node_wait",
 ]
 
