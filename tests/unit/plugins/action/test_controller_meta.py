@@ -67,18 +67,34 @@ class TestControllerMeta:
         assert result["prefix"] == "ansible.platform"
         assert result["version"] == "unknown"
 
-    def test_run_falls_back_on_empty_galaxy_yml(self, action_module):
+    @pytest.mark.parametrize("galaxy_content", ["", "{}", "version: null"])
+    def test_run_falls_back_on_unusable_galaxy_yml(self, action_module, galaxy_content):
         manifest_content = '{"collection_info": {"version": "2.7.0"}}'
 
         def open_side_effect(path, *args, **kwargs):
             if "galaxy.yml" in str(path):
-                return mock_open(read_data="")()
+                return mock_open(read_data=galaxy_content)()
             return mock_open(read_data=manifest_content)()
 
         with patch("builtins.open", side_effect=open_side_effect):
             result = action_module.run(task_vars={})
 
         assert result["version"] == "2.7.0"
+
+    @pytest.mark.parametrize(
+        "manifest_content",
+        ["[]", '{"collection_info": []}', '{"collection_info": {"version": null}}'],
+    )
+    def test_run_returns_unknown_for_unusable_manifest(self, action_module, manifest_content):
+        def open_side_effect(path, *args, **kwargs):
+            if "galaxy.yml" in str(path):
+                raise OSError("not found")
+            return mock_open(read_data=manifest_content)()
+
+        with patch("builtins.open", side_effect=open_side_effect):
+            result = action_module.run(task_vars={})
+
+        assert result["version"] == "unknown"
 
     def test_get_collection_version_reads_galaxy_yml(self, action_module):
         galaxy_content = "---\nversion: 1.2.3\n"

@@ -48,12 +48,20 @@ class ActionModule(ActionBase):
             with open(galaxy_path) as f:
                 galaxy_data = yaml.safe_load(f)
             if isinstance(galaxy_data, dict):
-                return str(galaxy_data.get("version", "unknown"))
+                version = galaxy_data.get("version")
+                if version is not None:
+                    return str(version)
         except (OSError, yaml.YAMLError):
             pass
         manifest_path = collection_root / "MANIFEST.json"
         try:
             with open(manifest_path) as f:
-                return str(json.load(f).get("collection_info", {}).get("version", "unknown"))
+                manifest_data = json.load(f)
+            collection_info = manifest_data.get("collection_info") if isinstance(manifest_data, dict) else None
+            if isinstance(collection_info, dict):
+                version = collection_info.get("version")
+                if version is not None:
+                    return str(version)
         except (OSError, json.JSONDecodeError):
-            return "unknown"
+            pass
+        return "unknown"
