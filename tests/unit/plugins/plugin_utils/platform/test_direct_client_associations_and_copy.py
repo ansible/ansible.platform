@@ -348,7 +348,7 @@ class TestSearchApi(unittest.TestCase):
         self.client = DirectHTTPClient.__new__(DirectHTTPClient)
         self.client._authenticated = True
         self.client.base_url = "https://gw.example.com"
-        self.client.api_versions = {}
+        self.client.api_versions = {"controller": "2"}
         self.client.api_version = "2"
         self.client.cache = {}
 
@@ -368,6 +368,13 @@ class TestSearchApi(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=self._bad_json_response()):
             result = self.client.search_api("/api/controller/v2/job_templates/42/credentials/")
         self.assertEqual(result, {})
+
+    def test_relative_endpoint_uses_requested_service(self):
+        response = _http_resp(body={"count": 1, "results": [{"id": 42}]})
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=response) as mock_request:
+            self.client.search_api("workflow_jobs/42/workflow_nodes", query_params={"job__name": "Approval"}, service="controller")
+
+        self.assertEqual(mock_request.call_args.args[1], "https://gw.example.com/api/controller/v2/workflow_jobs/42/workflow_nodes/?job__name=Approval")
 
     def test_return_all_resolves_relative_next_link(self):
         first_page = _http_resp(
