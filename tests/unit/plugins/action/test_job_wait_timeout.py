@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action import job_wait
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, WaitTimeoutError
 
 
 class TestJobWaitAction(unittest.TestCase):
@@ -26,100 +26,119 @@ class TestJobWaitAction(unittest.TestCase):
         action._get_or_spawn_manager = MagicMock(return_value=(manager, None))
         return action
 
-    def test_timeout_caps_sleep_and_does_not_poll_after_deadline(self):
+    def test_timeout_uses_sdk_wait_and_reports_failure(self):
         params = {"job_id": 42, "job_type": "jobs", "interval": 5, "timeout": 2}
         manager = MagicMock()
         manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
+        manager.wait_for_completion.side_effect = WaitTimeoutError(
+            "Timed out waiting after 2s",
+            operation="wait_for_completion",
+            resource="/api/controller/v2/jobs/42/",
+            timeout_seconds=2,
+            last_result={"id": 42, "status": "running", "finished": None},
+        )
         action = self._make_action(params, manager)
 
         with patch.object(ActionBase, "run", return_value={}):
-            with patch.object(job_wait.time, "monotonic", side_effect=[0.0, 0.0, 2.0]):
-                with patch.object(job_wait.time, "sleep") as sleep:
-                    result = action.run(task_vars={})
+            result = action.run(task_vars={})
 
-        sleep.assert_called_once_with(2)
-        manager.execute.assert_called_once_with(
-            operation="find",
-            module_name="job_wait",
-            ansible_data={"job_id": 42, "job_type": "jobs"},
+        manager.wait_for_completion.assert_called_once_with(
+            resource_url="/api/controller/v2/jobs/42/",
+            timeout=2,
+            interval=5,
+            service="controller",
         )
-        self.assertEqual(
-            result,
-            {
-                "id": 42,
-                "status": "running",
-                "elapsed": None,
-                "started": None,
-                "finished": False,
-                "finished_at": None,
-                "changed": False,
-                "failed": True,
-                "msg": "Monitoring of job 42 aborted due to timeout.",
-            },
-        )
+        self.assertEqual(result["id"], 42)
+        self.assertEqual(result["status"], "running")
+        self.assertFalse(result["finished"])
+        self.assertTrue(result["failed"])
+        self.assertEqual(result["msg"], "Monitoring of job 42 aborted due to timeout.")
+        self.assertFalse(result["changed"])
 
-    def test_polls_again_before_timeout_and_keeps_finished_timestamp(self):
+    def test_successful_wait_returns_finished_job(self):
         params = {"job_id": 42, "job_type": "jobs", "interval": 2, "timeout": 10}
         manager = MagicMock()
-        manager.execute.side_effect = [
-            {"id": 42, "status": "running", "finished": None},
-            {"id": 42, "status": "successful", "finished": "2026-10-14T12:00:00Z"},
-        ]
+        manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
+        manager.wait_for_completion.return_value = {
+            "id": 42, "status": "successful", "elapsed": 5.0, "started": "2026-10-14T12:00:00Z", "finished": "2026-10-14T12:00:05Z",
+        }
         action = self._make_action(params, manager)
 
         with patch.object(ActionBase, "run", return_value={}):
-            with patch.object(job_wait.time, "monotonic", side_effect=[0.0, 0.0, 2.0]):
-                with patch.object(job_wait.time, "sleep") as sleep:
-                    result = action.run(task_vars={})
+            result = action.run(task_vars={})
 
-        sleep.assert_called_once_with(2)
-        self.assertEqual(manager.execute.call_count, 2)
-        self.assertEqual(
-            result,
-            {
-                "id": 42,
-                "status": "successful",
-                "elapsed": None,
-                "started": None,
-                "finished": True,
-                "finished_at": "2026-10-14T12:00:00Z",
-                "changed": False,
-                "failed": False,
-            },
-        )
+        self.assertEqual(result["id"], 42)
+        self.assertEqual(result["status"], "successful")
+        self.assertTrue(result["finished"])
+        self.assertEqual(result["finished_at"], "2026-10-14T12:00:05Z")
+        self.assertFalse(result["failed"])
+        self.assertFalse(result["changed"])
 
-    def test_zero_timeout_waits_indefinitely(self):
+    def test_zero_timeout_passes_negative_one_to_sdk(self):
         params = {"job_id": 42, "job_type": "jobs", "interval": 0.1, "timeout": 0}
         manager = MagicMock()
-        manager.execute.side_effect = [
-            {"id": 42, "status": "running", "finished": None},
-            {"id": 42, "status": "successful", "finished": "2026-10-14T12:00:00Z"},
-        ]
+        manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
+        manager.wait_for_completion.return_value = {
+            "id": 42, "status": "successful", "finished": "2026-10-14T12:00:00Z",
+        }
         action = self._make_action(params, manager)
 
         with patch.object(ActionBase, "run", return_value={}):
-            with patch.object(job_wait.time, "monotonic", return_value=0.0):
-                with patch.object(job_wait.time, "sleep") as sleep:
-                    result = action.run(task_vars={})
+            result = action.run(task_vars={})
 
-        sleep.assert_called_once_with(0.1)
-        self.assertEqual(manager.execute.call_count, 2)
+        manager.wait_for_completion.assert_called_once_with(
+            resource_url="/api/controller/v2/jobs/42/",
+            timeout=-1,
+            interval=0.1,
+            service="controller",
+        )
         self.assertFalse(result["failed"])
 
-    def test_initial_lookup_time_counts_toward_timeout(self):
-        params = {"job_id": 42, "job_type": "jobs", "interval": 2, "timeout": 1}
+    def test_none_timeout_passes_negative_one_to_sdk(self):
+        params = {"job_id": 42, "job_type": "jobs", "interval": 2}
         manager = MagicMock()
         manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
+        manager.wait_for_completion.return_value = {
+            "id": 42, "status": "successful", "finished": "2026-10-14T12:00:00Z",
+        }
         action = self._make_action(params, manager)
 
         with patch.object(ActionBase, "run", return_value={}):
-            with patch.object(job_wait.time, "monotonic", side_effect=[0.0, 1.0]):
-                with patch.object(job_wait.time, "sleep") as sleep:
-                    result = action.run(task_vars={})
+            result = action.run(task_vars={})
 
-        sleep.assert_not_called()
-        manager.execute.assert_called_once()
+        manager.wait_for_completion.assert_called_once_with(
+            resource_url="/api/controller/v2/jobs/42/",
+            timeout=-1,
+            interval=2,
+            service="controller",
+        )
+        self.assertFalse(result["failed"])
+
+    def test_canceled_job_reports_failure(self):
+        params = {"job_id": 42, "job_type": "jobs", "interval": 2, "timeout": 10}
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 42, "status": "pending", "finished": None}
+        manager.wait_for_completion.return_value = {"id": 42, "status": "canceled", "finished": "2026-10-14T12:00:00Z"}
+        action = self._make_action(params, manager)
+
+        with patch.object(ActionBase, "run", return_value={}):
+            result = action.run(task_vars={})
+
         self.assertTrue(result["failed"])
+        self.assertEqual(result["msg"], "Job 42 was canceled.")
+
+    def test_failed_job_reports_status(self):
+        params = {"job_id": 42, "job_type": "jobs", "interval": 2, "timeout": 10}
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 42, "status": "pending", "finished": None}
+        manager.wait_for_completion.return_value = {"id": 42, "status": "error", "finished": "2026-10-14T12:00:00Z"}
+        action = self._make_action(params, manager)
+
+        with patch.object(ActionBase, "run", return_value={}):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertEqual(result["msg"], "Job 42 finished with status 'error'.")
 
     def test_http_404_reports_missing_job_for_structured_and_raw_errors(self):
         params = {"job_id": 404, "job_type": "jobs", "interval": 1, "timeout": 10}
@@ -156,6 +175,24 @@ class TestJobWaitAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         self.assertEqual(result, {"failed": True, "msg": "interval must be greater than 0"})
+
+    def test_workflow_job_type_uses_correct_endpoint(self):
+        params = {"job_id": 99, "job_type": "workflow_jobs", "interval": 2, "timeout": 10}
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 99, "status": "running", "finished": None}
+        manager.wait_for_completion.return_value = {"id": 99, "status": "successful", "finished": "2026-10-14T12:00:00Z"}
+        action = self._make_action(params, manager)
+
+        with patch.object(ActionBase, "run", return_value={}):
+            result = action.run(task_vars={})
+
+        manager.wait_for_completion.assert_called_once_with(
+            resource_url="/api/controller/v2/workflow_jobs/99/",
+            timeout=10,
+            interval=2,
+            service="controller",
+        )
+        self.assertFalse(result["failed"])
 
 
 if __name__ == "__main__":
