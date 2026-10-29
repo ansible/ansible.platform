@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - bulk_job_launch - Migrate the module from the legacy ``awx_collection`` to launch multiple jobs in a single API request.
+...
