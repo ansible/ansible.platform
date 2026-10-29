@@ -278,9 +278,6 @@ request_session.auth = (container_startup_info["gateway_admin_username"], contai
 endpoint_response = request_session.get(f"{container_startup_info['gateway_host']}/api/gateway/v1/", verify=False)
 
 json_response = endpoint_response.json()
-# Append any extra_endpoints to the list of endpoints to validate
-for key, val in extra_endpoints.items():
-    json_response[key] = val
 
 # Fetch controller API endpoints for fallback matching after the gateway loop.
 _controller_endpoints = {}
@@ -292,6 +289,12 @@ try:
         print(f"Controller API returned HTTP {controller_response.status_code}, skipping controller module validation")
 except (requests.ConnectionError, requests.Timeout):
     print("Controller API not available, skipping controller module validation")
+
+# Extra endpoints are currently Controller endpoints that are not advertised by
+# either API root. Do not probe them when running against a Gateway-only
+# environment: the Controller route returns a non-JSON 404 response there.
+if _controller_endpoints:
+    json_response.update(extra_endpoints)
 
 # Build set of known controller modules by checking for API model files.
 
