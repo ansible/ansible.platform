@@ -48,4 +48,5 @@ action_groups:
     - controller_meta
     - workflow_approval
     - workflow_node_wait
+    - project_update
 ...
