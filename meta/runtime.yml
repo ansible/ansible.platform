@@ -49,4 +49,5 @@ action_groups:
     - workflow_approval
     - workflow_node_wait
     - job_wait
+    - bulk_host_delete
 ...
