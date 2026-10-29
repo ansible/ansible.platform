@@ -17,7 +17,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import time
-from typing import Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 from ansible.errors import AnsibleError
@@ -35,7 +35,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Wait for a workflow node to appear and its job to finish."""
-        result = {"changed": False}
+        result: Dict[str, Any] = {"changed": False}
         try:
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
