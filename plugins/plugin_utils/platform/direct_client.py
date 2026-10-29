@@ -803,6 +803,7 @@ class DirectHTTPClient(BaseAPIClient):
         total = response_data.get("count", len(all_results))
         if total > max_objects or len(all_results) > max_objects:
             raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
+
         while response_data.get("next"):
             # AAP components may return pagination links as relative paths.
             # Request.open() requires an absolute URL, so resolve against the gateway.
@@ -1038,8 +1039,9 @@ class DirectHTTPClient(BaseAPIClient):
         2. ID lookup: GET /resource/{id}/
         3. List+filter: GET /resource/?field=value (including composite-key lookups)
         """
-        # Get endpoint operations from mixin
-        operations = mixin_class.get_endpoint_operations()
+        # Allow non-CRUD mixins to choose a detail endpoint from the input data.
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
@@ -1064,10 +1066,6 @@ class DirectHTTPClient(BaseAPIClient):
             from dataclasses import asdict
 
             return asdict(ansible_instance)
-
-        # --- Standard CRUD resources ---
-        if not list_op:
-            raise ValueError(f"List operation not defined for {mixin_class.__name__}")
 
         # Get lookup field from mixin
         lookup_field = mixin_class.get_lookup_field()
@@ -1132,6 +1130,8 @@ class DirectHTTPClient(BaseAPIClient):
 
         if not lookup_value and not composite_params:
             raise ValueError(f"Lookup field '{lookup_field}' not found in data")
+        if not list_op:
+            raise ValueError(f"List operation not defined for {mixin_class.__name__}")
         query_params = {}
         if lookup_value:
             query_params[lookup_field] = lookup_value
