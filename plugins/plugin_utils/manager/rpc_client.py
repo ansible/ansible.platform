@@ -161,7 +161,14 @@ class ManagerRPCClient:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
         return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
 
-    def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.
 
@@ -174,11 +181,12 @@ class ManagerRPCClient:
             query_params: Optional filter parameters
             return_all: Follow pagination links and collect all results
             max_objects: Safety cap on total returned objects (when return_all=True)
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict from the platform.
         """
-        return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects)
+        return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects, service)
 
     def shutdown_manager(self) -> dict:
         """

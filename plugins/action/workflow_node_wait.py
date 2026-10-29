@@ -18,6 +18,7 @@ __metaclass__ = type
 
 import time
 from typing import Optional
+from urllib.parse import urlparse
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -25,8 +26,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.wo
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
-CONTROLLER_V2_PREFIX = "/api/controller/v2/"
-WORKFLOW_NODES_LIST_ENDPOINT = f"{CONTROLLER_V2_PREFIX}workflow_jobs/{{workflow_job_id}}/workflow_nodes/"
+WORKFLOW_NODES_LIST_ENDPOINT = "workflow_jobs/{workflow_job_id}/workflow_nodes/"
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -67,6 +67,7 @@ class ActionModule(BaseResourceActionPlugin):
                 response = manager.search_api(
                     nodes_url,
                     query_params={"job__name": name},
+                    service="controller",
                 )
 
                 if response.get("count", 0) > 0:
@@ -98,8 +99,9 @@ class ActionModule(BaseResourceActionPlugin):
             # Convert full URL to resource path for wait_for_completion
             # job_url is like "/api/controller/v2/jobs/123/" — strip the prefix
             resource_path = job_url
-            if resource_path.startswith(CONTROLLER_V2_PREFIX):
-                resource_path = resource_path[len(CONTROLLER_V2_PREFIX) :]
+            path_parts = urlparse(resource_path).path.strip("/").split("/")
+            if len(path_parts) >= 4 and path_parts[:2] == ["api", "controller"] and path_parts[2].startswith("v"):
+                resource_path = "/".join(path_parts[3:]) + "/"
 
             try:
                 job_result = manager.wait_for_completion(

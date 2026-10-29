@@ -70,7 +70,11 @@ class TestWorkflowNodeWaitActionModule:
 
         assert result["changed"] is False
         assert result["status"] == "successful"
-        mock_manager.search_api.assert_called_once()
+        mock_manager.search_api.assert_called_once_with(
+            "workflow_jobs/42/workflow_nodes/",
+            query_params={"job__name": "Approval Step"},
+            service="controller",
+        )
         mock_manager.wait_for_completion.assert_called_once()
 
     def test_missing_workflow_job_id(self, action_module):
@@ -485,8 +489,9 @@ class TestWorkflowNodeWaitActionModule:
             action_module.run(task_vars={})
 
         mock_manager.search_api.assert_called_with(
-            "/api/controller/v2/workflow_jobs/99/workflow_nodes/",
+            "workflow_jobs/99/workflow_nodes/",
             query_params={"job__name": "My Node"},
+            service="controller",
         )
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
