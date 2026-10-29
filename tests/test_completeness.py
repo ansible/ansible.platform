@@ -35,6 +35,7 @@ no_endpoint_for_module = [
     "workflow_job_template",
     "subscriptions",
     "bulk_host_create",
+    "controller_meta",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
