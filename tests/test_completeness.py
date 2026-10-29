@@ -19,7 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Normally a read-only endpoint should not have a module (e.g. /api/gateway/v1/me/) but sometimes we reuse a name.
 # For example, we have a role module but /api/gateway/v1/roles/ is a read-only endpoint.
 # This list indicates which read-only endpoints have associated modules with them.
-read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key", "workflow_approval"]
+read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key", "workflow_approval", "project_update"]
 
 # If a module should not be created for an endpoint and the endpoint is not read-only add it here
 # THINK HARD ABOUT DOING THIS
@@ -38,6 +38,11 @@ no_endpoint_for_module = [
     "controller_meta",
     "workflow_node_wait",
     "job_wait",
+    "bulk_host_delete",
+    "bulk_job_launch",
+    "inventory_source_update",
+    "project_update",
+    "bulk_host_delete",
     "ad_hoc_command_wait",
 ]
 
@@ -59,7 +64,9 @@ conditional_endpoint_modules = {
 }
 
 # Add modules with endpoints not auto-discovered from gateway or controller APIs
-extra_endpoints = {}
+extra_endpoints = {
+    "bulk_job_launch": "/api/controller/v2/bulk/job_launch/",
+}
 
 # Global module parameters we can ignore
 ignore_module_parameters = ["state", "new_name", "new_organization", "new_authenticator", "update_secrets", "copy_from", "assignment_objects"]
@@ -75,6 +82,8 @@ ignore_api_parameters = {
 no_api_parameter_ok = {
     # Existing_token and id are for working with an existing tokens
     "token": ["existing_token", "existing_token_id", "organization"],
+    # These control polling behavior rather than the Controller launch payload.
+    "bulk_job_launch": ["wait", "interval", "timeout"],
 }
 
 # Modules that need to be developed. If the module is found on the file system it will auto-detect

@@ -320,8 +320,17 @@ class BaseAPIClient(ABC):
         """
         pass
 
-    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
-        """POST to a launch endpoint and return the created resource."""
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST to a launch endpoint and return the created resource.
+
+        Args:
+            launch_url: API path to the launch endpoint.
+            payload: Request body.
+            service: API service name.
+            retry: Whether the persistent client may retry transient failures.
+                Disable this for non-idempotent actions where a lost response
+                could make replaying the POST unsafe.
+        """
         url = self._build_url(launch_url, service=service)
         return self._post_json(url, payload, operation="launch_resource", resource="launch")
 
