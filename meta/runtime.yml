@@ -44,4 +44,5 @@ action_groups:
     - controller_credential
     - workflow_job_template_node
     - subscriptions
+    - bulk_host_create
 ...

@@ -322,9 +322,10 @@ class Store:
                 start_id=start_id,
                 service="controller",
             )
-        # Controller resources
+        # Additional controller resources
         controller_defs: List[tuple] = [
             ("workflow_job_templates", ["name"], 6000),
+            ("inventories", ["name"], 5000),
         ]
         for endpoint, required, start_id in controller_defs:
             self._resources[("controller", endpoint)] = GenericResource(
@@ -1070,6 +1071,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         self._send_json(404, {"detail": "Not Found"})
                     return
+
+        # ---- Controller bulk/host_create ----
+        if service == "controller" and resource == "bulk" and len(parts) >= 5 and parts[4] == "host_create" and self.command == "POST":
+            try:
+                payload = self._parse_json_body()
+                inv_id = payload.get("inventory")
+                hosts = payload.get("hosts", [])
+                if not inv_id or not hosts:
+                    self._send_json(400, {"detail": "inventory and hosts are required"})
+                    return
+                self._send_json(201, {"inventory": inv_id, "hosts": hosts})
+            except ValueError as e:
+                self._send_json(400, {"detail": str(e)})
+            return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:

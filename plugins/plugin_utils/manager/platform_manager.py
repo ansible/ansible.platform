@@ -1328,6 +1328,25 @@ class PlatformService(BaseAPIClient):
         response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
         return response.json()
 
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Retries are disabled: this is a non-idempotent POST — retrying a lost
+        response could create duplicate hosts or trigger 400 errors.
+        """
+        self.record_activity()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        saved_config = self.retry_config
+        self.retry_config = RetryConfig(max_attempts=1)
+        try:
+            response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
+        finally:
+            self.retry_config = saved_config
+        if response.status_code != 201:
+            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
+        return response.json()
+
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
