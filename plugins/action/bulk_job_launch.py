@@ -87,7 +87,7 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
-            if not wait:
+            if not wait or not job_id:
                 return result
 
             # Wait for the workflow job to complete
