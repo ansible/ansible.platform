@@ -17,6 +17,7 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
 
 Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
+The workflow_node_wait scenario uses a pending-to-successful job fixture.
 
 Notes
 -----
@@ -44,6 +45,10 @@ def _now_iso() -> str:
 # API services this mock fronts. Each has its own /api/{service}/vN/ prefix and
 # version-discovery root, mirroring the real Gateway's per-service routing.
 SUPPORTED_SERVICES = ("gateway", "controller")
+WORKFLOW_NODE_WAIT_WORKFLOW_ID = 8001
+WORKFLOW_NODE_WAIT_NODE_ID = 8101
+WORKFLOW_NODE_WAIT_JOB_ID = 8201
+WORKFLOW_NODE_WAIT_NAME = "Molecule Wait Node"
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +258,45 @@ class Store:
     _jt_associations: Dict[int, Dict[str, set]] = field(default_factory=dict)
     _jt_surveys: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     _jt_lock: threading.Lock = field(default_factory=threading.Lock)
+    _workflow_wait_job_polls: int = 0
+    _workflow_wait_job_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def workflow_node_wait_nodes(self, workflow_id: int, name: Optional[str]) -> Dict[str, Any]:
+        """Return a workflow node fixture with a separate related job ID."""
+        if workflow_id != WORKFLOW_NODE_WAIT_WORKFLOW_ID or name != WORKFLOW_NODE_WAIT_NAME:
+            return {"count": 0, "results": []}
+
+        # Reset the stateful job fixture each time a wait action starts.
+        with self._workflow_wait_job_lock:
+            self._workflow_wait_job_polls = 0
+
+        return {
+            "count": 1,
+            "results": [
+                {
+                    "id": WORKFLOW_NODE_WAIT_NODE_ID,
+                    "related": {"job": f"/api/controller/v2/jobs/{WORKFLOW_NODE_WAIT_JOB_ID}/"},
+                    "summary_fields": {"job": {"id": WORKFLOW_NODE_WAIT_JOB_ID, "status": "pending"}},
+                }
+            ],
+        }
+
+    def workflow_node_wait_job(self, job_id: int) -> Dict[str, Any]:
+        """Return a job that transitions from running to successful on its second poll."""
+        if job_id != WORKFLOW_NODE_WAIT_JOB_ID:
+            raise KeyError("not found")
+
+        with self._workflow_wait_job_lock:
+            self._workflow_wait_job_polls += 1
+            poll_count = self._workflow_wait_job_polls
+            status = "running" if poll_count == 1 else "successful"
+
+        return {
+            "id": WORKFLOW_NODE_WAIT_JOB_ID,
+            "status": status,
+            "elapsed": float(poll_count),
+            "failed": False,
+        }
 
     def _init_resources(self) -> None:
         """Create all generic resource stores with appropriate config."""
@@ -854,6 +898,25 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return
 
         resource = parts[3] if len(parts) >= 4 else None
+
+        # ---- Workflow node wait fixtures ----
+        if service == "controller" and resource == "workflow_jobs" and len(parts) == 6 and parts[5] == "workflow_nodes" and self.command == "GET":
+            try:
+                workflow_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            name = (qs.get("job__name") or [None])[0]
+            self._send_json(200, self.store.workflow_node_wait_nodes(workflow_id, name))
+            return
+
+        if service == "controller" and resource == "jobs" and len(parts) == 5 and self.command == "GET":
+            try:
+                job = self.store.workflow_node_wait_job(int(parts[4]))
+                self._send_json(200, job)
+            except (KeyError, ValueError):
+                self._send_json(404, {"detail": "Not Found"})
+            return
 
         if service == "controller" and resource in ("job_templates", "workflow_job_templates") and len(parts) >= 5:
             try:

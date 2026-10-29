@@ -96,6 +96,7 @@ class TestWorkflowNodeWaitActionModule:
             result = action_module.run(task_vars={})
 
         assert result["failed"] is True
+        assert result["changed"] is False
         assert "workflow_job_id" in result["msg"]
 
     def test_missing_name(self, action_module):
@@ -258,6 +259,7 @@ class TestWorkflowNodeWaitActionModule:
             result = action_module.run(task_vars={})
 
         assert result["failed"] is True
+        assert result["changed"] is False
         assert "Timed out" in result["msg"]
         assert "Missing Step" in result["msg"]
 
@@ -332,10 +334,15 @@ class TestWorkflowNodeWaitActionModule:
         assert mock_manager.wait_for_completion.call_args.kwargs["timeout"] == 0.0
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
-    def test_zero_timeout_is_bounded(self, mock_time, action_module):
-        mock_time.time.side_effect = [0.0, 0.0]
+    def test_zero_timeout_waits_indefinitely(self, mock_time, action_module):
+        mock_time.time.side_effect = [0.0, 100.0]
 
         mock_manager = MagicMock()
+        mock_manager.search_api.return_value = {
+            "count": 1,
+            "results": [{"id": 100, "related": {"job": "/api/controller/v2/jobs/55/"}}],
+        }
+        mock_manager.wait_for_completion.return_value = {"id": 55, "status": "successful", "elapsed": 0.0}
         with patch.object(action_module, "_prepare_action") as mock_prepare:
             mock_prepare.return_value = {
                 "result": {},
@@ -347,10 +354,9 @@ class TestWorkflowNodeWaitActionModule:
             }
             result = action_module.run(task_vars={})
 
-        assert result["failed"] is True
-        assert "Timed out" in result["msg"]
-        mock_manager.search_api.assert_not_called()
-        mock_manager.wait_for_completion.assert_not_called()
+        assert result["status"] == "successful"
+        mock_manager.search_api.assert_called_once()
+        assert mock_manager.wait_for_completion.call_args.kwargs["timeout"] == -1.0
 
     @pytest.mark.parametrize("timeout", [None, -1])
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
@@ -458,6 +464,7 @@ class TestWorkflowNodeWaitActionModule:
         assert result["failed"] is True
         assert "Timed out" in result["msg"]
         assert result["id"] == 55
+        assert result["changed"] is False
         assert result["status"] == "running"
 
     @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")

@@ -37,6 +37,7 @@ options:
     timeout:
         description:
             - Maximum time in seconds to wait for the workflow node to finish.
+            - Set to C(0) to wait indefinitely.
         default: 10
         type: int
 seealso:

@@ -35,10 +35,11 @@ class ActionModule(BaseResourceActionPlugin):
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Wait for a workflow node to appear and its job to finish."""
-        result = {}
+        result = {"changed": False}
         try:
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
+            result["changed"] = False
             validated_params = prepared["validated_params"]
             manager = prepared["manager"]
 
@@ -61,7 +62,7 @@ class ActionModule(BaseResourceActionPlugin):
             node_data = None
             while True:
                 elapsed = time.time() - start
-                if timeout is not None and timeout >= 0 and elapsed >= timeout:
+                if timeout is not None and timeout > 0 and elapsed >= timeout:
                     raise AnsibleError(f"Timed out waiting for workflow node '{name}' to appear in workflow job {workflow_job_id} after {timeout}s")
 
                 response = manager.search_api(
@@ -74,7 +75,7 @@ class ActionModule(BaseResourceActionPlugin):
                     node_data = response["results"][0]
                     break
 
-                if timeout is not None and timeout >= 0:
+                if timeout is not None and timeout > 0:
                     remaining_timeout = max(0.0, timeout - (time.time() - start))
                     time.sleep(min(interval, remaining_timeout))
                 else:
@@ -87,7 +88,6 @@ class ActionModule(BaseResourceActionPlugin):
             if not job_url:
                 result.update(
                     {
-                        "changed": False,
                         "id": node_data.get("id"),
                         "status": node_data.get("summary_fields", {}).get("job", {}).get("status", "unknown"),
                         "job_data": node_data,
@@ -96,8 +96,10 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # Phase 2: wait for the node's underlying job to finish
-            remaining_timeout = timeout
-            if timeout is not None and timeout >= 0:
+            # The shared waiter uses a negative timeout to mean "no timeout";
+            # translate the module's legacy timeout=0 behavior accordingly.
+            remaining_timeout = -1.0 if timeout == 0 else timeout
+            if timeout is not None and timeout > 0:
                 remaining_timeout = max(0.0, timeout - (time.time() - start))
 
             # Convert full URL to resource path for wait_for_completion
@@ -118,7 +120,6 @@ class ActionModule(BaseResourceActionPlugin):
                 status = job_result.get("status", "")
                 result.update(
                     {
-                        "changed": False,
                         "id": job_result.get("id"),
                         "elapsed": job_result.get("elapsed", 0.0),
                         "status": status,
