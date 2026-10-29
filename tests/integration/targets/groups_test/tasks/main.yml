@@ -8,6 +8,40 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-Group-{{ test_id }}"
 
+- name: Look up Demo Inventory for the host association test
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: demo_inventory
+  delegate_to: localhost
+
+- name: Assert Demo Inventory is available
+  ansible.builtin.assert:
+    that:
+      - demo_inventory.json.results | length > 0
+
+- name: Create a host for the group association test
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/hosts/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ name_prefix }}-Host"
+      inventory: "{{ demo_inventory.json.results[0].id }}"
+      description: "Integration test host for group association"
+    status_code: [201]
+  register: test_host
+  delegate_to: localhost
+
 - name: Run Test
   module_defaults:
     group/ansible.platform.controller:
@@ -94,6 +128,73 @@
         that:
           - idempotent_update_group is not changed
 
+    - name: Create a child group for the association test
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Child"
+        inventory: "Demo Inventory"
+        state: present
+      register: child_group
+
+    - name: Associate a host and child group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        hosts:
+          - "{{ test_host.json.name }}"
+        children:
+          - "{{ child_group.group.name }}"
+      register: associated_group
+
+    - name: Assert the associations changed the group
+      ansible.builtin.assert:
+        that:
+          - associated_group is changed
+
+    - name: Read the group's host association
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/groups/{{ created_group.group.id }}/hosts/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: associated_hosts
+      delegate_to: localhost
+
+    - name: Read the group's child association
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/groups/{{ created_group.group.id }}/children/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: associated_children
+      delegate_to: localhost
+
+    - name: Assert the expected host and child group are associated
+      ansible.builtin.assert:
+        that:
+          - associated_hosts.json.results | selectattr('name', 'equalto', test_host.json.name) | list | length == 1
+          - associated_children.json.results | selectattr('name', 'equalto', child_group.group.name) | list | length == 1
+
+    - name: Check group association idempotency
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Test"
+        inventory: "Demo Inventory"
+        hosts:
+          - "{{ test_host.json.name }}"
+        children:
+          - "{{ child_group.group.name }}"
+      register: idempotent_association
+
+    - name: Assert the group associations are idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_association is not changed
+
     - name: Rename group
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
@@ -148,5 +249,27 @@
         name: "{{ name_prefix }}-Test"
         inventory: "Demo Inventory"
         state: absent
+      failed_when: false
+
+    - name: Delete the child group
+      ansible.platform.group:
+        name: "{{ name_prefix }}-Child"
+        inventory: "Demo Inventory"
+        state: absent
+      failed_when: false
+
+    - name: Delete the test host
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/hosts/{{ test_host.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200, 202, 204, 404]
+      when:
+        - test_host is defined
+        - test_host.json.id is defined
+      delegate_to: localhost
       failed_when: false
 ...

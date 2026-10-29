@@ -61,6 +61,28 @@ class TestManageAssociations(unittest.TestCase):
         self.assertIn({"id": 3, "associate": True}, payloads)
         self.assertIn({"id": 2, "disassociate": True}, payloads)
 
+    def test_preserve_existing_keeps_unrequested_associations(self):
+        self.client.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-c": 3}[value]
+        self.client.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
+
+        with unittest.mock.patch.object(self.client, "_make_request") as mock_request:
+            changed = self.client.manage_associations(
+                "/api/controller/v2/job_templates",
+                42,
+                "credentials",
+                ["cred-c"],
+                "credentials",
+                "name",
+                service="controller",
+                preserve_existing=True,
+            )
+
+        self.assertTrue(changed)
+        payloads = [call.kwargs["json"] for call in mock_request.call_args_list]
+        self.assertIn({"id": 3, "associate": True}, payloads)
+        self.assertNotIn({"id": 1, "disassociate": True}, payloads)
+        self.assertNotIn({"id": 2, "disassociate": True}, payloads)
+
     def test_no_change_when_already_in_sync(self):
         self.client.search_api.return_value = {"results": [{"id": 1}]}
 

@@ -405,14 +405,26 @@ class Store:
                     "REMOTE_HOST_HEADERS": [],
                 }
 
-        # Seed instances for Controller association tests
+        # Seed hosts for Controller group association tests
+        host_store = self._resources.get(("controller", "hosts"))
+        if host_store and not host_store._items:
+            host_store.seed(
+                "2",
+                [
+                    {"id": 6001, "name": "web1.example.com", "inventory": 1},
+                    {"id": 6002, "name": "web2.example.com", "inventory": 1},
+                    {"id": 6003, "name": "db1.example.com", "inventory": 1},
+                ],
+            )
+
+        # Seed instances for Controller instance_group association tests
         inst_store = self._resources.get(("controller", "instances"))
         if inst_store and not inst_store._items:
             inst_store.seed(
                 "2",
                 [
-                    {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
-                    {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
+                    {"id": 5901, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 5902, "hostname": "node2.example.com", "node_type": "execution"},
                 ],
             )
 
@@ -791,7 +803,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 .replace("notification_templates_success", "notification_templates")
                 .replace("notification_templates_error", "notification_templates")
             )
-            assoc_store = self.store.resource(service, assoc_endpoint)
+            assoc_store = self.store.resource(service, assoc_endpoint) or self.store.resource(service, resource_name)
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
                 return True
