@@ -1361,7 +1361,14 @@ class PlatformService(BaseAPIClient):
             logger.debug("direct_request: failed to parse response body for %s %s", method, path)
             return {}
 
-    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[Dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
@@ -1374,6 +1381,7 @@ class PlatformService(BaseAPIClient):
             query_params: Optional key/value filter parameters
             return_all: When True, follow 'next' pagination links and collect all results
             max_objects: Safety cap; raises ValueError when return_all would exceed this
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict.  Components behind the gateway use two list shapes:
@@ -1387,7 +1395,7 @@ class PlatformService(BaseAPIClient):
             ValueError: When the HTTP request fails or max_objects is exceeded
         """
         self.record_activity()
-        url = self._build_url(endpoint)
+        url = self._build_url(endpoint, service=service)
         response = self._make_request("get", url, operation="search_api", resource=endpoint, params=query_params or {})
         data = response.json()
 

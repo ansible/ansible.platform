@@ -731,7 +731,14 @@ class DirectHTTPClient(BaseAPIClient):
         response_data = json.loads(response_body) if response_body else {}
         return response_data
 
-    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[Dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
@@ -747,6 +754,7 @@ class DirectHTTPClient(BaseAPIClient):
             query_params: Optional key/value filter parameters
             return_all: When True, follow 'next' pagination links
             max_objects: Safety cap when return_all is True
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict.
@@ -767,14 +775,9 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = "1"
             self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Build URL: if endpoint starts with /api/ treat as absolute path,
-        # otherwise prefix with /api/gateway/v{version}/
-        if endpoint.startswith("/api/"):
-            api_path = endpoint
-        else:
-            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
-
-        url = self._build_url(api_path, query_params)
+        if not endpoint.startswith("/api/") and not endpoint.endswith("/"):
+            endpoint = f"{endpoint}/"
+        url = self._build_url(endpoint, query_params, service=service)
         response = self._make_request("GET", url, operation="search", resource=endpoint)
         try:
             response_body = response.read()
