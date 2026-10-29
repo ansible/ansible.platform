@@ -51,4 +51,5 @@ action_groups:
     - job_wait
     - bulk_host_delete
     - bulk_job_launch
+    - inventory_source_update
 ...

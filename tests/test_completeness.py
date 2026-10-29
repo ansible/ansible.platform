@@ -40,6 +40,7 @@ no_endpoint_for_module = [
     "job_wait",
     "bulk_host_delete",
     "bulk_job_launch",
+    "inventory_source_update",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
