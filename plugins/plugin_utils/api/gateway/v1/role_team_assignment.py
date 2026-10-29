@@ -59,6 +59,7 @@ def _search_results(payload):
 
 
 def _matches_org(item, org_id):
+    """Return True if the item's organization field matches *org_id*."""
     for key in ("organization_id", "organization"):
         value = item.get(key)
         if value is None:
@@ -91,6 +92,7 @@ def _resolve_organization_id(manager, organization, service):
 
 
 def _team_org_label(item):
+    """Return a human-readable organization label for a team result item."""
     summary = (item.get("summary_fields") or {}).get("organization") or {}
     if summary.get("name"):
         return summary["name"]
@@ -98,6 +100,10 @@ def _team_org_label(item):
     if isinstance(org, dict):
         return org.get("name") or org.get("id")
     return org
+
+
+class TeamNotFoundError(ValueError):
+    """Raised when no team matches a name lookup (zero results)."""
 
 
 def resolve_team_id(manager, team, organization=None):
@@ -114,8 +120,12 @@ def resolve_team_id(manager, team, organization=None):
 
     if organization:
         org_id = _resolve_organization_id(manager, organization, "gateway")
-        payload = manager.search_api("teams", query_params={"name": team, "organization": org_id})
+        payload = manager.search_api("teams", query_params={"name": team, "organization": org_id}, return_all=True)
         results = [result for result in _search_results(payload) if result.get("name") == team and _matches_org(result, org_id)]
+        if len(results) == 0:
+            raise TeamNotFoundError(
+                "Team named '%s' not found in organization '%s'. Pass the team's numeric ID or team_ansible_id to skip name lookup." % (team, organization)
+            )
         if len(results) != 1:
             raise ValueError(
                 "Expected exactly one team named '%s' in organization '%s', got %s. "
@@ -123,13 +133,10 @@ def resolve_team_id(manager, team, organization=None):
             )
         return str(_result_id(results[0], team, "teams"))
 
-    payload = manager.search_api("teams", query_params={"name": team})
+    payload = manager.search_api("teams", query_params={"name": team}, return_all=True)
     results = [result for result in _search_results(payload) if result.get("name") == team]
     if not results:
-        raise ValueError(
-            "Team named '%s' not found. Pass organization= to scope the lookup, "
-            "or use the team's numeric ID / team_ansible_id." % team
-        )
+        raise TeamNotFoundError("Team named '%s' not found. Pass organization= to scope the lookup, or use the team's numeric ID / team_ansible_id." % team)
     if len(results) > 1:
         orgs = [_team_org_label(result) for result in results]
         raise ValueError(
@@ -144,6 +151,7 @@ _resolve_team_id = resolve_team_id
 
 
 def _resolve_named_object_id(manager, obj):
+    """Resolve an assignment_objects entry's name to a numeric object ID."""
     obj_type = obj["type"]
     name = obj["name"]
     organization = obj.get("organization")

@@ -256,7 +256,7 @@ def test_from_ansible_resolves_team_with_organization_scope():
     }
 
     assert resolve_team_id(manager, "J Team", organization="OrgB") == "10"
-    manager.search_api.assert_called_once_with("teams", query_params={"name": "J Team", "organization": 39})
+    manager.search_api.assert_called_once_with("teams", query_params={"name": "J Team", "organization": 39}, return_all=True)
 
     api = RoleTeamAssignmentTransformMixin_v1.from_ansible_data(
         {"role_definition": "22", "team": "J Team", "organization": "OrgB", "object_id": "38"},
@@ -293,13 +293,14 @@ def test_unique_team_name_without_organization_succeeds():
 
 def test_scoped_team_not_in_organization_raises():
     from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        TeamNotFoundError,
         resolve_team_id,
     )
 
     manager = MagicMock()
     manager.lookup_resource_id.return_value = 99
     manager.search_api.return_value = {"results": []}
-    with pytest.raises(ValueError, match="Expected exactly one team named 'J Team' in organization 'MissingOrg'"):
+    with pytest.raises(TeamNotFoundError, match="Team named 'J Team' not found in organization 'MissingOrg'"):
         resolve_team_id(manager, "J Team", organization="MissingOrg")
 
 
@@ -339,3 +340,62 @@ def test_unscoped_assignment_object_teams_also_rejects_ambiguity():
     }
     with pytest.raises(ValueError, match="Multiple teams named 'J Team'"):
         _resolve(service, {"type": "teams", "name": "J Team"})
+
+
+def test_team_not_found_raises_team_not_found_error():
+    """Zero-match raises TeamNotFoundError (subclass of ValueError)."""
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        TeamNotFoundError,
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": []}
+
+    with pytest.raises(TeamNotFoundError, match="Team named 'Ghost' not found"):
+        resolve_team_id(manager, "Ghost")
+
+    # TeamNotFoundError is a ValueError subclass
+    assert issubclass(TeamNotFoundError, ValueError)
+
+
+def test_action_resolve_fks_forwards_organization_to_resolve_team_id():
+    """_resolve_fks_to_strings must pop organization and pass it to resolve_team_id."""
+    from unittest.mock import patch
+
+    from ansible_collections.ansible.platform.plugins.action.role_team_assignment import ActionModule
+
+    action = ActionModule.__new__(ActionModule)
+    action._display = MagicMock()
+    manager = MagicMock()
+
+    with patch(
+        "ansible_collections.ansible.platform.plugins.action.role_team_assignment.resolve_team_id",
+        return_value="10",
+    ) as mock_resolve:
+        data = {
+            "role_definition": "22",
+            "team": "J Team",
+            "organization": "OrgB",
+        }
+        result = action._resolve_fks_to_strings(manager, data)
+
+    mock_resolve.assert_called_once_with(manager, "J Team", "OrgB")
+    assert "organization" not in result
+    assert result["team"] == "10"
+
+
+def test_resolve_team_id_passes_return_all_true():
+    """search_api must be called with return_all=True to catch paginated duplicates."""
+    from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.role_team_assignment import (
+        resolve_team_id,
+    )
+
+    manager = MagicMock()
+    manager.search_api.return_value = {
+        "results": [
+            {"id": 7, "name": "unique-team", "organization": 1},
+        ]
+    }
+    resolve_team_id(manager, "unique-team")
+    manager.search_api.assert_called_once_with("teams", query_params={"name": "unique-team"}, return_all=True)
