@@ -504,7 +504,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway"):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None):
         """
         Resolve a resource name to ID by GET list with filter.
         Compatible with PlatformService.lookup_resource_id interface.
@@ -515,6 +515,7 @@ class DirectHTTPClient(BaseAPIClient):
             lookup_field: Field to filter on (e.g. 'name')
             lookup_value: Value to look up
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
+            extra_query_params: Additional filter params (e.g. {'organization': 42} for org-scoped resources)
 
         Returns:
             Resource ID (int) or None
@@ -524,7 +525,7 @@ class DirectHTTPClient(BaseAPIClient):
         if str(lookup_value).isdigit():
             return int(lookup_value)
 
-        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value))
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value), extra_query_params)
         if cache_key in self.cache:
             return self.cache[cache_key]
 
@@ -532,7 +533,10 @@ class DirectHTTPClient(BaseAPIClient):
         self._prepare_resource_lookup(service)
 
         api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
-        url = self._build_url(api_path, {lookup_field: lookup_value})
+        query = {lookup_field: lookup_value}
+        if extra_query_params:
+            query.update(extra_query_params)
+        url = self._build_url(api_path, query)
 
         response = self._make_request("GET", url, operation="lookup", resource=endpoint)
 
@@ -547,9 +551,13 @@ class DirectHTTPClient(BaseAPIClient):
             self.cache[cache_key] = rid
         return rid
 
-    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str) -> str:
+    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str, extra_query_params: dict = None) -> str:
         """Preserve the direct client's resource-lookup cache key format."""
-        return f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
+        key = f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
+        if extra_query_params:
+            suffix = "&".join(f"{k}={v}" for k, v in sorted(extra_query_params.items()))
+            key = f"{key}:{suffix}"
+        return key
 
     def _prepare_resource_lookup(self, service: str) -> None:
         """Set the Gateway API version header used by direct requests."""
@@ -572,6 +580,7 @@ class DirectHTTPClient(BaseAPIClient):
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        extra_query_params: dict = None,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -590,7 +599,7 @@ class DirectHTTPClient(BaseAPIClient):
         what the declarative create/update flow covers.
         """
         self._ensure_authenticated()
-        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service)
+        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service, extra_query_params=extra_query_params)
         desired_ids = {int(item) if str(item).isdigit() else resolved_names.get(str(item)) if item else None for item in desired_items}
 
         # Follow pagination so associations beyond the first page aren't silently
@@ -710,6 +719,16 @@ class DirectHTTPClient(BaseAPIClient):
         self._ensure_authenticated()
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         return json.loads(response.read())
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
+        response_body = response.read()
+        response_data = json.loads(response_body) if response_body else {}
+        return response_data
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """
@@ -1017,14 +1036,18 @@ class DirectHTTPClient(BaseAPIClient):
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             with self._lock:
                 self._http_request_count += 1
-            response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
+            request_kwargs = {"operation": "find", "resource": mixin_class.__name__}
+            if get_op.method.upper() == "POST" and get_op.fields:
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
+            response = self._make_request(get_op.method, url, **request_kwargs)
             try:
                 response_body = response.read()
                 api_result = json.loads(response_body) if response_body else {}
@@ -1185,7 +1208,11 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.fields:
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
-                    if value is None or value == "":
+                    if value is None:
+                        if context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}:
+                            request_data[field] = None
+                        continue
+                    if value == "":
                         continue
                     request_data[field] = value
 

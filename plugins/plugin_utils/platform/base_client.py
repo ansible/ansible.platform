@@ -105,24 +105,35 @@ class BaseAPIClient(ABC):
             return ca_bundle
         return True
 
-    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str) -> str:
+    def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str, extra_query_params: dict = None) -> str:
         """Build the cache key used by resource-name lookups."""
-        return f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
+        key = f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
+        if extra_query_params:
+            suffix = "&".join(f"{k}={v}" for k, v in sorted(extra_query_params.items()))
+            key = f"{key}:{suffix}"
+        return key
 
     def _prepare_resource_lookup(self, service: str) -> None:
         """Allow clients to prepare transport headers before a batch lookup."""
 
-    def _lookup_resource_ids(self, endpoint: str, lookup_field: str, lookup_values: list, service: str = "gateway") -> dict:
+    def _lookup_resource_ids(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_values: list,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+    ) -> dict:
         """Resolve several names with bounded ``__in`` queries where possible."""
         values = list(dict.fromkeys(str(value) for value in lookup_values if value and not str(value).isdigit()))
-        cache_keys = {value: self._resource_lookup_cache_key(service, endpoint, lookup_field, value) for value in values}
+        cache_keys = {value: self._resource_lookup_cache_key(service, endpoint, lookup_field, value, extra_query_params) for value in values}
         resolved = {value: self.cache[key] for value, key in cache_keys.items() if key in self.cache}
         uncached = [value for value in values if value not in resolved]
 
         if not uncached:
             return resolved
         if len(uncached) == 1:
-            resolved[uncached[0]] = self.lookup_resource_id(endpoint, lookup_field, uncached[0], service=service)
+            resolved[uncached[0]] = self.lookup_resource_id(endpoint, lookup_field, uncached[0], service=service, extra_query_params=extra_query_params)
             return resolved
 
         service_version = self.get_api_version(service)
@@ -132,9 +143,12 @@ class BaseAPIClient(ABC):
         def resolve_batch(batch_values):
             if not batch_values:
                 return
+            query = {f"{lookup_field}__in": ",".join(batch_values)}
+            if extra_query_params:
+                query.update(extra_query_params)
             data = self.search_api(
                 api_path,
-                query_params={f"{lookup_field}__in": ",".join(batch_values)},
+                query_params=query,
                 return_all=True,
                 max_objects=100000,
             )
@@ -155,7 +169,7 @@ class BaseAPIClient(ABC):
             if "," in value:
                 resolve_batch(batch_values)
                 batch_values = []
-                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service)
+                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service, extra_query_params=extra_query_params)
                 continue
 
             candidate = batch_values + [value]
@@ -171,7 +185,7 @@ class BaseAPIClient(ABC):
             if single_url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
                 batch_values = [value]
             else:
-                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service)
+                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service, extra_query_params=extra_query_params)
         resolve_batch(batch_values)
         return resolved
 
@@ -403,6 +417,23 @@ class BaseAPIClient(ABC):
         # This is a shared helper that both modes can use
         # Implementation will be in the shared CRUD layer
         pass
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """
+        Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Args:
+            inventory_id: Numeric ID of the target inventory
+            hosts: List of host dicts (name, description, enabled, variables, instance_id)
+            service: Service name (default: controller)
+
+        Returns:
+            API response dict
+
+        Raises:
+            ValueError: If the API returns a non-201 status
+        """
+        raise NotImplementedError
 
     def lookup_organization_names(self, ids: list) -> list:
         """

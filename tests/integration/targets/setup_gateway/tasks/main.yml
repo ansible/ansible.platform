@@ -6,11 +6,12 @@
     url_username: "{{ gateway_username }}"
     url_password: "{{ gateway_password }}"
     validate_certs: "{{ gateway_validate_certs }}"
+    timeout: 10
   delegate_to: localhost
   register: server_ping
   until: server_ping is not failed
-  retries: 30
-  delay: 2
+  retries: 60
+  delay: 5
 
 - name: Configure connection mode for this test run
   ansible.builtin.set_fact:
