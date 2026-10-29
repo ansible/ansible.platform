@@ -30,6 +30,11 @@ no_endpoint_for_module = [
     "token",
     "job_template",
     "job_list",
+    "group",
+    "instance",
+    "workflow_job_template",
+    "subscriptions",
+    "bulk_host_create",
     "workflow_node_wait",
 ]
 
@@ -38,8 +43,11 @@ no_endpoint_for_module = [
 # is set via a separate endpoint. Pre-populated so migrators don't need to investigate.
 controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
+    "workflow_job_template": ["organization", "survey_spec"],
     "host": [],
     "controller_credential_type": [],
+    "controller_project": ["wait", "update_project", "interval"],
+    "workflow_job_template_node": ["organization"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
@@ -56,6 +64,7 @@ ignore_api_parameters = {
     "team": ["users", "admins"],  # TODO: remove when removed from API
     "organization": ["users", "admins"],  # TODO: remove when removed from API
     "role_team_assignment": ["object_ansible_id", "object_id"],  # TODO: remove when removed from API
+    "instance": ["peers"],
 }
 
 # Some modules take additional parameters that do not appear in the API
@@ -68,7 +77,9 @@ no_api_parameter_ok = {
 # Modules that need to be developed. If the module is found on the file system it will auto-detect
 # that the work is being done and will bypass this check.
 needs_development = ["ui_plugin_route"]
-needs_param_development = {}
+needs_param_development = {
+    "inventory": ["opa_query_path"],
+}
 # -----------------------------------------------------------------------------------------------------------
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))

@@ -92,7 +92,7 @@ class ManagerRPCClient:
         # Execute via proxy
         return self.service_proxy.execute(operation, module_name, data_dict)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway"):
+    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None):
         """
         Resolve a resource name to its integer ID via the manager process.
 
@@ -104,6 +104,7 @@ class ManagerRPCClient:
             lookup_field: Field to filter by (e.g. 'name', 'username')
             lookup_value: Value to look up
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
+            extra_query_params: Additional filter params (e.g. {'organization': 42})
 
         Returns:
             Integer resource ID
@@ -111,7 +112,11 @@ class ManagerRPCClient:
         Raises:
             ValueError: If the resource is not found
         """
-        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service)
+        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {})
+
+    def lookup_organization_names(self, organization_ids: list) -> list:
+        """Resolve organization IDs to names via the manager process."""
+        return self.service_proxy.lookup_organization_names(organization_ids)
 
     def manage_associations(
         self,
@@ -122,9 +127,19 @@ class ManagerRPCClient:
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        extra_query_params: dict = None,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
-        return self.service_proxy.manage_associations(base_path, resource_id, association_field, desired_items, lookup_endpoint, lookup_field, service)
+        return self.service_proxy.manage_associations(
+            base_path,
+            resource_id,
+            association_field,
+            desired_items,
+            lookup_endpoint,
+            lookup_field,
+            service,
+            extra_query_params or {},
+        )
 
     def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
@@ -141,6 +156,10 @@ class ManagerRPCClient:
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
+        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
 
     def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
         """

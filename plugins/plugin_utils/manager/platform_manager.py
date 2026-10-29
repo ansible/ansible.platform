@@ -642,13 +642,21 @@ class PlatformService(BaseAPIClient):
                 if getattr(api_data, field, None) is None and current_value is not None:
                     setattr(api_data, field, current_value)
 
+        # Enforced updates must clear omitted organization and credential
+        # associations after the merge restores values from the current resource.
+        fields_to_null: set = set()
+        if context.include_nulls_for_update:
+            for field in ("organization", "credential"):
+                if field in user_unset_fields and hasattr(api_data, field):
+                    setattr(api_data, field, None)
+                    fields_to_null.add(field)
+
         # After the merge, let the mixin declare which fields must be sent as
         # null to clear server-side values that are incompatible with the new
         # resource state (e.g. role/team when map_type changes to is_superuser).
         # Only fields the user did NOT explicitly provide are eligible — if the
         # user provided an incompatible field the API will reject it with a clear
         # validation error, which is the correct behaviour.
-        fields_to_null: set = set()
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
             candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
             for field in candidate_fields:
@@ -852,12 +860,19 @@ class PlatformService(BaseAPIClient):
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
+            method = getattr(get_op, "method", "GET").upper()
+            kwargs = {"timeout": self.request_timeout, "verify": self.requests_verify}
+            if method == "POST":
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                payload = {f: getattr(api_data, f) for f in (get_op.fields or []) if getattr(api_data, f, None) is not None}
+                kwargs["json"] = payload
+            session_method = getattr(self.session, method.lower())
+            response = session_method(url, **kwargs)
             response.raise_for_status()
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
@@ -988,8 +1003,10 @@ class PlatformService(BaseAPIClient):
                 val = api_data_dict[field]
                 if val is None:
                     # Include as explicit null only for fields declared by the mixin
-                    # as needing to be cleared (e.g. role/team on map_type change).
-                    if field in _fields_to_null:
+                    # as needing to be cleared, or for associations in enforced updates.
+                    if field in _fields_to_null or (
+                        context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
+                    ):
                         request_data[field] = None
                     continue
                 request_data[field] = val
@@ -1147,7 +1164,14 @@ class PlatformService(BaseAPIClient):
         """Alias for lookup_org_names."""
         return self.lookup_org_names(ids)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway") -> Optional[int]:
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+    ) -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
         Used by mixins to resolve FKs (e.g. service_cluster name -> id).
@@ -1157,10 +1181,13 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
-        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value)
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
         if cache_key in self.cache:
             return self.cache[cache_key]
-        url = self._build_url(f"/{endpoint}", query_params={lookup_field: lookup_value}, service=service)
+        query = {lookup_field: lookup_value}
+        if extra_query_params:
+            query.update(extra_query_params)
+        url = self._build_url(f"/{endpoint}", query_params=query, service=service)
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         results = response.json().get("results", [])
@@ -1180,6 +1207,7 @@ class PlatformService(BaseAPIClient):
         lookup_endpoint: str,
         lookup_field: str,
         service: str = "gateway",
+        extra_query_params: dict = None,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -1198,7 +1226,7 @@ class PlatformService(BaseAPIClient):
         what the declarative create/update flow covers.
         """
         self.record_activity()
-        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service)
+        resolved_names = self._lookup_resource_ids(lookup_endpoint, lookup_field, desired_items, service=service, extra_query_params=extra_query_params)
         desired_ids = {int(item) if str(item).isdigit() else resolved_names.get(str(item)) if item else None for item in desired_items}
 
         # Follow pagination so associations beyond the first page aren't silently
@@ -1298,6 +1326,25 @@ class PlatformService(BaseAPIClient):
         """POST JSON via _make_request and return parsed JSON."""
         self.record_activity()
         response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
+        return response.json()
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Retries are disabled: this is a non-idempotent POST — retrying a lost
+        response could create duplicate hosts or trigger 400 errors.
+        """
+        self.record_activity()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        saved_config = self.retry_config
+        self.retry_config = RetryConfig(max_attempts=1)
+        try:
+            response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
+        finally:
+            self.retry_config = saved_config
+        if response.status_code != 201:
+            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
 
     def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:

@@ -43,7 +43,7 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_associates_and_disassociates_to_reconcile(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
-        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service: {"cred-a": 3}[value]
+        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-a": 3}[value]
 
         changed = self.svc.manage_associations(
             "/api/controller/v2/job_templates",
@@ -190,6 +190,50 @@ class TestManageAssociations(unittest.TestCase):
             "https://gw.example.com" + association_path + "?page=2",
         )
         self.svc.session.post.assert_not_called()
+
+    def test_extra_query_params_passed_to_lookup(self):
+        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"my-label": 7}[value]
+        self.svc.search_api.return_value = {"results": []}
+
+        self.svc.manage_associations(
+            "/api/controller/v2/workflow_job_templates",
+            10,
+            "labels",
+            ["my-label"],
+            "labels",
+            "name",
+            service="controller",
+            extra_query_params={"organization": 42},
+        )
+
+        self.svc.lookup_resource_id.assert_called_once_with(
+            "labels",
+            "name",
+            "my-label",
+            service="controller",
+            extra_query_params={"organization": 42},
+        )
+
+    def test_extra_query_params_in_batch_query(self):
+        self.svc.get_api_version = MagicMock(return_value="2")
+        self.svc.search_api.side_effect = [
+            {"results": [{"id": 7, "name": "label-a"}, {"id": 8, "name": "label-b"}]},
+            {"results": []},
+        ]
+
+        self.svc.manage_associations(
+            "/api/controller/v2/workflow_job_templates",
+            10,
+            "labels",
+            ["label-a", "label-b"],
+            "labels",
+            "name",
+            service="controller",
+            extra_query_params={"organization": 42},
+        )
+
+        batch_call = self.svc.search_api.call_args_list[0]
+        self.assertEqual(batch_call.kwargs["query_params"], {"name__in": "label-a,label-b", "organization": 42})
 
 
 class TestManageSubResource(unittest.TestCase):

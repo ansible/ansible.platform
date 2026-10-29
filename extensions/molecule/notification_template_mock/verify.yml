@@ -1,0 +1,24 @@
+---
+- name: Verify
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Check the test notification template exists
+      ansible.platform.notification_template:
+        name: "Molecule NT"
+        organization: "1"
+        state: exists
+        gateway_hostname: "http://127.0.0.1:8000"
+        gateway_username: "mock"
+        gateway_password: "testpass"
+        gateway_validate_certs: false
+      register: r
+      vars:
+        ansible_connection: local
+    - name: Assert the notification template exists
+      ansible.builtin.assert:
+        that: r.get('exists') | default(false) | bool
+      vars:
+        ansible_connection: local
+...

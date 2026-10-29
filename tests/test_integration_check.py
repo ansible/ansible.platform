@@ -5,8 +5,16 @@ from sys import exit
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 # CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
-modules_without_live_integration = {}
-module_test_name_overrides = {"label": "label_test"}
+modules_without_live_integration = {
+    "subscriptions": "requires dedicated Red Hat subscription-account credentials not available in the Gateway integration environment",
+}
+module_test_name_overrides = {
+    "label": "label_test",
+    "inventory": "inventory_test",
+    "execution_environment": "execution_environment_test",
+    "controller_project": "controller_project_test",
+    "schedule": "schedule_test",
+}
 tests_to_ignore = [
     "lookup_test",
     "setup_gateway",
