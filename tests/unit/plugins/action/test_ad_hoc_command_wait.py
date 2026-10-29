@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from ansible.playbook.task import Task
 from ansible_collections.ansible.platform.plugins.action.ad_hoc_command_wait import ActionModule
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ad_hoc_command_wait import AnsibleAdHocCommandWait
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import DEFAULT_WAIT_TIMEOUT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
@@ -44,22 +44,21 @@ class TestActionModuleAttributes(unittest.TestCase):
         module = _make_module()
         self.assertEqual(module.MODULE_NAME, "ad_hoc_command_wait")
 
-    def test_model_class(self):
-        module = _make_module()
-        self.assertEqual(module.MODEL_CLASS, AnsibleAdHocCommandWait)
-
-    def test_lookup_field(self):
-        module = _make_module()
-        self.assertEqual(module.LOOKUP_FIELD, "command_id")
-
 
 class TestCheckMode(unittest.TestCase):
-    """Test check mode behavior."""
+    """Test read-only waiting in check mode."""
 
     @patch.object(ActionModule, "_prepare_action")
-    def test_check_mode_skips_wait(self, mock_prepare):
+    def test_check_mode_waits_and_returns_actual_status(self, mock_prepare):
         module = _make_module(args={"command_id": 42}, check_mode=True)
         manager = MagicMock()
+        manager.wait_for_completion.return_value = {
+            "id": 42,
+            "status": "successful",
+            "elapsed": 5.2,
+            "started": "2026-01-01T00:00:00Z",
+            "finished": "2026-01-01T00:00:05Z",
+        }
         mock_prepare.return_value = {
             "result": {},
             "validated_params": {"command_id": 42, "interval": 2.0, "timeout": None},
@@ -70,8 +69,14 @@ class TestCheckMode(unittest.TestCase):
 
         self.assertFalse(result["changed"])
         self.assertEqual(result["id"], 42)
-        self.assertIn("check mode", result["status"])
-        manager.wait_for_completion.assert_not_called()
+        self.assertEqual(result["status"], "successful")
+        self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
+        manager.wait_for_completion.assert_called_once_with(
+            resource_url="/api/controller/v2/ad_hoc_commands/42/",
+            timeout=None,
+            interval=2.0,
+            service="controller",
+        )
 
 
 class TestWaitCommand(unittest.TestCase):
@@ -225,6 +230,26 @@ class TestWaitCommand(unittest.TestCase):
         )
 
     @patch.object(ActionModule, "_prepare_action")
+    def test_zero_timeout_uses_sdk_default(self, mock_prepare):
+        module = _make_module(args={"command_id": 42, "timeout": 0})
+        manager = MagicMock()
+        manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+        mock_prepare.return_value = {
+            "result": {},
+            "validated_params": {"command_id": 42, "interval": 2.0, "timeout": 0},
+            "manager": manager,
+        }
+
+        module.run(task_vars={})
+
+        manager.wait_for_completion.assert_called_once_with(
+            resource_url="/api/controller/v2/ad_hoc_commands/42/",
+            timeout=DEFAULT_WAIT_TIMEOUT,
+            interval=2.0,
+            service="controller",
+        )
+
+    @patch.object(ActionModule, "_prepare_action")
     def test_missing_command_id(self, mock_prepare):
         module = _make_module(args={})
         mock_prepare.return_value = {
@@ -274,81 +299,6 @@ class TestWaitCommand(unittest.TestCase):
         result = module.run(task_vars={})
 
         self.assertFalse(result["changed"])
-
-
-class TestAnsibleModel(unittest.TestCase):
-    """Test the AnsibleAdHocCommandWait dataclass."""
-
-    def test_defaults(self):
-        model = AnsibleAdHocCommandWait()
-        self.assertEqual(model.command_id, 0)
-        self.assertEqual(model.interval, 2.0)
-        self.assertIsNone(model.timeout)
-        self.assertIsNone(model.id)
-
-    def test_construction(self):
-        model = AnsibleAdHocCommandWait(command_id=42, interval=5.0, timeout=120)
-        self.assertEqual(model.command_id, 42)
-        self.assertEqual(model.interval, 5.0)
-        self.assertEqual(model.timeout, 120)
-
-    def test_round_trip(self):
-        from dataclasses import asdict
-
-        model = AnsibleAdHocCommandWait(command_id=99, interval=3.0, timeout=60)
-        d = asdict(model)
-        self.assertEqual(d["command_id"], 99)
-        reconstructed = AnsibleAdHocCommandWait(**d)
-        self.assertEqual(reconstructed, model)
-
-
-class TestTransformMixin(unittest.TestCase):
-    """Test the AdHocCommandWaitTransformMixin_v2."""
-
-    def test_from_ansible_data(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command_wait import (
-            AdHocCommandWaitTransformMixin_v2,
-            APIAdHocCommandWait_v2,
-        )
-
-        ansible_data = AnsibleAdHocCommandWait(command_id=42, interval=5.0, timeout=120)
-        ctx = MagicMock()
-        api_data = AdHocCommandWaitTransformMixin_v2.from_ansible_data(ansible_data, ctx)
-
-        self.assertIsInstance(api_data, APIAdHocCommandWait_v2)
-        self.assertEqual(api_data.command_id, 42)
-        self.assertEqual(api_data.interval, 5.0)
-        self.assertEqual(api_data.timeout, 120)
-
-    def test_from_api(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command_wait import (
-            AdHocCommandWaitTransformMixin_v2,
-        )
-
-        api_response = {"id": 42, "name": "some-command", "status": "running"}
-        ctx = MagicMock()
-        ansible_data = AdHocCommandWaitTransformMixin_v2.from_api(api_response, ctx)
-
-        self.assertIsInstance(ansible_data, AnsibleAdHocCommandWait)
-        self.assertEqual(ansible_data.command_id, 42)
-
-    def test_get_lookup_field(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command_wait import (
-            AdHocCommandWaitTransformMixin_v2,
-        )
-
-        self.assertEqual(AdHocCommandWaitTransformMixin_v2.get_lookup_field(), "command_id")
-
-    def test_endpoint_operations(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command_wait import (
-            AdHocCommandWaitTransformMixin_v2,
-        )
-
-        ops = AdHocCommandWaitTransformMixin_v2.get_endpoint_operations()
-        self.assertIn("list", ops)
-        self.assertIn("get", ops)
-        self.assertIn("ad_hoc_commands", ops["list"].path)
-        self.assertIn("ad_hoc_commands", ops["get"].path)
 
 
 if __name__ == "__main__":

@@ -18,8 +18,8 @@ from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ad_hoc_command_wait import AnsibleAdHocCommandWait
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command_wait import AD_HOC_COMMANDS_DETAIL_ENDPOINT
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import DEFAULT_WAIT_TIMEOUT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
@@ -27,8 +27,6 @@ FAILED_STATUSES = frozenset({"failed", "error", "canceled"})
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "ad_hoc_command_wait"
-    MODEL_CLASS = AnsibleAdHocCommandWait
-    LOOKUP_FIELD = "command_id"
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Wait for a Controller ad hoc command to reach a terminal status.
@@ -50,25 +48,18 @@ class ActionModule(BaseResourceActionPlugin):
             command_id = validated_params.get("command_id")
             interval = validated_params.get("interval", 2.0)
             timeout = validated_params.get("timeout")
+            wait_timeout = float(timeout) if timeout is not None else None
+            if wait_timeout == 0:
+                wait_timeout = DEFAULT_WAIT_TIMEOUT
 
             if not command_id:
                 raise AnsibleError("command_id is required")
-
-            if self._task.check_mode:
-                result.update(
-                    {
-                        "changed": False,
-                        "id": command_id,
-                        "status": "would wait for completion (check mode)",
-                    }
-                )
-                return result
 
             resource_url = AD_HOC_COMMANDS_DETAIL_ENDPOINT.format(id=command_id)
 
             wait_result = manager.wait_for_completion(
                 resource_url=resource_url,
-                timeout=float(timeout) if timeout is not None else None,
+                timeout=wait_timeout,
                 interval=float(interval),
                 service="controller",
             )
