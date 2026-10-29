@@ -37,6 +37,7 @@ no_endpoint_for_module = [
     "bulk_host_create",
     "controller_meta",
     "workflow_node_wait",
+    "job_wait",
     "ad_hoc_command_wait",
 ]
 

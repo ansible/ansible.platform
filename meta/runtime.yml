@@ -48,5 +48,6 @@ action_groups:
     - controller_meta
     - workflow_approval
     - workflow_node_wait
+    - job_wait
     - ad_hoc_command_wait
 ...
