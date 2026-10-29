@@ -947,9 +947,9 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             try:
                 job = self.store.workflow_node_wait_job(int(parts[4]))
                 self._send_json(200, job)
+                return
             except (KeyError, ValueError):
-                self._send_json(404, {"detail": "Not Found"})
-            return
+                pass  # fall through to generic resource handler
 
         if service == "controller" and resource in ("job_templates", "workflow_job_templates") and len(parts) >= 5:
             try:
