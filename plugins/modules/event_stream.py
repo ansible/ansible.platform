@@ -84,8 +84,12 @@ options:
   state:
     description:
       - Desired state of the resource.
+      - C(present) creates the event stream if it does not exist, or updates it if it does.
+      - C(absent) removes the event stream if it exists.
+      - C(exists) checks whether the event stream exists without making changes.
+      - C(enforced) ensures the event stream matches the declared fields exactly.
     type: str
-    choices: ["present", "absent"]
+    choices: ["present", "absent", "exists", "enforced"]
     default: "present"
 
 seealso:
