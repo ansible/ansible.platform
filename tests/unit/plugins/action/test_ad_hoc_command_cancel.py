@@ -165,6 +165,7 @@ class TestCancelCommand(unittest.TestCase):
             timeout=0,
             interval=1.0,
             service="controller",
+            wait=True,
         )
 
     @patch.object(ActionModule, "_prepare_action")
@@ -187,6 +188,7 @@ class TestCancelCommand(unittest.TestCase):
             timeout=30,
             interval=0.5,
             service="controller",
+            wait=True,
         )
 
     @patch.object(ActionModule, "_prepare_action")
@@ -226,6 +228,7 @@ class TestCancelCommand(unittest.TestCase):
             timeout=0,
             interval=1.0,
             service="controller",
+            wait=True,
         )
 
     @patch.object(ActionModule, "_prepare_action")
@@ -279,6 +282,7 @@ class TestDocumentationValidation(unittest.TestCase):
             timeout=30,
             interval=0.5,
             service="controller",
+            wait=True,
         )
 
     @patch.object(ActionBase, "run", return_value={})

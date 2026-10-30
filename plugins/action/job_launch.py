@@ -63,7 +63,8 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            ansible_obj = AnsibleJobLaunch(**{k: v for k, v in params.items() if v is not None and k not in self._AUTH_PARAMS})
+            model_fields = {f.name for f in __import__("dataclasses").fields(AnsibleJobLaunch)}
+            ansible_obj = AnsibleJobLaunch(**{k: v for k, v in params.items() if v is not None and k not in self._AUTH_PARAMS and k in model_fields})
             context = TransformContext(
                 manager=manager,
                 session=getattr(manager, "session", None),
@@ -87,6 +88,9 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         job_id = launch_result.get("id") or launch_result.get("job")
+        if not job_id:
+            result.update({"changed": True, "failed": True, "msg": "Launch response did not include a job ID"})
+            return result
         job_status = launch_result.get("status", "unknown")
         job_url = launch_result.get("url", CONTROLLER_JOB_ENDPOINT.format(id=job_id))
 

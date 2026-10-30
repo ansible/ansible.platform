@@ -355,19 +355,16 @@ class BaseAPIClient(ABC):
         timeout: float = 0,
         interval: float = 1.0,
         service: str = "gateway",
+        wait: bool = False,
     ) -> dict:
         """Cancel a resource through its ``cancel`` sub-endpoint.
 
         A 405 response means the resource is no longer cancelable. Treat that
-        as a no-op unless the caller requested failure in that case. After a
-        successful cancel request, wait for the resource to reach a terminal
-        state. A timeout of zero means wait indefinitely.
+        as a no-op unless the caller requested failure in that case. When
+        wait=True, polls until the resource reaches a terminal state; a timeout
+        of zero means wait indefinitely. When wait=False (default), returns
+        immediately after a successful cancel POST.
         """
-        if interval <= 0:
-            raise ValueError("Polling interval must be positive, got %s" % interval)
-        if timeout < 0:
-            raise ValueError("Timeout must be 0 or greater")
-
         endpoint = cancel_endpoint_path.strip("/")
         cancel_path = f"/{endpoint}/{resource_id}/cancel/"
         url = self._build_url(cancel_path, service=service)
@@ -383,6 +380,14 @@ class BaseAPIClient(ABC):
             if fail_if_not_running:
                 raise ValueError("Resource is not running") from exc
             return {"changed": False, "id": resource_id, "status": "already finished"}
+
+        if not wait:
+            return {"changed": True, "id": resource_id, "status": "canceled"}
+
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
+        if timeout < 0:
+            raise ValueError("Timeout must be 0 or greater")
 
         completion = self.wait_for_completion(
             f"/{endpoint}/{resource_id}/",

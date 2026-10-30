@@ -176,9 +176,10 @@ class ManagerRPCClient:
         timeout: float = 0,
         interval: float = 1.0,
         service: str = "gateway",
+        wait: bool = False,
     ) -> dict:
         """Cancel a resource via the manager process. See BaseAPIClient.cancel_resource()."""
-        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, timeout, interval, service)
+        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, timeout, interval, service, wait)
 
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
