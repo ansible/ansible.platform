@@ -77,22 +77,23 @@
       vars:
         ansible_connection: local
 
-    - name: An unsupported service prefix must still 404
+    - name: EDA service prefix returns ping
       ansible.builtin.uri:
         url: "{{ gateway_hostname }}/api/eda/v1/ping/"
         method: GET
         headers:
           Authorization: "{{ mock_auth }}"
-        status_code: 404
+        status_code: 200
       register: eda_ping
       vars:
         ansible_connection: local
 
-    - name: Assert unsupported service prefix was rejected
+    - name: Assert EDA ping returns version
       ansible.builtin.assert:
         that:
-          - eda_ping.status == 404
-        fail_msg: "Unsupported service prefix should 404. Got status: {{ eda_ping.status }}"
+          - eda_ping.status == 200
+          - eda_ping.json.version is defined
+        fail_msg: "EDA ping should report a version. Got: {{ eda_ping.json }}"
       vars:
         ansible_connection: local
 ...

@@ -20,6 +20,7 @@ tests_to_ignore = [
     "lookup_test",
     "setup_gateway",
     "setup_controller",
+    "setup_eda",
     "users_examples_test",
     "backward_compat_26_test",
     "ssl_env_forwarding_test",

@@ -1,0 +1,16 @@
+---
+- name: Check if EDA API is available
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname }}/api/eda/v1/status/"
+    url_username: "{{ gateway_username | default('admin') }}"
+    url_password: "{{ gateway_password | default('admin') }}"
+    validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
+    force_basic_auth: true
+  delegate_to: localhost
+  register: eda_ping
+  ignore_errors: true
+
+- name: Skip play when EDA is not available
+  ansible.builtin.meta: end_play
+  when: eda_ping is not success
+...
