@@ -1,0 +1,30 @@
+---
+- name: Verify — eda_credential cleanup complete
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Ensure credential is absent after converge cleanup
+      ansible.platform.eda_credential:
+        name: "molecule-mock-eda-cred-local"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_absent
+      vars:
+        ansible_connection: local
+
+    - name: Assert credential is already absent
+      ansible.builtin.assert:
+        that: verify_absent is not changed
+        fail_msg: "Verify: credential should already be absent after converge cleanup."
+      vars:
+        ansible_connection: local
+...

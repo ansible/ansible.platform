@@ -1,0 +1,156 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    cred_name: "EDA-Credential-Test-{{ test_id }}"
+    cred_copy_name: "EDA-Credential-Copy-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Create> -------------------
+    - name: Create EDA credential with check mode
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        description: "Integration test credential"
+        credential_type: "Source Control"
+        organization: Default
+        inputs:
+          username: "test-user-{{ test_id }}"
+          password: "test-pass-{{ test_id }}"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create EDA credential
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        description: "Integration test credential"
+        credential_type: "Source Control"
+        organization: Default
+        inputs:
+          username: "test-user-{{ test_id }}"
+          password: "test-pass-{{ test_id }}"
+        state: present
+      register: create_result
+      no_log: false
+
+    - name: Assert credential was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_credential.id is defined
+          - create_result.eda_credential.name == cred_name
+
+    # <Idempotency> -------------------
+    - name: Re-create same credential (idempotent — inputs are write-only)
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        description: "Integration test credential"
+        credential_type: "Source Control"
+        organization: Default
+        inputs:
+          username: "test-user-{{ test_id }}"
+          password: "test-pass-{{ test_id }}"
+        state: present
+      register: idempotent_result
+      no_log: false
+
+    - name: Assert idempotent re-create is not changed (inputs excluded from comparison)
+      ansible.builtin.assert:
+        that:
+          - idempotent_result is not changed
+
+    # <Update description> -------------------
+    - name: Update credential description
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        description: "Updated description"
+        credential_type: "Source Control"
+        organization: Default
+        state: present
+      register: update_result
+
+    - name: Assert update changed
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+          - update_result.eda_credential.description == "Updated description"
+
+    # <Copy> -------------------
+    - name: Copy credential
+      ansible.platform.eda_credential:
+        name: "{{ cred_copy_name }}"
+        copy_from: "{{ cred_name }}"
+        state: present
+      register: copy_result
+
+    - name: Assert copy changed
+      ansible.builtin.assert:
+        that:
+          - copy_result is changed
+
+    # <Exists> -------------------
+    - name: Check credential exists
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        state: exists
+      register: exists_result
+
+    - name: Assert exists is true
+      ansible.builtin.assert:
+        that:
+          - exists_result.exists | bool
+
+    # <Delete> -------------------
+    - name: Delete EDA credential
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert credential was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # <Delete absent — no-op> -------------------
+    - name: Delete already absent credential
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete absent is no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+
+  always:
+    - name: Cleanup — delete test credential
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup — delete copied credential
+      ansible.platform.eda_credential:
+        name: "{{ cred_copy_name }}"
+        state: absent
+      failed_when: false
+...
