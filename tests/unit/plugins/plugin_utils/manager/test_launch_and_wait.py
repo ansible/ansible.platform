@@ -204,10 +204,12 @@ class TestPlatformManagerLaunchResource(unittest.TestCase):
         self.assertEqual(result["status"], "successful")
 
     def test_wait_invalid_interval_raises(self):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
+
         mgr = _make_platform_service()
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=30, interval=0, service="controller")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             mgr.wait_for_completion("/api/controller/v2/jobs/99/", timeout=30, interval=-1, service="controller")
 
     def test_wait_no_status_field_logs_warning(self):

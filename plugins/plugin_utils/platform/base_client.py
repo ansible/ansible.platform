@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
+from ..platform.exceptions import APIError, ValidationError
 from ..platform.loader import DynamicClassLoader
 from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
@@ -162,7 +163,7 @@ class BaseAPIClient(ABC):
 
             for value in batch_values:
                 if value not in resolved:
-                    raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
+                    raise ValidationError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
 
         batch_values = []
         for value in uncached:
@@ -239,7 +240,7 @@ class BaseAPIClient(ABC):
 
         if body is not None:
             if not isinstance(body, dict):
-                raise ValueError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
+                raise APIError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
             if "current_version" in body:
                 cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
                 cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
@@ -363,7 +364,7 @@ class BaseAPIClient(ABC):
         if interval is None:
             interval = DEFAULT_WAIT_INTERVAL
         if interval <= 0:
-            raise ValueError("Polling interval must be positive, got %s" % interval)
+            raise ValidationError("Polling interval must be positive, got %s" % interval)
 
         url = self._build_url(resource_url, service=service)
         start = time.monotonic()
@@ -412,6 +413,39 @@ class BaseAPIClient(ABC):
                 sleep_time = interval
 
             time.sleep(sleep_time)
+
+    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
+        """Cancel a resource via its /cancel/ sub-endpoint.
+
+        GETs the cancel URL to check can_cancel, then POSTs to cancel.
+        Already-finished resources return changed=False.
+        """
+        cancel_url = self._build_url(f"/{cancel_endpoint_path}/{resource_id}/cancel/", service=service)
+
+        try:
+            cancel_info = self._get_json(cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+        except APIError as exc:
+            if exc.status_code in (404, 403):
+                raise
+            logger.warning("cancel eligibility check failed (status=%s), assuming not cancelable: %s", exc.status_code, exc)
+            cancel_info = {}
+
+        if not cancel_info.get("can_cancel", False):
+            if fail_if_not_running:
+                raise ValidationError(
+                    "Job %d is not running and cannot be canceled" % resource_id,
+                    operation="cancel_resource",
+                    resource=cancel_endpoint_path,
+                )
+            return {"changed": False, "id": resource_id, "status": "already_completed"}
+
+        try:
+            self._post_json(cancel_url, {}, operation="cancel_resource", resource=cancel_endpoint_path)
+        except APIError as exc:
+            if exc.status_code == 405:
+                return {"changed": False, "id": resource_id, "status": "already_completed"}
+            raise
+        return {"changed": True, "id": resource_id, "status": "canceled"}
 
     def lookup_organization_ids(self, names: list) -> list:
         """

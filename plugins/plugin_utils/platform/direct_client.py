@@ -751,7 +751,10 @@ class DirectHTTPClient(BaseAPIClient):
         """POST JSON via _make_request and return parsed JSON."""
         self._ensure_authenticated()
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
-        return json.loads(response.read())
+        body = response.read()
+        if not body:
+            return {}
+        return json.loads(body)
 
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the Controller bulk/host_create endpoint."""

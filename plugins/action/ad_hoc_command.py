@@ -71,6 +71,9 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         job_id = launch_result.get("id")
+        if not job_id:
+            result.update({"changed": True, "failed": True, "msg": "Launch response did not include a job ID"})
+            return result
         job_status = launch_result.get("status", "unknown")
 
         if not wait:

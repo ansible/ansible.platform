@@ -44,6 +44,7 @@ no_endpoint_for_module = [
     "project_update",
     "bulk_host_delete",
     "ad_hoc_command_wait",
+    "job_cancel",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
