@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - bulk_job_launch - new module migrated from ``awx.awx`` to launch multiple jobs in a single API request (https://issues.redhat.com/browse/AAP-95844).
+...

@@ -14,7 +14,7 @@ from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-from urllib.parse import urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin
 
 if TYPE_CHECKING:
     import requests
@@ -137,7 +137,15 @@ class PlatformService(BaseAPIClient):
                 return False
         return self.seconds_since_last_activity() >= self.config.idle_timeout
 
-    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs) -> "requests.Response":
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = "http_request",
+        resource: str = "unknown",
+        retry_config: Optional[RetryConfig] = None,
+        **kwargs,
+    ) -> "requests.Response":
         """
         Make HTTP request with retry logic (using decorator pattern).
 
@@ -148,6 +156,8 @@ class PlatformService(BaseAPIClient):
             url: Request URL
             operation: Operation name for error context
             resource: Resource type for error context
+            retry_config: Optional per-request retry policy; defaults to the
+                service-wide retry configuration.
             **kwargs: Additional arguments for requests method
 
         Returns:
@@ -158,7 +168,7 @@ class PlatformService(BaseAPIClient):
         """
         self.record_activity()
 
-        @retry_http_request(config=self.retry_config)
+        @retry_http_request(config=retry_config or self.retry_config)
         def _execute_with_retry():
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
@@ -856,16 +866,24 @@ class PlatformService(BaseAPIClient):
         Returns:
             Found resource as dict (Ansible format)
         """
-        operations = mixin_class.get_endpoint_operations()
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError("No GET operation defined for singleton resource")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
+            method = getattr(get_op, "method", "GET").upper()
+            kwargs = {"timeout": self.request_timeout, "verify": self.requests_verify}
+            if method == "POST":
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                payload = {f: getattr(api_data, f) for f in (get_op.fields or []) if getattr(api_data, f, None) is not None}
+                kwargs["json"] = payload
+            session_method = getattr(self.session, method.lower())
+            response = session_method(url, **kwargs)
             response.raise_for_status()
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
@@ -1164,6 +1182,7 @@ class PlatformService(BaseAPIClient):
         lookup_value: str,
         service: str = "gateway",
         extra_query_params: dict = None,
+        require_unique: bool = False,
     ) -> Optional[int]:
         """
         Resolve a resource name to ID by GET list with filter.
@@ -1174,8 +1193,22 @@ class PlatformService(BaseAPIClient):
             return None
         if str(lookup_value).isdigit():
             return int(lookup_value)
+
+        # AWX accepts Controller named URLs (for example, organization++inventory)
+        # as a direct resource path. Try that before a potentially ambiguous name query.
+        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
+            named_url = self._build_url(f"/{endpoint}/{quote(str(lookup_value), safe='+')}", service=service)
+            named_response = self.session.get(named_url, timeout=self.request_timeout, verify=self.requests_verify)
+            if named_response.status_code == 200:
+                named_resource_id = named_response.json().get("id")
+                if named_resource_id is not None:
+                    return named_resource_id
+            elif named_response.status_code != 404:
+                named_response.raise_for_status()
+
         cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
-        if cache_key in self.cache:
+        # A cached first match cannot prove that the lookup is unique.
+        if not require_unique and cache_key in self.cache:
             return self.cache[cache_key]
         query = {lookup_field: lookup_value}
         if extra_query_params:
@@ -1183,11 +1216,14 @@ class PlatformService(BaseAPIClient):
         url = self._build_url(f"/{endpoint}", query_params=query, service=service)
         response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
-        results = response.json().get("results", [])
+        response_data = response.json()
+        results = response_data.get("results", [])
         if not results:
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
+            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
         rid = results[0].get("id")
-        if rid is not None:
+        if rid is not None and not require_unique:
             self.cache[cache_key] = rid
         return rid
 
@@ -1201,6 +1237,7 @@ class PlatformService(BaseAPIClient):
         lookup_field: str,
         service: str = "gateway",
         extra_query_params: dict = None,
+        preserve_existing: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -1208,7 +1245,8 @@ class PlatformService(BaseAPIClient):
         Generic across any resource with a list-style association sub-endpoint (credentials,
         instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
-        current associations, and associates/disassociates to reconcile.
+        current associations, and associates/disassociates to reconcile. Set
+        preserve_existing=True to retain already-associated items.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -1230,6 +1268,8 @@ class PlatformService(BaseAPIClient):
             assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        if preserve_existing:
+            desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
@@ -1321,7 +1361,63 @@ class PlatformService(BaseAPIClient):
         response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
         return response.json()
 
-    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST to a launch endpoint, optionally suppressing transient retries."""
+        if retry:
+            return super().launch_resource(launch_url, payload, service)
+
+        url = self._build_url(launch_url, service=service)
+        response = self._make_request(
+            "post",
+            url,
+            operation="launch_resource",
+            resource="launch",
+            retry_config=RetryConfig(max_attempts=1),
+            json=payload,
+        )
+        return response.json()
+
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the Controller bulk/host_create endpoint.
+
+        Retries are disabled: this is a non-idempotent POST — retrying a lost
+        response could create duplicate hosts or trigger 400 errors.
+        """
+        self.record_activity()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        saved_config = self.retry_config
+        self.retry_config = RetryConfig(max_attempts=1)
+        try:
+            response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
+        finally:
+            self.retry_config = saved_config
+        if response.status_code != 201:
+            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
+        return response.json()
+
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """Make a raw authenticated HTTP request and return parsed JSON."""
+        self.record_activity()
+        url = self._build_url(path)
+        kwargs = {}
+        if data is not None:
+            kwargs["json"] = data
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
+        try:
+            return response.json() if response.content else {}
+        except Exception:
+            logger.debug("direct_request: failed to parse response body for %s %s", method, path)
+            return {}
+
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[Dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
@@ -1334,6 +1430,7 @@ class PlatformService(BaseAPIClient):
             query_params: Optional key/value filter parameters
             return_all: When True, follow 'next' pagination links and collect all results
             max_objects: Safety cap; raises ValueError when return_all would exceed this
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict.  Components behind the gateway use two list shapes:
@@ -1347,7 +1444,7 @@ class PlatformService(BaseAPIClient):
             ValueError: When the HTTP request fails or max_objects is exceeded
         """
         self.record_activity()
-        url = self._build_url(endpoint)
+        url = self._build_url(endpoint, service=service)
         response = self._make_request("get", url, operation="search_api", resource=endpoint, params=query_params or {})
         data = response.json()
 
