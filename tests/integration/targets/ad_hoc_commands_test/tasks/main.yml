@@ -52,11 +52,12 @@
       register: adhoc_result
       ignore_errors: true
 
-    - name: Assert ad hoc command returned an ID and status
+    - name: Assert waiting ad hoc command completed successfully
       ansible.builtin.assert:
         that:
+          - adhoc_result is not failed
           - adhoc_result.id is defined
-          - adhoc_result.status is defined
+          - adhoc_result.status == 'successful'
 
     - name: Run an ad hoc command without waiting
       ansible.platform.ad_hoc_command:
@@ -86,6 +87,11 @@
       until: nowait_job_status.json.status in ['successful', 'failed', 'error', 'canceled']
       retries: 30
       delay: 2
+
+    - name: Assert no-wait ad hoc command completed successfully
+      ansible.builtin.assert:
+        that:
+          - nowait_job_status.json.status == 'successful'
 
   always:
     - name: Clean up test inventory
