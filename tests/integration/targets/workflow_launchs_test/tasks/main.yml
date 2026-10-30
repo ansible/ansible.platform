@@ -1,0 +1,231 @@
+---
+- name: Generate unique test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Set name prefix for test resources
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-WL-{{ test_id }}"
+
+- name: Run workflow launch integration tests and clean up resources
+  block:
+    - name: Create a test project for workflow launch
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Project"
+          organization: 1
+          scm_type: "git"
+          scm_url: "https://github.com/ansible/ansible-tower-samples"
+        status_code: [201]
+      register: test_project
+      delegate_to: localhost
+
+    - name: Wait for project sync to complete
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ test_project.json.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: project_status
+      delegate_to: localhost
+      until: project_status.json.status in ['successful', 'failed', 'error', 'canceled']
+      retries: 60
+      delay: 2
+
+    - name: Create an inventory with localhost
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Inventory"
+          organization: 1
+        status_code: [201]
+      register: test_inventory
+      delegate_to: localhost
+
+    - name: Add localhost to the inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "localhost"
+          variables: '{"ansible_connection": "local"}'
+        status_code: [201]
+      delegate_to: localhost
+
+    - name: Create a job template for the workflow
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-JT"
+          organization: 1
+          project: "{{ test_project.json.id }}"
+          playbook: "hello_world.yml"
+          inventory: "{{ test_inventory.json.id }}"
+        status_code: [201]
+      register: test_jt
+      delegate_to: localhost
+
+    - name: Create a simple workflow job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-WF"
+          organization: 1
+        status_code: [201]
+      register: wf_template
+      delegate_to: localhost
+
+    - name: Add a node to the workflow
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ wf_template.json.id }}/workflow_nodes/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          unified_job_template: "{{ test_jt.json.id }}"
+        status_code: [201]
+      delegate_to: localhost
+
+    - name: Launch the workflow and wait for completion
+      ansible.platform.workflow_launch:
+        name: "{{ name_prefix }}-WF"
+        wait: true
+        timeout: 120
+        interval: 2
+      register: launch_result
+
+    - name: Assert launch succeeded
+      ansible.builtin.assert:
+        that:
+          - launch_result is not failed
+          - launch_result.id is defined
+          - launch_result.status == "successful"
+
+    - name: Launch the workflow without waiting
+      ansible.platform.workflow_launch:
+        name: "{{ name_prefix }}-WF"
+        wait: false
+      register: nowait_result
+
+    - name: Assert no-wait launch returned an ID
+      ansible.builtin.assert:
+        that:
+          - nowait_result is not failed
+          - nowait_result.id is defined
+          - nowait_result.changed
+
+    - name: Wait for no-wait workflow job to finish before cleanup
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_jobs/{{ nowait_result.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: nowait_job_status
+      delegate_to: localhost
+      until: nowait_job_status.json.status in ['successful', 'failed', 'error', 'canceled']
+      retries: 60
+      delay: 2
+
+  always:
+    - name: Clean up workflow job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ wf_template.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - wf_template is defined
+        - wf_template.json is defined
+        - wf_template.json.id is defined
+      failed_when: false
+
+    - name: Clean up test job template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ test_jt.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - test_jt is defined
+        - test_jt.json is defined
+        - test_jt.json.id is defined
+      failed_when: false
+
+    - name: Clean up test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - test_inventory is defined
+        - test_inventory.json is defined
+        - test_inventory.json.id is defined
+      failed_when: false
+
+    - name: Clean up test project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/projects/{{ test_project.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - test_project is defined
+        - test_project.json is defined
+        - test_project.json.id is defined
+      failed_when: false
+...
