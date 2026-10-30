@@ -1,0 +1,191 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    target_cred_name: "EDA-CIS-Target-{{ test_id }}"
+    source_cred_name: "EDA-CIS-Source-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Setup — create target and source credentials> -------------------
+    - name: Create target EDA credential for testing
+      ansible.platform.eda_credential:
+        name: "{{ target_cred_name }}"
+        credential_type: "Machine"
+        state: present
+      register: target_cred
+      failed_when: false
+
+    - name: Create source EDA credential for testing
+      ansible.platform.eda_credential:
+        name: "{{ source_cred_name }}"
+        credential_type: "HashiCorp Vault Secret Lookup"
+        state: present
+      register: source_cred
+      failed_when: false
+
+    # <Create with check mode> -------------------
+    - name: Create credential input source with check mode
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        description: "Integration test input source"
+        metadata:
+          secret_path: "secret/myapp"
+          secret_key: "password"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    # <Create> -------------------
+    - name: Create credential input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        description: "Integration test input source"
+        metadata:
+          secret_path: "secret/myapp"
+          secret_key: "password"
+        state: present
+      register: create_result
+
+    - name: Assert credential input source was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_credential_input_source.id is defined
+
+    # <Idempotency — no change> -------------------
+    - name: Re-apply same credential input source (no change)
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        description: "Integration test input source"
+        metadata:
+          secret_path: "secret/myapp"
+          secret_key: "password"
+        state: present
+      register: idempotent_result
+
+    - name: Assert idempotency — no change
+      ansible.builtin.assert:
+        that:
+          - idempotent_result is not changed
+
+    # <Update — change description and metadata> -------------------
+    - name: Update credential input source description and metadata
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        description: "Updated integration test input source"
+        metadata:
+          secret_path: "secret/updated"
+          secret_key: "new_password"
+        state: present
+      register: update_result
+
+    - name: Assert credential input source was updated
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+          - update_result.eda_credential_input_source.id is defined
+
+    # <Exists — check presence> -------------------
+    - name: Check credential input source exists
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        state: exists
+      register: exists_result
+
+    - name: Assert exists check returns correctly
+      ansible.builtin.assert:
+        that:
+          - exists_result is not changed
+          - exists_result.exists | bool
+
+    # <Delete> -------------------
+    - name: Delete credential input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert credential input source was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # <Delete absent — no-op> -------------------
+    - name: Delete already absent credential input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete absent is no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+
+    # <Exists after delete — should not exist> -------------------
+    - name: Check credential input source no longer exists
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        state: exists
+      register: not_exists_result
+
+    - name: Assert exists check returns false
+      ansible.builtin.assert:
+        that:
+          - not_exists_result is not changed
+          - not (not_exists_result.exists | bool)
+
+  always:
+    - name: Cleanup — delete credential input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup — delete target credential
+      ansible.platform.eda_credential:
+        name: "{{ target_cred_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup — delete source credential
+      ansible.platform.eda_credential:
+        name: "{{ source_cred_name }}"
+        state: absent
+      failed_when: false
+...
