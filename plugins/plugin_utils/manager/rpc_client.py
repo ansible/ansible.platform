@@ -164,7 +164,7 @@ class ManagerRPCClient:
         """POST to a launch endpoint via the manager process. See PlatformService.launch_resource()."""
         return self.service_proxy.launch_resource(launch_url, payload, service, retry)
 
-    def can_cancel_resource(self, resource_id: int, cancel_endpoint_path: str, service: str = "gateway") -> bool:
+    def can_cancel_resource(self, resource_id: int, cancel_endpoint_path: str, service: str = "controller") -> bool:
         """Check whether a resource can be canceled via the manager process."""
         return self.service_proxy.can_cancel_resource(resource_id, cancel_endpoint_path, service)
 
@@ -175,7 +175,7 @@ class ManagerRPCClient:
         fail_if_not_running: bool = False,
         timeout: float = 0,
         interval: float = 1.0,
-        service: str = "gateway",
+        service: str = "controller",
         wait: bool = False,
     ) -> dict:
         """Cancel a resource via the manager process. See BaseAPIClient.cancel_resource()."""

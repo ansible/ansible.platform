@@ -24,6 +24,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
     WJT_LIST_ENDPOINT,
     WorkflowLaunchTransformMixin_v2,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -136,8 +137,6 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # Wait for the workflow job to complete
-            from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
-
             try:
                 # The legacy module waited indefinitely when timeout was omitted.
                 # The SDK uses negative timeout values for an unbounded wait.

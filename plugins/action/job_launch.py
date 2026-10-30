@@ -6,6 +6,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+from dataclasses import fields as dataclass_fields
+
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_launch import AnsibleJobLaunch
@@ -63,7 +65,7 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            model_fields = {f.name for f in __import__("dataclasses").fields(AnsibleJobLaunch)}
+            model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}
             ansible_obj = AnsibleJobLaunch(**{k: v for k, v in params.items() if v is not None and k not in self._AUTH_PARAMS and k in model_fields})
             context = TransformContext(
                 manager=manager,
