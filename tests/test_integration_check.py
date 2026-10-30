@@ -15,6 +15,7 @@ module_test_name_overrides = {
     "controller_project": "controller_project_test",
     "schedule": "schedule_test",
     "bulk_job_launch": "bulk_job_launches_test",
+    "job_launch": "job_launches_test",
 }
 tests_to_ignore = [
     "lookup_test",
