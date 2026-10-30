@@ -175,8 +175,9 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
         response = MagicMock()
         response.content = b'{"id": 12}'
         response.json.return_value = {"id": 12}
-        service.session.request.return_value = response
+        service.session.patch.return_value = response
         service._lock = threading.Lock()
+        service._activity_lock = threading.Lock()
         service._http_request_count = 0
         service.request_timeout = 30
         service.config = None
@@ -197,12 +198,12 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
     def test_platform_service_enforced_update_sends_null_associations(self):
         service = self._platform_service()
         service._execute_operations(self._operation(), self._api_data(self._context(True)), self._context(True), required_for="update")
-        self.assertEqual(service.session.request.call_args.kwargs["json"], {"image": "quay.io/example/ee", "organization": None, "credential": None})
+        self.assertEqual(service.session.patch.call_args.kwargs["json"], {"image": "quay.io/example/ee", "organization": None, "credential": None})
 
     def test_platform_service_partial_update_omits_associations(self):
         service = self._platform_service()
         service._execute_operations(self._operation(), self._api_data(self._context(False)), self._context(False), required_for="update")
-        self.assertEqual(service.session.request.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
+        self.assertEqual(service.session.patch.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
 
     def _update_payload(self, enforced):
         service = self._platform_service()
@@ -211,7 +212,7 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
 
         service._update_resource(desired, ExecutionEnvironmentTransformMixin_v2, self._context(enforced))
 
-        return service.session.request.call_args.kwargs["json"]
+        return service.session.patch.call_args.kwargs["json"]
 
     def test_platform_service_enforced_update_clears_omitted_associations_after_merge(self):
         self.assertEqual(
