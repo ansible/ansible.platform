@@ -53,4 +53,7 @@ action_groups:
     - bulk_job_launch
     - inventory_source_update
     - project_update
+    - bulk_host_delete
+    - ad_hoc_command_wait
+    - ad_hoc_command
 ...
