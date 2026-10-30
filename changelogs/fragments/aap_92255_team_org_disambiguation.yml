@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    role_team_assignment - when a receiving team name matches more than one
+    organization, fail with a clear error instead of selecting an arbitrary team
+    (``results[0]``). Add optional top-level ``organization`` (lookup-only) to
+    disambiguate the team name. Unique team names and numeric ``team`` /
+    ``team_ansible_id`` are unchanged (AAP-92255).

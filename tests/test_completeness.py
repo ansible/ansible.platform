@@ -85,6 +85,8 @@ no_api_parameter_ok = {
     "token": ["existing_token", "existing_token_id", "organization"],
     # These control polling behavior rather than the Controller launch payload.
     "bulk_job_launch": ["wait", "interval", "timeout"],
+    # organization scopes receiving-team name lookup only (AAP-92255); not an API field
+    "role_team_assignment": ["organization"],
 }
 
 # Modules that need to be developed. If the module is found on the file system it will auto-detect
