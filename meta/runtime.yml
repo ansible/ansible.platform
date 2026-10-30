@@ -57,4 +57,5 @@ action_groups:
     - ad_hoc_command_wait
     - ad_hoc_command
     - job_cancel
+    - workflow_launch
 ...
