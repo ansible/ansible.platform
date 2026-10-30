@@ -163,7 +163,7 @@ class BaseAPIClient(ABC):
 
             for value in batch_values:
                 if value not in resolved:
-                    raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
+                    raise ValidationError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
 
         batch_values = []
         for value in uncached:
@@ -240,7 +240,7 @@ class BaseAPIClient(ABC):
 
         if body is not None:
             if not isinstance(body, dict):
-                raise ValueError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
+                raise APIError(f"Malformed API response for {service}: expected JSON object, got {type(body).__name__}")
             if "current_version" in body:
                 cv = re.search(r"/v(\d+(?:\.\d+)?)/?$", str(body["current_version"]))
                 cv_raw = cv.group(1) if cv else str(body["current_version"]).lstrip("v")
@@ -364,7 +364,7 @@ class BaseAPIClient(ABC):
         if interval is None:
             interval = DEFAULT_WAIT_INTERVAL
         if interval <= 0:
-            raise ValueError("Polling interval must be positive, got %s" % interval)
+            raise ValidationError("Polling interval must be positive, got %s" % interval)
 
         url = self._build_url(resource_url, service=service)
         start = time.monotonic()
@@ -424,7 +424,10 @@ class BaseAPIClient(ABC):
 
         try:
             cancel_info = self._get_json(cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
-        except Exception:
+        except APIError as exc:
+            if exc.status_code in (404, 403):
+                raise
+            logger.warning("cancel eligibility check failed (status=%s), assuming not cancelable: %s", exc.status_code, exc)
             cancel_info = {}
 
         if not cancel_info.get("can_cancel", False):
