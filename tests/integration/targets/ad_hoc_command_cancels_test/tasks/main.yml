@@ -1,0 +1,204 @@
+---
+- name: Generate unique test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Set name prefix for test resources
+  ansible.builtin.set_fact:
+    name_prefix: "AAP-Collection-Test-AHCC-{{ test_id }}"
+
+- name: Run ad hoc command cancel test
+  block:
+    - name: Create a test Controller organization
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Organization"
+        status_code: [201]
+      register: test_organization
+      delegate_to: localhost
+
+    - name: Create a test inventory for ad hoc command cancel
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Inventory"
+          organization: "{{ test_organization.json.id }}"
+        status_code: [201]
+      register: test_inventory
+      delegate_to: localhost
+
+    - name: Add localhost to the inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "localhost"
+          variables: '{"ansible_connection": "local"}'
+        status_code: [201]
+      delegate_to: localhost
+
+    - name: Look up Machine credential type in Controller
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: machine_credential_type
+      delegate_to: localhost
+
+    - name: Assert Machine credential type exists
+      ansible.builtin.assert:
+        that:
+          - machine_credential_type.json.count | int > 0
+        fail_msg: "Controller Machine credential type was not found."
+
+    - name: Create a test Machine credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Credential"
+          credential_type: "{{ machine_credential_type.json.results[0].id }}"
+          organization: "{{ test_organization.json.id }}"
+          inputs:
+            username: ad-hoc-command-cancel-test
+        status_code: [200, 201]
+      register: test_credential
+      delegate_to: localhost
+
+    - name: Launch an ad hoc command to cancel
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          inventory: "{{ test_inventory.json.id }}"
+          credential: "{{ test_credential.json.id }}"
+          module_name: "shell"
+          module_args: "sleep 30"
+        status_code: [201]
+      register: launched_cmd
+      delegate_to: localhost
+
+    - name: Wait for the ad hoc command to start running
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/{{ launched_cmd.json.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: running_cmd
+      delegate_to: localhost
+      until: running_cmd.json.status == 'running'
+      retries: 60
+      delay: 1
+
+    - name: Cancel the running ad hoc command
+      ansible.platform.ad_hoc_command_cancel:
+        command_id: "{{ launched_cmd.json.id }}"
+        interval: 1.0
+        timeout: 60
+      register: cancel_result
+
+    - name: Wait for ad hoc command to reach terminal state
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/{{ launched_cmd.json.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: final_cmd
+      delegate_to: localhost
+      until: final_cmd.json.status in ['successful', 'failed', 'error', 'canceled']
+      retries: 60
+      delay: 2
+
+    - name: Assert cancellation result is consistent
+      ansible.builtin.assert:
+        that:
+          - cancel_result is not failed
+          - cancel_result.id | int == launched_cmd.json.id | int
+          - cancel_result.status == 'canceled'
+          - final_cmd.json.status == 'canceled'
+
+  always:
+    - name: Clean up test credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/{{ test_credential.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - test_credential is defined
+        - test_credential is not failed
+        - test_credential.json.id is defined
+      delegate_to: localhost
+
+    - name: Clean up test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - test_inventory is defined
+        - test_inventory is not failed
+        - test_inventory.json.id is defined
+      delegate_to: localhost
+
+    - name: Clean up test organization
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/{{ test_organization.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      when:
+        - test_organization is defined
+        - test_organization is not failed
+        - test_organization.json.id is defined
+      delegate_to: localhost
+...
