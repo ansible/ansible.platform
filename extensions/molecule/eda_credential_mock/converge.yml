@@ -48,10 +48,11 @@
       ansible.platform.eda_credential:
         name: "molecule-mock-eda-cred-local"
         description: "Molecule test credential"
-        credential_type: "GitLab Personal Access Token"
+        credential_type: "Source Control"
         organization: "Default"
         inputs:
-          token: "test-token-value"
+          username: "test-user"
+          password: "test-pass"
         state: present
         gateway_hostname: "{{ gateway_hostname }}"
         gateway_username: "{{ gateway_username }}"
@@ -122,10 +123,11 @@
       ansible.platform.eda_credential:
         name: "molecule-mock-eda-cred-hd"
         description: "HTTP direct test credential"
-        credential_type: "GitLab Personal Access Token"
+        credential_type: "Source Control"
         organization: "Default"
         inputs:
-          token: "test-token-direct"
+          username: "test-user-direct"
+          password: "test-pass-direct"
         state: present
       register: create_result_http_direct
       no_log: false

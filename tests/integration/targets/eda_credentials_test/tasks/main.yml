@@ -23,10 +23,11 @@
       ansible.platform.eda_credential:
         name: "{{ cred_name }}"
         description: "Integration test credential"
-        credential_type: "GitLab Personal Access Token"
+        credential_type: "Source Control"
         organization: Default
         inputs:
-          token: "test-token-{{ test_id }}"
+          username: "test-user-{{ test_id }}"
+          password: "test-pass-{{ test_id }}"
         state: present
       check_mode: true
       register: check_create
@@ -40,10 +41,11 @@
       ansible.platform.eda_credential:
         name: "{{ cred_name }}"
         description: "Integration test credential"
-        credential_type: "GitLab Personal Access Token"
+        credential_type: "Source Control"
         organization: Default
         inputs:
-          token: "test-token-{{ test_id }}"
+          username: "test-user-{{ test_id }}"
+          password: "test-pass-{{ test_id }}"
         state: present
       register: create_result
       no_log: false
@@ -60,10 +62,11 @@
       ansible.platform.eda_credential:
         name: "{{ cred_name }}"
         description: "Integration test credential"
-        credential_type: "GitLab Personal Access Token"
+        credential_type: "Source Control"
         organization: Default
         inputs:
-          token: "test-token-{{ test_id }}"
+          username: "test-user-{{ test_id }}"
+          password: "test-pass-{{ test_id }}"
         state: present
       register: idempotent_result
       no_log: false
@@ -78,7 +81,7 @@
       ansible.platform.eda_credential:
         name: "{{ cred_name }}"
         description: "Updated description"
-        credential_type: "GitLab Personal Access Token"
+        credential_type: "Source Control"
         organization: Default
         state: present
       register: update_result
