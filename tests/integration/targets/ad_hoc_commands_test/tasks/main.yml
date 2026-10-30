@@ -8,91 +8,98 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-AHC-{{ test_id }}"
 
-- name: Create a test inventory for ad hoc command
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
-    method: POST
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    body_format: json
-    body:
-      name: "{{ name_prefix }}-Inventory"
-      organization: 1
-    status_code: [201]
-  register: test_inventory
-  delegate_to: localhost
+- name: Exercise ad hoc command lifecycle
+  block:
+    - name: Create a test inventory for ad hoc command
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ name_prefix }}-Inventory"
+          organization: 1
+        status_code: [201]
+      register: test_inventory
+      delegate_to: localhost
 
-- name: Add localhost to the inventory
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
-    method: POST
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    body_format: json
-    body:
-      name: "localhost"
-      variables: '{"ansible_connection": "local"}'
-    status_code: [201]
-  delegate_to: localhost
+    - name: Add localhost to the inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "localhost"
+          variables: '{"ansible_connection": "local"}'
+        status_code: [201]
+      delegate_to: localhost
 
-- name: Run an ad hoc command and wait for completion
-  ansible.platform.ad_hoc_command:
-    inventory: "{{ name_prefix }}-Inventory"
-    credential: "Demo Credential"
-    module_name: "ping"
-    wait: true
-    timeout: 60
-    interval: 2
-  register: adhoc_result
-  ignore_errors: true
+    - name: Run an ad hoc command and wait for completion
+      ansible.platform.ad_hoc_command:
+        inventory: "{{ name_prefix }}-Inventory"
+        credential: "Demo Credential"
+        module_name: "ping"
+        wait: true
+        timeout: 60
+        interval: 2
+      register: adhoc_result
+      ignore_errors: true
 
-- name: Assert ad hoc command returned an ID and status
-  ansible.builtin.assert:
-    that:
-      - adhoc_result.id is defined
-      - adhoc_result.status is defined
+    - name: Assert ad hoc command returned an ID and status
+      ansible.builtin.assert:
+        that:
+          - adhoc_result.id is defined
+          - adhoc_result.status is defined
 
-- name: Run an ad hoc command without waiting
-  ansible.platform.ad_hoc_command:
-    inventory: "{{ name_prefix }}-Inventory"
-    credential: "Demo Credential"
-    module_name: "ping"
-    wait: false
-  register: nowait_result
+    - name: Run an ad hoc command without waiting
+      ansible.platform.ad_hoc_command:
+        inventory: "{{ name_prefix }}-Inventory"
+        credential: "Demo Credential"
+        module_name: "ping"
+        wait: false
+      register: nowait_result
 
-- name: Assert no-wait launch returned an ID
-  ansible.builtin.assert:
-    that:
-      - nowait_result is not failed
-      - nowait_result.id is defined
-      - nowait_result.changed
+    - name: Assert no-wait launch returned an ID
+      ansible.builtin.assert:
+        that:
+          - nowait_result is not failed
+          - nowait_result.id is defined
+          - nowait_result.changed
 
-- name: Wait for no-wait ad hoc command to finish before cleanup
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/{{ nowait_result.id }}/"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-  register: nowait_job_status
-  delegate_to: localhost
-  until: nowait_job_status.json.status in ['successful', 'failed', 'error', 'canceled']
-  retries: 30
-  delay: 2
+    - name: Wait for no-wait ad hoc command to finish before cleanup
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/ad_hoc_commands/{{ nowait_result.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: nowait_job_status
+      delegate_to: localhost
+      until: nowait_job_status.json.status in ['successful', 'failed', 'error', 'canceled']
+      retries: 30
+      delay: 2
 
-- name: Clean up test inventory
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
-    method: DELETE
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [202, 204]
-  delegate_to: localhost
+  always:
+    - name: Clean up test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204]
+      delegate_to: localhost
+      when:
+        - test_inventory is defined
+        - test_inventory.json is defined
+        - test_inventory.json.id is defined
 ...

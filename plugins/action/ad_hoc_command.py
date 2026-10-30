@@ -7,18 +7,14 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import json
-from typing import TYPE_CHECKING, Optional, Union
+from dataclasses import fields
+from typing import Optional
 
-from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-
-if TYPE_CHECKING:
-    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ad_hoc_command import AnsibleAdHocCommand
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command import (
     AD_HOC_COMMANDS_DETAIL_ENDPOINT,
-    AD_HOC_COMMANDS_ENDPOINT,
+    AdHocCommandTransformMixin_v2,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
@@ -27,7 +23,6 @@ _SERVICE = "controller"
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "ad_hoc_command"
-    MODEL_CLASS = None
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Launch an ad hoc command on Controller.
@@ -39,37 +34,38 @@ class ActionModule(BaseResourceActionPlugin):
         Returns:
             dict: Result with id, status, changed, and failed keys.
         """
-        if task_vars is None:
-            task_vars = {}
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-        self._task_vars = task_vars
-
-        doc = self._get_documentation()
-        argspec = self._build_argspec_from_docs(doc) if doc else None
-        if not argspec:
-            raise AnsibleError("Could not load DOCUMENTATION for ad_hoc_command module")
-
-        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-        manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-        self._client = manager
-        if facts_to_set:
-            result["ansible_facts"] = facts_to_set
-            result["_ansible_facts_cacheable"] = True
-
-        params = validated_input.validated_parameters
+        prepared = self._prepare_action(tmp, task_vars)
+        result = prepared["result"]
+        params = prepared["validated_params"]
+        manager = prepared["manager"]
 
         wait = params.get("wait", False)
         interval = params.get("interval", 2.0)
         timeout = params.get("timeout")
+        wait_timeout = float(timeout) if timeout is not None else None
+        if wait_timeout is None or wait_timeout == 0:
+            wait_timeout = -1.0
+
+        try:
+            ansible_data = AnsibleAdHocCommand(**{field.name: params[field.name] for field in fields(AnsibleAdHocCommand) if field.name in params})
+            transform_context = {
+                "manager": manager,
+                "session": getattr(manager, "session", None),
+                "cache": getattr(manager, "cache", {}),
+                "api_version": "2",
+            }
+            create_operation = AdHocCommandTransformMixin_v2.get_endpoint_operations()["create"]
+            post_data = AdHocCommandTransformMixin_v2.to_payload(ansible_data, transform_context)
+        except Exception as exc:
+            result.update({"changed": False, "failed": True, "msg": str(exc)})
+            return result
 
         if self._task.check_mode:
             result.update({"changed": True, "failed": False, "msg": "Ad hoc command launch skipped (check mode)"})
             return result
 
         try:
-            post_data = self._build_post_data(manager, params)
-            launch_result = manager.launch_resource(AD_HOC_COMMANDS_ENDPOINT, post_data, service=_SERVICE)
+            launch_result = manager.launch_resource(create_operation.path, post_data, service=_SERVICE)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
             return result
@@ -85,7 +81,7 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             wait_result = manager.wait_for_completion(
                 job_url,
-                timeout=float(timeout) if timeout else None,
+                timeout=wait_timeout,
                 interval=float(interval),
                 service=_SERVICE,
             )
@@ -118,38 +114,3 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
         return result
-
-    def _build_post_data(self, manager: Union["DirectHTTPClient", "ManagerRPCClient"], params: dict) -> dict:
-        """Build the POST payload, resolving FK references and serializing extra_vars.
-
-        Args:
-            manager: Platform manager instance for FK lookups.
-            params: Validated module parameters.
-
-        Returns:
-            dict: Payload suitable for the ad_hoc_commands endpoint.
-        """
-        post_data = {}
-
-        post_data["inventory"] = manager.lookup_resource_id("inventories", "name", params["inventory"], service=_SERVICE)
-        post_data["credential"] = manager.lookup_resource_id("credentials", "name", params["credential"], service=_SERVICE)
-
-        if params.get("execution_environment"):
-            post_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", params["execution_environment"], service=_SERVICE)
-
-        post_data["module_name"] = params["module_name"]
-
-        if params.get("module_args") is not None:
-            post_data["module_args"] = params["module_args"]
-
-        for field in ("job_type", "limit", "forks", "verbosity", "become_enabled", "diff_mode"):
-            if params.get(field) is not None:
-                post_data[field] = params[field]
-
-        if params.get("extra_vars") is not None:
-            if isinstance(params["extra_vars"], dict):
-                post_data["extra_vars"] = json.dumps(params["extra_vars"])
-            else:
-                post_data["extra_vars"] = str(params["extra_vars"])
-
-        return post_data
