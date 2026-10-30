@@ -26,6 +26,7 @@ action_groups:
     - user
   eda:
     - eda_controller_token
+    - eda_credential
   controller:
     - job_template
     - controller_credential_type
