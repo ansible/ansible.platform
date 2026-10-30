@@ -58,4 +58,5 @@ action_groups:
     - ad_hoc_command
     - job_cancel
     - job_launch
+    - license
 ...

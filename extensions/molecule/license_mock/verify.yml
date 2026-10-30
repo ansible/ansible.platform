@@ -1,0 +1,10 @@
+---
+- name: Verify — license mock
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: License mock scenario verified by converge assertions
+      ansible.builtin.debug:
+        msg: "All license mock tests passed in converge"
+...

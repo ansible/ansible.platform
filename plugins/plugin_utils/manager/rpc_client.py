@@ -172,6 +172,14 @@ class ManagerRPCClient:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
 
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""
+        return self.service_proxy.post_resource(endpoint, data, service, retry)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an endpoint via the manager process. See PlatformService.delete_resource()."""
+        return self.service_proxy.delete_resource(endpoint, service)
+
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
         return self.service_proxy.bulk_host_create(inventory_id, hosts, service)

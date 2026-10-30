@@ -1,0 +1,95 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+
+    - name: Create manager survive flag
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+
+- name: Converge — license (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Create a mock manifest file
+      ansible.builtin.copy:
+        content: "mock-manifest-data"
+        dest: /tmp/mock_manifest.zip
+        mode: "0644"
+
+    - name: Apply manifest license
+      ansible.platform.license:
+        manifest: /tmp/mock_manifest.zip
+        state: present
+        force: true
+      register: manifest_result
+
+    - name: Assert manifest apply changed
+      ansible.builtin.assert:
+        that:
+          - manifest_result is changed
+          - manifest_result.license_info.license_type == 'enterprise'
+
+    - name: Apply manifest again without force (idempotent)
+      ansible.platform.license:
+        manifest: /tmp/mock_manifest.zip
+        state: present
+      register: manifest_idem
+
+    - name: Assert idempotent apply is not changed
+      ansible.builtin.assert:
+        that:
+          - manifest_idem is not changed
+
+    - name: Remove license
+      ansible.platform.license:
+        state: absent
+      register: absent_result
+
+    - name: Assert license removal changed
+      ansible.builtin.assert:
+        that:
+          - absent_result is changed
+
+    - name: Remove license again (already absent)
+      ansible.platform.license:
+        state: absent
+      register: absent_idem
+
+    - name: Assert removing absent license is not changed
+      ansible.builtin.assert:
+        that:
+          - absent_idem is not changed
+
+    - name: Clean up mock manifest
+      ansible.builtin.file:
+        path: /tmp/mock_manifest.zip
+        state: absent
+...
