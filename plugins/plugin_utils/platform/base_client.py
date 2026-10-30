@@ -365,6 +365,12 @@ class BaseAPIClient(ABC):
         of zero means wait indefinitely. When wait=False (default), returns
         immediately after a successful cancel POST.
         """
+        if wait:
+            if interval <= 0:
+                raise ValueError("Polling interval must be positive, got %s" % interval)
+            if timeout < 0:
+                raise ValueError("Timeout must be 0 or greater")
+
         endpoint = cancel_endpoint_path.strip("/")
         cancel_path = f"/{endpoint}/{resource_id}/cancel/"
         url = self._build_url(cancel_path, service=service)
@@ -383,11 +389,6 @@ class BaseAPIClient(ABC):
 
         if not wait:
             return {"changed": True, "id": resource_id, "status": "canceled"}
-
-        if interval <= 0:
-            raise ValueError("Polling interval must be positive, got %s" % interval)
-        if timeout < 0:
-            raise ValueError("Timeout must be 0 or greater")
 
         completion = self.wait_for_completion(
             f"/{endpoint}/{resource_id}/",
