@@ -70,7 +70,7 @@ class TestCancelResource(unittest.TestCase):
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "canceled")
         self.svc.session.post.assert_called_once()
-        self.svc.wait_for_completion.assert_called_once_with("/jobs/42/", timeout=-1, interval=1.0, service="controller")
+        self.svc.wait_for_completion.assert_not_called()
 
     def test_cancel_finished_job_returns_not_changed(self):
         """A finished job that cannot be canceled returns changed=False."""
@@ -135,7 +135,6 @@ class TestCancelResource(unittest.TestCase):
 
     def test_post_retries_once_after_auth_recovery(self):
         """A definite 401 permits one cancellation POST after credentials recover."""
-        self.svc.session.get.return_value = _resp(200, {"can_cancel": True})
         unauthorized = _resp(401)
         accepted = _resp(202)
         self.svc.session.post.side_effect = [unauthorized, accepted]
@@ -149,7 +148,6 @@ class TestCancelResource(unittest.TestCase):
 
     def test_timeout_on_cancel_post_raises(self):
         """A timeout on the cancel POST should raise PlatformTimeoutError."""
-        self.svc.session.get.return_value = _resp(200, {"can_cancel": True})
         self.svc.session.post.side_effect = RequestTimeout("read timed out")
 
         with self.assertRaises(PlatformTimeoutError):
@@ -173,7 +171,7 @@ class TestCancelResourceRPC(unittest.TestCase):
             service="controller",
         )
 
-        client.service_proxy.cancel_resource.assert_called_once_with(5, "jobs", True, 0, 1.0, "controller")
+        client.service_proxy.cancel_resource.assert_called_once_with(5, "jobs", True, 0, 1.0, "controller", False)
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 5)
 

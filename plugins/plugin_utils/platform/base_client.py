@@ -337,7 +337,7 @@ class BaseAPIClient(ABC):
         url = self._build_url(launch_url, service=service)
         return self._post_json(url, payload, operation="launch_resource", resource="launch", retry=retry)
 
-    def can_cancel_resource(self, resource_id: int, cancel_endpoint_path: str, service: str = "gateway") -> bool:
+    def can_cancel_resource(self, resource_id: int, cancel_endpoint_path: str, service: str = "controller") -> bool:
         """Return whether a resource's cancel endpoint currently permits cancellation."""
         endpoint = cancel_endpoint_path.strip("/")
         cancel_path = f"/{endpoint}/{resource_id}/cancel/"
@@ -354,7 +354,7 @@ class BaseAPIClient(ABC):
         fail_if_not_running: bool = False,
         timeout: float = 0,
         interval: float = 1.0,
-        service: str = "gateway",
+        service: str = "controller",
         wait: bool = False,
     ) -> dict:
         """Cancel a resource through its ``cancel`` sub-endpoint.
