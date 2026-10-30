@@ -753,7 +753,6 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         body = response.read()
         if not body:
-            response.raise_for_status()
             return {}
         return json.loads(body)
 

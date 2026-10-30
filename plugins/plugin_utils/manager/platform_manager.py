@@ -1360,7 +1360,6 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
         response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
         if not response.content:
-            response.raise_for_status()
             return {}
         return response.json()
 

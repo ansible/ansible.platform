@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 from ..platform.config import GatewayConfig
+from ..platform.exceptions import APIError, ValidationError
 from ..platform.loader import DynamicClassLoader
 from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
@@ -420,14 +421,27 @@ class BaseAPIClient(ABC):
         Already-finished resources return changed=False.
         """
         cancel_url = self._build_url(f"/{cancel_endpoint_path}/{resource_id}/cancel/", service=service)
-        cancel_info = self._get_json(cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+
+        try:
+            cancel_info = self._get_json(cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
+        except Exception:
+            cancel_info = {}
 
         if not cancel_info.get("can_cancel", False):
             if fail_if_not_running:
-                raise ValueError("Job %d is not running and cannot be canceled" % resource_id)
+                raise ValidationError(
+                    "Job %d is not running and cannot be canceled" % resource_id,
+                    operation="cancel_resource",
+                    resource=cancel_endpoint_path,
+                )
             return {"changed": False, "id": resource_id, "status": "already_completed"}
 
-        self._post_json(cancel_url, {}, operation="cancel_resource", resource=cancel_endpoint_path)
+        try:
+            self._post_json(cancel_url, {}, operation="cancel_resource", resource=cancel_endpoint_path)
+        except APIError as exc:
+            if exc.status_code == 405:
+                return {"changed": False, "id": resource_id, "status": "already_completed"}
+            raise
         return {"changed": True, "id": resource_id, "status": "canceled"}
 
     def lookup_organization_ids(self, names: list) -> list:

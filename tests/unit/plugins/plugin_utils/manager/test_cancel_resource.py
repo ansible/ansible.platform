@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import TimeoutError as PlatformTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 from requests.exceptions import Timeout as RequestTimeout
 
@@ -86,11 +87,11 @@ class TestCancelResource(unittest.TestCase):
         self.svc.session.post.assert_not_called()
 
     def test_cancel_finished_job_with_fail_if_not_running_raises(self):
-        """fail_if_not_running=True raises ValueError for a finished job."""
+        """fail_if_not_running=True raises ValidationError for a finished job."""
         get_resp = _resp(200, {"can_cancel": False})
         self.svc.session.get.return_value = get_resp
 
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises(ValidationError) as ctx:
             self.svc.cancel_resource(
                 resource_id=77,
                 cancel_endpoint_path="jobs",
