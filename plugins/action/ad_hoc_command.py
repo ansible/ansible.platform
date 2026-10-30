@@ -65,7 +65,7 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            launch_result = manager.launch_resource(create_operation.path, post_data, service=_SERVICE)
+            launch_result = manager.launch_resource(create_operation.path, post_data, service=_SERVICE, retry=False)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
             return result

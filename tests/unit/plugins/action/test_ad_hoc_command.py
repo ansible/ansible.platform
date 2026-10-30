@@ -186,6 +186,12 @@ class TestLaunchWithoutWait(unittest.TestCase):
         self.assertFalse(result["failed"])
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "pending")
+        manager.launch_resource.assert_called_once_with(
+            "/api/controller/v2/ad_hoc_commands/",
+            {"inventory": 1, "credential": 2, "module_name": "ping"},
+            service="controller",
+            retry=False,
+        )
         manager.wait_for_completion.assert_not_called()
 
 
