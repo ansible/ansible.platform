@@ -54,7 +54,7 @@ class TestEventStreamActionCRUD(unittest.TestCase):
                     return find_result
                 raise ValueError("Not found")
             if operation == "delete":
-                return {}
+                return {"changed": True}
             if operation == "create":
                 return create_result or {"id": 100, "name": ansible_data.get("name", ""), "changed": True}
             if operation == "update":
@@ -68,21 +68,32 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         return manager
 
     def _run(self, action, manager, params):
-        argspec = {"argument_spec": {
-            "name": {"required": True, "type": "str"}, "new_name": {"type": "str"},
-            "credential_name": {"type": "str", "aliases": ["credential"]},
-            "organization_name": {"type": "str", "aliases": ["organization"]},
-            "event_stream_type": {"type": "str", "aliases": ["type"]},
-            "headers": {"type": "str"}, "forward_events": {"type": "bool"},
-            "uuid": {"type": "str"},
-            "state": {"type": "str", "choices": ["present", "absent"], "default": "present"},
-        }}
-        validation = SimpleNamespace(validated_parameters=params)
-        with patch.object(ActionBase, "run", return_value={}), \
-             patch.object(action, "_get_documentation", return_value="module: event_stream"), \
-             patch.object(action, "_build_argspec_from_docs", return_value=argspec), \
-             patch.object(action, "_validate_data", return_value=validation), \
-             patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        argspec = {
+            "argument_spec": {
+                "name": {"required": True, "type": "str"},
+                "new_name": {"type": "str"},
+                "credential_name": {"type": "str", "aliases": ["credential"]},
+                "organization_name": {"type": "str", "aliases": ["organization"]},
+                "event_stream_type": {"type": "str", "aliases": ["type"]},
+                "headers": {"type": "str"},
+                "forward_events": {"type": "bool"},
+                "uuid": {"type": "str"},
+                "state": {"type": "str", "choices": ["present", "absent"], "default": "present"},
+            }
+        }
+
+        def validate_side_effect(data, spec, direction):
+            if direction == "input":
+                return SimpleNamespace(validated_parameters=params)
+            return data
+
+        with (
+            patch.object(ActionBase, "run", return_value={}),
+            patch.object(action, "_get_documentation", return_value="module: event_stream"),
+            patch.object(action, "_build_argspec_from_docs", return_value=argspec),
+            patch.object(action, "_validate_data", side_effect=validate_side_effect),
+            patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        ):
             return action.run(task_vars={})
 
     def test_create_new(self):
@@ -143,12 +154,14 @@ class TestEventStreamTransform(unittest.TestCase):
 
     def _mgr(self, cred_id=10, org_id=1):
         m = MagicMock()
+
         def lookup(endpoint, field, value, service="gateway"):
             if endpoint == "eda-credentials":
                 return cred_id
             if endpoint == "organizations":
                 return org_id
             raise ValueError(endpoint)
+
         m.lookup_resource_id.side_effect = lookup
         return m
 
@@ -205,8 +218,12 @@ class TestEventStreamTransform(unittest.TestCase):
 
     def test_from_api_basic(self):
         data = {
-            "id": 42, "name": "s", "eda_credential_id": 10, "organization_id": 1,
-            "test_mode": False, "additional_data_headers": "H",
+            "id": 42,
+            "name": "s",
+            "eda_credential_id": 10,
+            "organization_id": 1,
+            "test_mode": False,
+            "additional_data_headers": "H",
             "uuid": "550e8400-e29b-41d4-a716-446655440000",
         }
         obj = EventStreamTransformMixin_v1.from_api(data, {})
