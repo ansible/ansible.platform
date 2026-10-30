@@ -43,6 +43,7 @@ no_endpoint_for_module = [
     "inventory_source_update",
     "project_update",
     "bulk_host_delete",
+    "ad_hoc_command_wait",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.

@@ -54,4 +54,5 @@ action_groups:
     - inventory_source_update
     - project_update
     - bulk_host_delete
+    - ad_hoc_command_wait
 ...
