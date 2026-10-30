@@ -10,8 +10,8 @@ import unittest
 from unittest.mock import MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import TimeoutError as PlatformTimeoutError
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 from requests.exceptions import Timeout as RequestTimeout
 
@@ -36,6 +36,7 @@ def _service(base_url="https://gw.example.com"):
     service._lock = threading.Lock()
     service._http_request_count = 0
     service._handle_auth_error = MagicMock(return_value=False)
+    service.wait_for_completion = MagicMock(return_value={"status": "canceled"})
     return service
 
 
@@ -69,11 +70,11 @@ class TestCancelResource(unittest.TestCase):
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "canceled")
         self.svc.session.post.assert_called_once()
+        self.svc.wait_for_completion.assert_called_once_with("/jobs/42/", timeout=-1, interval=1.0, service="controller")
 
     def test_cancel_finished_job_returns_not_changed(self):
         """A finished job that cannot be canceled returns changed=False."""
-        get_resp = _resp(200, {"can_cancel": False})
-        self.svc.session.get.return_value = get_resp
+        self.svc.session.post.side_effect = APIError("Cannot cancel", status_code=405)
 
         result = self.svc.cancel_resource(
             resource_id=99,
@@ -83,15 +84,14 @@ class TestCancelResource(unittest.TestCase):
 
         self.assertFalse(result["changed"])
         self.assertEqual(result["id"], 99)
-        self.assertEqual(result["status"], "already_completed")
-        self.svc.session.post.assert_not_called()
+        self.assertEqual(result["status"], "already finished")
+        self.svc.wait_for_completion.assert_not_called()
 
     def test_cancel_finished_job_with_fail_if_not_running_raises(self):
-        """fail_if_not_running=True raises ValidationError for a finished job."""
-        get_resp = _resp(200, {"can_cancel": False})
-        self.svc.session.get.return_value = get_resp
+        """fail_if_not_running=True raises when the cancel endpoint returns 405."""
+        self.svc.session.post.side_effect = APIError("Cannot cancel", status_code=405)
 
-        with self.assertRaises(ValidationError) as ctx:
+        with self.assertRaisesRegex(ValueError, "Resource is not running"):
             self.svc.cancel_resource(
                 resource_id=77,
                 cancel_endpoint_path="jobs",
@@ -99,14 +99,12 @@ class TestCancelResource(unittest.TestCase):
                 service="controller",
             )
 
-        self.assertIn("not running", str(ctx.exception))
-        self.svc.session.post.assert_not_called()
+        self.svc.session.post.assert_called_once()
+        self.svc.wait_for_completion.assert_not_called()
 
     def test_cancel_calls_correct_url(self):
         """cancel_resource builds the correct controller /cancel/ URL."""
-        get_resp = _resp(200, {"can_cancel": True})
         post_resp = _resp(202, {})
-        self.svc.session.get.return_value = get_resp
         self.svc.session.post.return_value = post_resp
 
         self.svc.cancel_resource(
@@ -116,10 +114,6 @@ class TestCancelResource(unittest.TestCase):
         )
 
         expected_url = "https://gw.example.com/api/controller/v2/jobs/123/cancel/"
-        self.svc.session.get.assert_called_once()
-        actual_get_url = self.svc.session.get.call_args[0][0]
-        self.assertEqual(actual_get_url, expected_url)
-
         self.svc.session.post.assert_called_once()
         actual_post_url = self.svc.session.post.call_args[0][0]
         self.assertEqual(actual_post_url, expected_url)
@@ -138,19 +132,6 @@ class TestCancelResource(unittest.TestCase):
         )
 
         self.svc.record_activity.assert_called()
-
-    def test_eligibility_get_recovers_from_expired_credentials(self):
-        """The eligibility GET uses the shared 401 authentication recovery path."""
-        unauthorized = _resp(401)
-        finished = _resp(200, {"can_cancel": False})
-        self.svc.session.get.side_effect = [unauthorized, finished]
-        self.svc._handle_auth_error.return_value = True
-
-        result = self.svc.cancel_resource(resource_id=42, cancel_endpoint_path="jobs")
-
-        self.assertEqual(result["status"], "already_completed")
-        self.assertEqual(self.svc.session.get.call_count, 2)
-        self.svc._handle_auth_error.assert_called_once_with(unauthorized)
 
     def test_post_retries_once_after_auth_recovery(self):
         """A definite 401 permits one cancellation POST after credentials recover."""
@@ -192,7 +173,7 @@ class TestCancelResourceRPC(unittest.TestCase):
             service="controller",
         )
 
-        client.service_proxy.cancel_resource.assert_called_once_with(5, "jobs", True, "controller")
+        client.service_proxy.cancel_resource.assert_called_once_with(5, "jobs", True, 0, 1.0, "controller")
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 5)
 
