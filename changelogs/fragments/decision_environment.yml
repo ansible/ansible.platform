@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - decision_environment - migrate ``decision_environment`` module from ``ansible.eda`` (https://issues.redhat.com/browse/AAP-97665).
+...
