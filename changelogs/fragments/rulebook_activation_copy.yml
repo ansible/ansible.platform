@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - rulebook_activation_copy - migrate ``rulebook_activation_copy`` module from ``ansible.eda`` (https://issues.redhat.com/browse/AAP-97669).
+...
