@@ -56,6 +56,7 @@ controller_no_api_parameter_ok = {
     "controller_credential_type": [],
     "controller_project": ["wait", "update_project", "interval"],
     "workflow_job_template_node": ["organization"],
+    "ad_hoc_command": ["wait", "interval", "timeout"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)

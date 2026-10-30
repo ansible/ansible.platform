@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - ad_hoc_command - migrate ad_hoc_command module from awx_collection (https://issues.redhat.com/browse/AAP-95838).
+...
