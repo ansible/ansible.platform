@@ -34,6 +34,7 @@ options:
   description:
     description:
       - The description of the AWX token.
+      - Required when O(state=present).
     type: str
 
   token:

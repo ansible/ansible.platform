@@ -62,6 +62,14 @@ class ActionModule(BaseResourceActionPlugin):
             description = validated_params.get("description")
             token_value = validated_params.get("token")
 
+            if state == "present":
+                from ansible.errors import AnsibleError
+
+                if description is None:
+                    raise AnsibleError("Parameter 'description' is required when state is 'present'")
+                if token_value is None:
+                    raise AnsibleError("Parameter 'token' is required when state is 'present'")
+
             # Find existing token by name
             existing = None
             try:
@@ -113,11 +121,6 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # state == "present"
-            if token_value is None:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Parameter 'token' is required when state is 'present'")
-
             if self._task.check_mode:
                 result.update(
                     {

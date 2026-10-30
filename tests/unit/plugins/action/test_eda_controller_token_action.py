@@ -150,6 +150,7 @@ class TestEdaControllerTokenAction(unittest.TestCase):
             manager,
             {
                 "name": "my-token",
+                "description": "test",
                 "token": "secret",
                 "state": "present",
             },
@@ -198,6 +199,25 @@ class TestEdaControllerTokenAction(unittest.TestCase):
         self.assertTrue(result["failed"])
         self.assertIn("token", result["msg"].lower())
 
+    def test_present_without_description_fails_before_mutation(self):
+        """State=present requires a description and must not replace an existing token without it."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 5999, "name": "my-token"})
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-token",
+                "description": None,
+                "token": "new-secret",
+                "state": "present",
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("description", result["msg"].lower())
+        manager.execute.assert_not_called()
+
     def test_find_reraises_non_not_found_errors(self):
         """ValueError not related to 'not found' is re-raised."""
         action = self._make_action()
@@ -208,6 +228,7 @@ class TestEdaControllerTokenAction(unittest.TestCase):
             manager,
             {
                 "name": "my-token",
+                "description": "test",
                 "token": "secret",
                 "state": "present",
             },
