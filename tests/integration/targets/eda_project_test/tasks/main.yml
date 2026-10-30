@@ -1,0 +1,153 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    project_name: "EDA-Project-Test-{{ test_id }}"
+    project_url: "https://github.com/ansible/ansible-rulebook.git"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Create - check mode> -------------------
+    - name: Create EDA project with check mode
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        url: "{{ project_url }}"
+        organization_name: Default
+        state: present
+        wait: false
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    # <Create> -------------------
+    - name: Create EDA project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        url: "{{ project_url }}"
+        organization_name: Default
+        description: "Integration test project"
+        state: present
+        wait: true
+      register: create_result
+
+    - name: Assert project was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_project.id is defined
+          - create_result.eda_project.name == project_name
+
+    # <Idempotent create> -------------------
+    - name: Create same project again (idempotency check)
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        url: "{{ project_url }}"
+        organization_name: Default
+        description: "Integration test project"
+        state: present
+        wait: false
+      register: idempotent_result
+
+    - name: Assert idempotent create reports no change
+      ansible.builtin.assert:
+        that:
+          - idempotent_result is not changed
+
+    # <Update> -------------------
+    - name: Update EDA project description
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        description: "Updated integration test project"
+        state: present
+        wait: true
+      register: update_result
+
+    - name: Assert project was updated
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+
+    # <Sync> -------------------
+    - name: Sync existing project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        sync: true
+        wait: true
+        state: present
+      register: sync_result
+
+    - name: Assert sync reports changed
+      ansible.builtin.assert:
+        that:
+          - sync_result is changed
+
+    # <Rename> -------------------
+    - name: Rename EDA project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        new_name: "{{ project_name }}-renamed"
+        state: present
+        wait: false
+      register: rename_result
+
+    - name: Assert project was renamed
+      ansible.builtin.assert:
+        that:
+          - rename_result is changed
+
+    - name: Update project name variable for cleanup
+      ansible.builtin.set_fact:
+        project_name: "{{ project_name }}-renamed"
+
+    # <Delete> -------------------
+    - name: Delete EDA project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert project was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # <Delete absent - no-op> -------------------
+    - name: Delete already absent project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete absent is no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+
+  always:
+    - name: Cleanup - delete test project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup - delete renamed test project
+      ansible.platform.eda_project:
+        name: "{{ project_name }}-renamed"
+        state: absent
+      failed_when: false
+...
