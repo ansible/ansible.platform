@@ -129,14 +129,31 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleEdaCredential":
-        """Transform from API format to Ansible format."""
+        """Transform from API format to Ansible format.
+
+        The EDA API returns credential_type and organization as nested
+        objects (e.g. ``{"id": 1, "name": "..."}``).  Extract the ID
+        so the Ansible model stores a comparable string representation.
+        """
         from ....ansible_models.eda_credential import AnsibleEdaCredential
 
-        credential_type_val = api_data.get("credential_type_id")
-        credential_type_str = str(credential_type_val) if credential_type_val is not None else None
+        # credential_type is a nested object: {"id": 28, "name": "..."}
+        credential_type_obj = api_data.get("credential_type")
+        if isinstance(credential_type_obj, dict):
+            credential_type_str = str(credential_type_obj["id"])
+        elif credential_type_obj is not None:
+            credential_type_str = str(credential_type_obj)
+        else:
+            credential_type_str = None
 
-        organization_val = api_data.get("organization_id")
-        organization_str = str(organization_val) if organization_val is not None else None
+        # organization is a nested object: {"id": 1, "name": "..."}
+        organization_obj = api_data.get("organization")
+        if isinstance(organization_obj, dict):
+            organization_str = str(organization_obj["id"])
+        elif organization_obj is not None:
+            organization_str = str(organization_obj)
+        else:
+            organization_str = None
 
         ansible_data = {
             "name": api_data.get("name", ""),
