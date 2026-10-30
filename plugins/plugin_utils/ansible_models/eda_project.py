@@ -21,6 +21,7 @@ class AnsibleEdaProject:
     scm_branch: Optional[str] = None
     update_revision_on_launch: Optional[bool] = None
     scm_update_cache_timeout: Optional[int] = None
+    state: str = "present"
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None

@@ -18,7 +18,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -39,8 +39,9 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "eda_project"
     MODEL_CLASS = AnsibleEdaProject
     _WRITE_ONLY_FIELDS = frozenset({"sync", "wait"})
+    _MUTABLE_FK_FIELDS = frozenset({"credential", "organization_name"})
 
-    def _wait_for_import(self, manager, project_id: int, timeout: int = _IMPORT_POLL_TIMEOUT) -> dict:
+    def _wait_for_import(self, manager: Any, project_id: int, timeout: int = _IMPORT_POLL_TIMEOUT) -> dict:
         """Poll a project's import_state until it reaches a terminal state.
 
         Args:
@@ -290,7 +291,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _trigger_sync(self, manager, project_id: int, name: str, wait: bool) -> None:
+    def _trigger_sync(self, manager: Any, project_id: int, name: str, wait: bool) -> None:
         """Trigger a project sync and optionally wait for completion.
 
         Args:
