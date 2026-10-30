@@ -1,0 +1,11 @@
+---
+- name: Cleanup — license mock
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Remove mock manifest file
+      ansible.builtin.file:
+        path: /tmp/mock_manifest.zip
+        state: absent
+...

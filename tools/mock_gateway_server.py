@@ -1168,6 +1168,39 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(404, {"detail": "Not Found"})
                     return
 
+        # ---- Controller config (license) ----
+        if service == "controller" and resource == "config":
+            if self.command == "GET":
+                self._send_json(200, self.server._license_config)
+                return
+            if self.command == "POST":
+                payload = self._parse_json_body()
+                if len(parts) >= 5 and parts[4] == "attach":
+                    self.server._license_config["license_info"] = {
+                        "license_type": "enterprise",
+                        "valid_key": True,
+                        "subscription_name": "Mock Subscription",
+                        "instance_count": 100,
+                        "trial": False,
+                    }
+                else:
+                    if "manifest" not in payload:
+                        self._send_json(400, {"detail": "manifest is required"})
+                        return
+                    self.server._license_config["license_info"] = {
+                        "license_type": "enterprise",
+                        "valid_key": True,
+                        "subscription_name": "Mock Manifest License",
+                        "instance_count": 100,
+                        "trial": False,
+                    }
+                self._send_json(200, self.server._license_config)
+                return
+            if self.command == "DELETE":
+                self.server._license_config["license_info"] = {}
+                self._send_empty(204)
+                return
+
         # ---- Controller bulk/host_create ----
         if service == "controller" and resource == "bulk" and len(parts) >= 5 and parts[4] == "host_create" and self.command == "POST":
             try:
@@ -1215,6 +1248,7 @@ class MockGatewayServer(ThreadingHTTPServer):
         super().__init__(server_address, RequestHandlerClass)
         self.store = store
         self.reported_api_version = reported_api_version
+        self._license_config = {"license_info": {}}
 
 
 def main() -> int:

@@ -156,10 +156,6 @@ class ManagerRPCClient:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
         return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
 
-    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
-        """Cancel a resource via the manager process. See PlatformService.cancel_resource()."""
-        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, service)
-
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
@@ -168,9 +164,33 @@ class ManagerRPCClient:
         """POST to a launch endpoint via the manager process. See PlatformService.launch_resource()."""
         return self.service_proxy.launch_resource(launch_url, payload, service, retry)
 
+    def can_cancel_resource(self, resource_id: int, cancel_endpoint_path: str, service: str = "gateway") -> bool:
+        """Check whether a resource can be canceled via the manager process."""
+        return self.service_proxy.can_cancel_resource(resource_id, cancel_endpoint_path, service)
+
+    def cancel_resource(
+        self,
+        resource_id: int,
+        cancel_endpoint_path: str,
+        fail_if_not_running: bool = False,
+        timeout: float = 0,
+        interval: float = 1.0,
+        service: str = "gateway",
+    ) -> dict:
+        """Cancel a resource via the manager process. See BaseAPIClient.cancel_resource()."""
+        return self.service_proxy.cancel_resource(resource_id, cancel_endpoint_path, fail_if_not_running, timeout, interval, service)
+
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""
+        return self.service_proxy.post_resource(endpoint, data, service, retry)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an endpoint via the manager process. See PlatformService.delete_resource()."""
+        return self.service_proxy.delete_resource(endpoint, service)
 
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""

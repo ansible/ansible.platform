@@ -314,10 +314,12 @@ class BaseAPIClient(ABC):
         pass
 
     @abstractmethod
-    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown", retry: bool = True) -> dict:
         """POST JSON to a URL and return parsed JSON.
 
         Each client routes this through its own HTTP layer (_make_request).
+        Set retry to False for operations that must not be repeated after an
+        ambiguous transport failure.
         """
         pass
 
@@ -333,7 +335,62 @@ class BaseAPIClient(ABC):
                 could make replaying the POST unsafe.
         """
         url = self._build_url(launch_url, service=service)
-        return self._post_json(url, payload, operation="launch_resource", resource="launch")
+        return self._post_json(url, payload, operation="launch_resource", resource="launch", retry=retry)
+
+    def can_cancel_resource(self, resource_id: int, cancel_endpoint_path: str, service: str = "gateway") -> bool:
+        """Return whether a resource's cancel endpoint currently permits cancellation."""
+        endpoint = cancel_endpoint_path.strip("/")
+        cancel_path = f"/{endpoint}/{resource_id}/cancel/"
+        url = self._build_url(cancel_path, service=service)
+        response = self._get_json(url, operation="can_cancel_resource", resource=endpoint)
+        if not isinstance(response, dict) or not isinstance(response.get("can_cancel"), bool):
+            raise ValueError("Cancel endpoint returned an unexpected response")
+        return response["can_cancel"]
+
+    def cancel_resource(
+        self,
+        resource_id: int,
+        cancel_endpoint_path: str,
+        fail_if_not_running: bool = False,
+        timeout: float = 0,
+        interval: float = 1.0,
+        service: str = "gateway",
+    ) -> dict:
+        """Cancel a resource through its ``cancel`` sub-endpoint.
+
+        A 405 response means the resource is no longer cancelable. Treat that
+        as a no-op unless the caller requested failure in that case. After a
+        successful cancel request, wait for the resource to reach a terminal
+        state. A timeout of zero means wait indefinitely.
+        """
+        if interval <= 0:
+            raise ValueError("Polling interval must be positive, got %s" % interval)
+        if timeout < 0:
+            raise ValueError("Timeout must be 0 or greater")
+
+        endpoint = cancel_endpoint_path.strip("/")
+        cancel_path = f"/{endpoint}/{resource_id}/cancel/"
+        url = self._build_url(cancel_path, service=service)
+
+        try:
+            self._post_json(url, {}, operation="cancel_resource", resource=endpoint, retry=False)
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", None)
+            if status_code is None:
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code != 405:
+                raise
+            if fail_if_not_running:
+                raise ValueError("Resource is not running") from exc
+            return {"changed": False, "id": resource_id, "status": "already finished"}
+
+        completion = self.wait_for_completion(
+            f"/{endpoint}/{resource_id}/",
+            timeout=-1 if timeout == 0 else timeout,
+            interval=interval,
+            service=service,
+        )
+        return {"changed": True, "id": resource_id, "status": completion.get("status", "canceled")}
 
     def wait_for_completion(
         self,
@@ -413,39 +470,6 @@ class BaseAPIClient(ABC):
                 sleep_time = interval
 
             time.sleep(sleep_time)
-
-    def cancel_resource(self, resource_id: int, cancel_endpoint_path: str, fail_if_not_running: bool = False, service: str = "controller") -> dict:
-        """Cancel a resource via its /cancel/ sub-endpoint.
-
-        GETs the cancel URL to check can_cancel, then POSTs to cancel.
-        Already-finished resources return changed=False.
-        """
-        cancel_url = self._build_url(f"/{cancel_endpoint_path}/{resource_id}/cancel/", service=service)
-
-        try:
-            cancel_info = self._get_json(cancel_url, operation="cancel_check", resource=cancel_endpoint_path)
-        except APIError as exc:
-            if exc.status_code in (404, 403):
-                raise
-            logger.warning("cancel eligibility check failed (status=%s), assuming not cancelable: %s", exc.status_code, exc)
-            cancel_info = {}
-
-        if not cancel_info.get("can_cancel", False):
-            if fail_if_not_running:
-                raise ValidationError(
-                    "Job %d is not running and cannot be canceled" % resource_id,
-                    operation="cancel_resource",
-                    resource=cancel_endpoint_path,
-                )
-            return {"changed": False, "id": resource_id, "status": "already_completed"}
-
-        try:
-            self._post_json(cancel_url, {}, operation="cancel_resource", resource=cancel_endpoint_path)
-        except APIError as exc:
-            if exc.status_code == 405:
-                return {"changed": False, "id": resource_id, "status": "already_completed"}
-            raise
-        return {"changed": True, "id": resource_id, "status": "canceled"}
 
     def lookup_organization_ids(self, names: list) -> list:
         """

@@ -49,12 +49,15 @@ action_groups:
     - workflow_approval
     - workflow_node_wait
     - job_wait
+    - ad_hoc_command_cancel
     - bulk_host_delete
     - bulk_job_launch
     - inventory_source_update
     - project_update
-    - bulk_host_delete
     - ad_hoc_command_wait
     - ad_hoc_command
     - job_cancel
+    - job_launch
+    - license
+    - workflow_launch
 ...

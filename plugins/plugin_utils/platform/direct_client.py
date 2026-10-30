@@ -747,14 +747,36 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("GET", url, operation=operation, resource=resource)
         return json.loads(response.read())
 
-    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
-        """POST JSON via _make_request and return parsed JSON."""
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown", retry: bool = True) -> dict:
+        """POST JSON via _make_request and return parsed JSON.
+
+        Empty successful responses are represented as an empty dictionary.
+        The direct client does not retry requests; ``retry`` is accepted to
+        keep the shared client interface.
+        """
         self._ensure_authenticated()
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         body = response.read()
         if not body:
             return {}
         return json.loads(body)
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        response = self._make_request("POST", url, operation="post_resource", resource="config", json=data)
+        body = response.read()
+        if not body:
+            return {}
+        return json.loads(body)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        self._make_request("DELETE", url, operation="delete_resource", resource="config")
+        return {}
 
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the Controller bulk/host_create endpoint."""

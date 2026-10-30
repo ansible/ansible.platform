@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - workflow_launch - migrate ``workflow_launch`` module from ``awx_collection``,
+    launching workflow job templates with wait/poll support via the shared SDK
+    (https://issues.redhat.com/browse/AAP-95873).
+...
