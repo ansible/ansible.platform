@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -504,7 +504,15 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None):
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        require_unique: bool = False,
+    ):
         """
         Resolve a resource name to ID by GET list with filter.
         Compatible with PlatformService.lookup_resource_id interface.
@@ -516,6 +524,7 @@ class DirectHTTPClient(BaseAPIClient):
             lookup_value: Value to look up
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
             extra_query_params: Additional filter params (e.g. {'organization': 42} for org-scoped resources)
+            require_unique: Raise ValueError when the lookup matches multiple resources
 
         Returns:
             Resource ID (int) or None
@@ -525,8 +534,25 @@ class DirectHTTPClient(BaseAPIClient):
         if str(lookup_value).isdigit():
             return int(lookup_value)
 
+        # AWX accepts Controller named URLs (for example, organization++inventory)
+        # as a direct resource path. Try that before a potentially ambiguous name query.
+        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
+            svc_version = self.get_api_version(service)
+            self._prepare_resource_lookup(service)
+            named_path = f"/api/{service}/v{svc_version}/{endpoint}/{quote(str(lookup_value), safe='+')}/"
+            try:
+                named_response = self._make_request("GET", self._build_url(named_path), operation="lookup", resource=endpoint)
+            except APIError as exc:
+                if exc.status_code != 404:
+                    raise
+            else:
+                named_resource_id = json.loads(named_response.read()).get("id")
+                if named_resource_id is not None:
+                    return named_resource_id
+
         cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value), extra_query_params)
-        if cache_key in self.cache:
+        # A cached first match cannot prove that the lookup is unique.
+        if not require_unique and cache_key in self.cache:
             return self.cache[cache_key]
 
         svc_version = self.get_api_version(service)
@@ -545,9 +571,11 @@ class DirectHTTPClient(BaseAPIClient):
         results = response_data.get("results", [])
         if not results:
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
+            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
 
         rid = results[0].get("id")
-        if rid is not None:
+        if rid is not None and not require_unique:
             self.cache[cache_key] = rid
         return rid
 
@@ -581,6 +609,7 @@ class DirectHTTPClient(BaseAPIClient):
         lookup_field: str,
         service: str = "gateway",
         extra_query_params: dict = None,
+        preserve_existing: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -588,7 +617,8 @@ class DirectHTTPClient(BaseAPIClient):
         Generic across any resource with a list-style association sub-endpoint (credentials,
         instance_groups, etc.) -- reuse this rather than writing a new diff/associate loop per
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
-        current associations, and associates/disassociates to reconcile.
+        current associations, and associates/disassociates to reconcile. Set
+        preserve_existing=True to retain already-associated items.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -610,6 +640,8 @@ class DirectHTTPClient(BaseAPIClient):
             assoc_path = f"/api/{service}/v{self.get_api_version(service)}/{assoc_path.lstrip('/')}"
         current_data = self.search_api(assoc_path, return_all=True, max_objects=100000)
         current_ids = {item["id"] for item in current_data.get("results", [])}
+        if preserve_existing:
+            desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
         changed = False
@@ -699,7 +731,8 @@ class DirectHTTPClient(BaseAPIClient):
         else:
             lookup_url = self._build_url(copy_endpoint_path, {"name": source_name_or_id}, service=service)
             response = self._make_request("GET", lookup_url, operation="lookup", resource=module_name)
-            results = json.loads(response.read()).get("results", [])
+            response_body = response.read()
+            results = json.loads(response_body).get("results", []) if response_body else []
             if not results:
                 raise ValueError(f"Could not find {module_name} '{source_name_or_id}' to copy from")
             source_id = results[0]["id"]
@@ -720,7 +753,24 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         return json.loads(response.read())
 
-    def search_api(self, endpoint: str, query_params: Optional[Dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url("/bulk/host_create/", service=service)
+        payload = {"inventory": inventory_id, "hosts": hosts}
+        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
+        response_body = response.read()
+        response_data = json.loads(response_body) if response_body else {}
+        return response_data
+
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[Dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
@@ -736,6 +786,7 @@ class DirectHTTPClient(BaseAPIClient):
             query_params: Optional key/value filter parameters
             return_all: When True, follow 'next' pagination links
             max_objects: Safety cap when return_all is True
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict.
@@ -756,14 +807,9 @@ class DirectHTTPClient(BaseAPIClient):
                 self.api_version = "1"
             self.session.headers.update({"X-API-Version": str(self.api_version)})
 
-        # Build URL: if endpoint starts with /api/ treat as absolute path,
-        # otherwise prefix with /api/gateway/v{version}/
-        if endpoint.startswith("/api/"):
-            api_path = endpoint
-        else:
-            api_path = f"/api/gateway/v{self.api_version}/{endpoint}/"
-
-        url = self._build_url(api_path, query_params)
+        if not endpoint.startswith("/api/") and not endpoint.endswith("/"):
+            endpoint = f"{endpoint}/"
+        url = self._build_url(endpoint, query_params, service=service)
         response = self._make_request("GET", url, operation="search", resource=endpoint)
         try:
             response_body = response.read()
@@ -1021,19 +1067,24 @@ class DirectHTTPClient(BaseAPIClient):
         2. ID lookup: GET /resource/{id}/
         3. List+filter: GET /resource/?field=value (including composite-key lookups)
         """
-        # Get endpoint operations from mixin
-        operations = mixin_class.get_endpoint_operations()
+        # Allow non-CRUD mixins to choose a detail endpoint from the input data.
+        find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
+        operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")
         list_op = operations.get("list")
 
-        # --- Singleton resources (e.g. settings) ---
+        # --- Singleton resources (e.g. settings, subscriptions) ---
         if getattr(mixin_class, "is_singleton", False):
             if not get_op:
                 raise ValueError(f"No GET operation defined for singleton {mixin_class.__name__}")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             with self._lock:
                 self._http_request_count += 1
-            response = self._make_request(get_op.method, url, operation="find", resource=mixin_class.__name__)
+            request_kwargs = {"operation": "find", "resource": mixin_class.__name__}
+            if get_op.method.upper() == "POST" and get_op.fields:
+                api_data = mixin_class.from_ansible_data(ansible_data, context)
+                request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
+            response = self._make_request(get_op.method, url, **request_kwargs)
             try:
                 response_body = response.read()
                 api_result = json.loads(response_body) if response_body else {}
@@ -1043,10 +1094,6 @@ class DirectHTTPClient(BaseAPIClient):
             from dataclasses import asdict
 
             return asdict(ansible_instance)
-
-        # --- Standard CRUD resources ---
-        if not list_op:
-            raise ValueError(f"List operation not defined for {mixin_class.__name__}")
 
         # Get lookup field from mixin
         lookup_field = mixin_class.get_lookup_field()
@@ -1111,6 +1158,8 @@ class DirectHTTPClient(BaseAPIClient):
 
         if not lookup_value and not composite_params:
             raise ValueError(f"Lookup field '{lookup_field}' not found in data")
+        if not list_op:
+            raise ValueError(f"List operation not defined for {mixin_class.__name__}")
         query_params = {}
         if lookup_value:
             query_params[lookup_field] = lookup_value

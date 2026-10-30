@@ -92,7 +92,15 @@ class ManagerRPCClient:
         # Execute via proxy
         return self.service_proxy.execute(operation, module_name, data_dict)
 
-    def lookup_resource_id(self, endpoint: str, lookup_field: str, lookup_value: str, service: str = "gateway", extra_query_params: dict = None):
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        require_unique: bool = False,
+    ):
         """
         Resolve a resource name to its integer ID via the manager process.
 
@@ -105,6 +113,7 @@ class ManagerRPCClient:
             lookup_value: Value to look up
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
             extra_query_params: Additional filter params (e.g. {'organization': 42})
+            require_unique: Reject names that match multiple resources
 
         Returns:
             Integer resource ID
@@ -112,7 +121,7 @@ class ManagerRPCClient:
         Raises:
             ValueError: If the resource is not found
         """
-        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {})
+        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {}, require_unique)
 
     def lookup_organization_names(self, organization_ids: list) -> list:
         """Resolve organization IDs to names via the manager process."""
@@ -128,6 +137,7 @@ class ManagerRPCClient:
         lookup_field: str,
         service: str = "gateway",
         extra_query_params: dict = None,
+        preserve_existing: bool = False,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
         return self.service_proxy.manage_associations(
@@ -139,6 +149,7 @@ class ManagerRPCClient:
             lookup_field,
             service,
             extra_query_params or {},
+            preserve_existing,
         )
 
     def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
@@ -149,15 +160,30 @@ class ManagerRPCClient:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
         return self.service_proxy.copy_resource(module_name, source_name_or_id, new_name, copy_endpoint_path, service)
 
-    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST to a launch endpoint via the manager process. See PlatformService.launch_resource()."""
-        return self.service_proxy.launch_resource(launch_url, payload, service)
+        return self.service_proxy.launch_resource(launch_url, payload, service, retry)
 
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
 
-    def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
+    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
+        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
+        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
+
+    def direct_request(self, method: str, path: str, data=None) -> dict:
+        """Make a raw authenticated HTTP request via the manager process."""
+        return self.service_proxy.direct_request(method, path, data)
+
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
         """
         Execute a raw GET via the manager subprocess and return the JSON response.
 
@@ -170,11 +196,12 @@ class ManagerRPCClient:
             query_params: Optional filter parameters
             return_all: Follow pagination links and collect all results
             max_objects: Safety cap on total returned objects (when return_all=True)
+            service: API service used to resolve a relative endpoint
 
         Returns:
             Raw API response dict from the platform.
         """
-        return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects)
+        return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects, service)
 
     def shutdown_manager(self) -> dict:
         """

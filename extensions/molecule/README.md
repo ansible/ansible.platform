@@ -16,6 +16,7 @@ This directory holds Molecule scenarios for the ansible.platform collection.
 - **organization_mock/** – Scenario for `ansible.platform.organization` against the **mock** server. Create, idempotency, update, verify, cleanup. No real AAP required.
 - **controller_ping_mock/** – Routing/plumbing check: confirms the mock server serves the **Controller API prefix** (`/api/controller/vN/`, used by ported `awx_collection`/Controller resources) alongside the existing `/api/gateway/vN/` prefix. No ansible.platform module is exercised and no state is created; this exists so future Controller resource mock scenarios have a prefix to register against.
 - **job_template_mock/** – Exercises Controller job template create, update, associations, survey, copy, check mode, and cleanup against the mock API in all three connection modes. The `molecule (mock)` CI workflow discovers it automatically.
+- **workflow_node_wait_mock/** – Exercises workflow-node discovery and polls the separate related job from `running` to `successful`, including check mode, against the mock Controller API.
 
 ## Gateway configuration
 
@@ -90,17 +91,18 @@ molecule test --all
 
 To see detailed Ansible output (task args, module I/O): `ANSIBLE_VERBOSITY=2 molecule test --all` (use 1–4 for -v through -vvvv). See [docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md](../../docs/testing/MOLECULE_TEST_ALL-HOW-IT-WORKS.md).
 
-**Option B — Only mock-based tests (user + organization):**  
+**Option B — Only mock-based tests:**
 Start the mock yourself, then run the scenarios:
 
 ```bash
 python3 tools/mock_gateway_server.py --port 8000 &
 molecule test -s users_mock --all
 molecule test -s organization_mock --all
+molecule test -s workflow_node_wait_mock --all
 # Stop mock when done: pkill -f mock_gateway_server
 ```
 
-Or let CI run them: the **molecule (mock)** workflow (`.github/workflows/molecule-mock.yml`) runs `users_mock` and `organization_mock` on every PR and push to `devel`; no real Gateway required.
+Or let CI run them: the **molecule (mock)** workflow (`.github/workflows/molecule-mock.yml`) discovers and runs every `*_mock` scenario on each PR and push to `devel`; no real Gateway required.
 
 **Option C — Real Gateway (users scenario):**
 

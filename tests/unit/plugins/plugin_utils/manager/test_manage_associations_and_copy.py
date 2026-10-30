@@ -41,6 +41,30 @@ class TestManageAssociations(unittest.TestCase):
     def setUp(self):
         self.svc = _service()
 
+    def test_lookup_resource_id_rejects_ambiguous_name_when_unique_required(self):
+        self.svc.lookup_resource_id = PlatformService.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.get_api_version = MagicMock(return_value="2")
+        cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "shared")
+        self.svc.cache[cache_key] = 10
+        self.svc.session.get.return_value = _resp(json_data={"count": 2, "results": [{"id": 10, "name": "shared"}, {"id": 20, "name": "shared"}]})
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources"):
+            self.svc.lookup_resource_id("inventories", "name", "shared", service="controller", require_unique=True)
+
+        self.svc.session.get.assert_called_once()
+        self.assertEqual(self.svc.cache[cache_key], 10)
+
+    def test_unique_lookup_does_not_cache_result(self):
+        self.svc.lookup_resource_id = PlatformService.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.get_api_version = MagicMock(return_value="2")
+        self.svc.session.get.return_value = _resp(json_data={"count": 1, "results": [{"id": 15, "name": "shared"}]})
+
+        result = self.svc.lookup_resource_id("inventories", "name", "shared", service="controller", require_unique=True)
+
+        cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "shared")
+        self.assertEqual(result, 15)
+        self.assertNotIn(cache_key, self.svc.cache)
+
     def test_associates_and_disassociates_to_reconcile(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
         self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-a": 3}[value]
@@ -61,6 +85,27 @@ class TestManageAssociations(unittest.TestCase):
         payloads = [c.kwargs["json"] for c in self.svc.session.post.call_args_list]
         self.assertIn({"id": 3, "associate": True}, payloads)
         self.assertIn({"id": 2, "disassociate": True}, payloads)
+
+    def test_preserve_existing_keeps_unrequested_associations(self):
+        self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
+        self.svc.lookup_resource_id.side_effect = lambda endpoint, field, value, service, extra_query_params=None: {"cred-c": 3}[value]
+
+        changed = self.svc.manage_associations(
+            "/api/controller/v2/job_templates",
+            42,
+            "credentials",
+            ["cred-c"],
+            "credentials",
+            "name",
+            service="controller",
+            preserve_existing=True,
+        )
+
+        self.assertTrue(changed)
+        payloads = [call.kwargs["json"] for call in self.svc.session.post.call_args_list]
+        self.assertIn({"id": 3, "associate": True}, payloads)
+        self.assertNotIn({"id": 1, "disassociate": True}, payloads)
+        self.assertNotIn({"id": 2, "disassociate": True}, payloads)
 
     def test_no_change_when_already_in_sync(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}]}
