@@ -168,7 +168,7 @@ class PlatformService(BaseAPIClient):
         """
         self.record_activity()
 
-        @retry_http_request(config=retry_config or self.retry_config)
+        @retry_http_request(config=retry_config if retry_config is not None else self.retry_config)
         def _execute_with_retry():
             request_kwargs = kwargs.copy()
             if "timeout" not in request_kwargs:
@@ -1355,13 +1355,12 @@ class PlatformService(BaseAPIClient):
         response = self._make_request("get", url, operation=operation, resource=resource)
         return response.json()
 
-    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
-        """POST JSON via _make_request and return parsed JSON."""
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown", retry: bool = True) -> dict:
+        """POST JSON and return parsed data, using an empty dictionary for empty responses."""
         self.record_activity()
-        response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
-        if not response.content:
-            return {}
-        return response.json()
+        retry_config = None if retry else RetryConfig(max_attempts=1)
+        response = self._make_request("post", url, operation=operation, resource=resource, json=payload, retry_config=retry_config)
+        return response.json() if response.content else {}
 
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST to a launch endpoint, optionally suppressing transient retries."""
@@ -1388,12 +1387,14 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
         url = self._build_url("/bulk/host_create/", service=service)
         payload = {"inventory": inventory_id, "hosts": hosts}
-        saved_config = self.retry_config
-        self.retry_config = RetryConfig(max_attempts=1)
-        try:
-            response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
-        finally:
-            self.retry_config = saved_config
+        response = self._make_request(
+            "post",
+            url,
+            operation="bulk_host_create",
+            resource="bulk",
+            retry_config=RetryConfig(max_attempts=1),
+            json=payload,
+        )
         if response.status_code != 201:
             raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
