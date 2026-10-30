@@ -22,7 +22,6 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from"})
-    _MUTUALLY_EXCLUSIVE = [["organization", "user"], ["organization", "team"], ["user", "team"]]
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:

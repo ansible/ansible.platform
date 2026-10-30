@@ -36,7 +36,6 @@ def _resp(payload):
 class TestSearchApiPagination(unittest.TestCase):
     def setUp(self):
         self.svc = _make_platform_service(base_url="https://gw.example.com")
-        self.svc.api_versions["controller"] = "2"
 
     def test_relative_next_url_is_resolved_to_absolute(self):
         """AAP returns 'next' as a relative path; it must be made absolute before GET."""
@@ -54,14 +53,6 @@ class TestSearchApiPagination(unittest.TestCase):
         # All pages collected; trailing 'next' cleared.
         self.assertEqual(result["results"], [{"id": 1}, {"id": 2}])
         self.assertIsNone(result["next"])
-
-    def test_relative_endpoint_uses_requested_service(self):
-        response = _resp({"count": 1, "results": [{"id": 42}]})
-        with patch.object(self.svc, "_make_request", return_value=response) as mock_req:
-            self.svc.search_api("workflow_jobs/42/workflow_nodes/", query_params={"job__name": "Approval"}, service="controller")
-
-        self.assertEqual(mock_req.call_args.args[1], "https://gw.example.com/api/controller/v2/workflow_jobs/42/workflow_nodes/")
-        self.assertEqual(mock_req.call_args.kwargs["params"], {"job__name": "Approval"})
 
     def test_absolute_next_url_passed_through_unchanged(self):
         """If 'next' is already absolute it must be used as-is."""

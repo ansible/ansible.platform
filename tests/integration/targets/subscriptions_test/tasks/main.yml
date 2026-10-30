@@ -1,7 +1,0 @@
----
-# Subscriptions requires Red Hat account credentials not available in CI.
-# This scaffold satisfies test_integration_check.py; live testing is manual.
-- name: Subscriptions integration test placeholder
-  ansible.builtin.debug:
-    msg: "Subscriptions module requires Red Hat credentials — skipping live test"
-...

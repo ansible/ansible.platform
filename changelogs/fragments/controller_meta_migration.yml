@@ -1,4 +1,0 @@
----
-minor_changes:
-  - controller_meta - migrate controller_meta module from awx_collection (https://issues.redhat.com/browse/AAP-95845).
-...

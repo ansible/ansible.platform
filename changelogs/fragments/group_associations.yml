@@ -1,4 +1,0 @@
----
-minor_changes:
-  - group - add host and child group association support for managing Controller group memberships (https://issues.redhat.com/browse/AAP-95850).
-...

@@ -320,17 +320,8 @@ class BaseAPIClient(ABC):
         """
         pass
 
-    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
-        """POST to a launch endpoint and return the created resource.
-
-        Args:
-            launch_url: API path to the launch endpoint.
-            payload: Request body.
-            service: API service name.
-            retry: Whether the persistent client may retry transient failures.
-                Disable this for non-idempotent actions where a lost response
-                could make replaying the POST unsafe.
-        """
+    def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway") -> dict:
+        """POST to a launch endpoint and return the created resource."""
         url = self._build_url(launch_url, service=service)
         return self._post_json(url, payload, operation="launch_resource", resource="launch")
 
@@ -426,23 +417,6 @@ class BaseAPIClient(ABC):
         # This is a shared helper that both modes can use
         # Implementation will be in the shared CRUD layer
         pass
-
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """
-        Create hosts in bulk via the Controller bulk/host_create endpoint.
-
-        Args:
-            inventory_id: Numeric ID of the target inventory
-            hosts: List of host dicts (name, description, enabled, variables, instance_id)
-            service: Service name (default: controller)
-
-        Returns:
-            API response dict
-
-        Raises:
-            ValueError: If the API returns a non-201 status
-        """
-        raise NotImplementedError
 
     def lookup_organization_names(self, ids: list) -> list:
         """

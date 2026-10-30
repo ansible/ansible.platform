@@ -17,7 +17,6 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
 
 Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
-The workflow_node_wait scenario uses a pending-to-successful job fixture.
 
 Notes
 -----
@@ -45,10 +44,6 @@ def _now_iso() -> str:
 # API services this mock fronts. Each has its own /api/{service}/vN/ prefix and
 # version-discovery root, mirroring the real Gateway's per-service routing.
 SUPPORTED_SERVICES = ("gateway", "controller")
-WORKFLOW_NODE_WAIT_WORKFLOW_ID = 8001
-WORKFLOW_NODE_WAIT_NODE_ID = 8101
-WORKFLOW_NODE_WAIT_JOB_ID = 8201
-WORKFLOW_NODE_WAIT_NAME = "Molecule Wait Node"
 
 
 # ---------------------------------------------------------------------------
@@ -258,45 +253,6 @@ class Store:
     _jt_associations: Dict[int, Dict[str, set]] = field(default_factory=dict)
     _jt_surveys: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     _jt_lock: threading.Lock = field(default_factory=threading.Lock)
-    _workflow_wait_job_polls: int = 0
-    _workflow_wait_job_lock: threading.Lock = field(default_factory=threading.Lock)
-
-    def workflow_node_wait_nodes(self, workflow_id: int, name: Optional[str]) -> Dict[str, Any]:
-        """Return a workflow node fixture with a separate related job ID."""
-        if workflow_id != WORKFLOW_NODE_WAIT_WORKFLOW_ID or name != WORKFLOW_NODE_WAIT_NAME:
-            return {"count": 0, "results": []}
-
-        # Reset the stateful job fixture each time a wait action starts.
-        with self._workflow_wait_job_lock:
-            self._workflow_wait_job_polls = 0
-
-        return {
-            "count": 1,
-            "results": [
-                {
-                    "id": WORKFLOW_NODE_WAIT_NODE_ID,
-                    "related": {"job": f"/api/controller/v2/jobs/{WORKFLOW_NODE_WAIT_JOB_ID}/"},
-                    "summary_fields": {"job": {"id": WORKFLOW_NODE_WAIT_JOB_ID, "status": "pending"}},
-                }
-            ],
-        }
-
-    def workflow_node_wait_job(self, job_id: int) -> Dict[str, Any]:
-        """Return a job that transitions from running to successful on its second poll."""
-        if job_id != WORKFLOW_NODE_WAIT_JOB_ID:
-            raise KeyError("not found")
-
-        with self._workflow_wait_job_lock:
-            self._workflow_wait_job_polls += 1
-            poll_count = self._workflow_wait_job_polls
-            status = "running" if poll_count == 1 else "successful"
-
-        return {
-            "id": WORKFLOW_NODE_WAIT_JOB_ID,
-            "status": status,
-            "elapsed": float(poll_count),
-            "failed": False,
-        }
 
     def _init_resources(self) -> None:
         """Create all generic resource stores with appropriate config."""
@@ -358,10 +314,6 @@ class Store:
             ("schedules", ["name"], 6400),
             ("workflow_job_templates", ["name"], 6500),
             ("workflow_job_template_nodes", ["identifier", "workflow_job_template"], 6600),
-            ("jobs", [], 6700),
-            ("project_updates", [], 6800),
-            ("inventory_updates", [], 6900),
-            ("workflow_jobs", [], 7000),
         )
         for endpoint, required, start_id in controller_resources:
             self._resources[("controller", endpoint)] = GenericResource(
@@ -370,10 +322,9 @@ class Store:
                 start_id=start_id,
                 service="controller",
             )
-        # Additional controller resources
+        # Controller resources
         controller_defs: List[tuple] = [
             ("workflow_job_templates", ["name"], 6000),
-            ("inventories", ["name"], 5000),
         ]
         for endpoint, required, start_id in controller_defs:
             self._resources[("controller", endpoint)] = GenericResource(
@@ -409,43 +360,14 @@ class Store:
                     "REMOTE_HOST_HEADERS": [],
                 }
 
-        # Seed hosts for Controller group association tests
-        host_store = self._resources.get(("controller", "hosts"))
-        if host_store and not host_store._items:
-            host_store.seed(
-                "2",
-                [
-                    {"id": 6001, "name": "web1.example.com", "inventory": 1},
-                    {"id": 6002, "name": "web2.example.com", "inventory": 1},
-                    {"id": 6003, "name": "db1.example.com", "inventory": 1},
-                ],
-            )
-
-        # Seed completed jobs for job_wait mock tests
-        _job_seed = {"status": "successful", "elapsed": 1.25, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:01Z"}
-        for ep, seed_id in (("jobs", 5801), ("project_updates", 5901), ("inventory_updates", 6001), ("workflow_jobs", 6101)):
-            store = self._resources.get(("controller", ep))
-            if store and seed_id not in store._items:
-                store.seed("2", [{"id": seed_id, **_job_seed}])
-        # Seed a failed and a running job for job_wait tests
-        fail_store = self._resources.get(("controller", "jobs"))
-        if fail_store and 5802 not in fail_store._items:
-            fail_store.seed(
-                "2",
-                [
-                    {"id": 5802, "status": "failed", "elapsed": 0.5, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:00Z"},
-                    {"id": 5803, "status": "running", "elapsed": 0.0, "started": "2026-01-01T00:00:00Z", "finished": None},
-                ],
-            )
-
         # Seed instances for Controller association tests
         inst_store = self._resources.get(("controller", "instances"))
         if inst_store and not inst_store._items:
             inst_store.seed(
                 "2",
                 [
-                    {"id": 5901, "hostname": "node1.example.com", "node_type": "execution"},
-                    {"id": 5902, "hostname": "node2.example.com", "node_type": "execution"},
+                    {"id": 7001, "hostname": "node1.example.com", "node_type": "execution"},
+                    {"id": 7002, "hostname": "node2.example.com", "node_type": "execution"},
                 ],
             )
 
@@ -824,7 +746,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 .replace("notification_templates_success", "notification_templates")
                 .replace("notification_templates_error", "notification_templates")
             )
-            assoc_store = self.store.resource(service, assoc_endpoint) or self.store.resource(service, resource_name)
+            assoc_store = self.store.resource(service, assoc_endpoint)
             if assoc_store is None:
                 self._send_json(404, {"detail": f"Unknown association endpoint: {assoc_field}"})
                 return True
@@ -931,25 +853,6 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return
 
         resource = parts[3] if len(parts) >= 4 else None
-
-        # ---- Workflow node wait fixtures ----
-        if service == "controller" and resource == "workflow_jobs" and len(parts) == 6 and parts[5] == "workflow_nodes" and self.command == "GET":
-            try:
-                workflow_id = int(parts[4])
-            except ValueError:
-                self._send_json(404, {"detail": "Not Found"})
-                return
-            name = (qs.get("job__name") or [None])[0]
-            self._send_json(200, self.store.workflow_node_wait_nodes(workflow_id, name))
-            return
-
-        if service == "controller" and resource == "jobs" and len(parts) == 5 and self.command == "GET":
-            try:
-                job = self.store.workflow_node_wait_job(int(parts[4]))
-                self._send_json(200, job)
-                return
-            except (KeyError, ValueError):
-                pass  # fall through to generic resource handler
 
         if service == "controller" and resource in ("job_templates", "workflow_job_templates") and len(parts) >= 5:
             try:
@@ -1167,20 +1070,6 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         self._send_json(404, {"detail": "Not Found"})
                     return
-
-        # ---- Controller bulk/host_create ----
-        if service == "controller" and resource == "bulk" and len(parts) >= 5 and parts[4] == "host_create" and self.command == "POST":
-            try:
-                payload = self._parse_json_body()
-                inv_id = payload.get("inventory")
-                hosts = payload.get("hosts", [])
-                if not inv_id or not hosts:
-                    self._send_json(400, {"detail": "inventory and hosts are required"})
-                    return
-                self._send_json(201, {"inventory": inv_id, "hosts": hosts})
-            except ValueError as e:
-                self._send_json(400, {"detail": str(e)})
-            return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:

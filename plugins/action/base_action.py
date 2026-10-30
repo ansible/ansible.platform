@@ -258,12 +258,6 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override with module-specific fields.
     _SPACE_SEPARATED_LIST_FIELDS: frozenset = frozenset()
 
-    # Argspec constraints not expressible in DOCUMENTATION (validate-modules rejects them).
-    _NO_LOG_FIELDS: frozenset = frozenset()
-    _MUTUALLY_EXCLUSIVE: list = []
-    _REQUIRED_TOGETHER: list = []
-    _REQUIRED_ONE_OF: list = []
-
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
     _DEPRECATED_FIELDS: dict = {}
@@ -732,15 +726,13 @@ class BaseResourceActionPlugin(ActionBase):
                 options.update(fragment_options)
         options.update(doc_data.get("options", {}))
 
-        for field in self._NO_LOG_FIELDS:
-            if field in options:
-                options[field]["no_log"] = True
-
+        # Build argspec in Ansible format
+        # ArgumentSpecValidator expects 'argument_spec' key, not 'options'
         argspec = {
             "argument_spec": options,
-            "mutually_exclusive": doc_data.get("mutually_exclusive", []) + list(self._MUTUALLY_EXCLUSIVE),
-            "required_together": doc_data.get("required_together", []) + list(self._REQUIRED_TOGETHER),
-            "required_one_of": doc_data.get("required_one_of", []) + list(self._REQUIRED_ONE_OF),
+            "mutually_exclusive": doc_data.get("mutually_exclusive", []),
+            "required_together": doc_data.get("required_together", []),
+            "required_one_of": doc_data.get("required_one_of", []),
             "required_if": doc_data.get("required_if", []),
         }
 

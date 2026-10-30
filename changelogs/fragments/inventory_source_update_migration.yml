@@ -1,5 +1,0 @@
----
-minor_changes:
-  - inventory_source_update - migrate inventory_source_update module from awx_collection for triggering Controller inventory source syncs with optional wait/poll (https://issues.redhat.com/browse/AAP-95857).
-
-...

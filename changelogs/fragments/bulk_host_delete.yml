@@ -1,4 +1,0 @@
----
-minor_changes:
-  - bulk_host_delete - migrate bulk_host_delete module from awx_collection (https://issues.redhat.com/browse/AAP-95843).
-...

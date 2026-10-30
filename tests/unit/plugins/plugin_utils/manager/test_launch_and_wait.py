@@ -10,7 +10,6 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
@@ -23,7 +22,6 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_cli
     TERMINAL_STATUSES,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import (  # noqa: E402
-    NetworkError,
     PlatformError,
     WaitTimeoutError,
 )
@@ -98,8 +96,6 @@ def _make_platform_service():
     mgr.base_url = "https://gw.example.com"
     mgr._activity_lock = threading.Lock()
     mgr._last_activity_monotonic = time.monotonic()
-    mgr._lock = threading.Lock()
-    mgr._http_request_count = 0
     mgr.registry = MagicMock()
     mgr.api_versions = {}
     mgr._build_url = MagicMock(return_value="https://gw.example.com/api/controller/v2/jobs/99/")
@@ -116,28 +112,6 @@ class TestPlatformManagerLaunchResource(unittest.TestCase):
         self.assertEqual(result["id"], 99)
         self.assertEqual(result["status"], "pending")
         mgr._post_json.assert_called_once()
-
-    def test_launch_can_disable_retries_after_lost_response(self):
-        mgr = _make_platform_service()
-
-        class FakeConnectionError(Exception):
-            pass
-
-        requests_stub = SimpleNamespace(
-            exceptions=SimpleNamespace(
-                Timeout=type("FakeTimeout", (Exception,), {}),
-                ConnectionError=FakeConnectionError,
-                SSLError=type("FakeSSLError", (Exception,), {}),
-                HTTPError=type("FakeHTTPError", (Exception,), {}),
-            )
-        )
-        mgr.session.post.side_effect = FakeConnectionError("response lost after request")
-
-        with patch.dict(sys.modules, {"requests": requests_stub}):
-            with self.assertRaises(NetworkError):
-                mgr.launch_resource("/api/controller/v2/bulk/host_delete/", {"hosts": [1]}, service="controller", retry=False)
-
-        self.assertEqual(mgr.session.post.call_count, 1)
 
     def test_wait_returns_on_successful(self):
         mgr = _make_platform_service()
@@ -273,19 +247,7 @@ class TestRPCClientWrappers(unittest.TestCase):
         result = client.launch_resource("/launch/", {"key": "val"}, service="controller")
 
         self.assertEqual(result["id"], 1)
-        client.service_proxy.launch_resource.assert_called_once_with("/launch/", {"key": "val"}, "controller", True)
-
-    def test_launch_resource_delegates_retry_setting(self):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
-
-        client = ManagerRPCClient.__new__(ManagerRPCClient)
-        client.service_proxy = MagicMock()
-        client.service_proxy.launch_resource.return_value = {"id": 1}
-
-        result = client.launch_resource("/bulk/host_delete/", {"hosts": [1]}, service="controller", retry=False)
-
-        self.assertEqual(result, {"id": 1})
-        client.service_proxy.launch_resource.assert_called_once_with("/bulk/host_delete/", {"hosts": [1]}, "controller", False)
+        client.service_proxy.launch_resource.assert_called_once_with("/launch/", {"key": "val"}, "controller")
 
     def test_wait_for_completion_delegates(self):
         from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient

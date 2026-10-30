@@ -1,4 +1,0 @@
----
-minor_changes:
-  - bulk_host_delete - Migrate the module from the legacy ``awx_collection`` to bulk delete hosts from Controller inventories.
-...

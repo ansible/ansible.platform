@@ -1,7 +1,4 @@
 ---
-- name: Skip service_keys test for non-http-direct modes (parallel runs race on shared state)
-  ansible.builtin.meta: end_host
-  when: connection_mode | default('local') != 'http-direct'
 
 - name: Generate a test ID
   ansible.builtin.set_fact:

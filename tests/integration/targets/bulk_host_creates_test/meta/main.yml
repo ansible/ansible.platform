@@ -1,5 +1,0 @@
----
-dependencies:
-  - setup_gateway
-  - setup_controller
-...

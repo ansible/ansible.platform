@@ -19,7 +19,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Normally a read-only endpoint should not have a module (e.g. /api/gateway/v1/me/) but sometimes we reuse a name.
 # For example, we have a role module but /api/gateway/v1/roles/ is a read-only endpoint.
 # This list indicates which read-only endpoints have associated modules with them.
-read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key", "workflow_approval", "project_update"]
+read_only_endpoints_with_modules = ["settings", "authenticator_user", "service_key"]
 
 # If a module should not be created for an endpoint and the endpoint is not read-only add it here
 # THINK HARD ABOUT DOING THIS
@@ -33,17 +33,6 @@ no_endpoint_for_module = [
     "group",
     "instance",
     "workflow_job_template",
-    "subscriptions",
-    "bulk_host_create",
-    "controller_meta",
-    "workflow_node_wait",
-    "job_wait",
-    "bulk_host_delete",
-    "bulk_job_launch",
-    "inventory_source_update",
-    "project_update",
-    "bulk_host_delete",
-    "ad_hoc_command_wait",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
@@ -65,9 +54,7 @@ conditional_endpoint_modules = {
 }
 
 # Add modules with endpoints not auto-discovered from gateway or controller APIs
-extra_endpoints = {
-    "bulk_job_launch": "/api/controller/v2/bulk/job_launch/",
-}
+extra_endpoints = {}
 
 # Global module parameters we can ignore
 ignore_module_parameters = ["state", "new_name", "new_organization", "new_authenticator", "update_secrets", "copy_from", "assignment_objects"]
@@ -83,8 +70,6 @@ ignore_api_parameters = {
 no_api_parameter_ok = {
     # Existing_token and id are for working with an existing tokens
     "token": ["existing_token", "existing_token_id", "organization"],
-    # These control polling behavior rather than the Controller launch payload.
-    "bulk_job_launch": ["wait", "interval", "timeout"],
 }
 
 # Modules that need to be developed. If the module is found on the file system it will auto-detect
@@ -281,6 +266,9 @@ request_session.auth = (container_startup_info["gateway_admin_username"], contai
 endpoint_response = request_session.get(f"{container_startup_info['gateway_host']}/api/gateway/v1/", verify=False)
 
 json_response = endpoint_response.json()
+# Append any extra_endpoints to the list of endpoints to validate
+for key, val in extra_endpoints.items():
+    json_response[key] = val
 
 # Fetch controller API endpoints for fallback matching after the gateway loop.
 _controller_endpoints = {}
@@ -292,12 +280,6 @@ try:
         print(f"Controller API returned HTTP {controller_response.status_code}, skipping controller module validation")
 except (requests.ConnectionError, requests.Timeout):
     print("Controller API not available, skipping controller module validation")
-
-# Extra endpoints are currently Controller endpoints that are not advertised by
-# either API root. Do not probe them when running against a Gateway-only
-# environment: the Controller route returns a non-JSON 404 response there.
-if _controller_endpoints:
-    json_response.update(extra_endpoints)
 
 # Build set of known controller modules by checking for API model files.
 

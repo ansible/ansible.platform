@@ -43,17 +43,6 @@ action_groups:
     - workflow_job_template
     - controller_credential
     - workflow_job_template_node
-    - subscriptions
-    - bulk_host_create
-    - controller_meta
-    - workflow_approval
-    - workflow_node_wait
-    - job_wait
-    - bulk_host_delete
-    - bulk_job_launch
-    - inventory_source_update
-    - project_update
-    - bulk_host_delete
-    - ad_hoc_command_wait
+    - job_cancel
     - ad_hoc_command
 ...
