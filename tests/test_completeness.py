@@ -47,6 +47,7 @@ no_endpoint_for_module = [
     "job_cancel",
     "eda_controller_token",
     "job_launch",
+    "license",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
