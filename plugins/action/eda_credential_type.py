@@ -119,10 +119,14 @@ class ActionModule(BaseResourceActionPlugin):
                 service="eda",
             )
 
-            test_result = test_response if test_response else {
-                "success": True,
-                "message": "Credential type test accepted",
-            }
+            test_result = (
+                test_response
+                if test_response
+                else {
+                    "success": True,
+                    "message": "Credential type test accepted",
+                }
+            )
 
             result.update(
                 {
