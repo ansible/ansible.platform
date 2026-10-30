@@ -1,0 +1,150 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    de_name: "EDA-Collection-Test-DE-{{ test_id }}"
+    de_new_name: "EDA-Collection-Test-DE-Renamed-{{ test_id }}"
+    de_image: "quay.io/ansible/eda-decision-environment:latest"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Create> -------------------
+    - name: Create decision environment with check mode
+      ansible.platform.decision_environment:
+        name: "{{ de_name }}"
+        description: "Integration test decision environment"
+        image_url: "{{ de_image }}"
+        pull_policy: "always"
+        organization_name: "Default"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create decision environment
+      ansible.platform.decision_environment:
+        name: "{{ de_name }}"
+        description: "Integration test decision environment"
+        image_url: "{{ de_image }}"
+        pull_policy: "always"
+        organization_name: "Default"
+        state: present
+      register: create_result
+
+    - name: Assert decision environment was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.decision_environment.id is defined
+          - create_result.decision_environment.name == de_name
+
+    # <Idempotent — no change> -------------------
+    - name: Create same decision environment again (idempotent)
+      ansible.platform.decision_environment:
+        name: "{{ de_name }}"
+        description: "Integration test decision environment"
+        image_url: "{{ de_image }}"
+        pull_policy: "always"
+        organization_name: "Default"
+        state: present
+      register: idempotent_result
+
+    - name: Assert idempotent run reports no change
+      ansible.builtin.assert:
+        that:
+          - idempotent_result is not changed
+
+    # <Update> -------------------
+    - name: Update decision environment description
+      ansible.platform.decision_environment:
+        name: "{{ de_name }}"
+        description: "Updated description"
+        image_url: "{{ de_image }}"
+        state: present
+      register: update_result
+
+    - name: Assert decision environment was updated
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+          - update_result.decision_environment.id == create_result.decision_environment.id
+
+    # <Rename> -------------------
+    - name: Rename decision environment
+      ansible.platform.decision_environment:
+        name: "{{ de_name }}"
+        new_name: "{{ de_new_name }}"
+        image_url: "{{ de_image }}"
+        state: present
+      register: rename_result
+
+    - name: Assert decision environment was renamed
+      ansible.builtin.assert:
+        that:
+          - rename_result is changed
+          - rename_result.decision_environment.name == de_new_name
+
+    # <Exists> -------------------
+    - name: Check renamed decision environment exists
+      ansible.platform.decision_environment:
+        name: "{{ de_new_name }}"
+        state: exists
+      register: exists_result
+
+    - name: Assert exists check
+      ansible.builtin.assert:
+        that:
+          - exists_result.exists | bool
+
+    # <Delete> -------------------
+    - name: Delete decision environment
+      ansible.platform.decision_environment:
+        name: "{{ de_new_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert decision environment was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # <Delete absent — no-op> -------------------
+    - name: Delete already absent decision environment
+      ansible.platform.decision_environment:
+        name: "{{ de_new_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete absent is no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+
+  always:
+    - name: Cleanup — delete test decision environment (original name)
+      ansible.platform.decision_environment:
+        name: "{{ de_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup — delete test decision environment (renamed)
+      ansible.platform.decision_environment:
+        name: "{{ de_new_name }}"
+        state: absent
+      failed_when: false
+...

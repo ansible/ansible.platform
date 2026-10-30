@@ -25,6 +25,7 @@ action_groups:
     - ui_plugin_route
     - user
   eda:
+    - decision_environment
     - eda_controller_token
   controller:
     - job_template
