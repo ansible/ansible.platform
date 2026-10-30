@@ -19,6 +19,7 @@ from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -76,10 +77,22 @@ class ActionModule(BaseResourceActionPlugin):
                 timeout=timeout,
                 interval=interval,
                 service="controller",
+                wait=True,
             )
 
             result.update(cancel_result)
 
+        except WaitTimeoutError as exc:
+            lr = exc.last_result or {}
+            result.update(
+                {
+                    "changed": True,
+                    "failed": True,
+                    "msg": str(exc),
+                    "id": lr.get("id", command_id),
+                    "status": lr.get("status", "unknown"),
+                }
+            )
         except Exception as exc:
             import traceback as _tb
 

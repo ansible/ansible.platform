@@ -141,7 +141,7 @@ class ActionModule(BaseResourceActionPlugin):
             try:
                 # The legacy module waited indefinitely when timeout was omitted.
                 # The SDK uses negative timeout values for an unbounded wait.
-                wait_timeout = float(timeout) if timeout is not None else -1
+                wait_timeout = -1.0 if not timeout else float(timeout)
                 job_result = manager.wait_for_completion(
                     f"workflow_jobs/{workflow_job_id}",
                     timeout=wait_timeout,

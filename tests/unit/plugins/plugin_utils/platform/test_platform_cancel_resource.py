@@ -22,7 +22,7 @@ class TestCancelResource(TestCase):
         self.client.wait_for_completion = MagicMock(return_value={"status": "canceled"})
 
     def test_posts_to_service_scoped_cancel_endpoint(self):
-        result = self.client.cancel_resource(42, "ad_hoc_commands", service="controller")
+        result = self.client.cancel_resource(42, "ad_hoc_commands", service="controller", wait=True)
 
         self.assertEqual(result, {"changed": True, "id": 42, "status": "canceled"})
         self.client._build_url.assert_called_once_with("/ad_hoc_commands/42/cancel/", service="controller")
@@ -35,6 +35,12 @@ class TestCancelResource(TestCase):
         )
         self.client.wait_for_completion.assert_called_once_with("/ad_hoc_commands/42/", timeout=-1, interval=1.0, service="controller")
 
+    def test_returns_immediately_without_wait(self):
+        result = self.client.cancel_resource(42, "ad_hoc_commands", service="controller")
+
+        self.assertEqual(result, {"changed": True, "id": 42, "status": "canceled"})
+        self.client.wait_for_completion.assert_not_called()
+
     def test_direct_client_handles_empty_cancel_response(self):
         client = DirectHTTPClient.__new__(DirectHTTPClient)
         client._ensure_authenticated = MagicMock()
@@ -44,7 +50,7 @@ class TestCancelResource(TestCase):
         response.read.return_value = b""
         client._make_request = MagicMock(return_value=response)
 
-        result = client.cancel_resource(42, "ad_hoc_commands", service="controller")
+        result = client.cancel_resource(42, "ad_hoc_commands", service="controller", wait=True)
 
         self.assertEqual(result, {"changed": True, "id": 42, "status": "canceled"})
         client.wait_for_completion.assert_called_once_with("/ad_hoc_commands/42/", timeout=-1, interval=1.0, service="controller")
@@ -58,7 +64,7 @@ class TestCancelResource(TestCase):
         response.content = b""
         client._make_request = MagicMock(return_value=response)
 
-        result = client.cancel_resource(42, "ad_hoc_commands", service="controller")
+        result = client.cancel_resource(42, "ad_hoc_commands", service="controller", wait=True)
 
         self.assertEqual(result, {"changed": True, "id": 42, "status": "canceled"})
         response.json.assert_not_called()
@@ -84,7 +90,7 @@ class TestCancelResource(TestCase):
             self.client.can_cancel_resource(42, "ad_hoc_commands", service="controller")
 
     def test_passes_timeout_and_interval_to_waiter(self):
-        self.client.cancel_resource(42, "ad_hoc_commands", timeout=30, interval=0.25, service="controller")
+        self.client.cancel_resource(42, "ad_hoc_commands", timeout=30, interval=0.25, service="controller", wait=True)
 
         self.client.wait_for_completion.assert_called_once_with("/ad_hoc_commands/42/", timeout=30, interval=0.25, service="controller")
 
@@ -107,13 +113,11 @@ class TestCancelResource(TestCase):
         self.assertEqual(result, {"changed": False, "id": 42, "status": "already finished"})
         self.client.wait_for_completion.assert_not_called()
 
-    def test_invalid_wait_options_fail_before_cancel_request(self):
+    def test_invalid_wait_options_fail_before_waiter(self):
         with self.assertRaisesRegex(ValueError, "interval must be positive"):
-            self.client.cancel_resource(42, "ad_hoc_commands", interval=0, service="controller")
+            self.client.cancel_resource(42, "ad_hoc_commands", interval=0, service="controller", wait=True)
         with self.assertRaisesRegex(ValueError, "Timeout must be 0 or greater"):
-            self.client.cancel_resource(42, "ad_hoc_commands", timeout=-1, service="controller")
-
-        self.client._post_json.assert_not_called()
+            self.client.cancel_resource(42, "ad_hoc_commands", timeout=-1, service="controller", wait=True)
 
     def test_cancel_post_is_not_retried_by_persistent_client(self):
         client = PlatformService.__new__(PlatformService)
@@ -139,7 +143,7 @@ class TestCancelResource(TestCase):
         result = rpc_client.cancel_resource(42, "ad_hoc_commands", timeout=30, interval=0.5, service="controller")
 
         self.assertEqual(result, {"changed": True, "id": 42, "status": "canceled"})
-        rpc_client.service_proxy.cancel_resource.assert_called_once_with(42, "ad_hoc_commands", False, 30, 0.5, "controller")
+        rpc_client.service_proxy.cancel_resource.assert_called_once_with(42, "ad_hoc_commands", False, 30, 0.5, "controller", False)
 
     def test_rpc_client_exposes_cancel_eligibility_check(self):
         rpc_client = ManagerRPCClient.__new__(ManagerRPCClient)
