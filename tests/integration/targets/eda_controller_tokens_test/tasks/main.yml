@@ -1,0 +1,98 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    token_name: "EDA-Collection-Test-Token-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # <Create> -------------------
+    - name: Create EDA controller token with check mode
+      ansible.platform.eda_controller_token:
+        name: "{{ token_name }}"
+        description: "Integration test token"
+        token: "test-token-value-{{ test_id }}"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create EDA controller token
+      ansible.platform.eda_controller_token:
+        name: "{{ token_name }}"
+        description: "Integration test token"
+        token: "test-token-value-{{ test_id }}"
+        state: present
+      register: create_result
+      no_log: false
+
+    - name: Assert token was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_controller_token.id is defined
+          - create_result.eda_controller_token.name == token_name
+
+    # <Re-create (Shape 6 — always changed)> -------------------
+    - name: Re-create same token (delete + recreate — no PATCH support)
+      ansible.platform.eda_controller_token:
+        name: "{{ token_name }}"
+        description: "Integration test token"
+        token: "test-token-value-{{ test_id }}"
+        state: present
+      register: recreate_result
+      no_log: false
+
+    - name: Assert re-create reports changed (Shape 6 behavior)
+      ansible.builtin.assert:
+        that:
+          - recreate_result is changed
+          - recreate_result.eda_controller_token.id is defined
+          - recreate_result.eda_controller_token.id != create_result.eda_controller_token.id
+
+    # <Delete> -------------------
+    - name: Delete EDA controller token
+      ansible.platform.eda_controller_token:
+        name: "{{ token_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert token was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # <Delete absent — no-op> -------------------
+    - name: Delete already absent token
+      ansible.platform.eda_controller_token:
+        name: "{{ token_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete absent is no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+
+  always:
+    - name: Cleanup — delete test token
+      ansible.platform.eda_controller_token:
+        name: "{{ token_name }}"
+        state: absent
+      failed_when: false
+...

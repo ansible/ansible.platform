@@ -44,7 +44,7 @@ def _now_iso() -> str:
 
 # API services this mock fronts. Each has its own /api/{service}/vN/ prefix and
 # version-discovery root, mirroring the real Gateway's per-service routing.
-SUPPORTED_SERVICES = ("gateway", "controller")
+SUPPORTED_SERVICES = ("gateway", "controller", "eda")
 WORKFLOW_NODE_WAIT_WORKFLOW_ID = 8001
 WORKFLOW_NODE_WAIT_NODE_ID = 8101
 WORKFLOW_NODE_WAIT_JOB_ID = 8201
@@ -381,6 +381,18 @@ class Store:
                 required_fields=required,
                 start_id=start_id,
                 service="controller",
+            )
+
+        # EDA resources
+        eda_defs: List[tuple] = [
+            ("awx-tokens", ["name", "token"], 6000),
+        ]
+        for endpoint, required, start_id in eda_defs:
+            self._resources[("eda", endpoint)] = GenericResource(
+                resource_name=endpoint,
+                required_fields=required,
+                start_id=start_id,
+                service="eda",
             )
 
     def resource(self, service: str, name: str) -> Optional[GenericResource]:
@@ -1181,6 +1193,12 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             except ValueError as e:
                 self._send_json(400, {"detail": str(e)})
             return
+
+        # ---- EDA: /api/eda/vX/users/me/awx-tokens/ ----
+        if service == "eda" and len(parts) >= 6 and parts[3] == "users" and parts[4] == "me" and parts[5] == "awx-tokens":
+            remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
+            if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
+                return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:

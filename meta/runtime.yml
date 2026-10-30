@@ -24,6 +24,8 @@ action_groups:
     - token
     - ui_plugin_route
     - user
+  eda:
+    - eda_controller_token
   controller:
     - job_template
     - controller_credential_type
