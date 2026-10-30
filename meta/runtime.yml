@@ -61,4 +61,5 @@ action_groups:
     - job_cancel
     - job_launch
     - license
+    - workflow_launch
 ...
