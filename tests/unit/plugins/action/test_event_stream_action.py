@@ -12,7 +12,6 @@ from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.event_stream import ActionModule
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.event_stream import AnsibleEventStream
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.event_stream import (
-    APIEventStream_v1,
     EventStreamTransformMixin_v1,
 )
 
@@ -140,7 +139,7 @@ class TestEventStreamTransform(unittest.TestCase):
     """Test EventStreamTransformMixin_v1."""
 
     def _ctx(self, op="create", mgr=None):
-        return SimpleNamespace(operation=op, manager=mgr)
+        return {"operation": op, "manager": mgr}
 
     def _mgr(self, cred_id=10, org_id=1):
         m = MagicMock()
@@ -205,7 +204,11 @@ class TestEventStreamTransform(unittest.TestCase):
         self.assertNotIn("event_stream_type", asdict(api))
 
     def test_from_api_basic(self):
-        data = {"id": 42, "name": "s", "eda_credential_id": 10, "organization_id": 1, "test_mode": False, "additional_data_headers": "H", "uuid": "550e8400-e29b-41d4-a716-446655440000"}
+        data = {
+            "id": 42, "name": "s", "eda_credential_id": 10, "organization_id": 1,
+            "test_mode": False, "additional_data_headers": "H",
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+        }
         obj = EventStreamTransformMixin_v1.from_api(data, {})
         self.assertEqual(obj.credential_name, "10")
         self.assertEqual(obj.organization_name, "1")
