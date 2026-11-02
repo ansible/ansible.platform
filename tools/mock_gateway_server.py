@@ -19,6 +19,12 @@ Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
 The workflow_node_wait scenario uses a pending-to-successful job fixture.
 
+EDA endpoints (under /api/eda/v{1,2}/) include awx-tokens, organizations,
+projects, rulebooks (with a seeded rulebooks/{id}/sources/ sub-resource),
+decision-environments, eda-credentials, event-streams, and activations
+(with enable/disable/restart/copy sub-actions) for the rulebook_activation
+and rulebook_activation_copy Molecule scenarios.
+
 Notes
 -----
 - Auth is intentionally permissive: any Authorization header is accepted.
@@ -386,6 +392,13 @@ class Store:
         # EDA resources
         eda_defs: List[tuple] = [
             ("awx-tokens", ["name", "token"], 6000),
+            ("organizations", ["name"], 7100),
+            ("projects", ["name"], 7200),
+            ("rulebooks", ["name", "project_id"], 7300),
+            ("decision-environments", ["name"], 7400),
+            ("eda-credentials", ["name"], 7500),
+            ("event-streams", ["name"], 7600),
+            ("activations", ["name"], 7700),
         ]
         for endpoint, required, start_id in eda_defs:
             self._resources[("eda", endpoint)] = GenericResource(
@@ -505,6 +518,30 @@ class Store:
             resource = self.resource("controller", endpoint)
             if resource and not resource._items:
                 resource.seed("2", items)
+
+        # Seed EDA fixtures for the rulebook_activation Molecule mock scenario.
+        # The rulebook includes an embedded "sources" list so
+        # /api/eda/v1/rulebooks/{id}/sources/ (see MockGatewayHandler) can serve
+        # it without a dedicated store.
+        eda_fixtures = {
+            "organizations": [{"id": 9001, "name": "Default"}],
+            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 9001}],
+            "rulebooks": [
+                {
+                    "id": 9201,
+                    "name": "hello_controller.yml",
+                    "project_id": 9101,
+                    "sources": [{"name": "range", "rulebook_hash": "mock-rulebook-hash-range"}],
+                }
+            ],
+            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 9001}],
+            "eda-credentials": [{"id": 9401, "name": "Molecule Mock EDA Credential"}],
+            "event-streams": [{"id": 9501, "name": "Molecule Mock Event Stream"}],
+        }
+        for endpoint, items in eda_fixtures.items():
+            resource = self.resource("eda", endpoint)
+            if resource and not resource._items:
+                resource.seed("1", items)
 
     def job_template_associations(self, template_id: int, field_name: str, page: int = 1) -> Dict[str, Any]:
         """Return a DRF-style paginated association list."""
@@ -1199,6 +1236,55 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
                 return
+
+        # ---- EDA: /api/eda/vX/rulebooks/{id}/sources/ (read-only, seeded on the rulebook fixture) ----
+        if service == "eda" and resource == "rulebooks" and len(parts) == 6 and parts[5] == "sources" and self.command == "GET":
+            self.store.seed_defaults()
+            rulebook_store = self.store.resource("eda", "rulebooks")
+            try:
+                rulebook = rulebook_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            sources = rulebook.get("sources", [])
+            self._send_json(200, {"count": len(sources), "results": sources})
+            return
+
+        # ---- EDA: /api/eda/vX/activations/{id}/{enable,disable,restart,copy}/ ----
+        activation_sub_actions = ("enable", "disable", "restart", "copy")
+        if service == "eda" and resource == "activations" and len(parts) == 6 and parts[5] in activation_sub_actions and self.command == "POST":
+            self.store.seed_defaults()
+            activation_store = self.store.resource("eda", "activations")
+            try:
+                activation_id = int(parts[4])
+                activation_store.get(activation_id)
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            sub_action = parts[5]
+            if sub_action == "enable":
+                self._send_json(200, activation_store.patch(activation_id, {"is_enabled": True}))
+                return
+            if sub_action == "disable":
+                self._send_json(200, activation_store.patch(activation_id, {"is_enabled": False}))
+                return
+            if sub_action == "restart":
+                self._send_json(200, activation_store.get(activation_id))
+                return
+            # copy: clone the source activation under the new name from the request body
+            try:
+                new_name = self._parse_json_body()["name"]
+            except (KeyError, ValueError):
+                self._send_json(400, {"detail": "'name' is required"})
+                return
+            source = activation_store.get(activation_id)
+            clone_payload = {k: v for k, v in source.items() if k not in ("id", "created", "modified", "url")}
+            clone_payload["name"] = new_name
+            try:
+                self._send_json(201, activation_store.create(version, clone_payload))
+            except ValueError as e:
+                self._send_json(400, {"detail": str(e)})
+            return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:

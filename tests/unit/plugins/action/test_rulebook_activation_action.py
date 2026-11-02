@@ -23,7 +23,7 @@ class TestRulebookActivationAction(unittest.TestCase):
         action._display.verbosity = 0
         return action
 
-    def _make_manager(self, find_result=None):
+    def _make_manager(self, find_result=None, update_changed=True, create_result=None):
         manager = MagicMock()
 
         def execute_side_effect(operation, module_name, ansible_data):
@@ -31,6 +31,16 @@ class TestRulebookActivationAction(unittest.TestCase):
                 if find_result:
                     return find_result
                 raise ValueError("Not found")
+            if operation == "create":
+                result = dict(create_result or {"id": 100, "name": ansible_data.get("name")})
+                result["changed"] = True
+                return result
+            if operation == "update":
+                result = dict(find_result or {})
+                result["changed"] = update_changed
+                return result
+            if operation == "delete":
+                return {"changed": True, "id": ansible_data.get("id")}
             return {}
 
         manager.execute.side_effect = execute_side_effect
@@ -81,10 +91,13 @@ class TestRulebookActivationAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
-        # Should call direct_request with DELETE
-        manager.direct_request.assert_called_once()
-        call_args = manager.direct_request.call_args
-        self.assertEqual(call_args[0][0], "DELETE")
+        # Delete goes through the generic execute() dispatch, not direct_request
+        manager.execute.assert_any_call(
+            operation="delete",
+            module_name="rulebook_activation",
+            ansible_data={"id": 42, "name": "test-activation"},
+        )
+        manager.direct_request.assert_not_called()
 
     def test_delete_nonexistent_activation(self):
         """No-op when deleting activation that doesn't exist."""
@@ -201,8 +214,7 @@ class TestRulebookActivationAction(unittest.TestCase):
     def test_create_new_activation(self):
         """Create a new activation when none exists."""
         action = self._make_action()
-        manager = self._make_manager(find_result=None)
-        manager.direct_request.return_value = {"id": 100, "name": "new-activation"}
+        manager = self._make_manager(find_result=None, create_result={"id": 100, "name": "new-activation"})
         result = self._run_action(
             action,
             manager,
@@ -220,10 +232,44 @@ class TestRulebookActivationAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 100)
-        # Should call direct_request with POST
-        manager.direct_request.assert_called_once()
-        call_args = manager.direct_request.call_args
-        self.assertEqual(call_args[0][0], "POST")
+        # Create goes through the generic execute() dispatch (FK resolution
+        # and the API call both live in the transform mixin), not direct_request.
+        create_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "create")
+        self.assertEqual(create_call.kwargs["ansible_data"]["is_enabled"], True)
+        self.assertNotIn("id", create_call.kwargs["ansible_data"])
+        manager.direct_request.assert_not_called()
+
+    def test_update_existing_activation_no_changes_is_idempotent(self):
+        """state=present on an unchanged existing activation must not report changed."""
+        action = self._make_action()
+        manager = self._make_manager(
+            find_result={"id": 42, "name": "test-activation", "is_enabled": True},
+            update_changed=False,
+        )
+        result = self._run_action(action, manager, {"name": "test-activation", "state": "present", "restart": False})
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        update_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "update")
+        self.assertEqual(update_call.kwargs["ansible_data"]["id"], 42)
+        manager.direct_request.assert_not_called()
+
+    def test_update_existing_activation_with_changes(self):
+        """state=present with an actual field change must report changed."""
+        action = self._make_action()
+        manager = self._make_manager(
+            find_result={"id": 42, "name": "test-activation", "is_enabled": True},
+            update_changed=True,
+        )
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "state": "present", "restart": False, "description": "updated"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.direct_request.assert_not_called()
 
     def test_check_mode_create(self):
         """Check mode for creating a new activation."""

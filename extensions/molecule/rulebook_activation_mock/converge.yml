@@ -1,0 +1,211 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — rulebook_activation / rulebook_activation_copy (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    activation_name: "molecule-mock-rulebook-activation"
+    activation_copy_name: "molecule-mock-rulebook-activation-copy"
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+  tasks:
+    - name: Create rulebook activation with check mode
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Molecule mock activation"
+        project_name: "Molecule Mock EDA Project"
+        rulebook_name: "hello_controller.yml"
+        decision_environment_name: "Molecule Mock Decision Environment"
+        organization_name: "Default"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create rulebook activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Molecule mock activation"
+        project_name: "Molecule Mock EDA Project"
+        rulebook_name: "hello_controller.yml"
+        decision_environment_name: "Molecule Mock Decision Environment"
+        organization_name: "Default"
+        state: present
+      register: create_result
+
+    - name: Assert activation was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.rulebook_activation.id is defined
+
+    - name: Re-create same activation with identical parameters (idempotency)
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Molecule mock activation"
+        project_name: "Molecule Mock EDA Project"
+        rulebook_name: "hello_controller.yml"
+        decision_environment_name: "Molecule Mock Decision Environment"
+        organization_name: "Default"
+        state: present
+      register: recreate_result
+
+    - name: Assert re-create with no actual changes reports changed=false
+      ansible.builtin.assert:
+        that:
+          - recreate_result is not changed
+          - recreate_result.rulebook_activation.id == create_result.rulebook_activation.id
+        fail_msg: >-
+          state=present against an unchanged activation must be idempotent
+          (regression guard for the always-changed=true bug fixed alongside
+          this scenario).
+
+    - name: Update activation description (real change)
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Molecule mock activation (updated)"
+        state: present
+      register: update_result
+
+    - name: Assert updating a field reports changed
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+
+    - name: Disable the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_result
+
+    - name: Assert disable reports changed
+      ansible.builtin.assert:
+        that:
+          - disable_result is changed
+
+    - name: Disable the activation again (already disabled)
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_again_result
+
+    - name: Assert disabling an already-disabled activation is a no-op
+      ansible.builtin.assert:
+        that:
+          - disable_again_result is not changed
+
+    - name: Enable the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: enabled
+      register: enable_result
+
+    - name: Assert enable reports changed
+      ansible.builtin.assert:
+        that:
+          - enable_result is changed
+
+    - name: Restart the activation (non-idempotent)
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        restart: true
+      register: restart_result
+
+    - name: Assert restart always reports changed
+      ansible.builtin.assert:
+        that:
+          - restart_result is changed
+
+    - name: Copy the activation
+      ansible.platform.rulebook_activation_copy:
+        name: "{{ activation_copy_name }}"
+        copy_from: "{{ activation_name }}"
+      register: copy_result
+
+    - name: Assert copy created a new activation
+      ansible.builtin.assert:
+        that:
+          - copy_result is changed
+          - copy_result.rulebook_activation_copy.id is defined
+          - copy_result.rulebook_activation_copy.id != create_result.rulebook_activation.id
+
+    - name: Delete the copied activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_copy_name }}"
+        state: absent
+      register: delete_copy_result
+
+    - name: Assert copy delete reports changed
+      ansible.builtin.assert:
+        that:
+          - delete_copy_result is changed
+
+    - name: Delete the original activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert delete reports changed
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    - name: Delete already-absent activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete-absent is a no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+...

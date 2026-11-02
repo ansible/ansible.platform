@@ -7,29 +7,32 @@
 """Action plugin for ansible.platform.rulebook_activation module.
 
 Rulebook activations support create, update, delete, enable, disable, and
-restart operations.  The action plugin handles all FK resolution (project,
-rulebook, decision environment, organization, AWX token, EDA credentials,
-event streams) and state transitions (enabled/disabled/restart) directly
-via the manager API.
+restart operations.  Create/update/delete go through manager.execute() so
+FK resolution (project, rulebook, decision environment, organization, AWX
+token, EDA credentials, event streams) and update idempotency diffing both
+live in RulebookActivationTransformMixin_v1 / PlatformService, exactly like
+every other full-CRUD resource (see plugins/action/eda_controller_token.py).
+Enable/disable/restart are custom sub-actions with no create/update/delete
+shape, so they use manager.direct_request() against their sub-endpoints,
+the same pattern plugins/action/workflow_approval.py uses for approve/deny.
 """
 
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-from typing import Any, Dict
+from dataclasses import fields as dataclass_fields
 
-import yaml
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.rulebook_activation import AnsibleRulebookActivation
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation import (
-    ACTIVATION_DETAIL_ENDPOINT,
     ACTIVATION_DISABLE_ENDPOINT,
     ACTIVATION_ENABLE_ENDPOINT,
     ACTIVATION_RESTART_ENDPOINT,
-    ACTIVATIONS_ENDPOINT,
 )
+
+_ANSIBLE_MODEL_FIELDS = frozenset(f.name for f in dataclass_fields(AnsibleRulebookActivation))
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -42,7 +45,7 @@ class ActionModule(BaseResourceActionPlugin):
         """Execute rulebook activation management.
 
         Handles the full lifecycle: create, update, delete, enable,
-        disable, and restart operations with FK resolution.
+        disable, and restart operations.
 
         Args:
             tmp: Deprecated parameter.
@@ -160,7 +163,7 @@ class ActionModule(BaseResourceActionPlugin):
         return result
 
     def _handle_absent(self, manager, name, existing, result):
-        """Handle state=absent (delete).
+        """Handle state=absent (delete) via the generic delete operation.
 
         Args:
             manager: The platform manager client.
@@ -190,7 +193,11 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
             return result
-        manager.direct_request("DELETE", ACTIVATION_DETAIL_ENDPOINT.format(id=existing["id"]))
+        manager.execute(
+            operation="delete",
+            module_name=self.MODULE_NAME,
+            ansible_data={"id": existing["id"], "name": name},
+        )
         result.update(
             {
                 "changed": True,
@@ -202,6 +209,10 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _handle_state_transition(self, manager, state, existing, result):
         """Handle enable/disable state transition on existing activation.
+
+        These are custom sub-actions (POST .../enable/ or .../disable/) with
+        no create/update shape, so they call the API directly the same way
+        plugins/action/workflow_approval.py handles approve/deny.
 
         Args:
             manager: The platform manager client.
@@ -244,7 +255,12 @@ class ActionModule(BaseResourceActionPlugin):
         return result
 
     def _handle_create_or_update(self, manager, params, state, name, new_name, existing, result):
-        """Handle create or update of an activation.
+        """Create or update an activation via manager.execute().
+
+        FK resolution and update idempotency diffing both live in the
+        transform mixin / PlatformService._update_resource; this method only
+        translates the Ansible-level 'state' into the API's 'is_enabled'
+        field and decides create vs. update.
 
         Args:
             manager: The platform manager client.
@@ -258,226 +274,61 @@ class ActionModule(BaseResourceActionPlugin):
         Returns:
             dict: Updated result.
         """
-        payload = self._build_activation_payload(manager, params, state)
-        payload["name"] = new_name if new_name else (existing.get("name", name) if existing else name)
+        check_name = new_name if new_name else name
 
         if self._task.check_mode:
             result.update(
                 {
                     "changed": True,
                     "failed": False,
-                    self.MODULE_NAME: {"name": payload["name"]},
+                    self.MODULE_NAME: {"name": check_name},
                 }
             )
             return result
 
-        if existing:
-            api_result = manager.direct_request(
-                "PATCH",
-                ACTIVATION_DETAIL_ENDPOINT.format(id=existing["id"]),
-                data=payload,
-            )
-        else:
-            api_result = manager.direct_request(
-                "POST",
-                ACTIVATIONS_ENDPOINT,
-                data=payload,
-            )
+        # Only forward fields the Ansible dataclass actually declares --
+        # validated_params also carries auth options (gateway_hostname, ...)
+        # that must never reach AnsibleRulebookActivation(**ansible_data).
+        ansible_data = {k: v for k, v in params.items() if k in _ANSIBLE_MODEL_FIELDS}
+        ansible_data["is_enabled"] = state != "disabled"
+        # 'restart' is a pure action-plugin directive (handled earlier in run());
+        # the API never echoes it back, so leaving it in ansible_data would make
+        # PlatformService._update_resource's idempotency diff always see it as
+        # "missing on the server" and report changed=True on every call.
+        ansible_data.pop("restart", None)
 
+        operation = "create"
+        if existing:
+            ansible_data["id"] = existing["id"]
+            operation = "update"
+            # These reference fields resolve to IDs that the activations API
+            # only accepts on create (see get_endpoint_operations()["update"]
+            # .fields) -- forwarding them on update is a no-op for the PATCH
+            # body but, like 'restart' above, is never echoed back by from_api()
+            # and would otherwise always look "changed" to the idempotency diff.
+            for create_only_field in (
+                "project_name",
+                "rulebook_name",
+                "decision_environment_name",
+                "organization_name",
+                "awx_token_name",
+                "event_streams",
+            ):
+                ansible_data.pop(create_only_field, None)
+
+        api_result = manager.execute(
+            operation=operation,
+            module_name=self.MODULE_NAME,
+            ansible_data=ansible_data,
+        )
+
+        changed = api_result.pop("changed", True)
         result.update(
             {
-                "changed": True,
+                "changed": changed,
                 "failed": False,
                 self.MODULE_NAME: api_result,
                 "id": api_result.get("id"),
             }
         )
         return result
-
-    def _build_activation_payload(self, manager, params, state):
-        """Build the API payload with resolved FK references.
-
-        Args:
-            manager: The platform manager client.
-            params: Validated module parameters.
-            state: Desired state.
-
-        Returns:
-            dict: API-ready payload with resolved IDs.
-        """
-        payload: Dict[str, Any] = {}
-
-        # Resolve project_name -> project_id
-        project_name = params.get("project_name")
-        project_id = None
-        if project_name:
-            project_id = manager.lookup_resource_id(
-                "projects",
-                "name",
-                project_name,
-                service="eda",
-            )
-            if project_id is None:
-                raise AnsibleError("Project '%s' not found." % project_name)
-
-        # Resolve rulebook_name -> rulebook_id (needs project_id)
-        rulebook_name = params.get("rulebook_name")
-        rulebook_id = None
-        if rulebook_name and project_id is not None:
-            rulebook_id = manager.lookup_resource_id(
-                "rulebooks",
-                "name",
-                rulebook_name,
-                service="eda",
-                extra_query_params={"project_id": project_id},
-            )
-            if rulebook_id is None:
-                raise AnsibleError("Rulebook '%s' not found for project '%s'." % (rulebook_name, project_name))
-            payload["rulebook_id"] = rulebook_id
-
-        # Resolve decision_environment_name -> decision_environment_id
-        de_name = params.get("decision_environment_name")
-        if de_name:
-            de_id = manager.lookup_resource_id(
-                "decision-environments",
-                "name",
-                de_name,
-                service="eda",
-            )
-            if de_id is None:
-                raise AnsibleError("Decision Environment '%s' not found." % de_name)
-            payload["decision_environment_id"] = de_id
-
-        # Resolve organization_name -> organization_id
-        org_name = params.get("organization_name")
-        if org_name:
-            org_id = manager.lookup_resource_id(
-                "organizations",
-                "name",
-                org_name,
-                service="eda",
-            )
-            if org_id is None:
-                raise AnsibleError("Organization '%s' not found." % org_name)
-            payload["organization_id"] = org_id
-
-        # Resolve awx_token_name -> awx_token_id
-        token_name = params.get("awx_token_name")
-        if token_name:
-            token_id = manager.lookup_resource_id(
-                "users/me/awx-tokens",
-                "name",
-                token_name,
-                service="eda",
-            )
-            if token_id is not None:
-                payload["awx_token_id"] = token_id
-
-        # Resolve eda_credentials -> credential IDs
-        cred_names = params.get("eda_credentials")
-        if cred_names:
-            cred_ids = []
-            for cred_name in cred_names:
-                cred_id = manager.lookup_resource_id(
-                    "eda-credentials",
-                    "name",
-                    cred_name,
-                    service="eda",
-                )
-                if cred_id is not None:
-                    cred_ids.append(cred_id)
-            payload["eda_credentials"] = cred_ids
-
-        # Process event_streams -> source_mappings
-        if params.get("event_streams") and rulebook_id is not None:
-            payload["source_mappings"] = self._process_event_streams(
-                manager,
-                rulebook_id,
-                params,
-            )
-
-        # k8s_service_name
-        if params.get("k8s_service_name"):
-            payload["k8s_service_name"] = params["k8s_service_name"]
-
-        # Simple scalar fields
-        if params.get("description") is not None:
-            payload["description"] = params["description"]
-        if params.get("extra_vars"):
-            payload["extra_var"] = params["extra_vars"]
-        if params.get("restart_policy"):
-            payload["restart_policy"] = params["restart_policy"]
-        if params.get("log_level"):
-            payload["log_level"] = params["log_level"]
-        if params.get("enable_persistence") is not None:
-            payload["enable_persistence"] = params["enable_persistence"]
-        if params.get("rule_engine_credential_id") is not None:
-            payload["rule_engine_credential_id"] = params["rule_engine_credential_id"]
-        if params.get("restart_on_project_update") is not None:
-            payload["restart_on_project_update"] = params["restart_on_project_update"]
-
-        # Set is_enabled based on state
-        payload["is_enabled"] = state != "disabled"
-
-        return payload
-
-    def _process_event_streams(self, manager, rulebook_id, params):
-        """Process event streams and return source_mappings YAML string.
-
-        Args:
-            manager: The platform manager client.
-            rulebook_id: The resolved rulebook ID.
-            params: Validated module parameters.
-
-        Returns:
-            str: YAML-serialized source mappings.
-        """
-        # Get rulebook sources
-        sources_result = manager.search_api(
-            "rulebooks/%s/sources" % rulebook_id,
-            service="eda",
-        )
-        sources = sources_result if isinstance(sources_result, list) else sources_result.get("results", [])
-
-        source_mappings = []
-        for event in params.get("event_streams", []):
-            source_mapping: Dict[str, Any] = {}
-
-            source_index = event.get("source_index")
-            source_name = event.get("source_name")
-
-            if source_index is not None and source_name is not None:
-                raise AnsibleError("source_index and source_name options are mutually exclusive.")
-            if source_index is None and source_name is None:
-                raise AnsibleError("You must specify one of the options: source_index or source_name.")
-
-            if source_index is not None:
-                if source_index >= len(sources):
-                    raise AnsibleError("The specified source_index %s is out of range." % source_index)
-                source_mapping["source_name"] = sources[source_index].get("name")
-                source_mapping["rulebook_hash"] = sources[source_index].get("rulebook_hash")
-            elif source_name:
-                match = next((s for s in sources if s["name"] == source_name), None)
-                if not match:
-                    raise AnsibleError("The specified source_name '%s' does not exist." % source_name)
-                source_mapping["source_name"] = match.get("name")
-                source_mapping["rulebook_hash"] = match.get("rulebook_hash")
-
-            event_stream_name = event.get("event_stream")
-            if not event_stream_name:
-                raise AnsibleError("You must specify an event stream name.")
-
-            event_stream_id = manager.lookup_resource_id(
-                "event-streams",
-                "name",
-                event_stream_name,
-                service="eda",
-            )
-            if event_stream_id is None:
-                raise AnsibleError("The event stream '%s' does not exist." % event_stream_name)
-
-            source_mapping["event_stream_name"] = event_stream_name
-            source_mapping["event_stream_id"] = event_stream_id
-            source_mappings.append(source_mapping)
-
-        return yaml.dump(source_mappings).rstrip("\n")
