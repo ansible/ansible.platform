@@ -54,3 +54,68 @@ def test_find_errors_other_than_not_found_are_not_silenced(action):
 
     with pytest.raises(ValueError, match="permission denied"):
         action._import_single_resource(manager, "organization", {"name": "Example"})
+
+
+def test_missing_manager_changed_flag_is_rejected(action):
+    manager = Mock()
+    manager.execute.side_effect = [ValueError("Resource with name=Example not found"), {"id": 42}]
+
+    with pytest.raises(ValueError, match="explicit changed flag"):
+        action._import_single_resource(manager, "organization", {"name": "Example"})
+
+
+def test_inventory_children_create_groups_before_associations(action):
+    action._import_single_resource = Mock(side_effect=[False, False])
+    manager = Mock()
+    manager.execute.side_effect = [{"id": 10}, {"id": 11}]
+    manager.manage_associations.return_value = False
+    failed_resources = []
+    inventory = [
+        {
+            "name": "Production",
+            "groups": [
+                {"name": "parent", "children": ["child"]},
+                {"name": "child"},
+            ],
+        }
+    ]
+
+    hosts, groups = action._import_inventory_children(manager, inventory, False, failed_resources)
+
+    assert hosts == {"changed": 0, "ok": 0, "failed": 0}
+    assert groups == {"changed": 0, "ok": 2, "failed": 0}
+    assert [call.args[1] for call in action._import_single_resource.call_args_list] == ["group", "group"]
+    assert manager.manage_associations.call_args_list[0].args[:4] == ("groups", 10, "children", ["child"])
+    assert failed_resources == []
+
+
+def test_inventory_children_second_import_is_idempotent(action):
+    manager = Mock()
+    manager.execute.return_value = {"id": 10}
+    manager.manage_associations.return_value = False
+    failed_resources = []
+    inventory = [{"name": "Production", "groups": [{"name": "web", "hosts": ["web01"]}]}]
+
+    action._import_single_resource = Mock(return_value=False)
+    first_hosts, first_groups = action._import_inventory_children(manager, inventory, False, failed_resources)
+    second_hosts, second_groups = action._import_inventory_children(manager, inventory, False, failed_resources)
+
+    assert first_hosts == second_hosts == {"changed": 0, "ok": 0, "failed": 0}
+    assert first_groups == second_groups == {"changed": 0, "ok": 1, "failed": 0}
+    assert manager.manage_associations.call_count == 2
+    assert failed_resources == []
+
+
+def test_inventory_children_association_failure_is_reported(action):
+    manager = Mock()
+    manager.execute.return_value = {"id": 10}
+    manager.manage_associations.side_effect = RuntimeError("association failed")
+    failed_resources = []
+    inventory = [{"name": "Production", "groups": [{"name": "web", "hosts": ["web01"]}]}]
+
+    action._import_single_resource = Mock(return_value=False)
+    hosts, groups = action._import_inventory_children(manager, inventory, False, failed_resources)
+
+    assert hosts == {"changed": 0, "ok": 0, "failed": 0}
+    assert groups == {"changed": 0, "ok": 0, "failed": 1}
+    assert failed_resources == [{"type": "groups", "name": "web", "error": "association failed"}]

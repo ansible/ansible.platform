@@ -173,14 +173,21 @@ class ActionModule(BaseResourceActionPlugin):
                 module_name=module_name,
                 ansible_data=update_data,
             )
-            return update_result.get("changed", True) if isinstance(update_result, dict) else True
+            return self._get_manager_changed(update_result, module_name, "update")
         else:
             create_result = manager.execute(
                 operation="create",
                 module_name=module_name,
                 ansible_data=dict(resource_data),
             )
-            return create_result.get("changed", True) if isinstance(create_result, dict) else True
+            return self._get_manager_changed(create_result, module_name, "create")
+
+    @staticmethod
+    def _get_manager_changed(manager_result, module_name, operation):
+        """Read the explicit changed flag returned by a manager CRUD operation."""
+        if not isinstance(manager_result, dict) or "changed" not in manager_result:
+            raise ValueError("Manager %s operation for %s did not return an explicit changed flag" % (operation, module_name))
+        return bool(manager_result["changed"])
 
     def _import_inventory_children(self, manager, inventory_list, check_mode, failed_resources):
         """Import hosts and groups nested under inventory entries."""

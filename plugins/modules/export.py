@@ -171,6 +171,8 @@ assets:
       - The exported assets in native ansible.platform format.
       - Top-level keys are resource type names; values are lists of resource dicts.
       - Can be passed directly to the C(ansible.platform.import) module.
+      - Credential input values are API-masked (for example, C($encrypted$));
+        cleartext secrets are never returned and must be supplied separately when importing.
     returned: success
     type: dict
     sample:

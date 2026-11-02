@@ -5,6 +5,7 @@
     description: "{{ item.description | default(omit) }}"
     inventory: "{{ item.inventory }}"
     source: "{{ item.source | default(omit) }}"
+    source_path: "{{ item.source_path | default(omit) }}"
     credential: "{{ item.credential | default(omit) }}"
     execution_environment: "{{ item.execution_environment | default(omit) }}"
     source_project: "{{ item.source_project | default(omit) }}"
