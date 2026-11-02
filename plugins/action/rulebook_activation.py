@@ -82,22 +82,17 @@ class ActionModule(BaseResourceActionPlugin):
             state = params.get("state", "present")
             restart = params.get("restart", False)
 
-            # ---- restart (non-idempotent) ------------------------------------
             if restart:
                 return self._handle_restart(manager, name, result)
 
-            # ---- find existing activation ------------------------------------
             existing = self._find_activation(manager, name)
 
-            # ---- state: absent -----------------------------------------------
             if state == "absent":
                 return self._handle_absent(manager, name, existing, result)
 
-            # ---- state: enabled/disabled on existing activation ---------------
             if state in ("enabled", "disabled") and existing:
                 return self._handle_state_transition(manager, state, existing, result)
 
-            # ---- create or update --------------------------------------------
             return self._handle_create_or_update(manager, params, state, name, new_name, existing, result)
 
         except Exception as e:
@@ -243,7 +238,6 @@ class ActionModule(BaseResourceActionPlugin):
             )
             return result
 
-        # Already in correct state
         result.update(
             {
                 "changed": False,
@@ -258,9 +252,14 @@ class ActionModule(BaseResourceActionPlugin):
         """Create or update an activation via manager.execute().
 
         FK resolution and update idempotency diffing both live in the
-        transform mixin / PlatformService._update_resource; this method only
+        transform mixin / PlatformService._update_resource; this method
         translates the Ansible-level 'state' into the API's 'is_enabled'
-        field and decides create vs. update.
+        field and decides create vs. update. 'restart', and on update only
+        the create-only reference fields (project_name, rulebook_name,
+        decision_environment_name, organization_name, awx_token_name,
+        event_streams), are stripped from ansible_data first: the API never
+        echoes them back, so leaving them in makes the idempotency diff see
+        them as missing on the server and always report changed=True.
 
         Args:
             manager: The platform manager client.
@@ -286,26 +285,16 @@ class ActionModule(BaseResourceActionPlugin):
             )
             return result
 
-        # Only forward fields the Ansible dataclass actually declares --
         # validated_params also carries auth options (gateway_hostname, ...)
         # that must never reach AnsibleRulebookActivation(**ansible_data).
         ansible_data = {k: v for k, v in params.items() if k in _ANSIBLE_MODEL_FIELDS}
         ansible_data["is_enabled"] = state != "disabled"
-        # 'restart' is a pure action-plugin directive (handled earlier in run());
-        # the API never echoes it back, so leaving it in ansible_data would make
-        # PlatformService._update_resource's idempotency diff always see it as
-        # "missing on the server" and report changed=True on every call.
         ansible_data.pop("restart", None)
 
         operation = "create"
         if existing:
             ansible_data["id"] = existing["id"]
             operation = "update"
-            # These reference fields resolve to IDs that the activations API
-            # only accepts on create (see get_endpoint_operations()["update"]
-            # .fields) -- forwarding them on update is a no-op for the PATCH
-            # body but, like 'restart' above, is never echoed back by from_api()
-            # and would otherwise always look "changed" to the idempotency diff.
             for create_only_field in (
                 "project_name",
                 "rulebook_name",

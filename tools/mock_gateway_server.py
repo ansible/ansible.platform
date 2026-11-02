@@ -520,9 +520,8 @@ class Store:
                 resource.seed("2", items)
 
         # Seed EDA fixtures for the rulebook_activation Molecule mock scenario.
-        # The rulebook includes an embedded "sources" list so
-        # /api/eda/v1/rulebooks/{id}/sources/ (see MockGatewayHandler) can serve
-        # it without a dedicated store.
+        # The rulebook's "sources" list is served directly by MockGatewayHandler,
+        # so it doesn't need its own store.
         eda_fixtures = {
             "organizations": [{"id": 9001, "name": "Default"}],
             "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 9001}],

@@ -232,8 +232,7 @@ class TestRulebookActivationAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 100)
-        # Create goes through the generic execute() dispatch (FK resolution
-        # and the API call both live in the transform mixin), not direct_request.
+        # Create goes through execute(), not direct_request.
         create_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "create")
         self.assertEqual(create_call.kwargs["ansible_data"]["is_enabled"], True)
         self.assertNotIn("id", create_call.kwargs["ansible_data"])
