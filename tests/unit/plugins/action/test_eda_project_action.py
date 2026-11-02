@@ -111,7 +111,10 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 100)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
-        self.assertEqual(calls, ["find", "create"])
+        self.assertEqual(calls, ["create"])
+        manager.lookup_resource_id.assert_any_call(
+            "projects", "name", "my-project", service="eda", extra_query_params={"organization_id": 1}, require_unique=True
+        )
 
     def test_create_without_url_fails(self):
         """Creating a project without url raises an error."""
@@ -436,6 +439,30 @@ class TestEdaProjectAction(unittest.TestCase):
 
         self.assertTrue(result["failed"])
         self.assertIn("Authentication failed", result["msg"])
+
+    def test_foreign_key_comparison_uses_canonical_ids(self):
+        """Names and numeric ID strings identify the same related resources."""
+        action = self._make_action()
+        manager = MagicMock()
+        manager.lookup_resource_id.side_effect = lambda endpoint, lookup_field, value, **kwargs: {
+            "SCM Credential": 42,
+            "Default": 7,
+        }[value]
+        action._client = manager
+        action._resolved_fk_ids = {}
+
+        self.assertFalse(
+            action._should_update(
+                {"credential": "SCM Credential", "organization_name": "Default"},
+                {"credential": "42", "organization_name": 7},
+            )
+        )
+        self.assertFalse(
+            action._should_update(
+                {"credential": "42", "organization_name": "7"},
+                {"credential": "SCM Credential", "organization_name": "Default"},
+            )
+        )
 
 
 if __name__ == "__main__":

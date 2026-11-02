@@ -46,6 +46,10 @@ def _related_resource_name(manager, api_data: Dict[str, Any], id_field: str, rel
         return None
     if manager is not None:
         try:
+            if endpoint == "organizations" and service == "gateway":
+                names = manager.lookup_organization_names([int(resource_id)])
+                if names and names[0] is not None:
+                    return str(names[0])
             response = manager.search_api(
                 "/api/%s/v1/%s/" % (service, endpoint),
                 query_params={"id": int(resource_id)},
