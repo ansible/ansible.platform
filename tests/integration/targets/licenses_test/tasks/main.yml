@@ -1,0 +1,75 @@
+---
+- name: License Module Tests
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname | default(omit, true) }}"
+      gateway_username: "{{ gateway_username | default(omit, true) }}"
+      gateway_password: "{{ gateway_password | default(omit, true) }}"
+      gateway_token: "{{ gateway_oauthtoken | default(omit, true) }}"
+      gateway_request_timeout: "{{ (gateway_request_timeout | default(10)) | int }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | default(omit) }}"
+
+  block:
+    - name: Fail when manifest file does not exist
+      ansible.platform.license:
+        manifest: "/nonexistent/path/manifest.zip"
+        state: present
+      register: __missing_file_result
+      ignore_errors: true
+
+    - name: Assert missing manifest fails with file error
+      ansible.builtin.assert:
+        that:
+          - __missing_file_result is failed
+          - "'could not find' in __missing_file_result.msg.lower() or 'no such file' in __missing_file_result.msg.lower()"
+
+    - name: Fail when neither manifest nor subscription_id provided
+      ansible.platform.license:
+        state: present
+      register: __no_params_result
+      ignore_errors: true
+
+    - name: Assert missing params fails
+      ansible.builtin.assert:
+        that:
+          - __no_params_result is failed
+          - "'manifest' in __no_params_result.msg or 'subscription_id' in __no_params_result.msg"
+
+    - name: Create an invalid manifest file (not a real zip)
+      ansible.builtin.copy:
+        content: "this is not a valid manifest"
+        dest: /tmp/invalid_manifest.zip
+        mode: "0644"
+      delegate_to: localhost
+
+    - name: Fail when manifest is not a valid zip
+      ansible.platform.license:
+        manifest: /tmp/invalid_manifest.zip
+        force: true
+        state: present
+      register: __invalid_manifest_result
+      ignore_errors: true
+
+    - name: Assert invalid manifest fails at the API level
+      ansible.builtin.assert:
+        that:
+          - __invalid_manifest_result is failed
+
+    - name: Remove license with check_mode (should report whether licensed)
+      ansible.platform.license:
+        state: absent
+      check_mode: true
+      register: __absent_check_result
+
+    - name: Assert check_mode absent returns without error
+      ansible.builtin.assert:
+        that:
+          - __absent_check_result is not failed
+
+  always:
+    - name: Clean up invalid manifest file
+      ansible.builtin.file:
+        path: /tmp/invalid_manifest.zip
+        state: absent
+      delegate_to: localhost
+...
