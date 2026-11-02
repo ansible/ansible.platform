@@ -34,6 +34,7 @@
         force_basic_auth: true
         status_code: 200
       register: default_org
+      delegate_to: localhost
 
     - name: Set default_organization_id fact
       ansible.builtin.set_fact:
@@ -55,6 +56,7 @@
           url: "https://github.com/ansible/event-driven-ansible"
         status_code: 201
       register: eda_project
+      delegate_to: localhost
 
     - name: Wait for EDA project import to complete
       ansible.builtin.uri:
@@ -68,6 +70,7 @@
       retries: 30
       delay: 10
       until: eda_project_status.json.import_state == "completed"
+      delegate_to: localhost
 
     - name: Create decision environment
       ansible.builtin.uri:
@@ -84,6 +87,7 @@
           image_url: "quay.io/ansible/ansible-rulebook:main"
         status_code: 201
       register: eda_de
+      delegate_to: localhost
 
     # <Create> -------------------
     - name: Create rulebook activation with check mode
@@ -139,7 +143,33 @@
           - recreate_result is not changed
           - recreate_result.rulebook_activation.id == create_result.rulebook_activation.id
 
-    # <Update — real change> -------------------
+    # <Disable before update> -------------------
+    - name: Disable the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_result
+
+    - name: Assert disable reports changed
+      ansible.builtin.assert:
+        that:
+          - disable_result is changed
+
+    - name: Wait for activation to stop after disabling
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/activations/{{ create_result.rulebook_activation.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: activation_status
+      retries: 30
+      delay: 2
+      until: not activation_status.json.is_enabled and activation_status.json.status == "stopped"
+      delegate_to: localhost
+
+    # EDA only allows activation updates after it has stopped.
     - name: Update activation description
       ansible.platform.rulebook_activation:
         name: "{{ activation_name }}"
@@ -151,18 +181,6 @@
       ansible.builtin.assert:
         that:
           - update_result is changed
-
-    # <Disable / enable> -------------------
-    - name: Disable the activation
-      ansible.platform.rulebook_activation:
-        name: "{{ activation_name }}"
-        state: disabled
-      register: disable_result
-
-    - name: Assert disable reports changed
-      ansible.builtin.assert:
-        that:
-          - disable_result is changed
 
     - name: Disable the activation again (already disabled)
       ansible.platform.rulebook_activation:
@@ -270,6 +288,7 @@
         method: DELETE
         status_code: [204, 404]
       failed_when: false
+      delegate_to: localhost
       when: eda_de is defined and eda_de.json is defined
 
     - name: Cleanup — delete EDA project
@@ -282,5 +301,6 @@
         method: DELETE
         status_code: [204, 404]
       failed_when: false
+      delegate_to: localhost
       when: eda_project is defined and eda_project.json is defined
 ...
