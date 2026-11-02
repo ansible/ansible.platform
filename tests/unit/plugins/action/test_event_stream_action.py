@@ -231,16 +231,29 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         create_call = next(call for call in manager.execute.call_args_list if call.kwargs.get("operation") == "create")
         self.assertFalse(create_call.kwargs["ansible_data"]["forward_events"])
 
-    def test_documentation_validation_requires_create_references(self):
+    def test_create_fails_when_required_references_missing(self):
+        """credential_name/organization_name are enforced by the transform's
+        from_ansible_data() (see TestEventStreamTransform), not by DOCUMENTATION's
+        required_if -- that construct breaks ansible-doc rendering and isn't used
+        anywhere else in this collection. This only verifies the action plugin
+        surfaces that failure instead of swallowing it.
+        """
         action = self._make_action()
         action._task.args = {"name": "s", "state": "present"}
         manager = MagicMock()
+
+        def side_effect(operation, module_name, ansible_data):
+            if operation == "find":
+                raise ValueError("Resource with name=s not found")
+            raise ValueError("credential_name is required to create an event stream")
+
+        manager.execute.side_effect = side_effect
 
         with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
             result = action.run(task_vars={})
 
         self.assertTrue(result["failed"])
-        manager.execute.assert_not_called()
+        self.assertIn("credential_name is required", result["msg"])
 
 
 class TestAnsibleEventStreamModel(unittest.TestCase):

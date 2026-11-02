@@ -386,6 +386,9 @@ class Store:
         # EDA resources
         eda_defs: List[tuple] = [
             ("awx-tokens", ["name", "token"], 6000),
+            ("organizations", ["name"], 7100),
+            ("eda-credentials", ["name"], 7200),
+            ("event-streams", ["name"], 7300),
         ]
         for endpoint, required, start_id in eda_defs:
             self._resources[("eda", endpoint)] = GenericResource(
@@ -505,6 +508,16 @@ class Store:
             resource = self.resource("controller", endpoint)
             if resource and not resource._items:
                 resource.seed("2", items)
+
+        # Seed EDA fixtures for the event_stream Molecule mock scenario.
+        eda_fixtures = {
+            "organizations": [{"id": 9001, "name": "Default"}],
+            "eda-credentials": [{"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 9001}],
+        }
+        for endpoint, items in eda_fixtures.items():
+            resource = self.resource("eda", endpoint)
+            if resource and not resource._items:
+                resource.seed("1", items)
 
     def job_template_associations(self, template_id: int, field_name: str, page: int = 1) -> Dict[str, Any]:
         """Return a DRF-style paginated association list."""
