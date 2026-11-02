@@ -1216,6 +1216,13 @@ class DirectHTTPClient(BaseAPIClient):
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
         if results:
+            if getattr(mixin_class, "require_unique_lookup", False):
+                try:
+                    multiple_matches = int(response_data.get("count", len(results)) or 0) > 1
+                except (TypeError, ValueError):
+                    multiple_matches = len(results) > 1
+                if len(results) > 1 or multiple_matches or response_data.get("next"):
+                    raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources; provide additional filters")
             # Return first match
             api_data = results[0]
             # from_api returns AnsibleUser dataclass, convert to dict for return

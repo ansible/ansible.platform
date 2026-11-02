@@ -336,6 +336,34 @@ class BaseResourceActionPlugin(ActionBase):
             validated_params: Full validated input parameters.
         """
 
+    @staticmethod
+    def _is_resource_not_found(exc: Exception) -> bool:
+        """Return whether a find error represents an ordinary missing resource.
+
+        Args:
+            exc: Error raised while looking up a resource.
+
+        Returns:
+            bool: True when the error uses a recognized not-found response.
+        """
+        message = str(exc).lower()
+        return (message.startswith("resource with ") and message.endswith("not found")) or message.startswith("resource not found")
+
+    def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
+        """Find a resource using its declared lookup fields.
+
+        Resource actions may override this to support lookup aliases such as a
+        rename target while retaining the common CRUD state machine.
+
+        Args:
+            manager: Client used to query the API.
+            resource_data: Validated resource fields used for the lookup.
+
+        Returns:
+            dict: The matching resource.
+        """
+        return manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=resource_data)
+
     def _build_ansible_data(self, resource: Any, validated_params: dict, operation: str) -> dict:
         """Build the ansible_data dict that is sent to manager.execute().
 
@@ -1146,13 +1174,11 @@ class BaseResourceActionPlugin(ActionBase):
             # ---- state: exists (read-only) ----------------------------------
             if state == "exists":
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
+                    find_result = self._find_existing_resource(manager, resource_data)
                     exists = bool(find_result and find_result.get("id"))
-                except Exception:
+                except ValueError as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
                     find_result, exists = {}, False
                 result.update(
                     {
@@ -1168,11 +1194,7 @@ class BaseResourceActionPlugin(ActionBase):
             # ---- present: idempotent create (find -> compare ->  update only if changed) -----
             if operation == "create" and state == "present":
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
+                    find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
                         if not self._should_update(resource_data, find_result):
                             # Nothing changed — return current state without touching API
@@ -1187,17 +1209,14 @@ class BaseResourceActionPlugin(ActionBase):
                             return result
                         operation = "update"
                         resource.id = find_result["id"]
-                except Exception:
-                    pass
+                except ValueError as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
 
             # ---- absent: find by lookup field to get id --------------------
             if operation == "delete" and not getattr(resource, "id", None):
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
+                    find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
                         resource.id = find_result["id"]
                     else:
@@ -1210,7 +1229,9 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                except Exception:
+                except ValueError as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
                     result.update(
                         {
                             "changed": False,
@@ -1225,12 +1246,10 @@ class BaseResourceActionPlugin(ActionBase):
             if operation == "enforced":
                 argspec_fields = set(argspec.get("argument_spec", {}).keys())
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
-                except ValueError:
+                    find_result = self._find_existing_resource(manager, resource_data)
+                except ValueError as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
                     find_result = None
                 if find_result and find_result.get("id"):
                     merged = {}
@@ -1298,7 +1317,7 @@ class BaseResourceActionPlugin(ActionBase):
                     ansible_data=ansible_data,
                 )
             except ValueError as exc:
-                if operation == "find" and ("not found" in str(exc).lower() or "resource with" in str(exc).lower()):
+                if operation == "find" and self._is_resource_not_found(exc):
                     result.update(
                         {
                             "changed": False,

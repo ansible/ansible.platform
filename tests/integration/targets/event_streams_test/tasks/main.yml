@@ -7,6 +7,7 @@
 - name: Preset vars
   ansible.builtin.set_fact:
     event_stream_name: "EDA-Event-Stream-Test-{{ test_id }}"
+    event_stream_credential_name: "EDA-Event-Stream-Test-Credential-{{ test_id }}"
 
 - name: Run Tests
   module_defaults:
@@ -17,6 +18,54 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
+    - name: Look up Token Event Stream credential type
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/credential-types/?name=Token%20Event%20Stream"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: event_stream_credential_types
+      delegate_to: localhost
+
+    - name: Look up Default EDA organization
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/organizations/?name=Default"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        return_content: true
+      register: event_stream_organizations
+      delegate_to: localhost
+
+    - name: Assert event stream credential prerequisites are unique
+      ansible.builtin.assert:
+        that:
+          - event_stream_credential_types.json.count == 1
+          - event_stream_organizations.json.count == 1
+        fail_msg: "Expected one Token Event Stream credential type and one Default EDA organization."
+
+    - name: Create test-owned event stream credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/"
+        method: POST
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ event_stream_credential_name }}"
+          credential_type_id: "{{ event_stream_credential_types.json.results[0].id }}"
+          organization_id: "{{ event_stream_organizations.json.results[0].id }}"
+          inputs:
+            token: integration-test-token
+        status_code: [200, 201]
+      register: event_stream_credential
+      delegate_to: localhost
+
     # <Pre-cleanup> -------------------
     - name: Delete any pre-existing test event stream
       ansible.platform.event_stream:
@@ -28,7 +77,7 @@
     - name: Create event stream with check mode
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
-        credential_name: "EDA Default Event Stream Credential"
+        credential_name: "{{ event_stream_credential_name }}"
         organization_name: Default
         state: present
       check_mode: true
@@ -43,7 +92,7 @@
     - name: Create event stream
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
-        credential_name: "EDA Default Event Stream Credential"
+        credential_name: "{{ event_stream_credential_name }}"
         organization_name: Default
         state: present
       register: create_result
@@ -58,7 +107,7 @@
     - name: Create event stream again (idempotency check)
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
-        credential_name: "EDA Default Event Stream Credential"
+        credential_name: "{{ event_stream_credential_name }}"
         organization_name: Default
         state: present
       register: idempotent_result
@@ -72,7 +121,7 @@
     - name: Update event stream with forward_events enabled
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
-        credential_name: "EDA Default Event Stream Credential"
+        credential_name: "{{ event_stream_credential_name }}"
         organization_name: Default
         forward_events: true
         headers: "Content-Type,X-Custom-Header"
@@ -133,4 +182,17 @@
         name: "EDA-Event-Stream-Renamed-{{ test_id }}"
         state: absent
       failed_when: false
+
+    - name: Cleanup - delete test-owned event stream credential
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/eda/v1/eda-credentials/{{ event_stream_credential.json.id }}/"
+        method: DELETE
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [204, 404]
+      when: event_stream_credential is defined and event_stream_credential.json.id is defined
+      failed_when: false
+      delegate_to: localhost
 ...

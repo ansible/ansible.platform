@@ -962,6 +962,13 @@ class PlatformService(BaseAPIClient):
             results = list_result.get("results", [])
             if not results:
                 raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
+            if getattr(mixin_class, "require_unique_lookup", False):
+                try:
+                    multiple_matches = int(list_result.get("count", len(results)) or 0) > 1
+                except (TypeError, ValueError):
+                    multiple_matches = len(results) > 1
+                if len(results) > 1 or multiple_matches or list_result.get("next"):
+                    raise ValueError(f"Resource with {lookup_field}={unique_value} matched multiple resources; provide additional filters")
             api_result = results[0]
 
             # Some API list endpoints return incomplete data for certain fields

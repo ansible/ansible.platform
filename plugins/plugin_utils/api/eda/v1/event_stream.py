@@ -34,6 +34,8 @@ class APIEventStream_v1(BaseTransformMixin):
 class EventStreamTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for Event Stream API v1."""
 
+    require_unique_lookup = True
+
     @classmethod
     def from_ansible_data(
         cls,
@@ -66,40 +68,36 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
 
         mgr = context.manager if isinstance(context, TransformContext) else context.get("manager")
 
+        # Resolve the organization first so credential names can be scoped to
+        # the event stream's organization.
+        organization_name = getattr(ansible_instance, "organization_name", None)
+        if organization_name is not None:
+            api_data["organization_id"] = cls.resolve_reference_id(mgr, "organizations", organization_name, service="eda")
+
         # --- credential_name -> eda_credential_id ---
         credential_name = getattr(ansible_instance, "credential_name", None)
         if credential_name is not None:
-            credential_str = str(credential_name).strip()
-            if credential_str.isdigit():
-                api_data["eda_credential_id"] = int(credential_str)
-            else:
-                if mgr is not None:
-                    try:
-                        api_data["eda_credential_id"] = mgr.lookup_resource_id("eda-credentials", "name", credential_str, service="eda")
-                    except Exception:
-                        pass
-                if "eda_credential_id" not in api_data:
-                    api_data["eda_credential_id"] = credential_name
+            org_scope = {"organization_id": api_data["organization_id"]} if api_data.get("organization_id") is not None else None
+            api_data["eda_credential_id"] = cls.resolve_reference_id(
+                mgr,
+                "eda-credentials",
+                credential_name,
+                service="eda",
+                extra_query_params=org_scope,
+            )
 
-        # --- organization_name -> organization_id ---
-        organization_name = getattr(ansible_instance, "organization_name", None)
-        if organization_name is not None:
-            org_str = str(organization_name).strip()
-            if org_str.isdigit():
-                api_data["organization_id"] = int(org_str)
-            else:
-                if mgr is not None:
-                    try:
-                        api_data["organization_id"] = mgr.lookup_resource_id("organizations", "name", org_str)
-                    except Exception:
-                        pass
-                if "organization_id" not in api_data:
-                    api_data["organization_id"] = organization_name
+        if op == "create":
+            if not credential_name:
+                raise ValueError("credential_name is required to create an event stream")
+            if organization_name is None:
+                raise ValueError("organization_name is required to create an event stream")
 
         # --- forward_events (bool) -> test_mode (inverted bool) ---
         forward_events = getattr(ansible_instance, "forward_events", None)
         if forward_events is not None:
             api_data["test_mode"] = not forward_events
+        elif op == "create":
+            api_data["test_mode"] = True
 
         # --- headers -> additional_data_headers ---
         headers = getattr(ansible_instance, "headers", None)
@@ -183,11 +181,34 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def get_find_list_query_params(cls, ansible_data) -> Dict[str, Any]:
-        """Return query parameters for finding an existing event stream."""
-        name = getattr(ansible_data, "name", None)
-        if name is not None:
-            return {"name": name}
-        return {}
+        """Scope event stream name lookups to the requested EDA organization."""
+        organization_id = getattr(ansible_data, "organization_id", None)
+        return {"organization_id": organization_id} if organization_id is not None else {}
+
+    @staticmethod
+    def resolve_reference_id(manager, endpoint: str, value, service: str = "eda", extra_query_params: Optional[dict] = None) -> Optional[int]:
+        """Resolve a numeric ID or a unique resource name to an API ID."""
+        if value is None:
+            return None
+        value_str = str(value).strip()
+        if value_str.isdigit():
+            return int(value_str)
+        if manager is None:
+            raise ValueError("Cannot resolve %s '%s' without an API client" % (endpoint, value))
+        try:
+            resource_id = manager.lookup_resource_id(
+                endpoint,
+                "name",
+                value_str,
+                service=service,
+                extra_query_params=extra_query_params,
+                require_unique=True,
+            )
+        except ValueError as exc:
+            raise ValueError("Could not resolve %s reference '%s': %s" % (endpoint, value, exc)) from exc
+        if resource_id is None:
+            raise ValueError("Could not resolve %s reference '%s'" % (endpoint, value))
+        return int(resource_id)
 
     @staticmethod
     def _resolve_fk_name(manager, endpoint: str, fk_id) -> Optional[str]:
@@ -235,20 +256,11 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
 
         # Resolve organization_id -> organization_name
         organization_id = api_data.get("organization_id")
-        organization_name = str(organization_id) if organization_id is not None else None
-        if manager and organization_id is not None:
-            try:
-                names = manager.lookup_organization_names([organization_id])
-                if names:
-                    organization_name = names[0]
-            except Exception:
-                pass
+        organization_name = cls._resolve_fk_name(manager, "organizations", organization_id)
 
         # Reverse-transform test_mode -> forward_events (inverted)
-        forward_events = None
         test_mode = api_data.get("test_mode")
-        if test_mode is not None:
-            forward_events = not test_mode
+        forward_events = not test_mode if test_mode is not None else False
 
         return AnsibleEventStream(
             name=api_data.get("name", ""),

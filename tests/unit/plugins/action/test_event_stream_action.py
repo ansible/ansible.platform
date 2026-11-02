@@ -48,11 +48,20 @@ class TestEventStreamActionCRUD(unittest.TestCase):
     def _make_manager(self, find_result=None, create_result=None):
         manager = MagicMock()
 
+        def lookup_resource_id(endpoint, field, value, **kwargs):
+            if endpoint == "organizations":
+                return 1 if value in ("D", "Default", "1") else None
+            if endpoint == "eda-credentials":
+                return 10 if value in ("c", "Token", "10") else None
+            return None
+
+        manager.lookup_resource_id.side_effect = lookup_resource_id
+
         def side_effect(operation, module_name, ansible_data):
             if operation == "find":
                 if find_result:
                     return find_result
-                raise ValueError("Not found")
+                raise ValueError("Resource with name=%s not found" % ansible_data.get("name"))
             if operation == "delete":
                 return {"changed": True}
             if operation == "create":
@@ -132,6 +141,68 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(r.get("failed", False))
         self.assertTrue(len(r.get("deprecations", [])) > 0)
 
+    def test_completed_rename_is_idempotent(self):
+        action = self._make_action()
+        manager = self._make_manager()
+
+        def find_or_create(operation, module_name, ansible_data):
+            if operation == "find":
+                if ansible_data.get("name") == "old":
+                    raise ValueError("Resource with name=old not found")
+                if ansible_data.get("name") == "new":
+                    return {
+                        "id": 100,
+                        "name": "new",
+                        "credential_name": "c",
+                        "organization_name": "D",
+                        "forward_events": False,
+                    }
+                raise ValueError("Unexpected lookup")
+            return {"changed": True, "id": 100}
+
+        manager.execute.side_effect = find_or_create
+        result = self._run(
+            action,
+            manager,
+            {"name": "old", "new_name": "new", "credential_name": "c", "organization_name": "D", "state": "present"},
+        )
+
+        self.assertFalse(result["changed"])
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
+
+    def test_ambiguous_find_error_is_not_treated_as_missing(self):
+        action = self._make_action()
+        manager = self._make_manager()
+        manager.execute.side_effect = ValueError("Resource with name=s matched multiple resources")
+
+        result = self._run(action, manager, {"name": "s", "credential_name": "c", "organization_name": "D", "state": "present"})
+
+        self.assertTrue(result["failed"])
+        manager.execute.assert_called_once()
+
+    def test_documentation_validation_preserves_legacy_forward_events_default(self):
+        action = self._make_action()
+        action._task.args = {"name": "s", "credential_name": "c", "organization_name": "D", "state": "present"}
+        manager = self._make_manager(create_result={"id": 100, "name": "s", "changed": True})
+
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result.get("failed", False))
+        create_call = next(call for call in manager.execute.call_args_list if call.kwargs.get("operation") == "create")
+        self.assertFalse(create_call.kwargs["ansible_data"]["forward_events"])
+
+    def test_documentation_validation_requires_create_references(self):
+        action = self._make_action()
+        action._task.args = {"name": "s", "state": "present"}
+        manager = MagicMock()
+
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        manager.execute.assert_not_called()
+
 
 class TestAnsibleEventStreamModel(unittest.TestCase):
     """Test AnsibleEventStream dataclass."""
@@ -155,7 +226,7 @@ class TestEventStreamTransform(unittest.TestCase):
     def _mgr(self, cred_id=10, org_id=1):
         m = MagicMock()
 
-        def lookup(endpoint, field, value, service="gateway"):
+        def lookup(endpoint, field, value, service="gateway", extra_query_params=None, require_unique=False):
             if endpoint == "eda-credentials":
                 return cred_id
             if endpoint == "organizations":
@@ -171,6 +242,27 @@ class TestEventStreamTransform(unittest.TestCase):
         api = EventStreamTransformMixin_v1.from_ansible_data(obj, self._ctx("create", mgr))
         self.assertEqual(api.eda_credential_id, 10)
         self.assertEqual(api.organization_id, 1)
+        self.assertEqual(
+            mgr.lookup_resource_id.call_args_list[1].kwargs,
+            {"service": "eda", "extra_query_params": {"organization_id": 1}, "require_unique": True},
+        )
+        self.assertEqual(mgr.lookup_resource_id.call_args_list[0].kwargs, {"service": "eda", "extra_query_params": None, "require_unique": True})
+
+    def test_unresolved_credential_is_rejected(self):
+        mgr = self._mgr(cred_id=None)
+        obj = AnsibleEventStream(name="s", credential_name="missing", organization_name="D")
+        with self.assertRaisesRegex(ValueError, "Could not resolve eda-credentials reference 'missing'"):
+            EventStreamTransformMixin_v1.from_ansible_data(obj, self._ctx("create", mgr))
+
+    def test_create_requires_organization_and_credential(self):
+        with self.assertRaisesRegex(ValueError, "credential_name is required"):
+            EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s"), self._ctx("create"))
+        with self.assertRaisesRegex(ValueError, "organization_name is required"):
+            EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s", credential_name="10"), self._ctx("create"))
+
+    def test_forward_events_defaults_to_legacy_false(self):
+        api = EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s", credential_name="10", organization_name="1"), self._ctx("create"))
+        self.assertTrue(api.test_mode)
 
     def test_forward_events_true(self):
         mgr = self._mgr()
@@ -212,7 +304,7 @@ class TestEventStreamTransform(unittest.TestCase):
             EventStreamTransformMixin_v1.from_ansible_data(obj, self._ctx("create"))
 
     def test_type_not_in_api(self):
-        obj = AnsibleEventStream(name="s", event_stream_type="hmac")
+        obj = AnsibleEventStream(name="s", credential_name="10", organization_name="1", event_stream_type="hmac")
         api = EventStreamTransformMixin_v1.from_ansible_data(obj, self._ctx("create"))
         self.assertNotIn("event_stream_type", asdict(api))
 
@@ -248,6 +340,29 @@ class TestEventStreamTransform(unittest.TestCase):
 
     def test_lookup_field(self):
         self.assertEqual(EventStreamTransformMixin_v1.get_lookup_field(), "name")
+
+    def test_find_query_scopes_to_organization(self):
+        api_data = EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s", organization_name="12"), self._ctx("find"))
+        self.assertEqual(EventStreamTransformMixin_v1.get_find_list_query_params(api_data), {"organization_id": 12})
+
+
+class TestEventStreamComparison(unittest.TestCase):
+    """Verify FK names and numeric IDs converge in action comparisons."""
+
+    def test_numeric_ids_match_current_named_references(self):
+        action = ActionModule.__new__(ActionModule)
+        manager = MagicMock()
+
+        def lookup(endpoint, field, value, **kwargs):
+            ids = {"organizations": {"Default": 7}, "eda-credentials": {"Event Credential": 42}}
+            return ids[endpoint].get(value)
+
+        manager.lookup_resource_id.side_effect = lookup
+        action._client = manager
+        desired = {"name": "stream", "organization_name": "7", "credential_name": "42", "forward_events": False}
+        current = {"name": "stream", "organization_name": "Default", "credential_name": "Event Credential", "forward_events": False}
+
+        self.assertFalse(action._should_update(desired, current))
 
 
 if __name__ == "__main__":

@@ -73,6 +73,7 @@ options:
     description:
       - Enable the event stream to forward events to the rulebook activation where it is configured.
     type: bool
+    default: false
 
   uuid:
     description:
@@ -91,6 +92,10 @@ options:
     type: str
     choices: ["present", "absent", "exists", "enforced"]
     default: "present"
+
+required_if:
+  - ["state", "present", ["credential_name"]]
+  - ["state", "present", ["organization_name"]]
 
 seealso:
   - module: ansible.eda.event_stream
@@ -138,14 +143,19 @@ changed:
   returned: always
   type: bool
 
+exists:
+  description: Whether an event stream matching the lookup parameters exists.
+  returned: when state is exists
+  type: bool
+
 id:
   description: Numeric database ID of the event stream.
-  returned: when state is present and successful
+  returned: when state is present or exists and successful
   type: int
 
 event_stream:
   description: The event stream resource as it exists after the operation.
-  returned: when state is present and successful
+  returned: when state is present or exists
   type: dict
   contains:
     id:

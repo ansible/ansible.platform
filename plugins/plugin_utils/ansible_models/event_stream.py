@@ -17,7 +17,7 @@ class AnsibleEventStream:
     organization_name: Optional[str] = None
     event_stream_type: Optional[str] = None  # Deprecated, ignored
     headers: Optional[str] = None
-    forward_events: Optional[bool] = None
+    forward_events: bool = False
     uuid: Optional[str] = None
     state: str = "present"
 
