@@ -194,6 +194,27 @@ class TestLaunchWithoutWait(unittest.TestCase):
         )
         manager.wait_for_completion.assert_not_called()
 
+    @patch.object(ActionModule, "_get_or_spawn_manager")
+    def test_missing_launch_id_fails_without_polling(self, mock_get_manager):
+        for launch_result in ({"status": "pending"}, {"id": "", "status": "pending"}):
+            for wait in (False, True):
+                with self.subTest(launch_result=launch_result, wait=wait):
+                    module = _make_module(
+                        args={"inventory": "Demo", "credential": "Demo", "module_name": "ping", "wait": wait},
+                    )
+                    manager = _make_manager()
+                    manager.lookup_resource_id.side_effect = [1, 2]
+                    manager.launch_resource.return_value = launch_result
+                    mock_get_manager.return_value = (manager, {})
+
+                    result = module.run(task_vars={})
+
+                    self.assertTrue(result["changed"])
+                    self.assertTrue(result["failed"])
+                    self.assertEqual(result["msg"], "Launch response did not include a job ID")
+                    self.assertNotIn("id", result)
+                    manager.wait_for_completion.assert_not_called()
+
 
 class TestLaunchWithWait(unittest.TestCase):
     """Test launching with waiting."""
