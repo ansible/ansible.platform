@@ -10,6 +10,37 @@ from ....platform.types import EndpointOperation, TransformContext
 logger = logging.getLogger(__name__)
 
 BASE_PATH = "/api/eda/v1/eda-credentials"
+TEST_PATH = "/api/eda/v1/eda-credentials/{id}/test/"
+
+
+def resolve_eda_credential_fk(manager, endpoint: str, value: Any, resource_label: str) -> Optional[int]:
+    """Resolve an EDA credential foreign key from a name or numeric ID.
+
+    Args:
+        manager: Platform client used to look up named resources.
+        endpoint: EDA API endpoint for the referenced resource.
+        value: Resource name or ID supplied by the user.
+        resource_label: Label used in lookup errors.
+
+    Returns:
+        The resource ID, or ``None`` when no value was supplied.
+
+    Raises:
+        ValueError: If a supplied name cannot be resolved unambiguously.
+    """
+    if value is None or value == "":
+        return None
+
+    value_str = str(value).strip()
+    if value_str.isdigit():
+        return int(value_str)
+    if manager is None:
+        raise ValueError("A manager is required to resolve %s '%s'" % (resource_label, value))
+
+    resource_id = manager.lookup_resource_id(endpoint, "name", str(value), service="eda", require_unique=True)
+    if resource_id is None:
+        raise ValueError("%s '%s' was not found" % (resource_label, value))
+    return resource_id
 
 
 @dataclass
@@ -51,18 +82,12 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
         # Resolve credential_type name -> credential_type_id
         credential_type = getattr(ansible_instance, "credential_type", None)
         if credential_type is not None:
-            if manager is not None and not str(credential_type).strip().isdigit():
-                api_data["credential_type_id"] = manager.lookup_resource_id("credential-types", "name", credential_type, service="eda")
-            else:
-                api_data["credential_type_id"] = int(credential_type) if credential_type is not None else None
+            api_data["credential_type_id"] = resolve_eda_credential_fk(manager, "credential-types", credential_type, "Credential type")
 
         # Resolve organization name -> organization_id
         organization = getattr(ansible_instance, "organization", None)
         if organization is not None:
-            if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization_id"] = manager.lookup_resource_id("organizations", "name", organization)
-            else:
-                api_data["organization_id"] = int(organization)
+            api_data["organization_id"] = resolve_eda_credential_fk(manager, "organizations", organization, "Organization")
 
         description = getattr(ansible_instance, "description", None)
         if description is not None:
@@ -128,6 +153,13 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data: APIEdaCredential_v1) -> Dict[str, Any]:
+        """Scope credential name lookups to the requested organization."""
+        if api_data.organization_id is None:
+            return {}
+        return {"organization_id": api_data.organization_id}
+
+    @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleEdaCredential":
         """Transform from API format to Ansible format.
 
@@ -143,6 +175,8 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
             credential_type_str = str(credential_type_obj["id"])
         elif credential_type_obj is not None:
             credential_type_str = str(credential_type_obj)
+        elif api_data.get("credential_type_id") is not None:
+            credential_type_str = str(api_data["credential_type_id"])
         else:
             credential_type_str = None
 
@@ -152,6 +186,8 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
             organization_str = str(organization_obj["id"])
         elif organization_obj is not None:
             organization_str = str(organization_obj)
+        elif api_data.get("organization_id") is not None:
+            organization_str = str(api_data["organization_id"])
         else:
             organization_str = None
 

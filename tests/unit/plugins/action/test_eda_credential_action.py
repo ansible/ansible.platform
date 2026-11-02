@@ -5,7 +5,7 @@
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.eda_credential import ActionModule
@@ -24,13 +24,16 @@ class TestEdaCredentialAction(unittest.TestCase):
         action._display.verbosity = 0
         return action
 
-    def _make_manager(self, find_result=None, create_result=None, delete_error=None, search_result=None, copy_error=None, direct_result=None):
+    def _make_manager(self, find_result=None, create_result=None, delete_error=None, copy_error=None, direct_result=None, lookup_result_by_name=None):
         manager = MagicMock()
+        current_result = [find_result]
+        copied_ids = {}
+        lookup_result_by_name = lookup_result_by_name or {}
 
         def execute_side_effect(operation, module_name, ansible_data):
             if operation == "find":
-                if find_result:
-                    return find_result
+                if current_result[0]:
+                    return current_result[0]
                 raise ValueError("Not found")
             if operation == "delete":
                 if delete_error:
@@ -39,15 +42,38 @@ class TestEdaCredentialAction(unittest.TestCase):
             if operation == "create":
                 return create_result or {"id": 100, "name": ansible_data.get("name", ""), "changed": True}
             if operation == "update":
-                return create_result or {"id": find_result.get("id", 100), "name": ansible_data.get("name", ""), "changed": True}
+                return create_result or {"id": (current_result[0] or {}).get("id", 100), "name": ansible_data.get("name", ""), "changed": True}
             return {}
 
+        def lookup_side_effect(endpoint, lookup_field, lookup_value, service="gateway", extra_query_params=None, require_unique=False):
+            if endpoint == "organizations":
+                ids = {"Default": 1, "Engineering": 2, "1": 1, "2": 2}
+                if str(lookup_value) in ids:
+                    return ids[str(lookup_value)]
+            elif endpoint == "credential-types":
+                ids = {"GitLab PAT": 11, "Source Control": 12, "11": 11, "12": 12}
+                if str(lookup_value) in ids:
+                    return ids[str(lookup_value)]
+            elif endpoint == "eda-credentials":
+                if str(lookup_value) in copied_ids:
+                    return copied_ids[str(lookup_value)]
+                if current_result[0] and current_result[0].get("name") == lookup_value:
+                    return current_result[0]["id"]
+                if str(lookup_value) in lookup_result_by_name:
+                    return lookup_result_by_name[str(lookup_value)]
+                raise ValueError("Resource 'eda-credentials' with name=%s not found" % lookup_value)
+            raise ValueError("Resource '%s' with name=%s not found" % (endpoint, lookup_value))
+
+        def copy_side_effect(module_name, source_id, name, endpoint, service="eda"):
+            if copy_error:
+                raise copy_error
+            copied_ids[name] = 200
+            current_result[0] = {"id": 200, "name": name, "credential_type": "12", "organization": "1"}
+            return {"id": 200, "name": name}
+
         manager.execute.side_effect = execute_side_effect
-        manager.search_api.return_value = search_result or {"results": []}
-        if copy_error:
-            manager.copy_resource.side_effect = copy_error
-        else:
-            manager.copy_resource.return_value = {"id": 200, "name": "copied"}
+        manager.lookup_resource_id.side_effect = lookup_side_effect
+        manager.copy_resource.side_effect = copy_side_effect
         manager.direct_request.return_value = direct_result or {"success": True, "message": "Credential test successful"}
         return manager
 
@@ -145,15 +171,15 @@ class TestEdaCredentialAction(unittest.TestCase):
         }
         manager = self._make_manager(
             find_result=None,
-            search_result={"results": []},
             create_result={"id": 200, "name": "new-cred", "changed": True},
+            lookup_result_by_name={"source-cred": 99},
         )
         result = self._run_action(
             action,
             manager,
             {
                 "name": "new-cred",
-                "copy_from": None,  # Popped from args before base class
+                "copy_from": "source-cred",
                 "state": "present",
             },
         )
@@ -171,14 +197,13 @@ class TestEdaCredentialAction(unittest.TestCase):
         }
         manager = self._make_manager(
             find_result={"id": 100, "name": "existing-cred"},
-            search_result={"results": [{"name": "existing-cred", "id": 100}]},
         )
         result = self._run_action(
             action,
             manager,
             {
                 "name": "existing-cred",
-                "copy_from": None,
+                "copy_from": "source-cred",
                 "state": "present",
             },
         )
@@ -195,8 +220,8 @@ class TestEdaCredentialAction(unittest.TestCase):
         }
         manager = self._make_manager(
             find_result=None,
-            search_result={"results": []},
             copy_error=ValueError("Source not found"),
+            lookup_result_by_name={"bad-source": 99},
         )
 
         with patch.object(ActionBase, "run", return_value={}):
@@ -242,11 +267,7 @@ class TestEdaCredentialAction(unittest.TestCase):
         )
         self.assertFalse(result.get("failed", False))
         self.assertIn("test_result", result)
-        # Verify direct_request was called with metadata
-        manager.direct_request.assert_called_once()
-        call_args = manager.direct_request.call_args
-        self.assertEqual(call_args[0][0], "POST")
-        self.assertIn("/test/", call_args[0][1])
+        manager.direct_request.assert_called_once_with("POST", "/api/eda/v1/eda-credentials/100/test/", data={"metadata": metadata})
 
     def test_state_test_credential_not_found(self):
         """state=test fails when credential doesn't exist."""
@@ -302,6 +323,135 @@ class TestEdaCredentialAction(unittest.TestCase):
         write_only_data = {}
         action._pre_execute_hook(ansible_data, write_only_data, {}, "create")
         self.assertNotIn("inputs", ansible_data)
+
+    def test_update_secrets_forces_inputs_only_patch(self):
+        """Explicit secret updates send an inputs-only PATCH."""
+        action = self._make_action()
+        action._task.args = {
+            "name": "my-cred",
+            "inputs": {"token": "rotated"},
+            "update_secrets": True,
+            "state": "present",
+        }
+        manager = self._make_manager(find_result={"id": 100, "name": "my-cred"})
+
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "my-cred", "inputs": {"token": "rotated"}, "update_secrets": True, "state": "present"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        update_call = next(item for item in manager.execute.call_args_list if item.kwargs.get("operation") == "update")
+        self.assertEqual(update_call.kwargs["ansible_data"]["inputs"], {"token": "rotated"})
+
+    def test_copy_with_inputs_forces_update_after_copy(self):
+        """Inputs explicitly supplied with copy_from override copied values."""
+        action = self._make_action()
+        action._task.args = {
+            "name": "new-cred",
+            "copy_from": "source-cred",
+            "inputs": {"token": "override"},
+            "state": "present",
+        }
+        manager = self._make_manager(find_result=None, lookup_result_by_name={"source-cred": 99})
+
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "new-cred", "copy_from": "source-cred", "inputs": {"token": "override"}, "state": "present"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        manager.copy_resource.assert_called_once_with("eda_credential", 99, "new-cred", "/api/eda/v1/eda-credentials", service="eda")
+        update_call = next(item for item in manager.execute.call_args_list if item.kwargs.get("operation") == "update")
+        self.assertEqual(update_call.kwargs["ansible_data"]["inputs"], {"token": "override"})
+
+    def test_named_foreign_keys_are_normalized_before_comparison(self):
+        """Same FK IDs supplied by name are idempotent; changed IDs trigger update."""
+        action = self._make_action()
+        action._client = self._make_manager()
+
+        self.assertFalse(
+            action._should_update(
+                {"credential_type": "GitLab PAT", "organization": "Default"},
+                {"credential_type": "11", "organization": "1"},
+            )
+        )
+        self.assertTrue(
+            action._should_update(
+                {"credential_type": "Source Control", "organization": "Default"},
+                {"credential_type": "11", "organization": "1"},
+            )
+        )
+
+    def test_name_lookup_is_scoped_and_requires_unique_match(self):
+        """An organization filter is passed into a unique credential lookup."""
+        action = self._make_action()
+        manager = self._make_manager(lookup_result_by_name={"same-name": 99})
+
+        self.assertEqual(action._lookup_credential_id(manager, "same-name", "Default"), 99)
+        manager.lookup_resource_id.assert_has_calls(
+            [
+                call("organizations", "name", "Default", service="eda", require_unique=True),
+                call(
+                    "eda-credentials",
+                    "name",
+                    "same-name",
+                    service="eda",
+                    extra_query_params={"organization_id": 1},
+                    require_unique=True,
+                ),
+            ]
+        )
+
+    def test_ambiguous_name_lookup_is_not_treated_as_missing(self):
+        """Ambiguous names fail instead of falling through to a create."""
+        action = self._make_action()
+        action._task.args = {"name": "same-name", "state": "present"}
+        manager = self._make_manager()
+        manager.lookup_resource_id.side_effect = ValueError("Resource 'eda-credentials' matched multiple resources")
+
+        result = self._run_action(action, manager, {"name": "same-name", "state": "present"})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("multiple resources", result["msg"])
+        manager.execute.assert_not_called()
+
+    def test_inputs_only_change_is_idempotent_without_update_secrets(self):
+        """Write-only inputs remain a no-op unless the force option is enabled."""
+        action = self._make_action()
+        action._inputs_provided = True
+        action._update_secrets = False
+        action._copied_credential = False
+
+        self.assertFalse(action._should_update({"name": "my-cred"}, {"name": "my-cred"}))
+
+    def test_real_documentation_validation_applies_defaults_and_no_log(self):
+        """The real docs path validates argument defaults and secret redaction."""
+        action = self._make_action()
+        action._task.args = {"name": "my-cred", "state": "test"}
+        manager = self._make_manager(find_result={"id": 100, "name": "my-cred"})
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                prepared = action._prepare_action(task_vars={})
+
+        self.assertIs(prepared["validated_params"]["update_secrets"], False)
+        self.assertTrue(prepared["argspec"]["argument_spec"]["inputs"]["no_log"])
+
+    def test_state_test_rejects_invalid_metadata_before_lookup(self):
+        """state=test uses the documented metadata type validation."""
+        action = self._make_action()
+        action._task.args = {"name": "my-cred", "state": "test", "metadata": "not-a-dict"}
+        manager = self._make_manager(find_result={"id": 100, "name": "my-cred"})
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)) as get_manager:
+                result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        get_manager.assert_not_called()
 
 
 if __name__ == "__main__":

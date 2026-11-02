@@ -67,6 +67,15 @@ options:
       - This is a write-only field; the API will not return secret values.
       - Required when creating a credential (C(state=present) without C(copy_from)).
     type: dict
+    no_log: true
+
+  update_secrets:
+    description:
+      - Force a PATCH when C(inputs) is supplied for an existing credential, even if no other fields changed.
+      - Because the API does not return credential inputs, C(true) causes an update on every run that supplies C(inputs).
+      - With the default C(false), inputs-only changes are not detected.
+    type: bool
+    default: false
 
   metadata:
     description:
@@ -157,7 +166,7 @@ changed:
 
 eda_credential:
   description: The credential resource as it exists after the operation.
-  returned: when state is present, exists, or enforced
+  returned: when state is present or exists
   type: dict
   contains:
     id:
@@ -175,6 +184,11 @@ eda_credential:
     organization:
       description: Organization (ID).
       type: str
+
+exists:
+  description: Whether the credential exists when C(state=exists).
+  returned: when state is exists
+  type: bool
 
 test_result:
   description: Result of the credential test.

@@ -16,9 +16,16 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback
+from typing import Any, Optional
+
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential import AnsibleEdaCredential
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential import (
+    BASE_PATH,
+    TEST_PATH,
+    resolve_eda_credential_fk,
+)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -28,10 +35,108 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleEdaCredential
     LOOKUP_FIELD = "name"
 
+    _ANSIBLE_DIRECTIVES = BaseResourceActionPlugin._ANSIBLE_DIRECTIVES | frozenset({"copy_from", "metadata", "update_secrets"})
     _WRITE_ONLY_FIELDS = frozenset({"inputs"})
     _NO_LOG_FIELDS = frozenset({"inputs"})
 
-    def run(self, tmp=None, task_vars=None):
+    def _prepare_action(self, tmp: Optional[object] = None, task_vars: Optional[dict] = None) -> dict:
+        """Prepare validated input and retain intent for write-only fields.
+
+        Args:
+            tmp: Temporary directory passed through to the base helper.
+            task_vars: Ansible variables used to initialize the manager.
+
+        Returns:
+            dict: Prepared action data returned by the base helper.
+        """
+        prepared = super()._prepare_action(tmp, task_vars)
+        params = prepared["validated_params"]
+        self._inputs_provided = params.get("inputs") is not None
+        self._update_secrets = params.get("update_secrets", False)
+        return prepared
+
+    def _lookup_credential_id(self, manager: Any, name: str, organization: Optional[str] = None) -> Optional[int]:
+        """Resolve a credential name uniquely, scoped to its organization when supplied.
+
+        Args:
+            manager: Platform client used for lookups.
+            name: Credential name or ID.
+            organization: Optional organization name or ID.
+
+        Returns:
+            Optional[int]: Credential ID, or ``None`` when it does not exist.
+
+        Raises:
+            ValueError: If a reference is invalid or ambiguous.
+        """
+        extra_query_params = {}
+        if organization is not None:
+            organization_id = resolve_eda_credential_fk(manager, "organizations", organization, "Organization")
+            if organization_id is not None:
+                extra_query_params["organization_id"] = organization_id
+
+        try:
+            return manager.lookup_resource_id(
+                "eda-credentials",
+                "name",
+                name,
+                service="eda",
+                extra_query_params=extra_query_params,
+                require_unique=True,
+            )
+        except ValueError as exc:
+            # A missing destination is expected while copying or creating. Ambiguous
+            # results and invalid organization references must still fail loudly.
+            message = str(exc).lower()
+            if "eda-credentials" in message and "not found" in message:
+                return None
+            raise
+
+    def _resolve_lookup(self, resource: Any, resource_data: dict, validated_params: dict) -> None:
+        """Preflight name lookups so ambiguity cannot target an arbitrary record.
+
+        Args:
+            resource: Constructed Ansible credential model.
+            resource_data: Validated resource fields, updated with a resolved ID.
+            validated_params: Full validated action arguments.
+
+        Returns:
+            None: This method updates the resource and resource data in place.
+        """
+        name = resource_data.get(self.LOOKUP_FIELD)
+        if name is None or str(name).strip().isdigit():
+            return
+
+        resource_id = self._lookup_credential_id(self._client, name, validated_params.get("organization"))
+        if resource_id is not None:
+            resource.id = resource_id
+            resource_data["id"] = resource_id
+
+    def _should_update(self, desired_data: dict, current_data: dict) -> bool:
+        """Compare references by ID and honor explicit updates to write-only inputs.
+
+        Args:
+            desired_data: Validated writable fields supplied by the task.
+            current_data: Current credential data returned by the API.
+
+        Returns:
+            bool: Whether the credential should be updated.
+        """
+        normalized = dict(desired_data)
+        for field, endpoint, label in (
+            ("credential_type", "credential-types", "Credential type"),
+            ("organization", "organizations", "Organization"),
+        ):
+            value = normalized.get(field)
+            if value is not None:
+                resource_id = resolve_eda_credential_fk(self._client, endpoint, value, label)
+                normalized[field] = str(resource_id) if resource_id is not None else None
+
+        if super()._should_update(normalized, current_data):
+            return True
+        return (getattr(self, "_update_secrets", False) or getattr(self, "_copied_credential", False)) and getattr(self, "_inputs_provided", False)
+
+    def run(self, tmp: Optional[object] = None, task_vars: Optional[dict] = None) -> dict:
         """Run the eda_credential action plugin.
 
         Args:
@@ -44,37 +149,39 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        copy_from = self._task.args.pop("copy_from", None)
-        metadata = self._task.args.pop("metadata", None)
-        name = self._task.args.get("name")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
+        self._copied_credential = False
 
         # Handle state=test — custom path, not part of base class CRUD
         if state == "test":
-            return self._handle_test(tmp, task_vars, name, metadata, check_mode)
+            return self._handle_test(tmp, task_vars)
 
         # Handle copy_from — copy credential before CRUD (like controller_credential)
-        copied = False
+        copy_from = self._task.args.get("copy_from")
         if copy_from and state not in ("absent", "exists") and not check_mode:
             try:
-                super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-                self._task_vars = task_vars
-                manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-                self._client = manager
-                existing = manager.search_api(BASE_PATH, query_params={"name": name}, service="eda")
-                if not any(item.get("name") == name for item in existing.get("results", [])):
-                    manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service="eda")
-                    copied = True
+                prepared = self._prepare_action(tmp, task_vars)
+                params = prepared["validated_params"]
+                manager = prepared["manager"]
+                name = params["name"]
+                organization = params.get("organization")
+                destination_id = self._lookup_credential_id(manager, name, organization)
+                if destination_id is None:
+                    source_id = self._lookup_credential_id(manager, copy_from)
+                    if source_id is None:
+                        raise ValueError("Credential '%s' to copy from was not found" % copy_from)
+                    manager.copy_resource(self.MODULE_NAME, source_id, name, BASE_PATH, service="eda")
+                    self._copied_credential = True
             except Exception as exc:
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
-        if copied:
+        if self._copied_credential:
             result["changed"] = True
         return result
 
-    def _pre_execute_hook(self, ansible_data, write_only_data, validated_params, operation):
+    def _pre_execute_hook(self, ansible_data: dict, write_only_data: dict, validated_params: dict, operation: str) -> None:
         """Add write-only inputs back to ansible_data for create/update.
 
         Args:
@@ -87,60 +194,31 @@ class ActionModule(BaseResourceActionPlugin):
         if inputs is not None and operation in ("create", "update"):
             ansible_data["inputs"] = inputs
 
-    def _handle_test(self, tmp, task_vars, name, metadata, check_mode):
+    def _handle_test(self, tmp: Optional[object], task_vars: dict) -> dict:
         """Handle state=test: test credential connectivity.
 
         Args:
-            tmp: Temporary directory (deprecated, unused).
-            task_vars: Task variables from Ansible.
-            name: Credential name to test.
-            metadata: Optional metadata dict for the test request.
-            check_mode: Whether check mode is enabled.
+            tmp: Temporary directory passed through to the shared preparation helper.
+            task_vars: Ansible variables used to initialize the manager.
 
         Returns:
             dict: Ansible result dictionary with test_result.
         """
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
+        result = {}
         try:
-            self._task_vars = task_vars
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            params = prepared["validated_params"]
+            manager = prepared["manager"]
+            name = params["name"]
+            credential_id = self._lookup_credential_id(manager, name, params.get("organization"))
 
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-            module_args = self._task.args.copy()
-            self._validate_data(module_args, argspec, "input")
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
-
-            # Find credential by name
-            existing = None
-            try:
-                find_result = manager.execute(
-                    operation="find",
-                    module_name=self.MODULE_NAME,
-                    ansible_data={"name": name},
-                )
-                if find_result and find_result.get("id"):
-                    existing = find_result
-            except ValueError as e:
-                if "not found" not in str(e).lower() and "404" not in str(e):
-                    raise
-
-            if not existing:
+            if credential_id is None:
                 result["failed"] = True
                 result["msg"] = "Credential '%s' not found" % name
                 return result
 
-            if check_mode:
+            if self._task.check_mode:
                 test_result = {
                     "success": True,
                     "message": "Check mode - test would be performed",
@@ -150,11 +228,11 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # POST to credential test endpoint
+            metadata = params.get("metadata")
             test_data = {"metadata": metadata} if metadata else {}
-            credential_id = existing["id"]
             test_response = manager.direct_request(
                 "POST",
-                "/api/eda/v1/eda-credentials/%s/test/" % credential_id,
+                TEST_PATH.format(id=credential_id),
                 data=test_data,
             )
 
@@ -167,8 +245,6 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": False, "failed": False, "test_result": test_result})
 
         except Exception as e:
-            import traceback
-
             self._display.vvv("Error in %s action plugin (test): %s" % (self.MODULE_NAME, e))
             result["failed"] = True
             result["msg"] = str(e)

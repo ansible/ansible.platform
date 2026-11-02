@@ -19,6 +19,7 @@ class AnsibleEdaCredential:
     inputs: Optional[Dict[str, Any]] = None
     copy_from: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    update_secrets: bool = False
     state: str = "present"
 
     # Read-only fields (populated from API responses)

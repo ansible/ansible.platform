@@ -59,7 +59,6 @@
         gateway_password: "{{ gateway_password }}"
         gateway_validate_certs: "{{ gateway_validate_certs }}"
       register: create_result_local
-      no_log: false
       vars:
         ansible_connection: local
 
@@ -130,7 +129,6 @@
           password: "test-pass-direct"
         state: present
       register: create_result_http_direct
-      no_log: false
 
     - name: Assert create changed (http direct)
       ansible.builtin.assert:

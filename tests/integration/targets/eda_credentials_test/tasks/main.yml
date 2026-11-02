@@ -48,7 +48,6 @@
           password: "test-pass-{{ test_id }}"
         state: present
       register: create_result
-      no_log: false
 
     - name: Assert credential was created
       ansible.builtin.assert:
@@ -69,12 +68,26 @@
           password: "test-pass-{{ test_id }}"
         state: present
       register: idempotent_result
-      no_log: false
 
     - name: Assert idempotent re-create is not changed (inputs excluded from comparison)
       ansible.builtin.assert:
         that:
           - idempotent_result is not changed
+
+    - name: Update credential inputs explicitly
+      ansible.platform.eda_credential:
+        name: "{{ cred_name }}"
+        inputs:
+          username: "test-user-{{ test_id }}"
+          password: "rotated-pass-{{ test_id }}"
+        update_secrets: true
+        state: present
+      register: update_inputs_result
+
+    - name: Assert explicit secret update changed the credential
+      ansible.builtin.assert:
+        that:
+          - update_inputs_result is changed
 
     # <Update description> -------------------
     - name: Update credential description
@@ -97,6 +110,9 @@
       ansible.platform.eda_credential:
         name: "{{ cred_copy_name }}"
         copy_from: "{{ cred_name }}"
+        inputs:
+          username: "copy-user-{{ test_id }}"
+          password: "copy-pass-{{ test_id }}"
         state: present
       register: copy_result
 
