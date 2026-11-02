@@ -59,6 +59,7 @@ options:
   organization_name:
     description:
       - The name of the organization.
+      - Required when creating a project on EDA API versions that support organizations.
     type: str
     aliases:
       - organization

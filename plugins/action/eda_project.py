@@ -18,6 +18,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import time
+import traceback
 from typing import Any, Optional
 
 from ansible.errors import AnsibleError
@@ -26,6 +27,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ed
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_project import (
     EDA_PROJECTS_DETAIL_ENDPOINT,
     EDA_PROJECTS_SYNC_ENDPOINT,
+    resolve_foreign_key_id,
 )
 
 _SERVICE = "eda"
@@ -39,7 +41,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "eda_project"
     MODEL_CLASS = AnsibleEdaProject
     _WRITE_ONLY_FIELDS = frozenset({"sync", "wait"})
-    _MUTABLE_FK_FIELDS = frozenset({"credential", "organization_name"})
+    _resolved_fk_ids: dict[tuple[str, str, str], Optional[int]]
 
     def _wait_for_import(self, manager: Any, project_id: int, timeout: int = _IMPORT_POLL_TIMEOUT) -> dict:
         """Poll a project's import_state until it reaches a terminal state.
@@ -58,11 +60,15 @@ class ActionModule(BaseResourceActionPlugin):
         detail_path = EDA_PROJECTS_DETAIL_ENDPOINT.format(id=project_id)
         start = time.monotonic()
         last_state = None
+        last_exception = None
 
         while True:
             elapsed = time.monotonic() - start
             if elapsed >= timeout:
-                raise AnsibleError("Timeout waiting for project import to complete after %d seconds. Last import_state: %s" % (timeout, last_state))
+                message = "Timeout waiting for project import to complete after %d seconds. Last import_state: %s" % (timeout, last_state)
+                if last_exception is not None:
+                    message += ". Last poll error: %s" % last_exception
+                raise AnsibleError(message)
 
             try:
                 project_data = manager.direct_request("GET", detail_path)
@@ -82,9 +88,118 @@ class ActionModule(BaseResourceActionPlugin):
             except AnsibleError:
                 raise
             except Exception as exc:
+                last_exception = exc
                 self._display.vvv("eda_project: transient error during import poll: %s" % exc)
 
-            time.sleep(_IMPORT_POLL_INTERVAL)
+            remaining = max(timeout - (time.monotonic() - start), 0)
+            time.sleep(min(_IMPORT_POLL_INTERVAL, remaining))
+
+    def _find_project(self, manager: Any, name: Optional[str], organization_name: Optional[str]) -> Optional[dict]:
+        """Find exactly one project by name, scoped to an organization when given."""
+        if not name:
+            return None
+
+        query_params: dict[str, Any] = {}
+        if organization_name is not None:
+            query_params["organization_id"] = self._resolve_foreign_key(manager, "organizations", organization_name, "gateway")
+
+        find_data: dict[str, Any]
+        if str(name).strip().isdigit():
+            find_data = {"id": int(str(name).strip())}
+            if organization_name is not None:
+                find_data["organization_name"] = organization_name
+            return self._execute_find(manager, find_data)
+
+        try:
+            project_id = manager.lookup_resource_id(
+                "projects",
+                "name",
+                str(name),
+                service=_SERVICE,
+                extra_query_params=query_params,
+                require_unique=True,
+            )
+        except ValueError as exc:
+            if "not found" in str(exc).lower():
+                return None
+            raise
+
+        if project_id is None:
+            return None
+        find_data = {"id": project_id}
+        if organization_name is not None:
+            find_data["organization_name"] = organization_name
+        return self._execute_find(manager, find_data)
+
+    def _execute_find(self, manager: Any, find_data: dict) -> Optional[dict]:
+        """Return a project found by ID, treating only missing resources as absent."""
+        try:
+            return manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=find_data)
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            details = getattr(exc, "details", None)
+            status_code = details.get("status_code") if isinstance(details, dict) else None
+            status_code = status_code or getattr(response, "status_code", None) or getattr(exc, "status_code", None)
+            if (isinstance(exc, ValueError) and ("not found" in str(exc).lower() or "404" in str(exc))) or status_code == 404:
+                return None
+            raise
+
+    @staticmethod
+    def _supports_organization(manager: Any) -> bool:
+        """Check whether this EDA API exposes organization-aware project creation."""
+        try:
+            manager.search_api("config", service=_SERVICE)
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            details = getattr(exc, "details", None)
+            status_code = details.get("status_code") if isinstance(details, dict) else None
+            status_code = status_code or getattr(response, "status_code", None) or getattr(exc, "status_code", None)
+            if status_code == 404 or (isinstance(exc, ValueError) and "404" in str(exc)):
+                return False
+            raise
+        return True
+
+    def _resolve_foreign_key(self, manager: Any, endpoint: str, value: Any, service: str) -> Optional[int]:
+        """Resolve a foreign key once per action run for validation and comparison."""
+        cache: dict[tuple[str, str, str], Optional[int]] = getattr(self, "_resolved_fk_ids", {})
+        self._resolved_fk_ids = cache
+        cache_key = (endpoint, service, str(value).strip())
+        if cache_key not in cache:
+            cache[cache_key] = resolve_foreign_key_id(manager, endpoint, "name", value, service=service)
+        return cache[cache_key]
+
+    @staticmethod
+    def _comparison_data(resource_data: dict, found_by_new_name: bool, new_name: Optional[str]) -> dict:
+        """Normalize rename input for idempotency comparison after lookup by new name."""
+        comparison_data = dict(resource_data)
+        if found_by_new_name:
+            comparison_data.pop("new_name", None)
+            comparison_data["name"] = new_name
+        return comparison_data
+
+    def _should_update(self, desired_data, current_data):
+        """Compare EDA foreign keys by ID so names and numeric IDs are equivalent."""
+        if desired_data.get("new_name"):
+            return True
+
+        comparable_data = dict(desired_data)
+        manager = getattr(self, "_client", None)
+        fk_fields = {
+            "credential": ("eda-credentials", "eda"),
+            "organization_name": ("organizations", "gateway"),
+        }
+        for field, (endpoint, service) in fk_fields.items():
+            desired_value = comparable_data.get(field)
+            if desired_value is None or field not in current_data:
+                continue
+            current_value = current_data[field]
+            desired_id = self._resolve_foreign_key(manager, endpoint, desired_value, service)
+            current_id = self._resolve_foreign_key(manager, endpoint, current_value, service)
+            if desired_id != current_id:
+                return True
+            comparable_data.pop(field, None)
+
+        return super()._should_update(comparable_data, current_data)
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Run the eda_project action plugin.
@@ -103,6 +218,7 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
+            self._resolved_fk_ids = {}
             validated_params = prepared["validated_params"]
             resource_data = prepared["resource_data"]
             write_only_data = prepared["write_only_data"]
@@ -114,25 +230,14 @@ class ActionModule(BaseResourceActionPlugin):
             sync_enabled = write_only_data.get("sync", False)
             wait_for_completion = write_only_data.get("wait", True)
 
-            # Validate scm_update_cache_timeout requires update_revision_on_launch
-            scm_update_cache_timeout = validated_params.get("scm_update_cache_timeout", 0)
-            update_revision_on_launch = validated_params.get("update_revision_on_launch", False)
-            if scm_update_cache_timeout and scm_update_cache_timeout > 0 and not update_revision_on_launch:
-                raise AnsibleError("scm_update_cache_timeout requires update_revision_on_launch to be true")
-
-            # Find existing project by name
-            existing = None
-            try:
-                find_result = manager.execute(
-                    operation="find",
-                    module_name=self.MODULE_NAME,
-                    ansible_data={"name": name},
-                )
-                if find_result and find_result.get("id"):
-                    existing = find_result
-            except ValueError as exc:
-                if "not found" not in str(exc).lower() and "404" not in str(exc):
-                    raise
+            # Find the current name first, then the requested new name so a
+            # repeated rename remains idempotent rather than creating a copy.
+            organization_name = validated_params.get("organization_name")
+            existing = self._find_project(manager, name, organization_name)
+            found_by_new_name = False
+            if existing is None and new_name and new_name != name:
+                existing = self._find_project(manager, new_name, organization_name)
+                found_by_new_name = existing is not None
 
             # ---- state: absent ------------------------------------------------
             if state == "absent":
@@ -176,20 +281,51 @@ class ActionModule(BaseResourceActionPlugin):
             url = validated_params.get("url")
             if not existing and not url:
                 raise AnsibleError("Parameter 'url' is required when state is present and project does not exist")
+            if not existing and organization_name is None and self._supports_organization(manager):
+                raise AnsibleError("Parameter 'organization_name' is required when state is present and project does not exist")
+
+            # Defaults apply at creation. For updates, omitted values should
+            # preserve the server's settings instead of resetting them.
+            if existing:
+                for field in ("update_revision_on_launch", "scm_update_cache_timeout"):
+                    if field not in self._task.args:
+                        resource_data.pop(field, None)
+
+            update_revision_on_launch = validated_params.get("update_revision_on_launch", False)
+            scm_update_cache_timeout = validated_params.get("scm_update_cache_timeout", 0)
+            if existing and "update_revision_on_launch" not in self._task.args:
+                update_revision_on_launch = existing.get("update_revision_on_launch", False)
+            if existing and "scm_update_cache_timeout" not in self._task.args:
+                scm_update_cache_timeout = existing.get("scm_update_cache_timeout", 0)
+            if scm_update_cache_timeout and scm_update_cache_timeout > 0 and not update_revision_on_launch:
+                raise AnsibleError("scm_update_cache_timeout requires update_revision_on_launch to be true")
+
+            # Validate requested foreign keys even in check mode and on no-op
+            # updates, where the manager would otherwise not run the transform.
+            for field, (endpoint, service) in {
+                "credential": ("eda-credentials", "eda"),
+                "organization_name": ("organizations", "gateway"),
+            }.items():
+                value = validated_params.get(field)
+                if value is not None:
+                    self._resolve_foreign_key(manager, endpoint, value, service)
 
             if self._task.check_mode:
+                comparison_data = self._comparison_data(resource_data, found_by_new_name, new_name)
+                changed = not existing or self._should_update(comparison_data, existing) or sync_enabled
                 result.update(
                     {
-                        "changed": True,
+                        "changed": changed,
                         "failed": False,
-                        self.MODULE_NAME: {"name": new_name or name, "state": "present"},
+                        self.MODULE_NAME: {"name": new_name or name, "state": "present", **({"id": existing["id"]} if existing else {})},
                     }
                 )
                 return result
 
             if existing:
                 # Check if update is needed
-                if not self._should_update(resource_data, existing):
+                comparison_data = self._comparison_data(resource_data, found_by_new_name, new_name)
+                if not self._should_update(comparison_data, existing):
                     # No changes needed - but we may still need to sync
                     if sync_enabled:
                         self._trigger_sync(manager, existing["id"], name, wait_for_completion)
@@ -281,8 +417,6 @@ class ActionModule(BaseResourceActionPlugin):
                 )
 
         except Exception as exc:
-            import traceback
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

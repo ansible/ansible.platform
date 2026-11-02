@@ -1,13 +1,11 @@
 """API v1 EDA Project dataclass and transform mixin."""
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
+from ....ansible_models.eda_project import AnsibleEdaProject
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
-
-logger = logging.getLogger(__name__)
 
 # EDA project API endpoints
 EDA_PROJECTS_LIST_ENDPOINT = "/api/eda/v1/projects/"
@@ -15,24 +13,52 @@ EDA_PROJECTS_DETAIL_ENDPOINT = "/api/eda/v1/projects/{id}/"
 EDA_PROJECTS_SYNC_ENDPOINT = "/api/eda/v1/projects/{id}/sync/"
 
 
-def _resolve_fk(manager, endpoint: str, lookup_field: str, value, service: str = "gateway") -> Optional[int]:
-    """Resolve a name or id to an integer id.
-
-    Returns the integer ID, or None if resolution fails.
-    Exceptions are logged but not re-raised so callers can decide how to handle.
-    """
+def resolve_foreign_key_id(manager, endpoint: str, lookup_field: str, value, service: str = "gateway") -> Optional[int]:
+    """Resolve a supplied foreign-key name or ID to its canonical integer ID."""
     if value is None:
         return None
-    if str(value).isdigit():
+    value = str(value).strip()
+    if value.isdigit():
         return int(value)
-    try:
-        result = manager.lookup_resource_id(endpoint, lookup_field, str(value), service=service)
-        if result is None:
-            logger.debug("_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'", lookup_field, value, endpoint)
-        return result
-    except Exception as exc:
-        logger.debug("_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s", lookup_field, value, endpoint, type(exc).__name__, exc)
+    if manager is None:
+        raise ValueError("Cannot resolve %s '%s' without an API manager" % (lookup_field, value))
+    resolved_id = manager.lookup_resource_id(endpoint, lookup_field, value, service=service, require_unique=True)
+    if resolved_id is None:
+        raise ValueError("Could not resolve %s '%s' to an ID" % (lookup_field, value))
+    return int(resolved_id)
+
+
+def _related_resource_name(manager, api_data: Dict[str, Any], id_field: str, relationship_field: str, endpoint: str, service: str) -> Optional[str]:
+    """Return a related resource name, falling back to its stable ID string."""
+    related = api_data.get(relationship_field)
+    if isinstance(related, dict):
+        related_name = related.get("name")
+        if related_name is not None:
+            return str(related_name)
+        resource_id = related.get("id")
+    elif isinstance(related, str) and not related.isdigit():
+        return related
+    else:
+        resource_id = related
+
+    resource_id = resource_id if resource_id is not None else api_data.get(id_field)
+    if resource_id is None:
         return None
+    if manager is not None:
+        try:
+            response = manager.search_api(
+                "/api/%s/v1/%s/" % (service, endpoint),
+                query_params={"id": int(resource_id)},
+                service=service,
+            )
+            matches = [item for item in response.get("results", []) if str(item.get("id")) == str(resource_id)]
+            if len(matches) == 1 and matches[0].get("name") is not None:
+                return str(matches[0]["name"])
+        except Exception:
+            # Name hydration is output enrichment; the ID remains a stable value
+            # for comparison and can still be returned when the lookup is unavailable.
+            pass
+    return str(resource_id)
 
 
 @dataclass
@@ -82,25 +108,13 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
         # Resolve credential name -> eda_credential_id
         credential = getattr(ansible_instance, "credential", None)
-        if credential is not None and manager:
-            resolved = _resolve_fk(manager, "eda-credentials", "name", credential, service="eda")
-            if resolved is not None:
-                api_data["eda_credential_id"] = resolved
-            else:
-                raise ValueError("Could not resolve EDA credential '%s' to an ID" % credential)
-        elif credential is not None and str(credential).isdigit():
-            api_data["eda_credential_id"] = int(credential)
+        if credential is not None:
+            api_data["eda_credential_id"] = resolve_foreign_key_id(manager, "eda-credentials", "name", credential, service="eda")
 
         # Resolve organization_name -> organization_id
         organization_name = getattr(ansible_instance, "organization_name", None)
-        if organization_name is not None and manager:
-            resolved = _resolve_fk(manager, "organizations", "name", organization_name, service="gateway")
-            if resolved is not None:
-                api_data["organization_id"] = resolved
-            else:
-                raise ValueError("Could not resolve organization '%s' to an ID" % organization_name)
-        elif organization_name is not None and str(organization_name).isdigit():
-            api_data["organization_id"] = int(organization_name)
+        if organization_name is not None:
+            api_data["organization_id"] = resolve_foreign_key_id(manager, "organizations", "name", organization_name, service="gateway")
 
         # Read-only fields
         for field in ("id",):
@@ -180,10 +194,14 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        """Scope project existence checks to the requested organization."""
+        organization_id = api_data.get("organization_id") if isinstance(api_data, dict) else getattr(api_data, "organization_id", None)
+        return {"organization_id": organization_id} if organization_id is not None else {}
+
+    @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleEdaProject":
         """Transform from API format to Ansible format."""
-        from ....ansible_models.eda_project import AnsibleEdaProject
-
         ansible_data = {
             "name": api_data.get("name", ""),
             "description": api_data.get("description"),
@@ -195,14 +213,12 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
             "id": api_data.get("id"),
         }
 
-        # Reverse-map eda_credential_id -> credential (as string ID for now)
-        eda_credential_id = api_data.get("eda_credential_id")
-        if eda_credential_id is not None:
-            ansible_data["credential"] = str(eda_credential_id)
-
-        # Reverse-map organization_id -> organization_name (as string ID for now)
-        organization_id = api_data.get("organization_id")
-        if organization_id is not None:
-            ansible_data["organization_name"] = str(organization_id)
+        manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
+        credential = _related_resource_name(manager, api_data, "eda_credential_id", "eda_credential", "eda-credentials", "eda")
+        organization = _related_resource_name(manager, api_data, "organization_id", "organization", "organizations", "gateway")
+        if credential is not None:
+            ansible_data["credential"] = credential
+        if organization is not None:
+            ansible_data["organization_name"] = organization
 
         return AnsibleEdaProject(**ansible_data)

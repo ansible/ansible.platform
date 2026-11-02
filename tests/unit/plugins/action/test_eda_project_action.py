@@ -26,6 +26,16 @@ class TestEdaProjectAction(unittest.TestCase):
     def _make_manager(self, find_result=None, create_result=None, update_result=None, delete_error=None):
         manager = MagicMock()
 
+        def lookup_resource_id(endpoint, lookup_field, lookup_value, service="gateway", extra_query_params=None, require_unique=False):
+            if endpoint == "organizations":
+                return 1
+            if endpoint == "projects" and find_result and find_result.get("name") == lookup_value:
+                return find_result["id"]
+            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+
+        manager.lookup_resource_id.side_effect = lookup_resource_id
+        manager.search_api.side_effect = ValueError("404 Not Found")
+
         def execute_side_effect(operation, module_name, ansible_data):
             if operation == "find":
                 if find_result:
@@ -408,6 +418,7 @@ class TestEdaProjectAction(unittest.TestCase):
         """ValueError not related to 'not found' is re-raised."""
         action = self._make_action()
         manager = MagicMock()
+        manager.lookup_resource_id.side_effect = ValueError("Authentication failed")
         manager.execute.side_effect = ValueError("Authentication failed")
         result = self._run_action(
             action,
