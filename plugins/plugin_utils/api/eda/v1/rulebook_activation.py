@@ -51,7 +51,10 @@ def _resolve_fk_required(manager, endpoint, lookup_field, value, resource_label,
         return None
     if str(value).isdigit():
         return int(value)
-    return manager.lookup_resource_id(endpoint, lookup_field, str(value), service=service, require_unique=True)
+    resource_id = manager.lookup_resource_id(endpoint, lookup_field, str(value), service=service, require_unique=True)
+    if resource_id is None:
+        raise ValueError("%s '%s' not found" % (resource_label, value))
+    return resource_id
 
 
 def _resolve_credential_ids(manager, credential_names):
@@ -68,9 +71,10 @@ def _resolve_credential_ids(manager, credential_names):
         return None
     ids = []
     for name in credential_names:
+        if name is None:
+            raise ValueError("EDA credential name cannot be empty")
         cred_id = _resolve_fk_required(manager, "eda-credentials", "name", name, "EDA credential")
-        if cred_id is not None:
-            ids.append(cred_id)
+        ids.append(cred_id)
     return ids
 
 
@@ -186,6 +190,18 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
         api_data = {}
 
+        reference_fields = (
+            "project_name",
+            "rulebook_name",
+            "decision_environment_name",
+            "organization_name",
+            "awx_token_name",
+            "eda_credentials",
+            "event_streams",
+        )
+        if manager is None and any(getattr(ansible_instance, field, None) is not None for field in reference_fields):
+            raise ValueError("A manager is required to resolve rulebook activation references")
+
         # Handle name / rename
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
@@ -224,7 +240,9 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
 
             # Resolve rulebook_name -> rulebook_id (scoped by project_id)
             rulebook_name = getattr(ansible_instance, "rulebook_name", None)
-            if rulebook_name is not None and project_id is not None:
+            if rulebook_name is not None and project_id is None:
+                raise ValueError("Project is required when rulebook_name is provided")
+            if rulebook_name is not None:
                 rulebook_id = manager.lookup_resource_id(
                     "rulebooks",
                     "name",
@@ -261,6 +279,10 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             event_streams = getattr(ansible_instance, "event_streams", None)
             if event_streams is not None:
                 rulebook_id_for_sources = api_data.get("rulebook_id")
+                if rulebook_id_for_sources is None:
+                    rulebook_id_for_sources = getattr(ansible_instance, "rulebook_id", None)
+                if event_streams and rulebook_id_for_sources is None:
+                    raise ValueError("A resolved rulebook is required when event_streams are provided")
                 source_mappings = _process_event_streams(manager, event_streams, rulebook_id_for_sources)
                 if source_mappings is not None:
                     api_data["source_mappings"] = source_mappings
@@ -308,12 +330,15 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
                     "name",
                     "description",
                     "is_enabled",
+                    "awx_token_id",
+                    "extra_var",
                     "restart_policy",
                     "log_level",
                     "enable_persistence",
                     "rule_engine_credential_id",
                     "eda_credentials",
                     "k8s_service_name",
+                    "source_mappings",
                     "restart_on_project_update",
                 ],
                 path_params=["id"],
@@ -397,6 +422,10 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             "description": api_data.get("description"),
             "id": api_data.get("id"),
             "is_enabled": api_data.get("is_enabled"),
+            "extra_var": api_data.get("extra_var"),
+            "rulebook_id": api_data.get("rulebook_id"),
+            "awx_token_id": api_data.get("awx_token_id"),
+            "source_mappings": api_data.get("source_mappings"),
             "restart_policy": api_data.get("restart_policy"),
             "log_level": api_data.get("log_level"),
             "enable_persistence": api_data.get("enable_persistence"),

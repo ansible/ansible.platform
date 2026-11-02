@@ -49,7 +49,7 @@ class TestRulebookActivationAction(unittest.TestCase):
         manager.lookup_resource_id.return_value = 1
         return manager
 
-    def _run_action(self, action, manager, validated_params):
+    def _run_action(self, action, manager, validated_params, provided_args=None):
         doc = "module: rulebook_activation"
         argspec = {
             "argument_spec": {
@@ -75,6 +75,7 @@ class TestRulebookActivationAction(unittest.TestCase):
             }
         }
         validation = SimpleNamespace(validated_parameters=validated_params)
+        action._task.args = provided_args or {}
 
         with patch.object(ActionBase, "run", return_value={}):
             with patch.object(action, "_get_documentation", return_value=doc):
@@ -226,6 +227,10 @@ class TestRulebookActivationAction(unittest.TestCase):
                 "rulebook_name": "my-rulebook.yml",
                 "decision_environment_name": "my-de",
                 "organization_name": "Default",
+                "restart_policy": "on-failure",
+                "log_level": "error",
+                "enable_persistence": False,
+                "restart_on_project_update": False,
             },
         )
 
@@ -235,11 +240,18 @@ class TestRulebookActivationAction(unittest.TestCase):
         # Create goes through execute(), not direct_request.
         create_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "create")
         self.assertEqual(create_call.kwargs["ansible_data"]["is_enabled"], True)
+        for field, value in {
+            "restart_policy": "on-failure",
+            "log_level": "error",
+            "enable_persistence": False,
+            "restart_on_project_update": False,
+        }.items():
+            self.assertEqual(create_call.kwargs["ansible_data"][field], value)
         self.assertNotIn("id", create_call.kwargs["ansible_data"])
         manager.direct_request.assert_not_called()
 
     def test_update_existing_activation_no_changes_is_idempotent(self):
-        """state=present on an unchanged existing activation must not report changed."""
+        """An unchanged activation is not PATCHed or reported as changed."""
         action = self._make_action()
         manager = self._make_manager(
             find_result={"id": 42, "name": "test-activation", "is_enabled": True},
@@ -249,9 +261,34 @@ class TestRulebookActivationAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertFalse(result["changed"])
-        update_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "update")
-        self.assertEqual(update_call.kwargs["ansible_data"]["id"], 42)
+        self.assertFalse(any(c.kwargs.get("operation") == "update" for c in manager.execute.call_args_list))
         manager.direct_request.assert_not_called()
+
+    def test_check_mode_existing_activation_no_changes(self):
+        """Check mode reports no change for an unchanged activation."""
+        action = self._make_action(check_mode=True)
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+
+        result = self._run_action(action, manager, {"name": "test-activation", "state": "present", "restart": False})
+
+        self.assertFalse(result["failed"])
+        self.assertFalse(result["changed"])
+        self.assertFalse(any(c.kwargs.get("operation") == "update" for c in manager.execute.call_args_list))
+
+    def test_check_mode_existing_activation_with_changes(self):
+        """Check mode reports a change without submitting an update."""
+        action = self._make_action(check_mode=True)
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "state": "present", "restart": False, "description": "updated"},
+        )
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["changed"])
+        self.assertFalse(any(c.kwargs.get("operation") == "update" for c in manager.execute.call_args_list))
 
     def test_update_existing_activation_with_changes(self):
         """state=present with an actual field change must report changed."""
@@ -269,6 +306,95 @@ class TestRulebookActivationAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
         manager.direct_request.assert_not_called()
+
+    def test_update_omits_defaulted_fields_not_explicitly_supplied(self):
+        """Validation defaults do not overwrite fields omitted from an update."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "test-activation",
+                "state": "present",
+                "restart": False,
+                "restart_policy": "on-failure",
+                "log_level": "error",
+                "enable_persistence": False,
+                "restart_on_project_update": False,
+            },
+        )
+
+        self.assertFalse(result["failed"])
+        self.assertFalse(result["changed"])
+        self.assertFalse(any(c.kwargs.get("operation") == "update" for c in manager.execute.call_args_list))
+
+    def test_update_includes_defaulted_fields_explicitly_supplied(self):
+        """Explicit values, including values equal to defaults, should be PATCHed."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+        explicit_values = {
+            "restart_policy": "on-failure",
+            "log_level": "error",
+            "enable_persistence": False,
+            "restart_on_project_update": False,
+        }
+        params = {"name": "test-activation", "state": "present", "restart": False, **explicit_values}
+
+        result = self._run_action(action, manager, params, provided_args=explicit_values)
+
+        self.assertFalse(result["failed"])
+        update_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "update")
+        for field, value in explicit_values.items():
+            self.assertEqual(update_call.kwargs["ansible_data"][field], value)
+
+    def test_update_preserves_awx_token_and_event_stream_changes(self):
+        """Pass supported token and event-stream changes through to the transform."""
+        action = self._make_action()
+        event_streams = [{"event_stream": "stream", "source_name": "source"}]
+        manager = self._make_manager(
+            find_result={"id": 42, "name": "test-activation", "is_enabled": True, "rulebook_id": 7},
+            update_changed=True,
+        )
+        manager.search_api.return_value = {"results": [{"name": "source", "rulebook_hash": "hash"}]}
+
+        self._run_action(
+            action,
+            manager,
+            {
+                "name": "test-activation",
+                "state": "present",
+                "restart": False,
+                "awx_token_name": "controller-token",
+                "event_streams": event_streams,
+            },
+        )
+
+        update_call = next(c for c in manager.execute.call_args_list if c.kwargs.get("operation") == "update")
+        ansible_data = update_call.kwargs["ansible_data"]
+        self.assertEqual(ansible_data["awx_token_name"], "controller-token")
+        self.assertEqual(ansible_data["event_streams"], event_streams)
+        self.assertEqual(ansible_data["rulebook_id"], 7)
+
+    def test_update_event_streams_fails_if_existing_rulebook_is_unavailable(self):
+        """Do not silently skip an event-stream update without its rulebook context."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "test-activation",
+                "state": "present",
+                "restart": False,
+                "event_streams": [{"event_stream": "stream", "source_name": "source"}],
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("existing activation has no rulebook ID", result["msg"])
+        self.assertFalse(any(call.kwargs.get("operation") == "update" for call in manager.execute.call_args_list))
 
     def test_check_mode_create(self):
         """Check mode for creating a new activation."""

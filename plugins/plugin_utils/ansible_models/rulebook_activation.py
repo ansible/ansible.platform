@@ -31,6 +31,10 @@ class AnsibleRulebookActivation:
     restart_on_project_update: Optional[bool] = None
     state: Optional[str] = None
 
-    # Read-only fields (populated from API responses)
+    # API response fields used by the action and update idempotency checks.
     id: Optional[int] = None
     is_enabled: Optional[bool] = None
+    extra_var: Optional[str] = None
+    rulebook_id: Optional[int] = None
+    awx_token_id: Optional[int] = None
+    source_mappings: Optional[str] = None

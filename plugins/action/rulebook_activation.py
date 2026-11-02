@@ -7,11 +7,10 @@
 """Action plugin for ansible.platform.rulebook_activation module.
 
 Rulebook activations support create, update, delete, enable, disable, and
-restart operations.  Create/update/delete go through manager.execute() so
-FK resolution (project, rulebook, decision environment, organization, AWX
-token, EDA credentials, event streams) and update idempotency diffing both
-live in RulebookActivationTransformMixin_v1 / PlatformService, exactly like
-every other full-CRUD resource (see plugins/action/eda_controller_token.py).
+restart operations. Create/update/delete go through manager.execute() for
+request transformation and API access. For existing activations, the action
+uses the API transform to compare requested update fields before dispatch,
+so unchanged inputs skip the update in normal and check mode.
 Enable/disable/restart are custom sub-actions with no create/update/delete
 shape, so they use manager.direct_request() against their sub-endpoints,
 the same pattern plugins/action/workflow_approval.py uses for approve/deny.
@@ -21,6 +20,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+from dataclasses import asdict
 from dataclasses import fields as dataclass_fields
 from typing import Any, Dict, Optional
 
@@ -31,6 +31,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebo
     ACTIVATION_DISABLE_ENDPOINT,
     ACTIVATION_ENABLE_ENDPOINT,
     ACTIVATION_RESTART_ENDPOINT,
+    RulebookActivationTransformMixin_v1,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 
@@ -267,15 +268,12 @@ class ActionModule(BaseResourceActionPlugin):
     ) -> dict:
         """Create or update an activation via manager.execute().
 
-        FK resolution and update idempotency diffing both live in the
-        transform mixin / PlatformService._update_resource; this method
-        translates the Ansible-level 'state' into the API's 'is_enabled'
-        field and decides create vs. update. 'restart', and on update only
-        the create-only reference fields (project_name, rulebook_name,
-        decision_environment_name, organization_name, awx_token_name,
-        event_streams), are stripped from ansible_data first: the API never
-        echoes them back, so leaving them in makes the idempotency diff see
-        them as missing on the server and always report changed=True.
+        This method translates the Ansible-level 'state' into the API's
+        'is_enabled' field, decides create vs. update, and skips an update
+        when the transformed API fields already match the existing activation.
+        Creation-only references are omitted on update. AWX tokens and event
+        streams remain supported update fields; event-stream mappings are
+        resolved against the activation's current rulebook.
 
         Args:
             manager: The platform manager client.
@@ -290,16 +288,6 @@ class ActionModule(BaseResourceActionPlugin):
             dict: Updated result.
         """
         check_name = new_name if new_name else name
-
-        if self._task.check_mode:
-            result.update(
-                {
-                    "changed": True,
-                    "failed": False,
-                    self.MODULE_NAME: {"name": check_name},
-                }
-            )
-            return result
 
         # validated_params also carries auth options (gateway_hostname, ...)
         # that must never reach AnsibleRulebookActivation(**ansible_data).
@@ -316,10 +304,45 @@ class ActionModule(BaseResourceActionPlugin):
                 "rulebook_name",
                 "decision_environment_name",
                 "organization_name",
-                "awx_token_name",
-                "event_streams",
             ):
                 ansible_data.pop(create_only_field, None)
+
+            # These defaults are needed when creating an activation, but
+            # applying them to every PATCH would overwrite values the caller
+            # did not ask to change.
+            for defaulted_field in ("restart_policy", "log_level", "enable_persistence", "restart_on_project_update"):
+                if defaulted_field not in self._task.args:
+                    ansible_data.pop(defaulted_field, None)
+
+            if params.get("event_streams") is not None:
+                # event_streams are converted to source_mappings by the
+                # transform, which needs a rulebook ID even when the caller
+                # only changes the stream mapping.
+                rulebook_id = existing.get("rulebook_id")
+                if rulebook_id is None:
+                    raise AnsibleError("Cannot update event_streams because the existing activation has no rulebook ID")
+                ansible_data["rulebook_id"] = rulebook_id
+
+            if not self._activation_update_differs(manager, ansible_data, existing):
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": False,
+                        self.MODULE_NAME: existing,
+                        "id": existing["id"],
+                    }
+                )
+                return result
+
+        if self._task.check_mode:
+            result.update(
+                {
+                    "changed": True,
+                    "failed": False,
+                    self.MODULE_NAME: {"name": check_name},
+                }
+            )
+            return result
 
         api_result = manager.execute(
             operation=operation,
@@ -337,3 +360,34 @@ class ActionModule(BaseResourceActionPlugin):
             }
         )
         return result
+
+    @staticmethod
+    def _activation_update_differs(manager: Any, ansible_data: dict, existing: dict) -> bool:
+        """Compare the requested API update fields with the existing activation.
+
+        Transforming first makes references comparable as IDs and applies API
+        field aliases such as ``extra_vars`` to ``extra_var``.
+        """
+        ansible_instance = AnsibleRulebookActivation(**ansible_data)
+        api_data = RulebookActivationTransformMixin_v1.from_ansible_data(ansible_instance, {"manager": manager, "operation": "update"})
+        desired = asdict(api_data)
+        update_fields = RulebookActivationTransformMixin_v1.get_endpoint_operations()["update"].fields
+
+        for field in update_fields:
+            desired_value = desired.get(field)
+            if desired_value is None:
+                continue
+            if ActionModule._normalize_for_update_comparison(desired_value) != ActionModule._normalize_for_update_comparison(existing.get(field)):
+                return True
+        return False
+
+    @staticmethod
+    def _normalize_for_update_comparison(value: Any) -> Any:
+        """Normalize ID representations before comparing API and Ansible data."""
+        if isinstance(value, dict):
+            return {key: ActionModule._normalize_for_update_comparison(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [ActionModule._normalize_for_update_comparison(item) for item in value]
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return value
