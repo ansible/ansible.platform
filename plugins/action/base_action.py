@@ -349,6 +349,12 @@ class BaseResourceActionPlugin(ActionBase):
         message = str(exc).lower()
         return (message.startswith("resource with ") and message.endswith("not found")) or message.startswith("resource not found")
 
+    @staticmethod
+    def _is_resource_scope_mismatch(exc: Exception) -> bool:
+        """Return whether an ID lookup found a resource outside the requested scope."""
+        message = str(exc).lower()
+        return "composite key" in message and ("does not match" in message or "do not match" in message)
+
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
         """Find a resource using its declared lookup fields.
 
@@ -1177,7 +1183,7 @@ class BaseResourceActionPlugin(ActionBase):
                     find_result = self._find_existing_resource(manager, resource_data)
                     exists = bool(find_result and find_result.get("id"))
                 except ValueError as exc:
-                    if not self._is_resource_not_found(exc):
+                    if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                         raise
                     find_result, exists = {}, False
                 result.update(
@@ -1230,7 +1236,7 @@ class BaseResourceActionPlugin(ActionBase):
                         )
                         return result
                 except ValueError as exc:
-                    if not self._is_resource_not_found(exc):
+                    if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                         raise
                     result.update(
                         {
@@ -1325,6 +1331,16 @@ class BaseResourceActionPlugin(ActionBase):
                             self.MODULE_NAME: {},
                             "exists": False,
                             "msg": "%s '%s' does not exist" % (self.MODULE_NAME, lookup_val),
+                        }
+                    )
+                    return result
+                if operation == "delete" and self._is_resource_scope_mismatch(exc):
+                    result.update(
+                        {
+                            "changed": False,
+                            "failed": False,
+                            self.MODULE_NAME: {"state": "absent"},
+                            "msg": "%s '%s' does not exist in the requested scope (already absent)" % (self.MODULE_NAME, lookup_val),
                         }
                     )
                     return result

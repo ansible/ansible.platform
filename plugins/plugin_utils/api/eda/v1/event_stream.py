@@ -35,6 +35,7 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for Event Stream API v1."""
 
     require_unique_lookup = True
+    full_resource_lookup = True
 
     @classmethod
     def from_ansible_data(
