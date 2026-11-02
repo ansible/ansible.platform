@@ -1,0 +1,192 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — eda_credential_type (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    credential_type_name: "molecule-mock-credential-type"
+    credential_type_renamed: "molecule-mock-credential-type-renamed"
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+  tasks:
+    - name: Create credential type with check mode
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        description: "Molecule mock credential type"
+        inputs:
+          fields:
+            - id: "token"
+              type: "string"
+              label: "Token"
+        injectors:
+          extra_vars:
+            token: "static-placeholder"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        description: "Molecule mock credential type"
+        inputs:
+          fields:
+            - id: "token"
+              type: "string"
+              label: "Token"
+        injectors:
+          extra_vars:
+            token: "static-placeholder"
+        state: present
+      register: create_result
+
+    - name: Assert credential type was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_credential_type.id is defined
+
+    - name: Re-create same credential type with identical parameters (idempotency)
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        description: "Molecule mock credential type"
+        inputs:
+          fields:
+            - id: "token"
+              type: "string"
+              label: "Token"
+        injectors:
+          extra_vars:
+            token: "static-placeholder"
+        state: present
+      register: recreate_result
+
+    - name: Assert re-create with no actual changes reports changed=false
+      ansible.builtin.assert:
+        that:
+          - recreate_result is not changed
+          - recreate_result.eda_credential_type.id == create_result.eda_credential_type.id
+
+    - name: Update credential type description (real change)
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        description: "Molecule mock credential type (updated)"
+        state: present
+      register: update_result
+
+    - name: Assert updating a field reports changed
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+
+    - name: Rename the credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        new_name: "{{ credential_type_renamed }}"
+        state: present
+      register: rename_result
+
+    - name: Assert rename reports changed
+      ansible.builtin.assert:
+        that:
+          - rename_result is changed
+
+    - name: Test the credential type configuration
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_renamed }}"
+        state: test
+        test_inputs:
+          token: "dummy-token-for-testing"
+      register: test_result
+
+    - name: Assert test reports a result without changing anything
+      ansible.builtin.assert:
+        that:
+          - test_result is not changed
+          - test_result.test_result is defined
+
+    - name: Test the credential type configuration in check mode
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_renamed }}"
+        state: test
+        test_inputs:
+          token: "dummy-token-for-testing"
+      check_mode: true
+      register: test_check_mode_result
+
+    - name: Assert check-mode test does not call the real test endpoint
+      ansible.builtin.assert:
+        that:
+          - test_check_mode_result is not changed
+          - "'check mode' in test_check_mode_result.test_result.msg"
+
+    - name: Delete the credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_renamed }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert delete reports changed
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    - name: Delete already-absent credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_renamed }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete-absent is a no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+...

@@ -386,6 +386,7 @@ class Store:
         # EDA resources
         eda_defs: List[tuple] = [
             ("awx-tokens", ["name", "token"], 6000),
+            ("credential-types", ["name"], 7100),
         ]
         for endpoint, required, start_id in eda_defs:
             self._resources[("eda", endpoint)] = GenericResource(
@@ -1232,6 +1233,19 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
                 return
+
+        # ---- EDA: /api/eda/vX/credential-types/{id}/test/ ----
+        if service == "eda" and resource == "credential-types" and len(parts) == 6 and parts[5] == "test" and self.command == "POST":
+            self.store.seed_defaults()
+            credential_type_store = self.store.resource("eda", "credential-types")
+            try:
+                credential_type_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            self._parse_json_body()
+            self._send_json(200, {"success": True, "message": "Credential type test accepted"})
+            return
 
         # ---- All other resources — generic handler ----
         if (service, resource) in self.store._resources:
