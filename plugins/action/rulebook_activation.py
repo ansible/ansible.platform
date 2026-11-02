@@ -22,6 +22,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 from dataclasses import fields as dataclass_fields
+from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -41,7 +42,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "rulebook_activation"
     MODEL_CLASS = AnsibleRulebookActivation
 
-    def run(self, tmp=None, task_vars=None):
+    def run(self, tmp: object = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
         """Execute rulebook activation management.
 
         Handles the full lifecycle: create, update, delete, enable,
@@ -106,7 +107,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _find_activation(self, manager, name):
+    def _find_activation(self, manager: Any, name: Optional[str]) -> Optional[dict]:
         """Find an existing activation by name.
 
         Args:
@@ -114,7 +115,7 @@ class ActionModule(BaseResourceActionPlugin):
             name: Name of the activation to find.
 
         Returns:
-            dict or None: The activation data if found, None otherwise.
+            Optional[dict]: The activation data if found, None otherwise.
         """
         try:
             find_result = manager.execute(
@@ -129,7 +130,7 @@ class ActionModule(BaseResourceActionPlugin):
                 raise
         return None
 
-    def _handle_restart(self, manager, name, result):
+    def _handle_restart(self, manager: Any, name: Optional[str], result: dict) -> dict:
         """Handle restart operation.
 
         Args:
@@ -157,7 +158,7 @@ class ActionModule(BaseResourceActionPlugin):
         )
         return result
 
-    def _handle_absent(self, manager, name, existing, result):
+    def _handle_absent(self, manager: Any, name: Optional[str], existing: Optional[dict], result: dict) -> dict:
         """Handle state=absent (delete) via the generic delete operation.
 
         Args:
@@ -202,7 +203,7 @@ class ActionModule(BaseResourceActionPlugin):
         )
         return result
 
-    def _handle_state_transition(self, manager, state, existing, result):
+    def _handle_state_transition(self, manager: Any, state: str, existing: dict, result: dict) -> dict:
         """Handle enable/disable state transition on existing activation.
 
         These are custom sub-actions (POST .../enable/ or .../disable/) with
@@ -248,7 +249,16 @@ class ActionModule(BaseResourceActionPlugin):
         )
         return result
 
-    def _handle_create_or_update(self, manager, params, state, name, new_name, existing, result):
+    def _handle_create_or_update(
+        self,
+        manager: Any,
+        params: dict,
+        state: str,
+        name: Optional[str],
+        new_name: Optional[str],
+        existing: Optional[dict],
+        result: dict,
+    ) -> dict:
         """Create or update an activation via manager.execute().
 
         FK resolution and update idempotency diffing both live in the

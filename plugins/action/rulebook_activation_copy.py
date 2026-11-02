@@ -14,6 +14,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+from typing import Any, Dict, Optional
+
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.rulebook_activation_copy import AnsibleRulebookActivationCopy
@@ -30,7 +32,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "rulebook_activation_copy"
     MODEL_CLASS = AnsibleRulebookActivationCopy
 
-    def run(self, tmp=None, task_vars=None):
+    def run(self, tmp: object = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
         """Copy an existing rulebook activation.
 
         Args:
@@ -108,7 +110,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _find_source_activation(self, manager, name):
+    def _find_source_activation(self, manager: Any, name: Optional[str]) -> Optional[dict]:
         """Find the source activation to copy from.
 
         Args:
@@ -116,7 +118,7 @@ class ActionModule(BaseResourceActionPlugin):
             name: Name of the source activation.
 
         Returns:
-            dict with activation data if found, None otherwise.
+            Optional[dict]: Activation data if found, None otherwise.
         """
         try:
             find_result = manager.execute(
