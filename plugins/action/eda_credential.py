@@ -56,13 +56,12 @@ class ActionModule(BaseResourceActionPlugin):
         return prepared
 
     def _lookup_credential_id(self, manager: Any, name: str, organization: Optional[str] = None) -> Optional[int]:
-        """Resolve a credential name uniquely, scoped to its organization when supplied.
+        """Resolve a credential name uniquely within its organization when supplied.
 
         Args:
             manager: Platform client used for lookups.
             name: Credential name or ID.
             organization: Optional organization name or ID.
-
         Returns:
             Optional[int]: Credential ID, or ``None`` when it does not exist.
 
@@ -73,7 +72,7 @@ class ActionModule(BaseResourceActionPlugin):
         if organization is not None:
             organization_id = resolve_eda_credential_fk(manager, "organizations", organization, "Organization")
             if organization_id is not None:
-                extra_query_params["organization_id"] = organization_id
+                extra_query_params["organization"] = organization_id
 
         try:
             return manager.lookup_resource_id(
@@ -165,8 +164,7 @@ class ActionModule(BaseResourceActionPlugin):
                 params = prepared["validated_params"]
                 manager = prepared["manager"]
                 name = params["name"]
-                organization = params.get("organization")
-                destination_id = self._lookup_credential_id(manager, name, organization)
+                destination_id = self._lookup_credential_id(manager, name, params.get("organization"))
                 if destination_id is None:
                     source_id = self._lookup_credential_id(manager, copy_from)
                     if source_id is None:

@@ -822,6 +822,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         if len(parts) == 4:
             if self.command == "GET":
                 filters = {k: v[0] for k, v in qs.items() if v}
+                # The EDA API exposes the foreign key filter as `organization`,
+                # while the credential write payload stores `organization_id`.
+                if service == "eda" and resource_name == "eda-credentials" and "organization" in filters:
+                    filters["organization_id"] = filters.pop("organization")
                 self._send_json(200, store.list_items(filters or None))
                 return True
             if self.command == "POST":

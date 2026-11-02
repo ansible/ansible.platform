@@ -421,7 +421,7 @@ class TestEdaCredentialAction(unittest.TestCase):
                     "name",
                     "same-name",
                     service="eda",
-                    extra_query_params={"organization_id": 1},
+                    extra_query_params={"organization": 1},
                     require_unique=True,
                 ),
             ]

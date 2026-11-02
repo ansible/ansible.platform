@@ -170,10 +170,10 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def get_find_list_query_params(cls, api_data: APIEdaCredential_v1) -> Dict[str, Any]:
-        """Scope credential name lookups to the requested organization."""
+        """Scope credential name lookups using the EDA API organization filter."""
         if api_data.organization_id is None:
             return {}
-        return {"organization_id": api_data.organization_id}
+        return {"organization": api_data.organization_id}
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleEdaCredential":

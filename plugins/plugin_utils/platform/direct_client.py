@@ -1156,14 +1156,10 @@ class DirectHTTPClient(BaseAPIClient):
                     composite_match = True
                     for param_key, param_val in composite_params.items():
                         result_val = id_data.get(param_key)
-                        try:
-                            pv = int(param_val)
-                        except (TypeError, ValueError):
-                            pv = param_val
-                        try:
-                            rv = int(result_val) if result_val is not None else None
-                        except (TypeError, ValueError):
-                            rv = result_val
+                        if result_val is None:
+                            result_val = id_data.get(f"{param_key}_id")
+                        pv = self._normalize_composite_value(param_val)
+                        rv = self._normalize_composite_value(result_val)
                         if rv != pv:
                             composite_match = False
                             break

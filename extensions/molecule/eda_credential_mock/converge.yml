@@ -69,6 +69,31 @@
       vars:
         ansible_connection: local
 
+    - name: Re-create same EDA credential (connection local)
+      ansible.platform.eda_credential:
+        name: "molecule-mock-eda-cred-local"
+        description: "Molecule test credential"
+        credential_type: "Source Control"
+        organization: "Default"
+        inputs:
+          username: "test-user"
+          password: "test-pass"
+        state: present
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: idempotent_result_local
+      vars:
+        ansible_connection: local
+
+    - name: Assert re-create is idempotent (connection local)
+      ansible.builtin.assert:
+        that: idempotent_result_local is not changed
+        fail_msg: "Re-create (local) should not report changed."
+      vars:
+        ansible_connection: local
+
     - name: Delete EDA credential (connection local)
       ansible.platform.eda_credential:
         name: "molecule-mock-eda-cred-local"
@@ -134,6 +159,23 @@
       ansible.builtin.assert:
         that: create_result_http_direct is changed
         fail_msg: "Create (http direct) should report changed."
+
+    - name: Re-create same EDA credential (http direct)
+      ansible.platform.eda_credential:
+        name: "molecule-mock-eda-cred-hd"
+        description: "HTTP direct test credential"
+        credential_type: "Source Control"
+        organization: "Default"
+        inputs:
+          username: "test-user-direct"
+          password: "test-pass-direct"
+        state: present
+      register: idempotent_result_http_direct
+
+    - name: Assert re-create is idempotent (http direct)
+      ansible.builtin.assert:
+        that: idempotent_result_http_direct is not changed
+        fail_msg: "Re-create (http direct) should not report changed."
 
     - name: Delete EDA credential (http direct)
       ansible.platform.eda_credential:

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, call
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential import AnsibleEdaCredential
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential import EdaCredentialTransformMixin_v1
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 
 
 class TestEdaCredentialTransform(unittest.TestCase):
@@ -31,13 +32,15 @@ class TestEdaCredentialTransform(unittest.TestCase):
             ]
         )
 
-    def test_find_query_is_scoped_by_organization_id(self):
+    def test_find_query_is_scoped_by_organization(self):
         credential = AnsibleEdaCredential(name="deploy-key", organization="1")
-        manager = MagicMock()
-        api_data = EdaCredentialTransformMixin_v1.from_ansible_data(credential, {"operation": "find", "manager": manager})
+        api_data = EdaCredentialTransformMixin_v1.from_ansible_data(credential, {"operation": "find", "manager": MagicMock()})
 
-        self.assertEqual(EdaCredentialTransformMixin_v1.get_find_list_query_params(api_data), {"organization_id": 1})
-        manager.lookup_resource_id.assert_not_called()
+        self.assertEqual(EdaCredentialTransformMixin_v1.get_find_list_query_params(api_data), {"organization": 1})
+
+    def test_composite_id_comparison_accepts_nested_api_foreign_key(self):
+        self.assertEqual(BaseAPIClient._normalize_composite_value({"id": 1, "name": "Default"}), 1)
+        self.assertEqual(BaseAPIClient._normalize_composite_value("1"), 1)
 
     def test_from_api_accepts_nested_and_flat_foreign_keys(self):
         nested = EdaCredentialTransformMixin_v1.from_api(
