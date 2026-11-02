@@ -8,6 +8,17 @@
   ansible.builtin.set_fact:
     name_prefix: "ExportImport-Test-{{ test_id }}"
 
+- name: Preset resource names
+  ansible.builtin.set_fact:
+    execution_environment_name: "{{ name_prefix }}-EE"
+    notification_template_name: "{{ name_prefix }}-Notify"
+    project_name: "{{ name_prefix }}-Project"
+    label_name: "{{ name_prefix }}-Label"
+    inventory_source_name: "{{ name_prefix }}-Source"
+    job_template_name: "{{ name_prefix }}-JobTemplate"
+    workflow_job_template_name: "{{ name_prefix }}-Workflow"
+    schedule_name: "{{ name_prefix }}-Schedule"
+
 - name: Run export/import round-trip test
   module_defaults:
     group/ansible.platform.gateway:
@@ -59,6 +70,37 @@
           api_key: "test-key-12345"
       register: test_cred
 
+    - name: Create test execution environment
+      ansible.platform.execution_environment:
+        name: "{{ execution_environment_name }}"
+        image: quay.io/ansible/awx-ee:latest
+        organization: "{{ name_prefix }}-Org"
+
+    - name: Create test notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: "{{ name_prefix }}-Org"
+        notification_type: webhook
+        notification_configuration:
+          url: "https://example.invalid/export-import"
+          http_method: POST
+          headers: {}
+
+    - name: Create test project
+      ansible.platform.controller_project:
+        name: "{{ project_name }}"
+        organization: "{{ name_prefix }}-Org"
+        scm_type: git
+        scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+        default_environment: "{{ execution_environment_name }}"
+        notification_templates_success:
+          - "{{ notification_template_name }}"
+
+    - name: Create test label
+      ansible.platform.label:
+        name: "{{ label_name }}"
+        organization: "{{ name_prefix }}-Org"
+
     - name: Create test inventory
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Inventory"
@@ -82,6 +124,54 @@
         hosts:
           - "{{ name_prefix }}-Host1"
       register: test_group
+
+    - name: Create test inventory source
+      ansible.platform.inventory_source:
+        name: "{{ inventory_source_name }}"
+        inventory: "{{ name_prefix }}-Inventory"
+        source: scm
+        source_project: "{{ project_name }}"
+        source_path: inventories/hosts.yml
+        overwrite: true
+        notification_templates_success:
+          - "{{ notification_template_name }}"
+
+    - name: Create test job template
+      ansible.platform.job_template:
+        name: "{{ job_template_name }}"
+        project: "{{ project_name }}"
+        inventory: "{{ name_prefix }}-Inventory"
+        playbook: hello_world.yml
+        execution_environment: "{{ execution_environment_name }}"
+        credentials:
+          - "{{ name_prefix }}-Cred"
+        labels:
+          - "{{ label_name }}"
+        notification_templates_success:
+          - "{{ notification_template_name }}"
+        survey_enabled: true
+        survey_spec:
+          name: "Export/import survey"
+          description: ""
+          spec:
+            - question_name: "Environment"
+              variable: environment
+              type: text
+              required: false
+
+    - name: Create test workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_job_template_name }}"
+        organization: "{{ name_prefix }}-Org"
+        notification_templates_success:
+          - "{{ notification_template_name }}"
+
+    - name: Create test schedule
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        unified_job_template: "{{ job_template_name }}"
+        rrule: "DTSTART:20990101T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=2"
+        enabled: true
 
     # =========================================================================
     # Phase 2: Export and verify format
@@ -121,6 +211,75 @@
           - ct_export.assets.credential_types[0].name == name_prefix ~ '-CredType'
           - ct_export.assets.credential_types[0].kind == 'cloud'
 
+    - name: Export test credential
+      ansible.platform.export:
+        credentials:
+          - "{{ name_prefix }}-Cred"
+      register: cred_export
+
+    - name: Export test execution environment
+      ansible.platform.export:
+        execution_environments:
+          - "{{ execution_environment_name }}"
+      register: ee_export
+
+    - name: Export test notification template
+      ansible.platform.export:
+        notification_templates:
+          - "{{ notification_template_name }}"
+      register: notification_export
+
+    - name: Export test project
+      ansible.platform.export:
+        projects:
+          - "{{ project_name }}"
+      register: project_export
+
+    - name: Export test label
+      ansible.platform.export:
+        labels:
+          - "{{ label_name }}"
+      register: label_export
+
+    - name: Export test inventory source
+      ansible.platform.export:
+        inventory_sources:
+          - "{{ inventory_source_name }}"
+      register: source_export
+
+    - name: Export test job template
+      ansible.platform.export:
+        job_templates:
+          - "{{ job_template_name }}"
+      register: job_template_export
+
+    - name: Export test workflow job template
+      ansible.platform.export:
+        workflow_job_templates:
+          - "{{ workflow_job_template_name }}"
+      register: workflow_export
+
+    - name: Export test schedule
+      ansible.platform.export:
+        schedules:
+          - "{{ schedule_name }}"
+      register: schedule_export
+
+    - name: Verify exported associations and dependencies
+      ansible.builtin.assert:
+        that:
+          - project_export.assets.projects[0].default_environment == execution_environment_name
+          - notification_template_name in project_export.assets.projects[0].notification_templates_success
+          - source_export.assets.inventory_sources[0].source_project == project_name
+          - source_export.assets.inventory_sources[0].overwrite
+          - job_template_export.assets.job_templates[0].project == project_name
+          - job_template_export.assets.job_templates[0].execution_environment == execution_environment_name
+          - name_prefix ~ '-Cred' in job_template_export.assets.job_templates[0].credentials
+          - label_name in job_template_export.assets.job_templates[0].labels
+          - notification_template_name in job_template_export.assets.job_templates[0].notification_templates_success
+          - notification_template_name in workflow_export.assets.workflow_job_templates[0].notification_templates_success
+          - schedule_export.assets.schedules[0].unified_job_template == job_template_name
+
     - name: Export test inventory with hosts and groups
       ansible.platform.export:
         inventory:
@@ -145,6 +304,45 @@
     # =========================================================================
     - name: Delete test resources in reverse dependency order
       block:
+        - name: Delete test schedule
+          ansible.platform.schedule:
+            name: "{{ schedule_name }}"
+            state: absent
+
+        - name: Delete test workflow job template
+          ansible.platform.workflow_job_template:
+            name: "{{ workflow_job_template_name }}"
+            state: absent
+
+        - name: Delete test job template
+          ansible.platform.job_template:
+            name: "{{ job_template_name }}"
+            state: absent
+
+        - name: Delete test inventory source
+          ansible.platform.inventory_source:
+            name: "{{ inventory_source_name }}"
+            inventory: "{{ name_prefix }}-Inventory"
+            state: absent
+
+        - name: Delete test project
+          ansible.platform.controller_project:
+            name: "{{ project_name }}"
+            organization: "{{ name_prefix }}-Org"
+            state: absent
+
+        - name: Delete test notification template
+          ansible.platform.notification_template:
+            name: "{{ notification_template_name }}"
+            organization: "{{ name_prefix }}-Org"
+            state: absent
+
+        - name: Delete test execution environment
+          ansible.platform.execution_environment:
+            name: "{{ execution_environment_name }}"
+            organization: "{{ name_prefix }}-Org"
+            state: absent
+
         - name: Delete test group
           ansible.platform.group:
             name: "{{ name_prefix }}-Group1"
@@ -185,7 +383,28 @@
         import_data:
           organizations: "{{ org_export.assets.organizations }}"
           credential_types: "{{ ct_export.assets.credential_types }}"
+          # Credential export is verified above, but encrypted credential values
+          # are intentionally excluded from the import idempotency fixture.
+          execution_environments: "{{ ee_export.assets.execution_environments }}"
+          notification_templates: "{{ notification_export.assets.notification_templates }}"
+          projects:
+            - name: "{{ project_name }}"
+              organization: "{{ name_prefix }}-Org"
+              scm_type: git
+              scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+              default_environment: "{{ execution_environment_name }}"
+          labels: "{{ label_export.assets.labels }}"
           inventory: "{{ inv_export.assets.inventory }}"
+          inventory_sources:
+            - name: "{{ inventory_source_name }}"
+              inventory: "{{ name_prefix }}-Inventory"
+              source: scm
+              source_project: "{{ project_name }}"
+              source_path: inventories/hosts.yml
+              overwrite: true
+          workflow_job_templates:
+            - name: "{{ workflow_job_template_name }}"
+              organization: "{{ name_prefix }}-Org"
 
     - name: Import exported assets (should recreate everything)
       ansible.platform.import:
@@ -199,6 +418,16 @@
           - import_result.results is defined
 
     # =========================================================================
+    - name: Verify imported dependency chain and associations
+      ansible.builtin.assert:
+        that:
+          - import_result.results.organizations.changed == 1
+          - import_result.results.credential_types.changed == 1
+          - import_result.results.projects.changed == 1
+          - import_result.results.labels.changed == 1
+          - import_result.results.inventory_sources.changed == 1
+          - import_result.results.workflow_job_templates.changed == 1
+
     # Phase 4: Verify recreated resources exist
     # =========================================================================
     - name: Verify organization was recreated
@@ -242,6 +471,52 @@
   # Cleanup: always delete test resources
   # ===========================================================================
   always:
+    - name: Cleanup test schedule
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup test workflow job template
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_job_template_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup test job template
+      ansible.platform.job_template:
+        name: "{{ job_template_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup test inventory source
+      ansible.platform.inventory_source:
+        name: "{{ inventory_source_name }}"
+        inventory: "{{ name_prefix }}-Inventory"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup test project
+      ansible.platform.controller_project:
+        name: "{{ project_name }}"
+        organization: "{{ name_prefix }}-Org"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup test notification template
+      ansible.platform.notification_template:
+        name: "{{ notification_template_name }}"
+        organization: "{{ name_prefix }}-Org"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup test execution environment
+      ansible.platform.execution_environment:
+        name: "{{ execution_environment_name }}"
+        organization: "{{ name_prefix }}-Org"
+        state: absent
+      failed_when: false
+
     - name: Cleanup test group
       ansible.platform.group:
         name: "{{ name_prefix }}-Group1"

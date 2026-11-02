@@ -127,10 +127,16 @@ RESOURCE_ASSOCIATIONS = {
         ("credentials", "credentials/", "names"),
         ("labels", "labels/", "names"),
         ("instance_groups", "instance_groups/", "names"),
+        ("notification_templates_started", "notification_templates_started/", "names"),
+        ("notification_templates_success", "notification_templates_success/", "names"),
+        ("notification_templates_error", "notification_templates_error/", "names"),
         ("survey_spec", "survey_spec/", "dict"),
     ],
     "workflow_job_templates": [
         ("labels", "labels/", "names"),
+        ("notification_templates_started", "notification_templates_started/", "names"),
+        ("notification_templates_success", "notification_templates_success/", "names"),
+        ("notification_templates_error", "notification_templates_error/", "names"),
         ("survey_spec", "survey_spec/", "dict"),
     ],
     "projects": [

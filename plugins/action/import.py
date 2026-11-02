@@ -213,10 +213,11 @@ class ActionModule(BaseResourceActionPlugin):
                     host_results["failed"] += 1
                     failed_resources.append({"type": "hosts", "name": host_name, "error": str(exc)})
 
+            group_records = []
             for group in inv.get("groups", []):
                 if not isinstance(group, dict):
                     continue
-                group_data = {k: v for k, v in group.items() if k not in STRIP_FIELDS and v is not None}
+                group_data = {k: v for k, v in group.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and v is not None}
                 group_data["inventory"] = inv_name
                 group_name = group_data.get("name", "unknown")
 
@@ -226,12 +227,40 @@ class ActionModule(BaseResourceActionPlugin):
 
                 try:
                     changed = self._import_single_resource(manager, "group", group_data)
-                    if changed:
-                        group_results["changed"] += 1
-                    else:
-                        group_results["ok"] += 1
+                    group_records.append((group_data, group, changed))
                 except Exception as exc:
                     group_results["failed"] += 1
                     failed_resources.append({"type": "groups", "name": group_name, "error": str(exc)})
+
+            # All groups must exist before child-group relationships are resolved.
+            for group_data, group, changed in group_records:
+                association_changed = False
+                if group.get("hosts") is not None or group.get("children") is not None:
+                    try:
+                        existing = manager.execute(
+                            operation="find",
+                            module_name="group",
+                            ansible_data=dict(group_data),
+                        )
+                        group_id = existing.get("id") if isinstance(existing, dict) else None
+                        if not group_id:
+                            raise ValueError("Imported group '%s' could not be found for association import" % group_data.get("name", "unknown"))
+                        if group.get("hosts") is not None:
+                            association_changed |= manager.manage_associations(
+                                "groups", group_id, "hosts", group["hosts"], "hosts", "name", service="controller"
+                            )
+                        if group.get("children") is not None:
+                            association_changed |= manager.manage_associations(
+                                "groups", group_id, "children", group["children"], "groups", "name", service="controller"
+                            )
+                    except Exception as exc:
+                        group_results["failed"] += 1
+                        failed_resources.append({"type": "groups", "name": group_data.get("name", "unknown"), "error": str(exc)})
+                        continue
+
+                if changed or association_changed:
+                    group_results["changed"] += 1
+                else:
+                    group_results["ok"] += 1
 
         return host_results, group_results
