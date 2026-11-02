@@ -441,7 +441,9 @@ class ActionModule(BaseResourceActionPlugin):
         self._display.vvv("eda_project: triggering sync for project '%s' (id=%s)" % (name, project_id))
 
         try:
-            manager.direct_request("POST", sync_path)
+            # retry=False: sync is not idempotent -- retrying a lost response
+            # could trigger a duplicate sync.
+            manager.launch_resource(launch_url=sync_path, payload={}, service=_SERVICE, retry=False)
         except Exception as exc:
             raise AnsibleError("Failed to trigger project sync: %s" % exc) from exc
 

@@ -362,10 +362,8 @@ class TestEdaProjectAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
-        # Verify sync POST was called
-        direct_calls = manager.direct_request.call_args_list
-        sync_calls = [c for c in direct_calls if c.args == ("POST", "/api/eda/v1/projects/99/sync/")]
-        self.assertEqual(len(sync_calls), 1)
+        # Verify sync was triggered with retries disabled (sync is not idempotent)
+        manager.launch_resource.assert_called_once_with(launch_url="/api/eda/v1/projects/99/sync/", payload={}, service="eda", retry=False)
 
     # ---- Validation tests ----
 
