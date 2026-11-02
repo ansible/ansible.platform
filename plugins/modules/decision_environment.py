@@ -138,7 +138,7 @@ decision_environment:
       type: str
     credential:
       description: EDA credential associated with the decision environment (ID).
-      type: int
+      type: str
     pull_policy:
       description: Image pull policy.
       type: str

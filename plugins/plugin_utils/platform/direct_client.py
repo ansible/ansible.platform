@@ -1215,18 +1215,12 @@ class DirectHTTPClient(BaseAPIClient):
             response_data = {}
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
-        if results:
-            # Return first match
-            api_data = results[0]
-            # from_api returns AnsibleUser dataclass, convert to dict for return
-            ansible_instance = mixin_class.from_api(api_data, context)
-            logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
-            from dataclasses import asdict
+        api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
+        ansible_instance = mixin_class.from_api(api_data, context)
+        logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
+        from dataclasses import asdict
 
-            return asdict(ansible_instance)
-
-        # Not found
-        raise ValueError(f"Resource not found: {lookup_field}={lookup_value}")
+        return asdict(ansible_instance)
 
     def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None) -> dict:
         """

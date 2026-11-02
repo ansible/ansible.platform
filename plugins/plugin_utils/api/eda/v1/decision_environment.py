@@ -33,6 +33,28 @@ class APIDecisionEnvironment_v1(BaseTransformMixin):
 class DecisionEnvironmentTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for DecisionEnvironment API v1."""
 
+    # The legacy module required a single exact name match. Names can be
+    # duplicated across organizations, but this API's list endpoint only
+    # supports filtering by name, so reject ambiguity rather than choosing one.
+    require_unique_lookup = True
+
+    @classmethod
+    def resolve_reference_id(cls, manager, endpoint: str, value: Any, service: str = "gateway") -> Optional[int]:
+        """Resolve a reference name or ID to a numeric resource ID."""
+        if value is None:
+            return None
+
+        value_str = str(value).strip()
+        if value_str.isdigit():
+            return int(value_str)
+        if manager is None:
+            raise ValueError("Cannot resolve %s '%s' without an API manager" % (endpoint, value))
+
+        resource_id = manager.lookup_resource_id(endpoint, "name", value, service=service, require_unique=True)
+        if resource_id is None:
+            raise ValueError("Resource '%s' with name=%s not found" % (endpoint, value))
+        return int(resource_id)
+
     @classmethod
     def from_ansible_data(
         cls,
@@ -59,18 +81,12 @@ class DecisionEnvironmentTransformMixin_v1(BaseTransformMixin):
         # FK resolution: credential (EDA-owned, eda-credentials endpoint)
         credential = getattr(ansible_instance, "credential", None)
         if credential is not None:
-            if manager is not None and not str(credential).strip().isdigit():
-                api_data["eda_credential_id"] = manager.lookup_resource_id("eda-credentials", "name", credential, service="eda")
-            else:
-                api_data["eda_credential_id"] = int(credential) if credential is not None else None
+            api_data["eda_credential_id"] = cls.resolve_reference_id(manager, "eda-credentials", credential, service="eda")
 
         # FK resolution: organization (Gateway-owned, default service)
         organization_name = getattr(ansible_instance, "organization_name", None)
         if organization_name is not None:
-            if manager is not None and not str(organization_name).strip().isdigit():
-                api_data["organization_id"] = manager.lookup_resource_id("organizations", "name", organization_name)
-            else:
-                api_data["organization_id"] = int(organization_name) if organization_name is not None else None
+            api_data["organization_id"] = cls.resolve_reference_id(manager, "organizations", organization_name)
 
         for field in ("description", "image_url", "pull_policy"):
             val = getattr(ansible_instance, field, None)
@@ -143,9 +159,15 @@ class DecisionEnvironmentTransformMixin_v1(BaseTransformMixin):
         from ....ansible_models.decision_environment import AnsibleDecisionEnvironment
 
         credential_val = api_data.get("eda_credential_id")
+        if credential_val is None:
+            credential = api_data.get("eda_credential")
+            credential_val = credential.get("id") if isinstance(credential, dict) else None
         credential_str = str(credential_val) if credential_val is not None else None
 
         organization_val = api_data.get("organization_id")
+        if organization_val is None:
+            organization = api_data.get("organization")
+            organization_val = organization.get("id") if isinstance(organization, dict) else None
         organization_str = str(organization_val) if organization_val is not None else None
 
         return AnsibleDecisionEnvironment(

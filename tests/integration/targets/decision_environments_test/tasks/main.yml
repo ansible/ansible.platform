@@ -140,11 +140,9 @@
       ansible.platform.decision_environment:
         name: "{{ de_name }}"
         state: absent
-      failed_when: false
 
     - name: Cleanup — delete test decision environment (renamed)
       ansible.platform.decision_environment:
         name: "{{ de_new_name }}"
         state: absent
-      failed_when: false
 ...
