@@ -374,7 +374,6 @@ class DirectHTTPClient(BaseAPIClient):
                                 operation=operation,
                                 resource=resource,
                                 details={"status_code": he2.code, "url": url, "response_body": response_body},
-                                status_code=he2.code,
                             )
                         raise
                 else:
@@ -388,7 +387,6 @@ class DirectHTTPClient(BaseAPIClient):
                         operation=operation,
                         resource=resource,
                         details={"status_code": he.code, "url": url, "response_body": response_body},
-                        status_code=he.code,
                     )
 
             # For other HTTP errors, raise appropriate exception

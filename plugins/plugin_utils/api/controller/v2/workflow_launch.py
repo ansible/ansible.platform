@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Union
 from urllib.parse import quote
 
 from ....platform.base_transform import BaseTransformMixin
+from ....platform.exceptions import APIError
 from ....platform.types import EndpointOperation, TransformContext
 
 WJT_LIST_ENDPOINT = "/api/controller/v2/workflow_job_templates/"
@@ -70,10 +71,11 @@ def _lookup_resource_id(
             named_result = manager.search_api(named_url)
             if named_result.get("id") is not None:
                 return int(named_result["id"])
-        except Exception:
+        except APIError as exc:
+            if exc.status_code != 404:
+                raise
             # Preserve the legacy fallback: if the named URL is not found,
             # try the value as a literal resource name.
-            pass
 
     if reject_ambiguous:
         response = manager.search_api(named_url_endpoint, query_params={"name": value_string}, return_all=True)
