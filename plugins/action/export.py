@@ -29,6 +29,7 @@ EXPORTABLE_RESOURCES = [
     ("execution_environments", "api/controller/v2/execution_environments/", "name"),
     ("notification_templates", "api/controller/v2/notification_templates/", "name"),
     ("projects", "api/controller/v2/projects/", "name"),
+    ("labels", "api/controller/v2/labels/", "name"),
     ("inventory", "api/controller/v2/inventories/", "name"),
     ("inventory_sources", "api/controller/v2/inventory_sources/", "name"),
     ("job_templates", "api/controller/v2/job_templates/", "name"),
@@ -55,34 +56,67 @@ FK_RESOLUTION_MAP = {
 # Fields to strip from exported resources (read-only / internal / computed).
 # Comprehensive list covering Controller and Gateway API response fields
 # that are not valid module parameters.
-STRIP_FIELDS = frozenset({
-    # Core metadata
-    "id", "type", "url", "related", "summary_fields",
-    "created", "modified", "created_by", "modified_by",
-    "user_capabilities", "object_roles",
-    # Inventory computed fields
-    "has_active_failures", "has_inventory_sources",
-    "hosts_with_active_failures", "inventory_sources_with_failures",
-    "total_groups", "total_hosts", "total_inventory_sources",
-    "pending_deletion",
-    # Job/launch computed fields
-    "last_job_run", "last_job_failed", "next_job_run",
-    "status", "last_update_failed", "last_updated",
-    "last_job_host_summary", "next_schedule",
-    # Credential type internal fields
-    "managed", "namespace",
-    # Project computed fields
-    "current_job", "current_update", "last_update",
-    "custom_virtualenv", "last_job",
-    # Organization computed fields
-    "max_hosts", "default_environment",
-    # General computed/internal
-    "opa_query_path", "launch_type", "is_sliced_job",
-    "unified_job_type", "elapsed", "artifacts",
-    "job_args", "job_cwd", "job_env", "result_stdout",
-    "result_traceback", "event_processing_finished",
-    "started", "finished", "canceled_on",
-})
+STRIP_FIELDS = frozenset(
+    {
+        # Core metadata
+        "id",
+        "type",
+        "url",
+        "related",
+        "summary_fields",
+        "created",
+        "modified",
+        "created_by",
+        "modified_by",
+        "user_capabilities",
+        "object_roles",
+        # Inventory computed fields
+        "has_active_failures",
+        "has_inventory_sources",
+        "hosts_with_active_failures",
+        "inventory_sources_with_failures",
+        "total_groups",
+        "total_hosts",
+        "total_inventory_sources",
+        "pending_deletion",
+        # Job/launch computed fields
+        "last_job_run",
+        "last_job_failed",
+        "next_job_run",
+        "status",
+        "last_update_failed",
+        "last_updated",
+        "last_job_host_summary",
+        "next_schedule",
+        # Credential type internal fields
+        "managed",
+        "namespace",
+        # Project computed fields
+        "current_job",
+        "current_update",
+        "last_update",
+        "custom_virtualenv",
+        "last_job",
+        # Organization computed fields
+        "max_hosts",
+        # General computed/internal
+        "opa_query_path",
+        "launch_type",
+        "is_sliced_job",
+        "unified_job_type",
+        "elapsed",
+        "artifacts",
+        "job_args",
+        "job_cwd",
+        "job_env",
+        "result_stdout",
+        "result_traceback",
+        "event_processing_finished",
+        "started",
+        "finished",
+        "canceled_on",
+    }
+)
 
 # Association sub-endpoints to fetch per resource type.
 # (export_key, sub_endpoint_suffix, mode)
@@ -108,7 +142,6 @@ RESOURCE_ASSOCIATIONS = {
         ("notification_templates_success", "notification_templates_success/", "names"),
         ("notification_templates_error", "notification_templates_error/", "names"),
     ],
-    "unified_job_template": ("api/controller/v2/unified_job_templates/", "name"),
 }
 
 # Association sub-endpoints to fetch per resource type (inventory children).
@@ -135,14 +168,14 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
 
             export_all = validated_params.get("all", False)
-            all_requested = export_all or all(
-                validated_params.get(res_type) is None
-                for res_type, _, _ in EXPORTABLE_RESOURCES
-            )
+            all_requested = export_all or all(validated_params.get(resource[0]) is None for resource in EXPORTABLE_RESOURCES)
 
             # Build FK name cache
             self._display.vvv("Building FK name resolution cache...")
-            name_cache = self._build_name_cache(manager)
+            max_objects = validated_params.get("max_objects", 10000)
+            if max_objects < 1:
+                raise ValueError("max_objects must be greater than zero")
+            name_cache = self._build_name_cache(manager, max_objects)
 
             assets = {}
             for res_type, endpoint, id_field in EXPORTABLE_RESOURCES:
@@ -155,9 +188,7 @@ class ActionModule(BaseResourceActionPlugin):
                 names_filter = None if should_export_all else filter_values
 
                 self._display.vvv("Exporting %s..." % res_type)
-                exported = self._export_resource_type(
-                    manager, res_type, endpoint, id_field, name_cache, names_filter
-                )
+                exported = self._export_resource_type(manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects)
                 if exported:
                     assets[res_type] = exported
 
@@ -176,7 +207,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _build_name_cache(self, manager):
+    def _build_name_cache(self, manager, max_objects):
         """Pre-fetch all resource types and build {endpoint: {id: name}} cache."""
         cache = {}
         # Deduplicate endpoints from FK_RESOLUTION_MAP
@@ -189,14 +220,10 @@ class ActionModule(BaseResourceActionPlugin):
                 response = manager.search_api(
                     endpoint=endpoint,
                     return_all=True,
-                    max_objects=10000,
+                    max_objects=max_objects,
                 )
                 results = response.get("results", [])
-                cache[endpoint] = {
-                    r["id"]: r.get(id_field, r.get("name", r.get("username", str(r["id"]))))
-                    for r in results
-                    if "id" in r
-                }
+                cache[endpoint] = {r["id"]: r.get(id_field, r.get("name", r.get("username", str(r["id"])))) for r in results if "id" in r}
                 self._display.vvvv("Cached %d entries for %s" % (len(cache[endpoint]), endpoint))
             except Exception as exc:
                 self._display.warning("Failed to cache %s: %s" % (endpoint, exc))
@@ -213,7 +240,7 @@ class ActionModule(BaseResourceActionPlugin):
         if not fk_info:
             return value
 
-        endpoint, _ = fk_info
+        endpoint = fk_info[0]
         endpoint_cache = name_cache.get(endpoint, {})
         resolved = endpoint_cache.get(value)
         if resolved is not None:
@@ -222,22 +249,35 @@ class ActionModule(BaseResourceActionPlugin):
         self._display.vvvv("FK cache miss: %s=%d" % (field_name, value))
         return value
 
-    def _export_resource_type(self, manager, res_type, endpoint, id_field, name_cache, names_filter):
-        """Export all (or filtered) resources of one type."""
-        try:
-            query_params = {}
-            if names_filter:
-                if len(names_filter) == 1:
-                    query_params[id_field] = names_filter[0]
-                else:
-                    query_params["or__%s" % id_field] = ",".join(names_filter)
+    def _search_resources(self, manager, endpoint, id_field, names_filter, max_objects):
+        """Search a resource endpoint without relying on Controller-only ``or__`` filters."""
+        if not names_filter:
+            return manager.search_api(endpoint=endpoint, return_all=True, max_objects=max_objects)
 
+        results = []
+        seen_ids = set()
+        for name in names_filter:
             response = manager.search_api(
                 endpoint=endpoint,
-                query_params=query_params or None,
+                query_params={id_field: name},
                 return_all=True,
-                max_objects=10000,
+                max_objects=max_objects,
             )
+            for resource in response.get("results", []):
+                resource_id = resource.get("id")
+                identity = ("id", resource_id) if resource_id is not None else ("resource", repr(sorted(resource.items())))
+                if identity not in seen_ids:
+                    seen_ids.add(identity)
+                    results.append(resource)
+                    if len(results) > max_objects:
+                        raise ValueError("Endpoint '%s' returned more than max_objects=%d objects" % (endpoint, max_objects))
+
+        return {"results": results}
+
+    def _export_resource_type(self, manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects):
+        """Export all (or filtered) resources of one type."""
+        try:
+            response = self._search_resources(manager, endpoint, id_field, names_filter, max_objects)
         except Exception as exc:
             self._display.warning("Failed to fetch %s: %s" % (res_type, exc))
             return []
@@ -252,7 +292,7 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
 
             cleaned = self._clean_resource(resource, name_cache)
-            self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint)
+            self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
             exported.append(cleaned)
 
         return exported
@@ -269,7 +309,7 @@ class ActionModule(BaseResourceActionPlugin):
                 cleaned[key] = value
         return cleaned
 
-    def _fetch_associations(self, manager, res_type, raw_resource, cleaned, name_cache, base_endpoint):
+    def _fetch_associations(self, manager, res_type, raw_resource, cleaned, name_cache, base_endpoint, max_objects):
         """Fetch and inline association sub-endpoints for a resource."""
         resource_id = raw_resource.get("id")
         if not resource_id:
@@ -290,7 +330,7 @@ class ActionModule(BaseResourceActionPlugin):
                 response = manager.search_api(
                     endpoint=sub_endpoint,
                     return_all=True,
-                    max_objects=10000,
+                    max_objects=max_objects,
                 )
 
                 if mode == "names":
@@ -309,10 +349,7 @@ class ActionModule(BaseResourceActionPlugin):
                     results = response.get("results", [])
                     if results:
                         if assoc_key == "hosts":
-                            cleaned[assoc_key] = [
-                                {k: v for k, v in r.items() if k in HOST_EXPORT_FIELDS and v is not None}
-                                for r in results
-                            ]
+                            cleaned[assoc_key] = [{k: v for k, v in r.items() if k in HOST_EXPORT_FIELDS and v is not None} for r in results]
                         elif assoc_key == "groups":
                             objects = []
                             for r in results:

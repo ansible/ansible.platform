@@ -9,7 +9,7 @@ name: controller_export
 short_description: Filters for converting between Controller export formats.
 description:
   - Provides filters to convert legacy awxkit/awx CLI export data into the
-    native ansible.platform import format used by the C(controller_import) role.
+    native ansible.platform import format used by the `ansible.platform.import` role.
   - The C(from_awxkit_export) filter transforms awxkit natural-key references
     into plain name strings and flattens related objects so each resource entry
     maps directly to its corresponding C(ansible.platform) module parameters.
@@ -24,6 +24,7 @@ RESOURCE_TYPE_MAP = {
     "credentials": "controller_credential",
     "notification_templates": "notification_template",
     "projects": "controller_project",
+    "labels": "label",
     "inventory": "inventory",
     "inventory_sources": "inventory_source",
     "job_templates": "job_template",

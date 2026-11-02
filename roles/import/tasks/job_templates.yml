@@ -52,8 +52,8 @@
     use_fact_cache: "{{ item.use_fact_cache | default(omit) }}"
     force_handlers: "{{ item.force_handlers | default(omit) }}"
     host_config_key: "{{ item.host_config_key | default(omit) }}"
-    state: "{{ import_state }}"
-  loop: "{{ _import_assets.job_templates }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.job_templates }}"
   loop_control:
     label: "{{ item.name }}"
 ...

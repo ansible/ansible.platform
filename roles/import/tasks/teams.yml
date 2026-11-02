@@ -4,8 +4,8 @@
     name: "{{ item.name }}"
     description: "{{ item.description | default(omit) }}"
     organization: "{{ item.organization }}"
-    state: "{{ import_state }}"
-  loop: "{{ _import_assets.teams }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.teams }}"
   loop_control:
     label: "{{ item.name }}"
 ...

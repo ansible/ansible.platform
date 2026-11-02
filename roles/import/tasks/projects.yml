@@ -11,8 +11,8 @@
     notification_templates_started: "{{ item.notification_templates_started | default(omit) }}"
     notification_templates_success: "{{ item.notification_templates_success | default(omit) }}"
     notification_templates_error: "{{ item.notification_templates_error | default(omit) }}"
-    state: "{{ import_state }}"
-  loop: "{{ _import_assets.projects }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.projects }}"
   loop_control:
     label: "{{ item.name }}"
 ...

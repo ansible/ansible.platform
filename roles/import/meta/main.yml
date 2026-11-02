@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   role_name: import
-  namespace: ansible.platform
+  namespace: ansible
   author: Red Hat
   description: >-
     Import Controller resources from a structured asset dict.

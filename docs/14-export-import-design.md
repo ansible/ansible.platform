@@ -2,7 +2,7 @@
 
 **Jira**: AAP-95849
 **Status**: Draft / Investigation
-**Branch**: `feature/migration-testing`
+**Branch**: `feature/import-export-module`
 
 ---
 
@@ -58,7 +58,7 @@ dependency order. This approach:
 
 | Component | Location | Purpose |
 |---|---|---|
-| Import role | `roles/controller_import/` | Import assets using CRUD modules in dependency order |
+| Import role | `roles/import/` | Import assets using CRUD modules in dependency order |
 | Legacy adapter filter | `plugins/filter/controller_export.py` | Convert awxkit export format → native import format |
 | Native format spec | This document (Section: Native Format) | Module-parameter-native YAML/JSON schema |
 
@@ -235,7 +235,7 @@ schedules:
 
 ```
 roles/
-  controller_import/
+  import/
     defaults/main.yml       # Default variable values
     meta/main.yml           # Role metadata, dependencies
     tasks/
@@ -249,7 +249,7 @@ roles/
       notification_templates.yml
       projects.yml
       labels.yml
-      inventory.yml         # Also handles hosts and groups
+      inventories.yml       # Also handles hosts and groups
       inventory_sources.yml
       job_templates.yml
       workflow_job_templates.yml
@@ -262,14 +262,13 @@ roles/
 # defaults/main.yml
 
 # The assets to import — native format dict (see Section 1)
-controller_import_assets: {}
+import_controller_assets: {}
 
-# Subset of resource types to import (default: all present in assets)
-# Example: [organizations, credentials, job_templates]
-controller_import_types: []
+# Convert legacy awxkit export data before processing.
+import_controller_auto_convert_legacy: false
 
-# Error handling
-controller_import_on_error: fail    # fail | skip | warn
+# State passed to each resource module.
+import_controller_state: present
 ```
 
 ### Dependency Order
@@ -312,22 +311,17 @@ Each task file follows the same pattern:
     user: "{{ item.user | default(omit) }}"
     team: "{{ item.team | default(omit) }}"
     inputs: "{{ item.inputs | default(omit) }}"
-    state: present
-  loop: "{{ controller_import_assets.credentials | default([]) }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.credentials | default([]) }}"
   loop_control:
     label: "{{ item.name }}"
-  when: >-
-    controller_import_assets.credentials is defined and
-    (controller_import_types | length == 0 or 'credentials' in controller_import_types)
-  register: _credential_results
-  ignore_errors: "{{ controller_import_on_error == 'skip' }}"
 ...
 ```
 
 ### Inventory Task (special case — hosts and groups)
 
 ```yaml
-# tasks/inventory.yml
+# tasks/inventories.yml
 ---
 - name: Import inventories
   ansible.platform.inventory:
@@ -337,12 +331,10 @@ Each task file follows the same pattern:
     kind: "{{ item.kind | default(omit) }}"
     variables: "{{ item.variables | default(omit) }}"
     instance_groups: "{{ item.instance_groups | default(omit) }}"
-    state: present
-  loop: "{{ controller_import_assets.inventory | default([]) }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.inventory | default([]) }}"
   loop_control:
     label: "{{ item.name }}"
-  when: controller_import_assets.inventory is defined
-  register: _inventory_results
 
 - name: Import hosts for each inventory
   ansible.platform.host:
@@ -351,9 +343,9 @@ Each task file follows the same pattern:
     description: "{{ host_item.1.description | default(omit) }}"
     enabled: "{{ host_item.1.enabled | default(omit) }}"
     variables: "{{ host_item.1.variables | default(omit) }}"
-    state: present
+    state: "{{ import_controller_state }}"
   loop: >-
-    {{ controller_import_assets.inventory | default([])
+    {{ _import_controller_assets.inventory | default([])
        | subelements('hosts', skip_missing=True) }}
   loop_control:
     loop_var: host_item
@@ -367,9 +359,9 @@ Each task file follows the same pattern:
     variables: "{{ group_item.1.variables | default(omit) }}"
     hosts: "{{ group_item.1.hosts | default(omit) }}"
     children: "{{ group_item.1.children | default(omit) }}"
-    state: present
+    state: "{{ import_controller_state }}"
   loop: >-
-    {{ controller_import_assets.inventory | default([])
+    {{ _import_controller_assets.inventory | default([])
        | subelements('groups', skip_missing=True) }}
   loop_control:
     loop_var: group_item
@@ -381,8 +373,8 @@ Each task file follows the same pattern:
 
 The role is idempotent by design — every module it calls is idempotent. Running
 the import role twice with the same data produces `changed: false` on the second
-run. This is a significant improvement over the legacy `import_assets()` which
-always reports `changed: true` because it unconditionally PUTs every resource.
+run. The import action and role both preserve the changed state returned by the underlying
+CRUD modules, so a second run reports no changes when the resources already match.
 
 ### Check Mode
 
@@ -409,9 +401,9 @@ native import format.
 
 - name: Import converted data
   ansible.builtin.include_role:
-    name: ansible.platform.controller_import
+    name: ansible.platform.import
   vars:
-    controller_import_assets: "{{ native_data }}"
+    import_controller_assets: "{{ native_data }}"
 ```
 
 ### Transformation Rules
@@ -462,7 +454,7 @@ an `organization` field for project disambiguation).
 ## SECTION 4: Resource Type Mapping
 
 Complete mapping between legacy awxkit export keys and `ansible.platform`
-modules on the `feature/migration-testing` branch:
+modules on the `feature/import-export-module` branch:
 
 | awxkit key | Platform module | Service | FK references (by name) | Association fields |
 |---|---|---|---|---|
@@ -474,6 +466,7 @@ modules on the `feature/migration-testing` branch:
 | `execution_environments` | `execution_environment` | controller | organization, credential | — |
 | `notification_templates` | `notification_template` | controller | organization | — |
 | `projects` | `controller_project` | controller | credential, default_environment, organization, signature_validation_credential | notification_templates_* |
+| `labels` | `label` | controller | organization | — |
 | `inventory` | `inventory` | controller | organization | instance_groups, input_inventories |
 | `inventory_sources` | `inventory_source` | controller | inventory, credential, execution_environment, source_project | notification_templates_* |
 | `job_templates` | `job_template` | controller | inventory, project, organization, execution_environment, webhook_credential | credentials, labels, instance_groups, notification_templates_*, survey_spec |
@@ -486,7 +479,7 @@ modules on the `feature/migration-testing` branch:
 |---|---|---|---|
 | hosts | `host` | inventory | Related object in awxkit export |
 | groups | `group` | inventory | Related object, has host/child associations |
-| labels | `label` | — | Cannot be deleted, only created. Auto-cleaned by API |
+| labels | `label` | — | Top-level export/import resource; cannot be deleted, only created. Auto-cleaned by API |
 
 ---
 
@@ -494,8 +487,8 @@ modules on the `feature/migration-testing` branch:
 
 ### Phase 1 gaps
 
-1. **No export role** — users must use `awx export` CLI or the legacy module to
-   generate export data, then convert with the filter.
+1. **No export role** — export is provided by the `ansible.platform.export`
+   module; there is no separate export role.
 
 2. **Workflow job template nodes** — the legacy export includes WF nodes as
    related objects of workflow_job_templates. Importing these requires a node
@@ -550,13 +543,13 @@ modules on the `feature/migration-testing` branch:
 
 ### Molecule mock scenarios
 
-- `controller_import_mock/` — import a small set of resources (org, credential
+- `export_import_test/` — import a small set of resources (org, credential
   type, credential, project, inventory with hosts/groups, job template) against
   the mock gateway server.
 - Verify idempotency: run import twice, assert `changed: false` on second run.
-- Verify selective import: set `controller_import_types` to a subset.
+- Verify selective import: set a subset of resource keys in `import_controller_assets`.
 - Verify error handling: import with a missing FK reference, verify behavior
-  matches `controller_import_on_error` setting.
+  matches the module and role failure behavior.
 
 ### Integration tests
 

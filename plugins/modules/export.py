@@ -107,12 +107,24 @@ options:
       - Use C(all) to export all workflow job templates.
     type: list
     elements: str
+  labels:
+    description:
+      - Label names to export.
+      - Use C(all) to export all labels.
+    type: list
+    elements: str
   schedules:
     description:
       - Schedule names to export.
       - Use C(all) to export all schedules.
     type: list
     elements: str
+  max_objects:
+    description:
+      - Maximum number of objects to retrieve from any endpoint.
+      - The module fails rather than silently truncating results when this cap is exceeded.
+    type: int
+    default: 10000
 
 seealso:
   - module: awx.awx.export

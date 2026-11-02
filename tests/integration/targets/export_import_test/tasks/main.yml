@@ -232,9 +232,10 @@
         assets: "{{ import_data }}"
       register: import_idem
 
-    - name: Assert idempotent import reports results
+    - name: Assert idempotent import reports no changes
       ansible.builtin.assert:
         that:
+          - not import_idem.changed
           - import_idem.results is defined
 
   # ===========================================================================
@@ -246,21 +247,21 @@
         name: "{{ name_prefix }}-Group1"
         inventory: "{{ name_prefix }}-Inventory"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Cleanup test host
       ansible.platform.host:
         name: "{{ name_prefix }}-Host1"
         inventory: "{{ name_prefix }}-Inventory"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Cleanup test inventory
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Inventory"
         organization: "{{ name_prefix }}-Org"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Cleanup test credential
       ansible.platform.controller_credential:
@@ -268,17 +269,17 @@
         credential_type: "{{ name_prefix }}-CredType"
         organization: "{{ name_prefix }}-Org"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Cleanup test credential type
       ansible.platform.controller_credential_type:
         name: "{{ name_prefix }}-CredType"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: Cleanup test organization
       ansible.platform.organization:
         name: "{{ name_prefix }}-Org"
         state: absent
-      ignore_errors: true
+      failed_when: false
 ...

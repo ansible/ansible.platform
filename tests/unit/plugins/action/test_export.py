@@ -3,7 +3,7 @@
 """Unit tests for the export action plugin's data transformation logic.
 
 Tests the FK resolution, resource cleaning, and field filtering logic
-without requiring a live ansible_collections import chain.
+against the action plugin's exported constants.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -11,33 +11,12 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 
-# Constants replicated from plugins/action/export.py to test the logic
-# without importing the action plugin (which depends on ansible_collections).
-# If export.py's constants change, these tests will still catch logic bugs
-# via the round-trip and format tests.
-
-STRIP_FIELDS = frozenset({
-    "id", "type", "url", "related", "summary_fields",
-    "created", "modified", "created_by", "modified_by",
-    "last_job_run", "last_job_failed", "next_job_run",
-    "status", "last_update_failed", "last_updated",
-    "user_capabilities", "object_roles",
-})
-
-FK_RESOLUTION_MAP = {
-    "organization": ("api/controller/v2/organizations/", "name"),
-    "inventory": ("api/controller/v2/inventories/", "name"),
-    "project": ("api/controller/v2/projects/", "name"),
-    "credential_type": ("api/controller/v2/credential_types/", "name"),
-    "execution_environment": ("api/controller/v2/execution_environments/", "name"),
-    "source_project": ("api/controller/v2/projects/", "name"),
-    "credential": ("api/controller/v2/credentials/", "name"),
-    "webhook_credential": ("api/controller/v2/credentials/", "name"),
-    "unified_job_template": ("api/controller/v2/unified_job_templates/", "name"),
-}
-
-HOST_EXPORT_FIELDS = {"name", "description", "enabled", "instance_id", "variables"}
-GROUP_EXPORT_FIELDS = {"name", "description", "variables"}
+from ansible_collections.ansible.platform.plugins.action.export import (
+    FK_RESOLUTION_MAP,
+    GROUP_EXPORT_FIELDS,
+    HOST_EXPORT_FIELDS,
+    STRIP_FIELDS,
+)
 
 
 def clean_resource(resource, name_cache):
@@ -47,7 +26,7 @@ def clean_resource(resource, name_cache):
         if key in STRIP_FIELDS:
             continue
         if key in FK_RESOLUTION_MAP and isinstance(value, int):
-            endpoint, _ = FK_RESOLUTION_MAP[key]
+            endpoint = FK_RESOLUTION_MAP[key][0]
             cache = name_cache.get(endpoint, {})
             cleaned[key] = cache.get(value, value)
         else:
@@ -58,9 +37,13 @@ def clean_resource(resource, name_cache):
 class TestCleanResource:
     def test_strips_internal_fields(self):
         resource = {
-            "id": 1, "name": "Test", "url": "/api/v2/organizations/1/",
-            "related": {}, "summary_fields": {},
-            "created": "2025-01-01", "modified": "2025-01-02",
+            "id": 1,
+            "name": "Test",
+            "url": "/api/v2/organizations/1/",
+            "related": {},
+            "summary_fields": {},
+            "created": "2025-01-01",
+            "modified": "2025-01-02",
             "description": "A test org",
         }
         result = clean_resource(resource, {})
@@ -77,7 +60,7 @@ class TestCleanResource:
         name_cache = {
             "api/controller/v2/inventories/": {42: "Production"},
             "api/controller/v2/projects/": {7: "Demo Project"},
-            "api/controller/v2/organizations/": {1: "Default"},
+            "api/gateway/v1/organizations/": {1: "Default"},
         }
         result = clean_resource(resource, name_cache)
         assert result["inventory"] == "Production"
@@ -91,8 +74,11 @@ class TestCleanResource:
 
     def test_preserves_non_fk_fields(self):
         resource = {
-            "name": "Test", "description": "desc", "verbosity": 2,
-            "extra_vars": '{"key": "val"}', "playbook": "site.yml",
+            "name": "Test",
+            "description": "desc",
+            "verbosity": 2,
+            "extra_vars": '{"key": "val"}',
+            "playbook": "site.yml",
         }
         result = clean_resource(resource, {})
         assert result == resource
@@ -110,15 +96,19 @@ class TestCleanResource:
 
     def test_multiple_fk_fields(self):
         resource = {
-            "name": "JT", "inventory": 1, "project": 2,
-            "execution_environment": 3, "credential_type": 4, "organization": 5,
+            "name": "JT",
+            "inventory": 1,
+            "project": 2,
+            "execution_environment": 3,
+            "credential_type": 4,
+            "organization": 5,
         }
         name_cache = {
             "api/controller/v2/inventories/": {1: "Inv1"},
             "api/controller/v2/projects/": {2: "Proj1"},
             "api/controller/v2/execution_environments/": {3: "EE1"},
             "api/controller/v2/credential_types/": {4: "Machine"},
-            "api/controller/v2/organizations/": {5: "Org1"},
+            "api/gateway/v1/organizations/": {5: "Org1"},
         }
         result = clean_resource(resource, name_cache)
         assert result["inventory"] == "Inv1"
@@ -131,9 +121,15 @@ class TestCleanResource:
 class TestHostGroupFieldFilter:
     def test_host_fields_filter(self):
         raw = {
-            "id": 1, "name": "web01", "enabled": True, "variables": "{}",
-            "url": "/api/...", "related": {}, "summary_fields": {},
-            "created": "2025-01-01", "description": "Web server",
+            "id": 1,
+            "name": "web01",
+            "enabled": True,
+            "variables": "{}",
+            "url": "/api/...",
+            "related": {},
+            "summary_fields": {},
+            "created": "2025-01-01",
+            "description": "Web server",
         }
         filtered = {k: v for k, v in raw.items() if k in HOST_EXPORT_FIELDS and v is not None}
         assert "id" not in filtered
@@ -144,9 +140,12 @@ class TestHostGroupFieldFilter:
 
     def test_group_fields_filter(self):
         raw = {
-            "id": 5, "name": "webservers", "description": "",
+            "id": 5,
+            "name": "webservers",
+            "description": "",
             "variables": '{"env": "prod"}',
-            "url": "/api/...", "related": {},
+            "url": "/api/...",
+            "related": {},
         }
         filtered = {k: v for k, v in raw.items() if k in GROUP_EXPORT_FIELDS and v is not None}
         assert "id" not in filtered
@@ -163,9 +162,14 @@ class TestHostGroupFieldFilter:
 class TestExportImportRoundTrip:
     def test_exported_org_importable(self):
         raw = {
-            "id": 1, "name": "Default", "description": "",
-            "url": "/api/...", "related": {}, "summary_fields": {},
-            "created": "2025-01-01", "modified": "2025-01-01",
+            "id": 1,
+            "name": "Default",
+            "description": "",
+            "url": "/api/...",
+            "related": {},
+            "summary_fields": {},
+            "created": "2025-01-01",
+            "modified": "2025-01-01",
         }
         cleaned = clean_resource(raw, {})
         assert "name" in cleaned
@@ -174,14 +178,20 @@ class TestExportImportRoundTrip:
 
     def test_exported_credential_importable(self):
         raw = {
-            "id": 5, "name": "My Cred", "credential_type": 1,
-            "organization": 1, "inputs": {"username": "admin", "password": "$encrypted$"},
-            "url": "/api/...", "related": {}, "summary_fields": {},
-            "created": "2025-01-01", "modified": "2025-01-01",
+            "id": 5,
+            "name": "My Cred",
+            "credential_type": 1,
+            "organization": 1,
+            "inputs": {"username": "admin", "password": "$encrypted$"},
+            "url": "/api/...",
+            "related": {},
+            "summary_fields": {},
+            "created": "2025-01-01",
+            "modified": "2025-01-01",
         }
         cache = {
             "api/controller/v2/credential_types/": {1: "Machine"},
-            "api/controller/v2/organizations/": {1: "Default"},
+            "api/gateway/v1/organizations/": {1: "Default"},
         }
         cleaned = clean_resource(raw, cache)
         assert cleaned["credential_type"] == "Machine"
@@ -191,16 +201,26 @@ class TestExportImportRoundTrip:
 
     def test_exported_job_template_importable(self):
         raw = {
-            "id": 10, "name": "Deploy", "inventory": 42, "project": 7,
-            "organization": 1, "playbook": "deploy.yml", "job_type": "run",
-            "verbosity": 0, "forks": 0, "extra_vars": "",
-            "url": "/api/...", "related": {}, "summary_fields": {},
-            "created": "2025-01-01", "modified": "2025-01-01",
+            "id": 10,
+            "name": "Deploy",
+            "inventory": 42,
+            "project": 7,
+            "organization": 1,
+            "playbook": "deploy.yml",
+            "job_type": "run",
+            "verbosity": 0,
+            "forks": 0,
+            "extra_vars": "",
+            "url": "/api/...",
+            "related": {},
+            "summary_fields": {},
+            "created": "2025-01-01",
+            "modified": "2025-01-01",
         }
         cache = {
             "api/controller/v2/inventories/": {42: "Production"},
             "api/controller/v2/projects/": {7: "Demo Project"},
-            "api/controller/v2/organizations/": {1: "Default"},
+            "api/gateway/v1/organizations/": {1: "Default"},
         }
         cleaned = clean_resource(raw, cache)
         assert cleaned["name"] == "Deploy"
@@ -210,3 +230,33 @@ class TestExportImportRoundTrip:
         assert cleaned["playbook"] == "deploy.yml"
         assert "id" not in cleaned
         assert "url" not in cleaned
+
+
+def test_default_environment_is_preserved_and_resolved():
+    resource = {"name": "Project", "default_environment": 7}
+    name_cache = {"api/controller/v2/execution_environments/": {7: "Default EE"}}
+
+    result = clean_resource(resource, name_cache)
+
+    assert result["default_environment"] == "Default EE"
+
+
+def test_filtered_search_uses_endpoint_agnostic_exact_queries():
+    from ansible_collections.ansible.platform.plugins.action.export import ActionModule
+
+    class SearchManager:
+        def __init__(self):
+            self.calls = []
+
+        def search_api(self, **kwargs):
+            self.calls.append(kwargs)
+            name = kwargs["query_params"]["name"]
+            return {"results": [{"id": name, "name": name}]}
+
+    manager = SearchManager()
+    action = ActionModule.__new__(ActionModule)
+
+    result = action._search_resources(manager, "api/gateway/v1/organizations/", "name", ["one", "two"], 10)
+
+    assert [item["name"] for item in result["results"]] == ["one", "two"]
+    assert all("or__name" not in call["query_params"] for call in manager.calls)

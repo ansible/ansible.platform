@@ -187,5 +187,6 @@ class TestFilterModule:
         assert mapping["organizations"] == "organization"
         assert mapping["credentials"] == "controller_credential"
         assert mapping["projects"] == "controller_project"
+        assert mapping["labels"] == "label"
         assert mapping["credential_types"] == "controller_credential_type"
-        assert len(mapping) == 13
+        assert len(mapping) == 14

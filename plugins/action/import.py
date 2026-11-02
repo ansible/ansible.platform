@@ -28,6 +28,7 @@ IMPORT_ORDER = [
     ("execution_environments", "execution_environment"),
     ("notification_templates", "notification_template"),
     ("projects", "controller_project"),
+    ("labels", "label"),
     ("inventory", "inventory"),
     ("inventory_sources", "inventory_source"),
     ("job_templates", "job_template"),
@@ -36,10 +37,21 @@ IMPORT_ORDER = [
 ]
 
 # Fields from legacy/API data that are not module parameters.
-STRIP_FIELDS = frozenset({
-    "id", "type", "url", "related", "summary_fields", "created", "modified",
-    "natural_key", "managed", "user_capabilities", "object_roles",
-})
+STRIP_FIELDS = frozenset(
+    {
+        "id",
+        "type",
+        "url",
+        "related",
+        "summary_fields",
+        "created",
+        "modified",
+        "natural_key",
+        "managed",
+        "user_capabilities",
+        "object_roles",
+    }
+)
 
 # Fields that are inline children, not direct module params — popped and handled separately.
 INLINE_CHILDREN_FIELDS = frozenset({"hosts", "groups"})
@@ -148,25 +160,27 @@ class ActionModule(BaseResourceActionPlugin):
                 module_name=module_name,
                 ansible_data=dict(resource_data),
             )
-        except (ValueError, Exception):
+        except ValueError as exc:
+            if "not found" not in str(exc).lower():
+                raise
             existing = None
 
         if existing and existing.get("id"):
             update_data = dict(resource_data)
             update_data["id"] = existing["id"]
-            manager.execute(
+            update_result = manager.execute(
                 operation="update",
                 module_name=module_name,
                 ansible_data=update_data,
             )
-            return True
+            return update_result.get("changed", True) if isinstance(update_result, dict) else True
         else:
-            manager.execute(
+            create_result = manager.execute(
                 operation="create",
                 module_name=module_name,
                 ansible_data=dict(resource_data),
             )
-            return True
+            return create_result.get("changed", True) if isinstance(create_result, dict) else True
 
     def _import_inventory_children(self, manager, inventory_list, check_mode, failed_resources):
         """Import hosts and groups nested under inventory entries."""
