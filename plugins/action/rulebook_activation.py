@@ -32,6 +32,12 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebo
     ACTIVATION_ENABLE_ENDPOINT,
     ACTIVATION_RESTART_ENDPOINT,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
+
+# Restart/enable/disable are non-idempotent POSTs: retrying a lost response
+# could double-execute the action, so they disable the manager's default
+# transient-failure retries.
+_NO_RETRY = RetryConfig(max_attempts=1)
 
 _ANSIBLE_MODEL_FIELDS = frozenset(f.name for f in dataclass_fields(AnsibleRulebookActivation))
 
@@ -147,7 +153,7 @@ class ActionModule(BaseResourceActionPlugin):
         if self._task.check_mode:
             result.update({"changed": True, "failed": False, self.MODULE_NAME: existing})
             return result
-        manager.direct_request("POST", ACTIVATION_RESTART_ENDPOINT.format(id=existing["id"]))
+        manager.direct_request("POST", ACTIVATION_RESTART_ENDPOINT.format(id=existing["id"]), retry_config=_NO_RETRY)
         result.update(
             {
                 "changed": True,
@@ -228,7 +234,7 @@ class ActionModule(BaseResourceActionPlugin):
                 result.update({"changed": True, "failed": False, self.MODULE_NAME: existing})
                 return result
             endpoint = ACTIVATION_ENABLE_ENDPOINT if need_enable else ACTIVATION_DISABLE_ENDPOINT
-            manager.direct_request("POST", endpoint.format(id=existing["id"]))
+            manager.direct_request("POST", endpoint.format(id=existing["id"]), retry_config=_NO_RETRY)
             result.update(
                 {
                     "changed": True,

@@ -29,31 +29,8 @@ ACTIVATION_COPY_ENDPOINT = "/api/eda/v1/activations/{id}/copy/"
 _EDA_SERVICE = "eda"
 
 
-def _resolve_fk(manager, endpoint, lookup_field, value, service="eda"):
-    """Resolve a name or id to an integer id using the EDA API.
-
-    Args:
-        manager: PlatformService or compatible client.
-        endpoint: API endpoint name (e.g. 'projects').
-        lookup_field: Field to filter on (e.g. 'name').
-        value: Value to look up.
-        service: API service name.
-
-    Returns:
-        int resource ID or None.
-    """
-    if value is None:
-        return None
-    if str(value).isdigit():
-        return int(value)
-    try:
-        return manager.lookup_resource_id(endpoint, lookup_field, str(value), service=service)
-    except Exception:
-        return None
-
-
 def _resolve_fk_required(manager, endpoint, lookup_field, value, resource_label, service="eda"):
-    """Resolve a name to an ID, raising ValueError if not found.
+    """Resolve a name to an ID, raising ValueError if not found or ambiguous.
 
     Args:
         manager: PlatformService or compatible client.
@@ -67,16 +44,14 @@ def _resolve_fk_required(manager, endpoint, lookup_field, value, resource_label,
         int resource ID.
 
     Raises:
-        ValueError: If the resource is not found.
+        ValueError: If the resource is not found, or if the name matches
+            more than one resource.
     """
     if value is None:
         return None
     if str(value).isdigit():
         return int(value)
-    result = manager.lookup_resource_id(endpoint, lookup_field, str(value), service=service)
-    if result is None:
-        raise ValueError("%s '%s' not found" % (resource_label, value))
-    return result
+    return manager.lookup_resource_id(endpoint, lookup_field, str(value), service=service, require_unique=True)
 
 
 def _resolve_credential_ids(manager, credential_names):
@@ -256,6 +231,7 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
                     str(rulebook_name),
                     service="eda",
                     extra_query_params={"project_id": project_id},
+                    require_unique=True,
                 )
                 if rulebook_id is None:
                     raise ValueError("Rulebook '%s' not found for project '%s'" % (rulebook_name, project_name))
@@ -274,9 +250,7 @@ class RulebookActivationTransformMixin_v1(BaseTransformMixin):
             # Resolve awx_token_name -> awx_token_id
             token_name = getattr(ansible_instance, "awx_token_name", None)
             if token_name is not None:
-                token_id = _resolve_fk(manager, "users/me/awx-tokens", "name", token_name)
-                if token_id is not None:
-                    api_data["awx_token_id"] = token_id
+                api_data["awx_token_id"] = _resolve_fk_required(manager, "users/me/awx-tokens", "name", token_name, "AWX token")
 
             # Resolve eda_credentials (list of names -> list of IDs)
             cred_names = getattr(ansible_instance, "eda_credentials", None)

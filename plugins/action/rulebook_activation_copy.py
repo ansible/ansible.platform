@@ -22,8 +22,12 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ru
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation import (
     ACTIVATION_COPY_ENDPOINT,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 
 _SERVICE = "eda"
+# Copy is a non-idempotent POST: retrying a lost response could create a
+# duplicate activation, so it disables the manager's default retries.
+_NO_RETRY = RetryConfig(max_attempts=1)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -88,7 +92,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             # POST to activations/{id}/copy/ with the new name
             copy_url = ACTIVATION_COPY_ENDPOINT.format(id=existing["id"])
-            copy_result = manager.direct_request("POST", copy_url, data={"name": name})
+            copy_result = manager.direct_request("POST", copy_url, data={"name": name}, retry_config=_NO_RETRY)
 
             result.update(
                 {
