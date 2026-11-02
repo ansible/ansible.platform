@@ -8,6 +8,7 @@
     scm_url: "{{ item.scm_url | default(omit) }}"
     scm_branch: "{{ item.scm_branch | default(omit) }}"
     credential: "{{ item.credential | default(omit) }}"
+    default_environment: "{{ item.default_environment | default(omit) }}"
     notification_templates_started: "{{ item.notification_templates_started | default(omit) }}"
     notification_templates_success: "{{ item.notification_templates_success | default(omit) }}"
     notification_templates_error: "{{ item.notification_templates_error | default(omit) }}"

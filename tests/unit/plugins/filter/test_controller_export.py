@@ -106,6 +106,50 @@ class TestConvertResource:
         result = _convert_resource(resource)
         assert result["survey_spec"] == survey
 
+    def test_inventory_children_use_inline_native_shape(self):
+        data = {
+            "inventory": [
+                {
+                    "type": "inventory",
+                    "name": "Production",
+                    "related": {
+                        "hosts": [
+                            {
+                                "hostname": "web01",
+                                "description": "Web host",
+                                "enabled": True,
+                                "variables": {"ansible_host": "10.0.0.1"},
+                                "natural_key": {"type": "host", "hostname": "web01"},
+                            }
+                        ],
+                        "groups": [
+                            {
+                                "name": "web",
+                                "variables": {"tier": "web"},
+                                "related": {
+                                    "hosts": [{"type": "host", "hostname": "web01"}],
+                                    "children": [{"type": "group", "name": "frontend"}],
+                                },
+                                "natural_key": {"type": "group", "name": "web"},
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+
+        result = from_awxkit_export(data)["inventory"][0]
+
+        assert result["hosts"] == [
+            {
+                "name": "web01",
+                "description": "Web host",
+                "enabled": True,
+                "variables": {"ansible_host": "10.0.0.1"},
+            }
+        ]
+        assert result["groups"] == [{"name": "web", "variables": {"tier": "web"}, "hosts": ["web01"], "children": ["frontend"]}]
+
     def test_multiple_fk_fields(self):
         resource = {
             "name": "My JT",

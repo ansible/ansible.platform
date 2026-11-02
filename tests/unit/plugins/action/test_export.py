@@ -3,35 +3,28 @@
 """Unit tests for the export action plugin's data transformation logic.
 
 Tests the FK resolution, resource cleaning, and field filtering logic
-against the action plugin's exported constants.
+through the production action plugin.
 """
 
 from __future__ import absolute_import, division, print_function
+
+from unittest.mock import Mock
 
 __metaclass__ = type
 
 
 from ansible_collections.ansible.platform.plugins.action.export import (
-    FK_RESOLUTION_MAP,
     GROUP_EXPORT_FIELDS,
     HOST_EXPORT_FIELDS,
-    STRIP_FIELDS,
+    ActionModule,
 )
 
 
 def clean_resource(resource, name_cache):
-    """Replicate export action plugin's _clean_resource logic for testing."""
-    cleaned = {}
-    for key, value in resource.items():
-        if key in STRIP_FIELDS:
-            continue
-        if key in FK_RESOLUTION_MAP and isinstance(value, int):
-            endpoint = FK_RESOLUTION_MAP[key][0]
-            cache = name_cache.get(endpoint, {})
-            cleaned[key] = cache.get(value, value)
-        else:
-            cleaned[key] = value
-    return cleaned
+    """Invoke the production action plugin transformation logic."""
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+    return action._clean_resource(resource, name_cache)
 
 
 class TestCleanResource:
@@ -241,6 +234,15 @@ def test_default_environment_is_preserved_and_resolved():
     assert result["default_environment"] == "Default EE"
 
 
+def test_schedule_unified_job_template_is_resolved():
+    resource = {"name": "Nightly", "unified_job_template": 11}
+    name_cache = {"api/controller/v2/unified_job_templates/": {11: "Deploy"}}
+
+    result = clean_resource(resource, name_cache)
+
+    assert result["unified_job_template"] == "Deploy"
+
+
 def test_filtered_search_uses_endpoint_agnostic_exact_queries():
     from ansible_collections.ansible.platform.plugins.action.export import ActionModule
 
@@ -260,3 +262,78 @@ def test_filtered_search_uses_endpoint_agnostic_exact_queries():
 
     assert [item["name"] for item in result["results"]] == ["one", "two"]
     assert all("or__name" not in call["query_params"] for call in manager.calls)
+
+
+def test_export_without_selection_returns_empty_assets():
+    from ansible_collections.ansible.platform.plugins.action.export import ActionModule
+
+    action = ActionModule.__new__(ActionModule)
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {}, "manager": Mock()})
+    action._display = Mock()
+    action._build_name_cache = Mock(return_value={})
+    action._export_resource_type = Mock()
+
+    result = action.run()
+
+    assert result["assets"] == {}
+    action._export_resource_type.assert_not_called()
+
+
+def test_export_with_selected_resource_ignores_other_resource_types():
+    from ansible_collections.ansible.platform.plugins.action.export import ActionModule
+
+    action = ActionModule.__new__(ActionModule)
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {"organizations": ["Default"]},
+            "manager": Mock(),
+        }
+    )
+    action._display = Mock()
+    action._build_name_cache = Mock(return_value={})
+    action._export_resource_type = Mock(return_value=[{"name": "Default"}])
+
+    result = action.run()
+
+    assert result["assets"] == {"organizations": [{"name": "Default"}]}
+    assert action._export_resource_type.call_count == 1
+
+
+def test_empty_name_filter_returns_without_querying():
+    manager = Mock()
+    action = ActionModule.__new__(ActionModule)
+
+    result = action._search_resources(manager, "api/controller/v2/projects/", "name", [], 10)
+
+    assert result == {"results": []}
+    manager.search_api.assert_not_called()
+
+
+def test_resource_search_failures_propagate():
+    manager = Mock()
+    manager.search_api.side_effect = RuntimeError("gateway unavailable")
+    action = ActionModule.__new__(ActionModule)
+
+    try:
+        action._export_resource_type(manager, "projects", "api/controller/v2/projects/", "name", {}, None, 10)
+    except RuntimeError as exc:
+        assert str(exc) == "gateway unavailable"
+    else:
+        raise AssertionError("search failure was suppressed")
+
+
+def test_group_associations_include_hosts_and_children():
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {"results": [{"name": "web01"}]},
+        {"results": [{"name": "frontend"}]},
+    ]
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+    cleaned = {"name": "web"}
+
+    action._fetch_associations(manager, "group", {"id": 7}, cleaned, {}, "api/controller/v2/groups/", 10)
+
+    assert cleaned["hosts"] == ["web01"]
+    assert cleaned["children"] == ["frontend"]

@@ -92,6 +92,40 @@ def _resolve_natural_key(nk):
     return nk
 
 
+def _convert_inventory_child(child, child_type):
+    """Convert an inventory host or group into the native inline shape."""
+    if not isinstance(child, dict):
+        return child
+
+    allowed_fields = (
+        {"name", "hostname", "description", "enabled", "instance_id", "variables"}
+        if child_type == "host"
+        else {"name", "description", "variables", "hosts", "children", "groups"}
+    )
+    result = {}
+    for key, value in child.items():
+        if key in STRIP_KEYS or key == "related" or key not in allowed_fields:
+            continue
+        if child_type == "host" and key == "hostname":
+            result.setdefault("name", value)
+        elif child_type == "group" and key in {"hosts", "children", "groups"}:
+            canonical_key = "children" if key == "groups" else key
+            result[canonical_key] = [_resolve_natural_key(item) for item in value] if isinstance(value, list) else value
+        else:
+            result[key] = value
+
+    if "name" not in result:
+        result["name"] = _resolve_natural_key(child.get("natural_key"))
+
+    related = child.get("related", {})
+    if child_type == "group":
+        for rel_key, rel_value in related.items():
+            if rel_key in {"hosts", "children", "groups"} and isinstance(rel_value, list):
+                result["children" if rel_key == "groups" else rel_key] = [_resolve_natural_key(item) for item in rel_value]
+
+    return result
+
+
 def _convert_resource(resource):
     """Convert a single awxkit-exported resource dict to native format."""
     result = {}
@@ -106,9 +140,13 @@ def _convert_resource(resource):
         else:
             result[key] = value
 
+    resource_type = resource.get("type") or (resource.get("natural_key") or {}).get("type")
     related = resource.get("related", {})
     for rel_key, rel_value in related.items():
-        if rel_key in ASSOCIATION_RELATED_KEYS and isinstance(rel_value, list):
+        if resource_type == "inventory" and rel_key in {"hosts", "groups"} and isinstance(rel_value, list):
+            child_type = "host" if rel_key == "hosts" else "group"
+            result[rel_key] = [_convert_inventory_child(item, child_type) for item in rel_value]
+        elif rel_key in ASSOCIATION_RELATED_KEYS and isinstance(rel_value, list):
             result[rel_key] = [_resolve_natural_key(item) for item in rel_value]
         elif rel_key in SUB_RESOURCE_RELATED_KEYS:
             result[rel_key] = rel_value

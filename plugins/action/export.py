@@ -51,6 +51,7 @@ FK_RESOLUTION_MAP = {
     "webhook_credential": ("api/controller/v2/credentials/", "name"),
     "insights_credential": ("api/controller/v2/credentials/", "name"),
     "vault_credential": ("api/controller/v2/credentials/", "name"),
+    "unified_job_template": ("api/controller/v2/unified_job_templates/", "name"),
 }
 
 # Fields to strip from exported resources (read-only / internal / computed).
@@ -142,6 +143,10 @@ RESOURCE_ASSOCIATIONS = {
         ("notification_templates_success", "notification_templates_success/", "names"),
         ("notification_templates_error", "notification_templates_error/", "names"),
     ],
+    "group": [
+        ("hosts", "hosts/", "names"),
+        ("children", "children/", "names"),
+    ],
 }
 
 # Association sub-endpoints to fetch per resource type (inventory children).
@@ -168,7 +173,7 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
 
             export_all = validated_params.get("all", False)
-            all_requested = export_all or all(validated_params.get(resource[0]) is None for resource in EXPORTABLE_RESOURCES)
+            all_requested = export_all
 
             # Build FK name cache
             self._display.vvv("Building FK name resolution cache...")
@@ -251,8 +256,10 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _search_resources(self, manager, endpoint, id_field, names_filter, max_objects):
         """Search a resource endpoint without relying on Controller-only ``or__`` filters."""
-        if not names_filter:
+        if names_filter is None:
             return manager.search_api(endpoint=endpoint, return_all=True, max_objects=max_objects)
+        if not names_filter:
+            return {"results": []}
 
         results = []
         seen_ids = set()
@@ -276,12 +283,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _export_resource_type(self, manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects):
         """Export all (or filtered) resources of one type."""
-        try:
-            response = self._search_resources(manager, endpoint, id_field, names_filter, max_objects)
-        except Exception as exc:
-            self._display.warning("Failed to fetch %s: %s" % (res_type, exc))
-            return []
-
+        response = self._search_resources(manager, endpoint, id_field, names_filter, max_objects)
         results = response.get("results", [])
         if not results:
             return []
@@ -354,8 +356,10 @@ class ActionModule(BaseResourceActionPlugin):
                             objects = []
                             for r in results:
                                 group_data = {k: v for k, v in r.items() if k in GROUP_EXPORT_FIELDS and v is not None}
+                                self._fetch_associations(manager, "group", r, group_data, name_cache, "api/controller/v2/groups/", max_objects)
                                 objects.append(group_data)
                             cleaned[assoc_key] = objects
 
             except Exception as exc:
                 self._display.vvvv("Failed to fetch %s for %s/%d: %s" % (assoc_key, res_type, resource_id, exc))
+                raise

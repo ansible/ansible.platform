@@ -8,6 +8,7 @@
     credential: "{{ item.credential | default(omit) }}"
     execution_environment: "{{ item.execution_environment | default(omit) }}"
     source_project: "{{ item.source_project | default(omit) }}"
+    overwrite: "{{ item.overwrite | default(omit) }}"
     notification_templates_started: "{{ item.notification_templates_started | default(omit) }}"
     notification_templates_success: "{{ item.notification_templates_success | default(omit) }}"
     notification_templates_error: "{{ item.notification_templates_error | default(omit) }}"
