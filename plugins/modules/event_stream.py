@@ -41,7 +41,7 @@ options:
       - The credential type must be one of the supported event stream credential types
         (e.g. 'HMAC Event Stream', 'Basic Event Stream', 'Token Event Stream',
         'GitHub Event Stream', etc.).
-      - Required when O(state=present).
+      - Required when creating a new event stream.
     type: str
     aliases:
       - credential
@@ -49,7 +49,7 @@ options:
   organization_name:
     description:
       - The name of the organization this event stream belongs to.
-      - Required when O(state=present).
+      - Required when creating a new event stream.
     type: str
     aliases:
       - organization
@@ -92,10 +92,6 @@ options:
     type: str
     choices: ["present", "absent", "exists", "enforced"]
     default: "present"
-
-required_if:
-  - ["state", "present", ["credential_name"]]
-  - ["state", "present", ["organization_name"]]
 
 seealso:
   - module: ansible.eda.event_stream
