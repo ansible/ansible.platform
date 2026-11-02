@@ -126,6 +126,30 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(r["changed"])
         self.assertIn("already absent", r["msg"])
 
+    def test_absent_does_not_fall_back_to_new_name(self):
+        """state=absent must not delete the rename target when the original
+        name is already gone -- new_name here is leftover task data, not a
+        request to rename-then-delete."""
+        action = self._make_action()
+        manager = self._make_manager()
+
+        def find_only(operation, module_name, ansible_data):
+            if operation == "find":
+                if ansible_data.get("name") == "old":
+                    raise ValueError("Resource with name=old not found")
+                if ansible_data.get("name") == "new":
+                    return {"id": 100, "name": "new"}
+                raise ValueError("Unexpected lookup")
+            raise AssertionError("delete should not be called when the original name is already absent")
+
+        manager.execute.side_effect = find_only
+        result = self._run(action, manager, {"name": "old", "new_name": "new", "state": "absent"})
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        self.assertIn("already absent", result["msg"])
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old"])
+
     def test_check_mode_present(self):
         action = self._make_action(check_mode=True)
         mgr = self._make_manager()

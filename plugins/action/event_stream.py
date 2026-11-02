@@ -56,7 +56,7 @@ class ActionModule(BaseResourceActionPlugin):
             existing = super()._find_existing_resource(manager, resource_data)
         except ValueError as exc:
             new_name = resource_data.get("new_name")
-            if not new_name or not self._is_resource_not_found(exc):
+            if not new_name or resource_data.get("state") == "absent" or not self._is_resource_not_found(exc):
                 raise
 
             renamed_data = dict(resource_data)
