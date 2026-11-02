@@ -386,12 +386,15 @@ class Store:
         # EDA resources
         eda_defs: List[tuple] = [
             ("awx-tokens", ["name", "token"], 6000),
+            ("eda-credentials", ["name"], 6100),
+            ("credential-input-sources", ["input_field_name", "target_credential", "source_credential"], 6200),
         ]
         for endpoint, required, start_id in eda_defs:
             self._resources[("eda", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
+                patch_fields=["description", "metadata"] if endpoint == "credential-input-sources" else None,
                 service="eda",
             )
 

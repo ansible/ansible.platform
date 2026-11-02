@@ -16,24 +16,36 @@
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+    ansible.eda.credential:
+      aap_hostname: "{{ gateway_hostname }}"
+      aap_username: "{{ gateway_username }}"
+      aap_password: "{{ gateway_password }}"
+      aap_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
     # <Setup — create target and source credentials> -------------------
     - name: Create target EDA credential for testing
-      ansible.platform.eda_credential:
+      ansible.eda.credential:
         name: "{{ target_cred_name }}"
-        credential_type: "Machine"
+        credential_type_name: "Source Control"
+        inputs:
+          username: "test-user-{{ test_id }}"
+          password: "test-password-{{ test_id }}"
+        organization_name: Default
         state: present
       register: target_cred
-      failed_when: false
 
     - name: Create source EDA credential for testing
-      ansible.platform.eda_credential:
+      ansible.eda.credential:
         name: "{{ source_cred_name }}"
-        credential_type: "HashiCorp Vault Secret Lookup"
+        credential_type_name: "HashiCorp Vault Secret Lookup"
+        inputs:
+          url: "https://vault.example.invalid"
+          api_version: v2
+          token: test-token
+        organization_name: Default
         state: present
       register: source_cred
-      failed_when: false
 
     # <Create with check mode> -------------------
     - name: Create credential input source with check mode
@@ -41,6 +53,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         description: "Integration test input source"
         metadata:
           secret_path: "secret/myapp"
@@ -60,6 +73,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         description: "Integration test input source"
         metadata:
           secret_path: "secret/myapp"
@@ -79,6 +93,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         description: "Integration test input source"
         metadata:
           secret_path: "secret/myapp"
@@ -97,6 +112,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         description: "Updated integration test input source"
         metadata:
           secret_path: "secret/updated"
@@ -109,6 +125,9 @@
         that:
           - update_result is changed
           - update_result.eda_credential_input_source.id is defined
+          - update_result.eda_credential_input_source.description == "Updated integration test input source"
+          - update_result.eda_credential_input_source.metadata.secret_path == "secret/updated"
+          - update_result.eda_credential_input_source.metadata.secret_key == "new_password"
 
     # <Exists — check presence> -------------------
     - name: Check credential input source exists
@@ -116,6 +135,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         state: exists
       register: exists_result
 
@@ -131,6 +151,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         state: absent
       register: delete_result
 
@@ -145,6 +166,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         state: absent
       register: delete_absent_result
 
@@ -159,6 +181,7 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         state: exists
       register: not_exists_result
 
@@ -174,17 +197,18 @@
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
+        organization_name: Default
         state: absent
       failed_when: false
 
     - name: Cleanup — delete target credential
-      ansible.platform.eda_credential:
+      ansible.eda.credential:
         name: "{{ target_cred_name }}"
         state: absent
       failed_when: false
 
     - name: Cleanup — delete source credential
-      ansible.platform.eda_credential:
+      ansible.eda.credential:
         name: "{{ source_cred_name }}"
         state: absent
       failed_when: false

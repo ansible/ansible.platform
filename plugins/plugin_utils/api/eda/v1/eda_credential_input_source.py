@@ -3,11 +3,9 @@
 Handles transformations between Ansible format and EDA API v1 format.
 
 This resource uses a composite key (target_credential + source_credential +
-input_field_name) instead of a ``name`` field.  The lookup is driven by
-``get_find_list_query_params`` which filters by ``target_credential`` (as an
-ID) and ``get_lookup_field`` which returns ``input_field_name``.  The SDK's
-find logic matches the remaining ``source_credential`` via
-``get_find_list_query_params`` as well.
+input_field_name) instead of a ``name`` field. The list query filters by both
+credential IDs and, when supplied, the organization ID before matching
+``input_field_name``.
 """
 
 from __future__ import annotations
@@ -20,6 +18,44 @@ from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
+
+
+def _context_manager(context: Union[TransformContext, Dict[str, Any]]):
+    """Return the resource manager from either supported transform context."""
+    if isinstance(context, TransformContext):
+        return context.manager
+    return context.get("manager")
+
+
+def _resolve_id(
+    manager,
+    endpoint: str,
+    value: Optional[str],
+    label: str,
+    extra_query_params: Optional[Dict[str, Any]] = None,
+    service: str = "eda",
+) -> Optional[int]:
+    """Resolve a numeric ID or an unambiguous EDA resource reference."""
+    if value is None:
+        return None
+
+    reference = str(value).strip()
+    if not reference:
+        raise ValueError("%s must not be empty" % label)
+    if reference.isdigit():
+        return int(reference)
+    if manager is None:
+        raise ValueError("A manager is required to resolve %s '%s'" % (label, reference))
+
+    lookup_kwargs: Dict[str, Any] = {"service": service, "require_unique": True}
+    # Named URLs are unambiguous references handled by lookup_resource_id;
+    # list filters apply only to ordinary name lookups.
+    if extra_query_params and "++" not in reference:
+        lookup_kwargs["extra_query_params"] = extra_query_params
+    resource_id = manager.lookup_resource_id(endpoint, "name", reference, **lookup_kwargs)
+    if resource_id is None:
+        raise ValueError("Could not resolve %s '%s'" % (label, reference))
+    return int(resource_id)
 
 
 @dataclass
@@ -56,29 +92,29 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
             APIEdaCredentialInputSource_v1 with resolved FK IDs.
         """
         api_data: Dict[str, Any] = {}
+        manager = _context_manager(context)
+
+        organization_name = getattr(ansible_instance, "organization_name", None)
+        organization_id = _resolve_id(manager, "organizations", organization_name, "organization", service="gateway")
+        if organization_id is not None:
+            api_data["organization_id"] = organization_id
+
+        credential_scope = {"organization_id": organization_id} if organization_id is not None else None
 
         # input_field_name: pass through directly
         input_field_name = getattr(ansible_instance, "input_field_name", None)
         if input_field_name is not None:
             api_data["input_field_name"] = input_field_name
 
-        # FK resolution: target_credential name -> ID via EDA credentials endpoint
+        # FK resolution: credential name or named URL -> ID via EDA endpoint.
         target_credential = getattr(ansible_instance, "target_credential", None)
         if target_credential is not None:
-            manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
-            if manager is not None and not str(target_credential).strip().isdigit():
-                api_data["target_credential"] = manager.lookup_resource_id("eda-credentials", "name", target_credential, service="eda")
-            else:
-                api_data["target_credential"] = int(target_credential) if target_credential is not None else None
+            api_data["target_credential"] = _resolve_id(manager, "eda-credentials", target_credential, "target credential", credential_scope)
 
         # FK resolution: source_credential name -> ID via EDA credentials endpoint
         source_credential = getattr(ansible_instance, "source_credential", None)
         if source_credential is not None:
-            manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
-            if manager is not None and not str(source_credential).strip().isdigit():
-                api_data["source_credential"] = manager.lookup_resource_id("eda-credentials", "name", source_credential, service="eda")
-            else:
-                api_data["source_credential"] = int(source_credential) if source_credential is not None else None
+            api_data["source_credential"] = _resolve_id(manager, "eda-credentials", source_credential, "source credential", credential_scope)
 
         # Simple fields
         for field_name in ("description",):
@@ -90,13 +126,6 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         metadata = getattr(ansible_instance, "metadata", None)
         if metadata is not None:
             api_data["metadata"] = metadata
-
-        # FK resolution: organization_name -> organization_id
-        organization_name = getattr(ansible_instance, "organization_name", None)
-        if organization_name is not None:
-            manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
-            if manager is not None:
-                api_data["organization_id"] = manager.lookup_resource_id("organizations", "name", organization_name)
 
         # Read-only from API (for building URL in execute)
         for field_name in ("id",):
@@ -169,7 +198,8 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
 
         For composite-key resources, the list endpoint is filtered by
         ``target_credential`` (and ``source_credential`` when available)
-        so the SDK's find logic can match by ``input_field_name``.
+        and ``organization_id`` when available, so the SDK's find logic can
+        match the composite key without selecting a resource in another org.
 
         Args:
             api_data: API dataclass instance with resolved FK IDs.
@@ -180,16 +210,13 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         params: Dict[str, Any] = {}
         target_credential = getattr(api_data, "target_credential", None)
         if target_credential is not None:
-            try:
-                params["target_credential"] = int(str(target_credential).strip())
-            except (ValueError, TypeError):
-                pass
+            params["target_credential"] = int(str(target_credential).strip())
         source_credential = getattr(api_data, "source_credential", None)
         if source_credential is not None:
-            try:
-                params["source_credential"] = int(str(source_credential).strip())
-            except (ValueError, TypeError):
-                pass
+            params["source_credential"] = int(str(source_credential).strip())
+        organization_id = getattr(api_data, "organization_id", None)
+        if organization_id is not None:
+            params["organization_id"] = int(str(organization_id).strip())
         return params
 
     @classmethod
@@ -210,15 +237,15 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         from ....ansible_models.eda_credential_input_source import AnsibleEdaCredentialInputSource
 
         target_val = api_data.get("target_credential")
-        target_str = str(target_val) if target_val is not None else ""
+        target_id = int(target_val) if target_val is not None else None
 
         source_val = api_data.get("source_credential")
-        source_str = str(source_val) if source_val is not None else ""
+        source_id = int(source_val) if source_val is not None else None
 
         return AnsibleEdaCredentialInputSource(
             input_field_name=api_data.get("input_field_name", ""),
-            target_credential=target_str,
-            source_credential=source_str,
+            target_credential=target_id,
+            source_credential=source_id,
             description=api_data.get("description"),
             metadata=api_data.get("metadata"),
             id=api_data.get("id"),

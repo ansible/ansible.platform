@@ -16,3 +16,6 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "eda_credential_input_source"
     MODEL_CLASS = AnsibleEdaCredentialInputSource
+    # The organization is used to scope creation and lookup, but the API does
+    # not return organization_name and the field is not mutable after creation.
+    _READ_ONLY_FIELDS = BaseResourceActionPlugin._READ_ONLY_FIELDS | frozenset({"organization_name"})

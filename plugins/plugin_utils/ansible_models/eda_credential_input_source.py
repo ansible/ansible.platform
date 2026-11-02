@@ -9,7 +9,7 @@ They are uniquely identified by the composite key of ``target_credential``,
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 @dataclass
@@ -18,8 +18,8 @@ class AnsibleEdaCredentialInputSource:
 
     # Required / identity (composite key)
     input_field_name: str
-    target_credential: str
-    source_credential: str
+    target_credential: Optional[Union[int, str]]
+    source_credential: Optional[Union[int, str]]
 
     # Optional fields
     description: Optional[str] = None

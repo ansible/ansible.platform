@@ -41,14 +41,14 @@ options:
 
   target_credential:
     description:
-      - The credential name or ID whose input field will be populated by this source.
+      - The credential name, ID, or named URL whose input field will be populated by this source.
       - Resolved against the EDA credentials endpoint.
     required: true
     type: str
 
   source_credential:
     description:
-      - The credential name or ID that provides the external lookup
+      - The credential name, ID, or named URL that provides the external lookup
         (e.g. a HashiCorp Vault credential).
       - Resolved against the EDA credentials endpoint.
     required: true

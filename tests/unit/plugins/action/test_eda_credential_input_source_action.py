@@ -69,7 +69,7 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         manager = MagicMock()
         if lookup_map:
 
-            def _lookup(endpoint, field, value, service="gateway"):
+            def _lookup(endpoint, field, value, **kwargs):
                 key = (endpoint, value)
                 if key in lookup_map:
                     return lookup_map[key]
@@ -101,11 +101,75 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         self.assertEqual(api_obj.source_credential, 20)
         self.assertEqual(api_obj.input_field_name, "password")
 
-        # Verify service="eda" was passed for both credential lookups
+        # Verify lookups use EDA and reject ambiguous names.
         calls = context.manager.lookup_resource_id.call_args_list
         for call in calls:
             self.assertEqual(call.args[0], "eda-credentials")
-            self.assertEqual(call.kwargs.get("service", call.args[3] if len(call.args) > 3 else "gateway"), "eda")
+            self.assertEqual(call.kwargs["service"], "eda")
+            self.assertTrue(call.kwargs["require_unique"])
+
+    def test_from_ansible_data_scopes_credential_names_to_organization(self):
+        """An explicit organization scopes both credential name lookups."""
+        context = self._make_context(
+            {
+                ("organizations", "Default"): 1,
+                ("eda-credentials", "my_target"): 10,
+                ("eda-credentials", "my_source"): 20,
+            }
+        )
+        ansible_obj = AnsibleEdaCredentialInputSource(
+            input_field_name="password",
+            target_credential="my_target",
+            source_credential="my_source",
+            organization_name="Default",
+        )
+
+        api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
+
+        self.assertEqual(api_obj.organization_id, 1)
+        credential_calls = [call for call in context.manager.lookup_resource_id.call_args_list if call.args[0] == "eda-credentials"]
+        self.assertEqual(len(credential_calls), 2)
+        for call in credential_calls:
+            self.assertEqual(call.kwargs["extra_query_params"], {"organization_id": 1})
+            self.assertTrue(call.kwargs["require_unique"])
+
+    def test_from_ansible_data_accepts_named_url_references(self):
+        """Named URL references reach the shared EDA lookup resolver unmodified."""
+        context = self._make_context({("eda-credentials", "Vault++Default"): 10})
+        ansible_obj = AnsibleEdaCredentialInputSource(
+            input_field_name="password",
+            target_credential="Vault++Default",
+            source_credential="20",
+        )
+
+        api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
+
+        self.assertEqual(api_obj.target_credential, 10)
+        context.manager.lookup_resource_id.assert_called_once_with("eda-credentials", "name", "Vault++Default", service="eda", require_unique=True)
+
+    def test_from_ansible_data_requires_manager_for_named_references(self):
+        """Names cannot silently pass through as unresolved API foreign keys."""
+        ansible_obj = AnsibleEdaCredentialInputSource(
+            input_field_name="password",
+            target_credential="target",
+            source_credential="20",
+        )
+
+        with self.assertRaisesRegex(ValueError, "manager is required to resolve target credential"):
+            EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, {"manager": None})
+
+    def test_from_ansible_data_rejects_unresolved_credential(self):
+        """A lookup that returns no ID cannot silently omit a required FK."""
+        context = self._make_context()
+        context.manager.lookup_resource_id.return_value = None
+        ansible_obj = AnsibleEdaCredentialInputSource(
+            input_field_name="password",
+            target_credential="missing-target",
+            source_credential="20",
+        )
+
+        with self.assertRaisesRegex(ValueError, "Could not resolve target credential"):
+            EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
 
     def test_from_ansible_data_numeric_ids_pass_through(self):
         """Numeric credential IDs bypass FK resolution."""
@@ -143,9 +207,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
 
         self.assertEqual(api_obj.organization_id, 1)
-        # Verify organization lookup uses default service (gateway)
+        # Organization lookup uses Gateway and rejects ambiguous names.
         org_call = [c for c in context.manager.lookup_resource_id.call_args_list if c.args[0] == "organizations"]
         self.assertEqual(len(org_call), 1)
+        self.assertEqual(org_call[0].kwargs["service"], "gateway")
+        self.assertTrue(org_call[0].kwargs["require_unique"])
 
     def test_from_ansible_data_optional_fields(self):
         """Description and metadata are passed through when set."""
@@ -182,8 +248,8 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         self.assertIsInstance(ansible_obj, AnsibleEdaCredentialInputSource)
         self.assertEqual(ansible_obj.id, 42)
         self.assertEqual(ansible_obj.input_field_name, "password")
-        self.assertEqual(ansible_obj.target_credential, "10")
-        self.assertEqual(ansible_obj.source_credential, "20")
+        self.assertEqual(ansible_obj.target_credential, 10)
+        self.assertEqual(ansible_obj.source_credential, 20)
         self.assertEqual(ansible_obj.description, "test desc")
         self.assertEqual(ansible_obj.metadata, {"secret_path": "/secret"})
 
@@ -218,6 +284,19 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         params = EdaCredentialInputSourceTransformMixin_v1.get_find_list_query_params(api_obj)
 
         self.assertEqual(params, {"target_credential": 10, "source_credential": 20})
+
+    def test_get_find_list_query_params_includes_organization(self):
+        """The list lookup is scoped to the requested organization."""
+        api_obj = APIEdaCredentialInputSource_v1(
+            target_credential=10,
+            source_credential=20,
+            organization_id=30,
+            input_field_name="password",
+        )
+
+        params = EdaCredentialInputSourceTransformMixin_v1.get_find_list_query_params(api_obj)
+
+        self.assertEqual(params, {"target_credential": 10, "source_credential": 20, "organization_id": 30})
 
     def test_get_find_list_query_params_no_source(self):
         """Query params with only target_credential."""
@@ -280,6 +359,12 @@ class TestEdaCredentialInputSourceActionPlugin(unittest.TestCase):
     def test_model_class(self):
         """Model class is the correct Ansible dataclass."""
         self.assertEqual(ActionModule.MODEL_CLASS, AnsibleEdaCredentialInputSource)
+
+    def test_organization_name_does_not_force_an_update(self):
+        """Organization is an input-only scope field, not returned API state."""
+        action = ActionModule.__new__(ActionModule)
+
+        self.assertFalse(action._should_update({"organization_name": "Default"}, {"organization_name": None}))
 
 
 if __name__ == "__main__":
