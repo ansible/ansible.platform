@@ -105,6 +105,37 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
         self.assertEqual(launch_call.kwargs["service"], "eda")
         self.assertEqual(launch_call.kwargs["payload"]["inputs"], {"username": "test_user"})
         self.assertEqual(launch_call.kwargs["payload"]["metadata"], {"secret_path": "secret/myapp"})
+        self.assertFalse(launch_call.kwargs["retry"])
+
+    def test_documentation_drives_argument_validation(self):
+        """Validate actual module docs, including the sensitive test input setting."""
+        from ansible.plugins.action import ActionBase
+        from ansible_collections.ansible.platform.plugins.modules.eda_credential_type import DOCUMENTATION
+
+        action = self._make_action()
+        argspec = action._build_argspec_from_docs(DOCUMENTATION)
+        self.assertTrue(argspec["argument_spec"]["test_inputs"]["no_log"])
+        defaulted = action._validate_data({"name": "My Cred Type"}, argspec, "input")
+        self.assertEqual(defaulted.validated_parameters["state"], "present")
+
+        action._task.args = {
+            "name": "My Cred Type",
+            "state": "test",
+            "test_inputs": {"username": "secret"},
+            "test_metadata": {"secret_path": "secret/myapp"},
+        }
+        manager = self._make_manager(
+            find_result={"id": 100, "name": "My Cred Type"},
+            launch_result={"success": True},
+        )
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result.get("failed", False))
+        self.assertEqual(
+            manager.launch_resource.call_args.kwargs["payload"],
+            {"inputs": {"username": "secret"}, "metadata": {"secret_path": "secret/myapp"}},
+        )
 
     def test_test_nonexistent_credential_type_fails(self):
         """Test state fails when credential type does not exist."""

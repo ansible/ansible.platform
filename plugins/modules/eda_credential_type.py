@@ -46,14 +46,12 @@ options:
     description:
       - The input field definitions for the credential type.
       - Enter inputs using either JSON or YAML syntax.
-      - Required when O(state=present).
     type: dict
 
   injectors:
     description:
       - The injector configuration for the credential type.
       - Enter injectors using either JSON or YAML syntax.
-      - Required when O(state=present).
     type: dict
 
   test_inputs:
@@ -77,9 +75,6 @@ options:
     type: str
     choices: ["present", "absent", "test"]
     default: "present"
-
-required_if:
-  - ["state", "present", ["inputs", "injectors"]]
 
 seealso:
   - module: ansible.eda.credential_type

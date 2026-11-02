@@ -15,9 +15,12 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+from typing import Optional
+
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential_type import AnsibleEdaCredentialType
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_type import EDA_CREDENTIAL_TYPE_TEST_ENDPOINT
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -28,8 +31,9 @@ class ActionModule(BaseResourceActionPlugin):
     # test_inputs and test_metadata are only used with state=test and must
     # be stripped before the base class builds MODEL_CLASS for CRUD states.
     _WRITE_ONLY_FIELDS = frozenset({"test_inputs", "test_metadata"})
+    _NO_LOG_FIELDS = frozenset({"test_inputs"})
 
-    def run(self, tmp=None, task_vars=None):
+    def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Route to test handler or delegate to base class for CRUD.
 
         Args:
@@ -49,7 +53,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return super().run(tmp, task_vars)
 
-    def _run_test(self, tmp, task_vars):
+    def _run_test(self, tmp: object, task_vars: dict) -> dict:
         """Handle state=test: validate credential type via the test sub-endpoint.
 
         Finds the credential type by name, then POSTs test_inputs and
@@ -112,11 +116,12 @@ class ActionModule(BaseResourceActionPlugin):
                 test_payload["metadata"] = test_metadata
 
             # POST to the test sub-endpoint via the SDK launch_resource method
-            test_url = "/api/eda/v1/credential-types/%s/test/" % credential_type_id
+            test_url = EDA_CREDENTIAL_TYPE_TEST_ENDPOINT.format(id=credential_type_id)
             test_response = manager.launch_resource(
                 launch_url=test_url,
                 payload=test_payload,
                 service="eda",
+                retry=False,
             )
 
             test_result = (

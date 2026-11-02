@@ -9,6 +9,8 @@ from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+EDA_CREDENTIAL_TYPE_TEST_ENDPOINT = "/api/eda/v1/credential-types/{id}/test/"
+
 
 @dataclass
 class APIEdaCredentialType_v1(BaseTransformMixin):
