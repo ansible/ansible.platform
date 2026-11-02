@@ -67,7 +67,6 @@ options:
       - This is a write-only field; the API will not return secret values.
       - Required when creating a credential (C(state=present) without C(copy_from)).
     type: dict
-    no_log: true
 
   update_secrets:
     description:
