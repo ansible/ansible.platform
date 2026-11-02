@@ -170,6 +170,45 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(result["changed"])
         self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
 
+    def test_rename_rejects_a_target_name_owned_by_another_event_stream(self):
+        action = self._make_action()
+        manager = self._make_manager()
+
+        def find_resources(operation, module_name, ansible_data):
+            if operation == "find":
+                if ansible_data.get("name") == "old":
+                    return {"id": 100, "name": "old"}
+                if ansible_data.get("name") == "new":
+                    return {"id": 101, "name": "new"}
+            return {"changed": True}
+
+        manager.execute.side_effect = find_resources
+        result = self._run(action, manager, {"name": "old", "new_name": "new", "state": "present"})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("event stream 'new' already exists", result["msg"])
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
+
+    def test_rename_updates_when_target_name_is_available(self):
+        action = self._make_action()
+        manager = self._make_manager()
+
+        def find_and_update(operation, module_name, ansible_data):
+            if operation == "find":
+                if ansible_data.get("name") == "old":
+                    return {"id": 100, "name": "old"}
+                raise ValueError("Resource with name=new not found")
+            if operation == "update":
+                return {"id": 100, "name": "new", "changed": True}
+            return {}
+
+        manager.execute.side_effect = find_and_update
+        result = self._run(action, manager, {"name": "old", "new_name": "new", "state": "present"})
+
+        self.assertTrue(result["changed"])
+        update_call = next(call for call in manager.execute.call_args_list if call.kwargs["operation"] == "update")
+        self.assertEqual(update_call.kwargs["ansible_data"]["new_name"], "new")
+
     def test_ambiguous_find_error_is_not_treated_as_missing(self):
         action = self._make_action()
         manager = self._make_manager()

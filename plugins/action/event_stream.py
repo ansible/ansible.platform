@@ -53,16 +53,37 @@ class ActionModule(BaseResourceActionPlugin):
             dict: The matching event stream.
         """
         try:
-            return super()._find_existing_resource(manager, resource_data)
+            existing = super()._find_existing_resource(manager, resource_data)
         except ValueError as exc:
             new_name = resource_data.get("new_name")
             if not new_name or not self._is_resource_not_found(exc):
                 raise
 
+            renamed_data = dict(resource_data)
+            renamed_data["name"] = new_name
+            renamed_data.pop("new_name", None)
+            return super()._find_existing_resource(manager, renamed_data)
+
+        new_name = resource_data.get("new_name")
+        if not new_name or new_name == resource_data.get("name") or resource_data.get("state") == "absent":
+            return existing
+
         renamed_data = dict(resource_data)
         renamed_data["name"] = new_name
         renamed_data.pop("new_name", None)
-        return super()._find_existing_resource(manager, renamed_data)
+        try:
+            rename_target = super()._find_existing_resource(manager, renamed_data)
+        except ValueError as exc:
+            if self._is_resource_not_found(exc):
+                return existing
+            raise
+
+        existing_id = existing.get("id")
+        target_id = rename_target.get("id")
+        if existing_id is None or target_id is None or str(existing_id) != str(target_id):
+            raise ValueError("Cannot rename event stream '%s': event stream '%s' already exists" % (resource_data.get("name"), new_name))
+
+        return existing
 
     def _should_update(self, desired_data: dict, current_data: dict) -> bool:
         """Compare references by ID and treat an applied rename as converged.
