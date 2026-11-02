@@ -182,7 +182,18 @@
         that:
           - update_result is changed
 
-    - name: Disable the activation again (already disabled)
+    - name: Disable the activation after the present update re-enabled it
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_after_update_result
+
+    - name: Assert disabling after the present update reports changed
+      ansible.builtin.assert:
+        that:
+          - disable_after_update_result is changed
+
+    - name: Disable the already-disabled activation again
       ansible.platform.rulebook_activation:
         name: "{{ activation_name }}"
         state: disabled
