@@ -63,28 +63,14 @@ class ActionModule(BaseResourceActionPlugin):
             dict: Ansible result dictionary.
         """
         if task_vars is None:
-            task_vars = dict()
+            task_vars = {}
 
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
+        result = {}
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
-
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
-
-            params = validated_input.validated_parameters
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            manager = prepared["manager"]
+            params = prepared["validated_params"]
             name = params.get("name")
             new_name = params.get("new_name")
             state = params.get("state", "present")
