@@ -385,6 +385,28 @@ class TestEdaCredentialAction(unittest.TestCase):
             )
         )
 
+    def test_numeric_foreign_keys_compare_stably_without_lookup(self):
+        """Numeric IDs use the same string form as API output without a lookup."""
+        action = self._make_action()
+        manager = self._make_manager()
+        action._client = manager
+
+        self.assertFalse(
+            action._should_update(
+                {"credential_type": 11, "organization": "1"},
+                {"credential_type": "11", "organization": "1"},
+            )
+        )
+        manager.lookup_resource_id.assert_not_called()
+
+    def test_named_foreign_key_comparison_requires_manager(self):
+        """A named reference cannot silently skip comparison without a manager."""
+        action = self._make_action()
+        action._client = None
+
+        with self.assertRaisesRegex(ValueError, "manager is required"):
+            action._should_update({"credential_type": "Source Control"}, {"credential_type": "11"})
+
     def test_name_lookup_is_scoped_and_requires_unique_match(self):
         """An organization filter is passed into a unique credential lookup."""
         action = self._make_action()

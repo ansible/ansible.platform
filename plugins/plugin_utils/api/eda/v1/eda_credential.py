@@ -43,6 +43,22 @@ def resolve_eda_credential_fk(manager, endpoint: str, value: Any, resource_label
     return resource_id
 
 
+def _api_fk_id(api_value: Any, flat_id: Any, manager: Any, endpoint: str, resource_label: str) -> Optional[str]:
+    """Return an API foreign key in the string-ID form used by the Ansible model."""
+    if isinstance(api_value, dict):
+        value = api_value.get("id")
+        if value is None:
+            value = flat_id if flat_id is not None else api_value.get("name")
+    else:
+        value = flat_id if flat_id is not None else api_value
+
+    if value is None:
+        return None
+    if str(value).strip().isdigit():
+        return str(int(str(value).strip()))
+    return str(resolve_eda_credential_fk(manager, endpoint, value, resource_label))
+
+
 @dataclass
 class APIEdaCredential_v1(BaseTransformMixin):
     """API v1 representation of an EDA credential."""
@@ -169,27 +185,9 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
         """
         from ....ansible_models.eda_credential import AnsibleEdaCredential
 
-        # credential_type is a nested object: {"id": 28, "name": "..."}
-        credential_type_obj = api_data.get("credential_type")
-        if isinstance(credential_type_obj, dict):
-            credential_type_str = str(credential_type_obj["id"])
-        elif credential_type_obj is not None:
-            credential_type_str = str(credential_type_obj)
-        elif api_data.get("credential_type_id") is not None:
-            credential_type_str = str(api_data["credential_type_id"])
-        else:
-            credential_type_str = None
-
-        # organization is a nested object: {"id": 1, "name": "..."}
-        organization_obj = api_data.get("organization")
-        if isinstance(organization_obj, dict):
-            organization_str = str(organization_obj["id"])
-        elif organization_obj is not None:
-            organization_str = str(organization_obj)
-        elif api_data.get("organization_id") is not None:
-            organization_str = str(api_data["organization_id"])
-        else:
-            organization_str = None
+        manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
+        credential_type_str = _api_fk_id(api_data.get("credential_type"), api_data.get("credential_type_id"), manager, "credential-types", "Credential type")
+        organization_str = _api_fk_id(api_data.get("organization"), api_data.get("organization_id"), manager, "organizations", "Organization")
 
         ansible_data = {
             "name": api_data.get("name", ""),
