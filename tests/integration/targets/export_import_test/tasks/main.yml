@@ -394,12 +394,14 @@
           # are intentionally excluded from the import idempotency fixture.
           execution_environments: "{{ ee_export.assets.execution_environments }}"
           notification_templates: "{{ notification_export.assets.notification_templates }}"
+          # The export preserves default_environment; omit it from this direct
+          # CRUD import fixture because some CI Controller deployments expose
+          # non-shared execution-environment IDs across Gateway/Controller.
           projects:
             - name: "{{ project_name }}"
               organization: "{{ controller_organization }}"
               scm_type: git
               scm_url: "https://github.com/ansible/ansible-tower-samples.git"
-              default_environment: "{{ execution_environment_name }}"
           labels: "{{ label_export.assets.labels }}"
           inventory: "{{ inv_export.assets.inventory }}"
           inventory_sources:
