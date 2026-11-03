@@ -4,12 +4,12 @@ Handles transformations between Ansible format and EDA API v1 format.
 
 This resource uses a composite key (target_credential + source_credential +
 input_field_name) instead of a ``name`` field. The list query filters by both
-credential IDs and, when supplied, the organization ID before matching
-``input_field_name``.
+credential IDs, then matches ``input_field_name`` in the returned results.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
@@ -226,9 +226,9 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         """Return query parameters for filtering the list endpoint.
 
         For composite-key resources, the list endpoint is filtered by
-        ``target_credential`` (and ``source_credential`` when available)
-        and ``organization_id`` when available, so the SDK's find logic can
-        match the composite key without selecting a resource in another org.
+        ``target_credential`` and ``source_credential``. The API does not
+        support filtering this endpoint by ``input_field_name``; that part of
+        the composite key is matched locally by ``select_find_result``.
 
         Args:
             api_data: API dataclass instance with resolved FK IDs.
@@ -243,10 +243,18 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         source_credential = getattr(api_data, "source_credential", None)
         if source_credential is not None:
             params["source_credential"] = int(str(source_credential).strip())
-        organization_id = getattr(api_data, "organization_id", None)
-        if organization_id is not None:
-            params["organization_id"] = int(str(organization_id).strip())
         return params
+
+    @classmethod
+    def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
+        """Select the exact input source from the credential-scoped results."""
+        results = list_result.get("results", [])
+        matches = [item for item in results if str(item.get(lookup_field)) == str(lookup_value)]
+        if not matches:
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} not found")
+        if len(matches) > 1:
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
+        return matches[0]
 
     @classmethod
     def from_api(
@@ -271,11 +279,19 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         source_val = api_data.get("source_credential")
         source_id = int(source_val) if source_val is not None else None
 
+        metadata = api_data.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except json.JSONDecodeError:
+                # Keep malformed API data visible; valid EDA metadata is JSON.
+                pass
+
         return AnsibleEdaCredentialInputSource(
             input_field_name=api_data.get("input_field_name", ""),
             target_credential=target_id,
             source_credential=source_id,
             description=api_data.get("description"),
-            metadata=api_data.get("metadata"),
+            metadata=metadata,
             id=api_data.get("id"),
         )

@@ -1,18 +1,52 @@
 ---
-# Demo Job Template is created by the standard Controller test installation.
+- name: Generate a unique test identifier
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
 
-- name: Run job_launch against Demo Job Template
-  ansible.platform.job_launch:
-    name: Demo Job Template
-    wait: true
-    interval: 2
-    timeout: 300
-  register: launched_job
+- name: Set test job template name
+  ansible.builtin.set_fact:
+    test_job_template_name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
 
-- name: Assert the launched job completed successfully
-  ansible.builtin.assert:
-    that:
-      - launched_job is changed
-      - launched_job.id is defined
-      - launched_job.status == 'successful'
+- name: Run job_launch against a test-owned job template
+  block:
+    - name: Create a job template for the launch test
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        copy_from: "Demo Job Template"
+        organization: Default
+        ask_inventory_on_launch: true
+        state: present
+      register: test_jt
+
+    - name: Assert test job template exists
+      ansible.builtin.assert:
+        that:
+          - test_jt.id is defined
+
+    - name: Launch the test job template and wait for completion
+      ansible.platform.job_launch:
+        name: "{{ test_job_template_name }}"
+        organization: Default
+        inventory: "Demo Inventory"
+        wait: true
+        interval: 2
+        timeout: 300
+      register: launched_job
+
+    - name: Assert the launched job completed successfully
+      ansible.builtin.assert:
+        that:
+          - launched_job is changed
+          - launched_job.id is defined
+          - launched_job.status == 'successful'
+
+  always:
+    - name: Remove test job template
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        organization: Default
+        state: absent
+      when: test_jt is defined and test_jt.id is defined
+      failed_when: false
 ...

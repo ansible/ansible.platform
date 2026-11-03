@@ -327,8 +327,8 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
         self.assertEqual(params, {"target_credential": 10, "source_credential": 20})
 
-    def test_get_find_list_query_params_includes_organization(self):
-        """The list lookup is scoped to the requested organization."""
+    def test_get_find_list_query_params_omits_unsupported_organization_filter(self):
+        """The EDA list endpoint supports credential filters, not organization_id."""
         api_obj = APIEdaCredentialInputSource_v1(
             target_credential=10,
             source_credential=20,
@@ -338,7 +338,7 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
         params = EdaCredentialInputSourceTransformMixin_v1.get_find_list_query_params(api_obj)
 
-        self.assertEqual(params, {"target_credential": 10, "source_credential": 20, "organization_id": 30})
+        self.assertEqual(params, {"target_credential": 10, "source_credential": 20})
 
     def test_get_find_list_query_params_no_source(self):
         """Query params with only target_credential."""
