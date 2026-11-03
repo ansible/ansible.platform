@@ -28,26 +28,28 @@ class ActionModule(BaseResourceActionPlugin):
         comparable = dict(desired_data)
         manager = getattr(self, "_client", None)
 
-        organization_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
-            manager,
-            "organizations",
-            desired_data.get("organization_name"),
-            "organization",
-            service="gateway",
+        credential_fields = ("target_credential", "source_credential")
+        needs_reference_comparison = any(desired_data.get(field) is not None and field in current_data for field in credential_fields)
+        organization_name = desired_data.get("organization_name") if needs_reference_comparison else None
+        organization_id = (
+            EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
+                manager,
+                "organizations",
+                organization_name,
+                "organization",
+                service="gateway",
+            )
+            if organization_name is not None
+            else None
         )
         credential_scope = {"organization_id": organization_id} if organization_id is not None else None
 
-        for field, label in (
-            ("target_credential", "target credential"),
-            ("source_credential", "source credential"),
-        ):
+        for field, label in (("target_credential", "target credential"), ("source_credential", "source credential")):
             desired_value = desired_data.get(field)
             if desired_value is None or field not in current_data:
                 continue
 
-            desired_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
-                manager, "eda-credentials", desired_value, label, credential_scope
-            )
+            desired_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(manager, "eda-credentials", desired_value, label, credential_scope)
             current_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
                 manager, "eda-credentials", current_data[field], label, credential_scope
             )

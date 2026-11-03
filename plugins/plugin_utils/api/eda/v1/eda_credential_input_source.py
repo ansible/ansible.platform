@@ -126,16 +126,12 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         # FK resolution: credential name or named URL -> ID via EDA endpoint.
         target_credential = getattr(ansible_instance, "target_credential", None)
         if target_credential is not None:
-            api_data["target_credential"] = cls.resolve_reference_id(
-                manager, "eda-credentials", target_credential, "target credential", credential_scope
-            )
+            api_data["target_credential"] = cls.resolve_reference_id(manager, "eda-credentials", target_credential, "target credential", credential_scope)
 
         # FK resolution: source_credential name -> ID via EDA credentials endpoint
         source_credential = getattr(ansible_instance, "source_credential", None)
         if source_credential is not None:
-            api_data["source_credential"] = cls.resolve_reference_id(
-                manager, "eda-credentials", source_credential, "source credential", credential_scope
-            )
+            api_data["source_credential"] = cls.resolve_reference_id(manager, "eda-credentials", source_credential, "source credential", credential_scope)
 
         # Simple fields
         for field_name in ("description",):
