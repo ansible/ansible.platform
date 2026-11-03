@@ -77,6 +77,7 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for EDA Credential Input Source API v1."""
 
     find_list_requires_all_results = True
+    find_list_max_objects = 100000
 
     @classmethod
     def resolve_reference_id(

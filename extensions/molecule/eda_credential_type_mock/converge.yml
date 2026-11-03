@@ -141,6 +141,15 @@
       ansible.platform.eda_credential_type:
         name: "{{ credential_type_name }}"
         new_name: "{{ credential_type_renamed }}"
+        description: "Molecule mock credential type (updated)"
+        inputs:
+          fields:
+            - id: "token"
+              type: "string"
+              label: "Token"
+        injectors:
+          extra_vars:
+            token: "static-placeholder"
         state: present
       register: rename_result
 
@@ -148,6 +157,28 @@
       ansible.builtin.assert:
         that:
           - rename_result is changed
+
+    - name: Re-run the same rename task (completed-rename idempotency)
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        new_name: "{{ credential_type_renamed }}"
+        description: "Molecule mock credential type (updated)"
+        inputs:
+          fields:
+            - id: "token"
+              type: "string"
+              label: "Token"
+        injectors:
+          extra_vars:
+            token: "static-placeholder"
+        state: present
+      register: rename_again_result
+
+    - name: Assert re-running a verified completed rename is a no-op
+      ansible.builtin.assert:
+        that:
+          - rename_again_result is not changed
+          - rename_again_result.eda_credential_type.id == rename_result.eda_credential_type.id
 
     - name: Test the credential type configuration
       ansible.platform.eda_credential_type:

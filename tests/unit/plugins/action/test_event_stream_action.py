@@ -174,6 +174,26 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(result["exists"])
         self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old"])
 
+    def test_exists_does_not_check_for_rename_target_collision(self):
+        """state=exists checks only the requested resource, even if new_name is occupied."""
+        action = self._make_action()
+        manager = self._make_manager()
+
+        def find_requested_and_rename_target(operation, module_name, ansible_data):
+            if ansible_data.get("name") == "old":
+                return {"id": 100, "name": "old"}
+            if ansible_data.get("name") == "new":
+                return {"id": 101, "name": "new"}
+            raise AssertionError("Unexpected lookup")
+
+        manager.execute.side_effect = find_requested_and_rename_target
+        result = self._run(action, manager, {"name": "old", "new_name": "new", "state": "exists"})
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["exists"])
+        self.assertEqual(result["id"], 100)
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old"])
+
     def test_check_mode_present(self):
         action = self._make_action(check_mode=True)
         mgr = self._make_manager()

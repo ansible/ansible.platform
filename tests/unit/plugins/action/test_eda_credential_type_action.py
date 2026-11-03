@@ -256,13 +256,68 @@ class TestEdaCredentialTypeRenameLookup(unittest.TestCase):
             {"id": 20, "name": "New Type"},
         ]
 
-        with self.assertRaisesRegex(ValueError, "original was not found and the target already exists"):
+        with self.assertRaisesRegex(ValueError, "inputs, injectors, and requested fields"):
             self.action._find_existing_resource(self.manager, self.resource_data)
 
         self.assertEqual(
             [call.kwargs["ansible_data"]["name"] for call in self.manager.execute.call_args_list],
             ["Old Type", "New Type"],
         )
+
+    def test_matching_target_with_missing_original_is_recognized_as_completed_rename(self):
+        """A target matching the credential schema proves the rename converged."""
+        inputs = {"fields": [{"id": "token", "type": "string"}]}
+        injectors = {"extra_vars": {"token": "{{ token }}"}}
+        resource_data = dict(self.resource_data, inputs=inputs, injectors=injectors, description="Custom type")
+        target = {
+            "id": 20,
+            "name": "New Type",
+            "inputs": inputs,
+            "injectors": injectors,
+            "description": "Custom type",
+        }
+        self.manager.execute.side_effect = [ValueError("Resource with name=Old Type not found"), target]
+
+        result = self.action._find_existing_resource(self.manager, resource_data)
+
+        self.assertIs(result, target)
+        self.assertFalse(self.action._should_update(resource_data, result))
+        self.assertEqual(
+            [call.kwargs["ansible_data"]["name"] for call in self.manager.execute.call_args_list],
+            ["Old Type", "New Type"],
+        )
+
+    def test_existing_target_with_different_requested_state_is_rejected(self):
+        """Do not mistake an unrelated target with different fields for a completed rename."""
+        inputs = {"fields": [{"id": "token", "type": "string"}]}
+        injectors = {"extra_vars": {"token": "{{ token }}"}}
+        resource_data = dict(self.resource_data, inputs=inputs, injectors=injectors, description="Requested type")
+        self.manager.execute.side_effect = [
+            ValueError("Resource with name=Old Type not found"),
+            {
+                "id": 20,
+                "name": "New Type",
+                "inputs": inputs,
+                "injectors": injectors,
+                "description": "Different type",
+            },
+        ]
+
+        with self.assertRaisesRegex(ValueError, "target does not match the requested state"):
+            self.action._find_existing_resource(self.manager, resource_data)
+
+    def test_existing_target_missing_requested_field_is_rejected(self):
+        """Do not claim convergence when the API omits a requested comparison field."""
+        inputs = {"fields": [{"id": "token", "type": "string"}]}
+        injectors = {"extra_vars": {"token": "{{ token }}"}}
+        resource_data = dict(self.resource_data, inputs=inputs, injectors=injectors, description="Custom type")
+        self.manager.execute.side_effect = [
+            ValueError("Resource with name=Old Type not found"),
+            {"id": 20, "name": "New Type", "inputs": inputs, "injectors": injectors},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "requested fields must be available"):
+            self.action._find_existing_resource(self.manager, resource_data)
 
     def test_existing_original_with_missing_target_returns_original(self):
         """A free rename target leaves the original as the update candidate."""

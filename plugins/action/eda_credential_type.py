@@ -32,16 +32,17 @@ class ActionModule(BaseResourceActionPlugin):
     # be stripped before the base class builds MODEL_CLASS for CRUD states.
     _WRITE_ONLY_FIELDS = frozenset({"test_inputs", "test_metadata"})
     _NO_LOG_FIELDS = frozenset({"test_inputs"})
+    _RENAME_IDENTITY_FIELDS = ("inputs", "injectors")
 
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
-        """Find credential types by their current name and validate rename targets.
+        """Find credential types by name and recognize verified completed renames.
 
         Args:
             manager: Client used to query the EDA API.
             resource_data: Validated credential type fields.
 
         Returns:
-            dict: The matching credential type.
+            dict: The matching credential type, including a verified rename target.
         """
         try:
             existing = super()._find_existing_resource(manager, resource_data)
@@ -54,16 +55,29 @@ class ActionModule(BaseResourceActionPlugin):
             renamed_data["name"] = new_name
             renamed_data.pop("new_name", None)
             try:
-                super()._find_existing_resource(manager, renamed_data)
+                rename_target = super()._find_existing_resource(manager, renamed_data)
             except Exception as target_exc:
                 if self._is_resource_not_found(target_exc):
                     raise exc
                 raise
 
-            raise ValueError(
-                "Cannot verify credential type rename from '%s' to '%s': the original was not found and the target already exists"
-                % (resource_data.get("name"), new_name)
-            ) from exc
+            identity_is_supplied = all(field in resource_data for field in self._RENAME_IDENTITY_FIELDS)
+            identity_is_returned = all(field in rename_target for field in self._RENAME_IDENTITY_FIELDS)
+            requested_fields = set(resource_data) - {"name", "new_name", "state"}
+            requested_fields_are_returned = requested_fields.issubset(rename_target)
+            if not identity_is_supplied or not identity_is_returned or not requested_fields_are_returned:
+                message = (
+                    "Cannot verify credential type rename from '%s' to '%s': inputs, injectors, and requested fields "
+                    "must be available to verify the existing target" % (resource_data.get("name"), new_name)
+                )
+                raise ValueError(message) from exc
+
+            if self._should_update(resource_data, rename_target):
+                raise ValueError(
+                    "Cannot verify credential type rename from '%s' to '%s': the target does not match the requested state"
+                    % (resource_data.get("name"), new_name)
+                ) from exc
+            return rename_target
 
         new_name = resource_data.get("new_name")
         if not new_name or new_name == resource_data.get("name") or resource_data.get("state") == "absent":
@@ -85,6 +99,25 @@ class ActionModule(BaseResourceActionPlugin):
             raise ValueError("Cannot rename credential type '%s': credential type '%s' already exists" % (resource_data.get("name"), new_name))
 
         return existing
+
+    def _should_update(self, desired_data: dict, current_data: dict) -> bool:
+        """Compare a rename target against the desired credential type state.
+
+        Args:
+            desired_data: Requested credential type fields.
+            current_data: Credential type returned by the API.
+
+        Returns:
+            bool: True when the resource needs an update.
+        """
+        desired = dict(desired_data)
+        new_name = desired.get("new_name")
+        if new_name:
+            if current_data.get("name") != new_name:
+                return True
+            desired["name"] = new_name
+            desired.pop("new_name", None)
+        return super()._should_update(desired, current_data)
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Route to test handler or delegate to base class for CRUD.

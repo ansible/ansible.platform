@@ -1202,7 +1202,13 @@ class DirectHTTPClient(BaseAPIClient):
         if composite_params:
             query_params.update(composite_params)
         if getattr(mixin_class, "find_list_requires_all_results", False):
-            response_data = self.search_api(list_op.path, query_params, return_all=True, service=context.service)
+            response_data = self.search_api(
+                list_op.path,
+                query_params,
+                return_all=True,
+                max_objects=getattr(mixin_class, "find_list_max_objects", 1000),
+                service=context.service,
+            )
         else:
             # Build URL with query parameter(s)
             url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)

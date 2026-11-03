@@ -39,8 +39,16 @@ def _ansible_input_source():
 def _pages():
     second_page = "/api/eda/v1/credential-input-sources/?target_credential=10&source_credential=20&page=2"
     return (
-        {"count": 2, "next": second_page, "results": [{"id": 1, "input_field_name": "username"}]},
-        {"count": 2, "next": None, "results": [{"id": 2, "input_field_name": "password", "target_credential": 10, "source_credential": 20}]},
+        {
+            "count": 1001,
+            "next": second_page,
+            "results": [{"id": item_id, "input_field_name": "field-%s" % item_id} for item_id in range(1000)],
+        },
+        {
+            "count": 1001,
+            "next": None,
+            "results": [{"id": 1001, "input_field_name": "password", "target_credential": 10, "source_credential": 20}],
+        },
     )
 
 
@@ -56,7 +64,7 @@ class TestEdaCredentialInputSourceFind(unittest.TestCase):
 
         result = service._find_resource(_ansible_input_source(), EdaCredentialInputSourceTransformMixin_v1, _context(service))
 
-        self.assertEqual(result["id"], 2)
+        self.assertEqual(result["id"], 1001)
         first_request, second_request = service._make_request.call_args_list
         self.assertEqual(first_request.kwargs["params"]["target_credential"], 10)
         self.assertEqual(first_request.kwargs["params"]["source_credential"], 20)
@@ -76,7 +84,7 @@ class TestEdaCredentialInputSourceFind(unittest.TestCase):
 
         result = client._find_resource(_ansible_input_source(), EdaCredentialInputSourceTransformMixin_v1, _context(client))
 
-        self.assertEqual(result["id"], 2)
+        self.assertEqual(result["id"], 1001)
         first_request, second_request = client._make_request.call_args_list
         first_query = parse_qs(urlparse(first_request.args[1]).query)
         self.assertEqual(first_query["target_credential"], ["10"])

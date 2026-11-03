@@ -93,7 +93,7 @@ class ActionModule(BaseResourceActionPlugin):
             return rename_target
 
         new_name = resource_data.get("new_name")
-        if not new_name or new_name == resource_data.get("name") or resource_data.get("state") == "absent":
+        if not new_name or new_name == resource_data.get("name") or resource_data.get("state") in ("absent", "exists"):
             return existing
 
         renamed_data = dict(resource_data)
