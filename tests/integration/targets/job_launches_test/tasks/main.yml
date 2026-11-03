@@ -4,8 +4,57 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Exercise job_launch with a test-owned job template
+- name: Look up Default organization in Controller
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  register: default_org
+  delegate_to: localhost
+
+- name: Assert Default organization exists
+  ansible.builtin.assert:
+    that:
+      - default_org.json.count | int > 0
+    fail_msg: "Controller organization 'Default' was not found."
+
+- name: Exercise job_launch with an isolated localhost inventory
   block:
+    - name: Create a test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "AAP-Collection-Test-JobLaunch-{{ test_id }}-Inventory"
+          organization: "{{ default_org.json.results[0].id }}"
+        status_code: [201]
+      register: test_inventory
+      delegate_to: localhost
+
+    - name: Add localhost to the test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: localhost
+          variables: '{"ansible_connection": "local"}'
+        status_code: [201]
+      delegate_to: localhost
+
     - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
         name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
@@ -22,7 +71,7 @@
     - name: Launch the test job template
       ansible.platform.job_launch:
         name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
-        inventory: "Demo Inventory"
+        inventory: "AAP-Collection-Test-JobLaunch-{{ test_id }}-Inventory"
         wait: true
         interval: 2
         timeout: 300
@@ -40,6 +89,22 @@
       ansible.platform.job_template:
         name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
         state: absent
-      when: test_id is defined
+      when: test_jt is defined
+      failed_when: false
+
+    - name: Remove the test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - test_inventory is defined
+        - test_inventory.json is defined
+        - test_inventory.json.id is defined
       failed_when: false
 ...

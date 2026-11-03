@@ -1,4 +1,9 @@
 ---
+- name: Generate a unique test identifier
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
 - name: Check module fails with correct msg for nonexistent job
   ansible.platform.job_wait:
     job_id: 99999999
@@ -11,75 +16,137 @@
       - result is failed
       - "'could not be found' in result.msg"
 
-- name: Launch Demo Job Template via URI (get template ID)
+- name: Look up Default organization in Controller
   ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    force_basic_auth: true
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
     method: GET
-    status_code: [200]
-  register: jt_lookup
-  delegate_to: localhost
-
-- name: Assert Demo Job Template is available
-  ansible.builtin.assert:
-    that:
-      - jt_lookup.json.results | length > 0
-
-- name: Extract template ID
-  ansible.builtin.set_fact:
-    demo_jt_id: "{{ jt_lookup.json.results[0].id }}"
-
-- name: Launch Demo Job Template via URI
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ demo_jt_id }}/launch/"
     user: "{{ gateway_username }}"
     password: "{{ gateway_password }}"
     validate_certs: "{{ gateway_validate_certs | bool }}"
     force_basic_auth: true
-    method: POST
-    body_format: json
-    body: {}
-    status_code:
-      - 201
-  register: launched_job
+    status_code: [200]
+  register: default_org
   delegate_to: localhost
 
-- name: Assert the demo job was launched
+- name: Assert Default organization exists
   ansible.builtin.assert:
     that:
-      - launched_job.status == 201
-      - launched_job.json.id is defined
+      - default_org.json.count | int > 0
+    fail_msg: "Controller organization 'Default' was not found."
 
-- name: Wait for the Job to finish
-  ansible.platform.job_wait:
-    job_id: "{{ launched_job.json.id }}"
-    timeout: 120
-  register: wait_results
+- name: Exercise job_wait with an isolated localhost inventory
+  block:
+    - name: Create a test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "AAP-Collection-Test-JobWait-{{ test_id }}-Inventory"
+          organization: "{{ default_org.json.results[0].id }}"
+        status_code: [201]
+      register: test_inventory
+      delegate_to: localhost
 
-- name: Assert the job wait result
-  ansible.builtin.assert:
-    that:
-      - wait_results is successful
-      - wait_results.changed == false
-      - "'elapsed' in wait_results"
-      - "'id' in wait_results"
-      - "'status' in wait_results"
-      - wait_results.finished is boolean
-      - wait_results.finished_at is string
-      - wait_results.status == "successful"
+    - name: Add localhost to the test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: localhost
+          variables: '{"ansible_connection": "local"}'
+        status_code: [201]
+      delegate_to: localhost
 
-- name: Wait for already-finished job (should return immediately)
-  ansible.platform.job_wait:
-    job_id: "{{ launched_job.json.id }}"
-    timeout: 10
-  register: wait_results_again
+    - name: Create a job template that accepts inventory prompts
+      ansible.platform.job_template:
+        name: "AAP-Collection-Test-JobWait-{{ test_id }}"
+        copy_from: "Demo Job Template"
+        ask_inventory_on_launch: true
+        state: present
+      register: test_jt
 
-- name: Assert waiting for a completed job returns immediately
-  ansible.builtin.assert:
-    that:
-      - wait_results_again is successful
-      - wait_results_again.status == "successful"
+    - name: Launch the test job template via Controller API
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ test_jt.id }}/launch/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        method: POST
+        body_format: json
+        body:
+          inventory: "{{ test_inventory.json.id }}"
+        status_code: [201]
+      register: launched_job
+      delegate_to: localhost
+
+    - name: Assert the job was launched
+      ansible.builtin.assert:
+        that:
+          - launched_job.status == 201
+          - launched_job.json.id is defined
+
+    - name: Wait for the job to finish
+      ansible.platform.job_wait:
+        job_id: "{{ launched_job.json.id }}"
+        timeout: 120
+      register: wait_results
+
+    - name: Assert the job wait result
+      ansible.builtin.assert:
+        that:
+          - wait_results is successful
+          - wait_results.changed == false
+          - "'elapsed' in wait_results"
+          - "'id' in wait_results"
+          - "'status' in wait_results"
+          - wait_results.finished is boolean
+          - wait_results.finished_at is string
+          - wait_results.status == "successful"
+
+    - name: Wait for the already-finished job
+      ansible.platform.job_wait:
+        job_id: "{{ launched_job.json.id }}"
+        timeout: 10
+      register: wait_results_again
+
+    - name: Assert waiting for a completed job returns immediately
+      ansible.builtin.assert:
+        that:
+          - wait_results_again is successful
+          - wait_results_again.status == "successful"
+
+  always:
+    - name: Remove the test job template
+      ansible.platform.job_template:
+        name: "AAP-Collection-Test-JobWait-{{ test_id }}"
+        state: absent
+      when: test_jt is defined
+      failed_when: false
+
+    - name: Remove the test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - test_inventory is defined
+        - test_inventory.json is defined
+        - test_inventory.json.id is defined
+      failed_when: false
 ...
