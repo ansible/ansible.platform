@@ -49,6 +49,7 @@ no_endpoint_for_module = [
     "job_launch",
     "license",
     "workflow_launch",
+    "decision_environment",
     "eda_project",
 ]
 
