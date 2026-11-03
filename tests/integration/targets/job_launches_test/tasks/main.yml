@@ -1,18 +1,44 @@
 ---
-# Demo Job Template is created by the standard Controller test installation.
+- name: Generate a unique test job template name
+  ansible.builtin.set_fact:
+    test_job_template_name: "AAP-Collection-Test-JobLaunch-{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
 
-- name: Run job_launch against Demo Job Template
-  ansible.platform.job_launch:
-    name: Demo Job Template
-    wait: true
-    interval: 2
-    timeout: 300
-  register: launched_job
+- name: Create and launch a test-owned job template
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Create a job template for the launch test
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        project: "Demo Project"
+        playbook: hello_world.yml
+        inventory: "Demo Inventory"
+        state: present
+      register: created_job_template
 
-- name: Assert the launched job completed successfully
-  ansible.builtin.assert:
-    that:
-      - launched_job is changed
-      - launched_job.id is defined
-      - launched_job.status == 'successful'
+    - name: Launch the test job template and wait for completion
+      ansible.platform.job_launch:
+        name: "{{ test_job_template_name }}"
+        wait: true
+        interval: 2
+        timeout: 300
+      register: launched_job
+
+    - name: Assert the launched job completed successfully
+      ansible.builtin.assert:
+        that:
+          - launched_job is changed
+          - launched_job.id is defined
+          - launched_job.status == 'successful'
+
+  always:
+    - name: Remove the test job template
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        state: absent
+      when: created_job_template is defined and created_job_template is succeeded
 ...
