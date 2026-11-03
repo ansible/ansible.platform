@@ -360,7 +360,11 @@ class BaseResourceActionPlugin(ActionBase):
             return True
 
         message = str(exc).lower()
-        return (message.startswith("resource with ") and message.endswith("not found")) or message.startswith("resource not found")
+        return (
+            message == "not found"
+            or (message.startswith("resource with ") and message.endswith("not found"))
+            or message.startswith("resource not found")
+        )
 
     @staticmethod
     def _is_resource_scope_mismatch(exc: Exception) -> bool:
