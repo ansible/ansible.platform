@@ -119,9 +119,13 @@ class ActionModule(BaseResourceActionPlugin):
 
             name = validated_params.get("name")
             requested_settings = validated_params.get("settings")
-            if name is not None and validated_params.get("value") is None:
+            has_name = name is not None
+            has_settings = requested_settings is not None
+            if has_name == has_settings:
+                raise ValueError("Exactly one of 'name' or 'settings' must be provided")
+            if has_name and validated_params.get("value") is None:
                 raise ValueError("value is required when name is provided")
-            if requested_settings is None:
+            if has_name:
                 requested_settings = {name: self._coerce_type(validated_params.get("value"))}
             else:
                 requested_settings = dict(requested_settings)
@@ -132,7 +136,10 @@ class ActionModule(BaseResourceActionPlugin):
                 ansible_data=asdict(AnsibleControllerSettings(settings={})),
             )
             current_settings = current_result.get("settings", {}) or {}
-            to_update = {key: value for key, value in requested_settings.items() if key not in current_settings or current_settings[key] != value}
+            unknown_settings = sorted(set(requested_settings) - set(current_settings))
+            if unknown_settings:
+                raise ValueError("Unknown Controller setting(s): %s" % ", ".join(unknown_settings))
+            to_update = {key: value for key, value in requested_settings.items() if current_settings[key] != value}
 
             if self._task.diff:
                 result["diff"] = {

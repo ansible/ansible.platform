@@ -28,6 +28,15 @@
     gateway_password: testpass
     gateway_validate_certs: false
   tasks:
+    - name: Establish the known Controller settings baseline
+      ansible.platform.controller_settings:
+        settings:
+          DEFAULT_JOB_TIMEOUT: 0
+          AWX_REQUEST_PROFILE: false
+          REMOTE_HOST_HEADERS:
+            - REMOTE_ADDR
+            - REMOTE_HOST
+
     - name: Set one Controller setting using the legacy name/value form
       ansible.platform.controller_settings:
         name: DEFAULT_JOB_TIMEOUT

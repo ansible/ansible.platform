@@ -28,6 +28,29 @@ class TestControllerSettingsAction(unittest.TestCase):
         )
         return action, manager
 
+    def test_requires_exactly_one_input_form(self):
+        for params in (
+            {"name": None, "value": None, "settings": None},
+            {"name": "DEFAULT_JOB_TIMEOUT", "value": "1", "settings": {"DEFAULT_JOB_TIMEOUT": 1}},
+        ):
+            action, manager = self._action({"DEFAULT_JOB_TIMEOUT": 0}, validated_params=params)
+            result = action.run(task_vars={})
+            self.assertTrue(result["failed"])
+            self.assertIn("Exactly one", result["msg"])
+            self.assertEqual(manager.execute.call_count, 0)
+
+    def test_rejects_unknown_settings(self):
+        action, manager = self._action(
+            {"DEFAULT_JOB_TIMEOUT": 0},
+            validated_params={"name": None, "value": None, "settings": {"UNKNOWN_SETTING": 1}},
+        )
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("Unknown Controller setting(s): UNKNOWN_SETTING", result["msg"])
+        self.assertEqual(manager.execute.call_count, 1)
+
     def test_sensitive_inputs_are_marked_no_log(self):
         from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule
 
