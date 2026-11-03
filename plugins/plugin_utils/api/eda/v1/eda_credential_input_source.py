@@ -9,6 +9,7 @@ credential IDs, then matches ``input_field_name`` in the returned results.
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from dataclasses import dataclass
@@ -285,10 +286,16 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         metadata = api_data.get("metadata")
         if isinstance(metadata, str):
             try:
-                metadata = json.loads(metadata)
+                parsed_metadata = json.loads(metadata)
             except json.JSONDecodeError:
-                # Keep malformed API data visible; valid EDA metadata is JSON.
-                pass
+                try:
+                    # Some EDA releases serialize the JSONField through a text
+                    # serializer and return Python's mapping representation.
+                    parsed_metadata = ast.literal_eval(metadata)
+                except (ValueError, SyntaxError):
+                    parsed_metadata = metadata
+            if isinstance(parsed_metadata, dict):
+                metadata = parsed_metadata
 
         return AnsibleEdaCredentialInputSource(
             input_field_name=api_data.get("input_field_name", ""),

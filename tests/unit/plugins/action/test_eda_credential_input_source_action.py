@@ -295,6 +295,38 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         self.assertEqual(ansible_obj.description, "test desc")
         self.assertEqual(ansible_obj.metadata, {"secret_path": "/secret"})
 
+    def test_serialized_api_metadata_does_not_force_an_update(self):
+        """JSON and mapping-string metadata compare as the same API state."""
+        context = self._make_context()
+        desired = {
+            "input_field_name": "password",
+            "target_credential": "target",
+            "source_credential": "source",
+            "description": "Integration test input source",
+            "metadata": {"secret_path": "secret/myapp", "secret_key": "password"},
+            "organization_name": "Default",
+        }
+        serialized_metadata = (
+            json.dumps(desired["metadata"]),
+            "{'secret_path': 'secret/myapp', 'secret_key': 'password'}",
+        )
+
+        for metadata in serialized_metadata:
+            with self.subTest(metadata=metadata):
+                api_response = {
+                    "id": 42,
+                    "input_field_name": "password",
+                    "target_credential": 10,
+                    "source_credential": 20,
+                    "description": "Integration test input source",
+                    "metadata": metadata,
+                }
+                current = EdaCredentialInputSourceTransformMixin_v1.from_api(api_response, context)
+                action = ActionModule.__new__(ActionModule)
+
+                self.assertEqual(current.metadata, desired["metadata"])
+                self.assertFalse(action._should_update(desired, vars(current)))
+
     def test_from_api_missing_optional_fields(self):
         """from_api handles missing optional fields gracefully."""
         context = self._make_context()
