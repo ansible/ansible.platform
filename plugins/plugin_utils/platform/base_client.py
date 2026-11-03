@@ -116,21 +116,25 @@ class BaseAPIClient(ABC):
 
     def _invalidate_resource_lookup_cache(self, service: str, endpoint_path: str) -> None:
         """Invalidate cached names after a resource mutation."""
+        cache = getattr(self, "cache", None)
+        if cache is None:
+            return
+
         path_parts = [part for part in endpoint_path.split("?")[0].strip("/").split("/") if part]
         if len(path_parts) < 4 or path_parts[0] != "api" or not path_parts[2].startswith("v"):
             return
 
         endpoint = path_parts[3]
         prefixes = (f"{service}:{endpoint}:", f"lookup:{service}:{endpoint}:")
-        for key in tuple(self.cache):
+        for key in tuple(cache):
             if key.startswith(prefixes):
-                self.cache.pop(key, None)
+                cache.pop(key, None)
 
         # Organization helpers use aliases in addition to normal lookup keys.
         if service == "gateway" and endpoint == "organizations":
-            for key in tuple(self.cache):
+            for key in tuple(cache):
                 if key.startswith(("org_name:", "org_id:")):
-                    self.cache.pop(key, None)
+                    cache.pop(key, None)
 
     @staticmethod
     def _normalize_composite_value(value: Any) -> Any:
