@@ -102,7 +102,7 @@
         name: "{{ project_name }}"
         new_name: "{{ project_name }}-renamed"
         state: present
-        wait: false
+        wait: true
       register: rename_result
 
     - name: Assert project was renamed
