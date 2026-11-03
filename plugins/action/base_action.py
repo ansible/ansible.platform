@@ -1051,7 +1051,8 @@ class BaseResourceActionPlugin(ActionBase):
           (an int FK that from_api converted to str), the comparison is
           skipped — e.g. authenticator='my-auth' vs '3100'.
         - new_name: always triggers an update (it's a rename operation).
-        - Dict/list fields are compared via equality; type mismatches skip.
+        - Dict/list fields are compared structurally, regardless of concrete
+          container subclass.
         """
         if desired_data.get("new_name"):
             return True
@@ -1073,9 +1074,14 @@ class BaseResourceActionPlugin(ActionBase):
                 and current_val.isdigit()
             ):
                 continue
+            # Compare structured values by contents instead of stringifying
+            # concrete subclasses such as Ansible's tagged dictionaries.
+            if isinstance(desired_val, dict) and isinstance(current_val, dict):
+                if desired_val != current_val:
+                    return True
             # List comparison: order-insensitive for opted-in fields only,
             # order-sensitive (default) for everything else.
-            if isinstance(desired_val, list) and isinstance(current_val, list):
+            elif isinstance(desired_val, list) and isinstance(current_val, list):
                 if key in self._ORDER_INSENSITIVE_FIELDS:
                     # Opted-in: the API may return items in a different order
                     # (e.g. permissions come back alphabetically).

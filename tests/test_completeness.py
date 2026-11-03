@@ -54,6 +54,7 @@ no_endpoint_for_module = [
     "rulebook_activation",
     "rulebook_activation_copy",
     "eda_project",
+    "eda_credential_input_source",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.

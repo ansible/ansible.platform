@@ -395,11 +395,10 @@ class Store:
             ("credential-types", ["name"], 1100),
             ("eda-credentials", ["name", "credential_type_id", "organization_id"], 1200),
             ("awx-tokens", ["name", "token"], 6000),
-            ("organizations", ["name"], 7100),
+            ("credential-input-sources", ["input_field_name", "target_credential", "source_credential"], 6200),
             ("projects", ["name"], 7200),
             ("rulebooks", ["name", "project_id"], 7300),
             ("decision-environments", ["name"], 7400),
-            ("eda-credentials", ["name"], 7500),
             ("event-streams", ["name"], 7600),
             ("activations", ["name"], 7700),
         ]
@@ -408,6 +407,7 @@ class Store:
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
+                patch_fields=["description", "metadata"] if endpoint == "credential-input-sources" else None,
                 service="eda",
             )
 
@@ -533,8 +533,7 @@ class Store:
         # The rulebook's "sources" list is served directly by MockGatewayHandler,
         # so it doesn't need its own store.
         eda_fixtures = {
-            "organizations": [{"id": 9001, "name": "Default"}],
-            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 9001}],
+            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 1}],
             "rulebooks": [
                 {
                     "id": 9201,
@@ -543,8 +542,8 @@ class Store:
                     "sources": [{"name": "range", "rulebook_hash": "mock-rulebook-hash-range"}],
                 }
             ],
-            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 9001}],
-            "eda-credentials": [{"id": 9401, "name": "Molecule Mock EDA Credential"}],
+            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 1}],
+            "eda-credentials": [{"id": 9401, "name": "Molecule Mock EDA Credential", "credential_type_id": 1, "organization_id": 1}],
             "event-streams": [{"id": 9501, "name": "Molecule Mock Event Stream"}],
         }
         for endpoint, items in eda_fixtures.items():

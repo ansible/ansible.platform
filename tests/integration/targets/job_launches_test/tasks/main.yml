@@ -4,12 +4,17 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Exercise job_launch with a test-owned job template
+- name: Set test job template name
+  ansible.builtin.set_fact:
+    test_job_template_name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
+
+- name: Run job_launch against a test-owned job template
   block:
     - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
-        name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
+        name: "{{ test_job_template_name }}"
         copy_from: "Demo Job Template"
+        organization: Default
         ask_inventory_on_launch: true
         state: present
       register: test_jt
@@ -19,9 +24,10 @@
         that:
           - test_jt.id is defined
 
-    - name: Launch the test job template
+    - name: Launch the test job template and wait for completion
       ansible.platform.job_launch:
-        name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
+        name: "{{ test_job_template_name }}"
+        organization: Default
         inventory: "Demo Inventory"
         wait: true
         interval: 2
@@ -36,10 +42,11 @@
           - launched_job.status == 'successful'
 
   always:
-    - name: Remove the test job template
+    - name: Remove test job template
       ansible.platform.job_template:
-        name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
+        name: "{{ test_job_template_name }}"
+        organization: Default
         state: absent
-      when: test_id is defined
+      when: test_jt is defined and test_jt.id is defined
       failed_when: false
 ...

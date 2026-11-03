@@ -673,7 +673,7 @@ class PlatformService(BaseAPIClient):
         # user provided an incompatible field the API will reject it with a clear
         # validation error, which is the correct behaviour.
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
-            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
+            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data, context)
             for field in candidate_fields:
                 if field in user_unset_fields:
                     fields_to_null.add(field)

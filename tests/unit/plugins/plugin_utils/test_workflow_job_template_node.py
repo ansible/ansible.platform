@@ -20,6 +20,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.wo
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_job_template_node import (  # noqa: E402
     WorkflowJobTemplateNodeTransformMixin_v2,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext  # noqa: E402
 
 
 class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
@@ -198,6 +199,29 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         current = {"workflow_job_template": "42", "unified_job_template": "10"}
         self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("workflow_job_template", current), "42")
         self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_update_value_from_current_data("unified_job_template", current), "10")
+
+    def test_fields_to_null_are_limited_to_enforced_updates(self):
+        regular_context = TransformContext(
+            manager=MagicMock(),
+            session=MagicMock(),
+            cache={},
+            api_version="2",
+            operation="update",
+        )
+        enforced_context = TransformContext(
+            manager=MagicMock(),
+            session=MagicMock(),
+            cache={},
+            api_version="2",
+            operation="update",
+            include_nulls_for_update=True,
+        )
+
+        self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_fields_to_null_for_update(None, regular_context), frozenset())
+        self.assertEqual(
+            WorkflowJobTemplateNodeTransformMixin_v2.get_fields_to_null_for_update(None, enforced_context),
+            frozenset({"inventory", "execution_environment"}),
+        )
 
     def test_from_api_falls_back_on_api_error(self):
         mock_manager = MagicMock()

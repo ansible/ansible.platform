@@ -1016,6 +1016,11 @@ class DirectHTTPClient(BaseAPIClient):
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
+        fields_to_null = set()
+        if hasattr(mixin_class, "get_fields_to_null_for_update"):
+            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data, context)
+            fields_to_null = {field for field in candidate_fields if getattr(api_data, field, None) is None}
+
         # Pre-PATCH idempotency check: compare only the fields we'd update.
         # Timestamps (modified, created, url) change on every PATCH so they
         # must be excluded from the comparison.
@@ -1039,13 +1044,15 @@ class DirectHTTPClient(BaseAPIClient):
                 and current_data.get(f) != "$encrypted$"
             )
             if not needs_update:
+                needs_update = any(current_data.get(field) is not None for field in fields_to_null)
+            if not needs_update:
                 # Nothing to change — return current state with changed=False
                 result = dict(current_data)
                 result["changed"] = False
                 return result
 
         # Execute update operation
-        api_result = self._execute_operations(operations, api_data, context, required_for="update")
+        api_result = self._execute_operations(operations, api_data, context, required_for="update", fields_to_null=fields_to_null)
 
         # REVERSE TRANSFORM: API -> Ansible
         if api_result:
@@ -1218,7 +1225,9 @@ class DirectHTTPClient(BaseAPIClient):
 
         return asdict(ansible_instance)
 
-    def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None) -> dict:
+    def _execute_operations(
+        self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None, fields_to_null: Optional[set] = None
+    ) -> dict:
         """
         Execute endpoint operations (potentially multi-endpoint).
 
@@ -1226,6 +1235,7 @@ class DirectHTTPClient(BaseAPIClient):
         (e.g., create user, then associate organizations).
         """
         results = {}
+        fields_to_null = fields_to_null or set()
         logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
 
         # Filter operations by required_for
@@ -1257,7 +1267,9 @@ class DirectHTTPClient(BaseAPIClient):
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
                     if value is None:
-                        if context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}:
+                        if field in fields_to_null or (
+                            context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
+                        ):
                             request_data[field] = None
                         continue
                     if value == "":
