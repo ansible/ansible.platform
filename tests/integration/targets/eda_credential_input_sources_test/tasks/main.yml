@@ -33,6 +33,7 @@
           password: "test-password-{{ test_id }}"
         organization_name: Default
         state: present
+      delegate_to: localhost
       register: target_cred
 
     - name: Create source EDA credential for testing
@@ -45,6 +46,7 @@
           token: test-token
         organization_name: Default
         state: present
+      delegate_to: localhost
       register: source_cred
 
     # <Create with check mode> -------------------
@@ -205,11 +207,13 @@
       ansible.eda.credential:
         name: "{{ target_cred_name }}"
         state: absent
+      delegate_to: localhost
       failed_when: false
 
     - name: Cleanup — delete source credential
       ansible.eda.credential:
         name: "{{ source_cred_name }}"
         state: absent
+      delegate_to: localhost
       failed_when: false
 ...

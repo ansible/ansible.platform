@@ -9,6 +9,9 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential_input_source import (
     AnsibleEdaCredentialInputSource,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_input_source import (
+    EdaCredentialInputSourceTransformMixin_v1,
+)
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -19,3 +22,37 @@ class ActionModule(BaseResourceActionPlugin):
     # The organization is used to scope creation and lookup, but the API does
     # not return organization_name and the field is not mutable after creation.
     _READ_ONLY_FIELDS = BaseResourceActionPlugin._READ_ONLY_FIELDS | frozenset({"organization_name"})
+
+    def _should_update(self, desired_data: dict, current_data: dict) -> bool:
+        """Compare credential references by ID before checking mutable fields."""
+        comparable = dict(desired_data)
+        manager = getattr(self, "_client", None)
+
+        organization_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
+            manager,
+            "organizations",
+            desired_data.get("organization_name"),
+            "organization",
+            service="gateway",
+        )
+        credential_scope = {"organization_id": organization_id} if organization_id is not None else None
+
+        for field, label in (
+            ("target_credential", "target credential"),
+            ("source_credential", "source credential"),
+        ):
+            desired_value = desired_data.get(field)
+            if desired_value is None or field not in current_data:
+                continue
+
+            desired_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
+                manager, "eda-credentials", desired_value, label, credential_scope
+            )
+            current_id = EdaCredentialInputSourceTransformMixin_v1.resolve_reference_id(
+                manager, "eda-credentials", current_data[field], label, credential_scope
+            )
+            if desired_id != current_id:
+                return True
+            comparable.pop(field, None)
+
+        return super()._should_update(comparable, current_data)

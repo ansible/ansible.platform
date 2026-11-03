@@ -30,7 +30,7 @@ def _context_manager(context: Union[TransformContext, Dict[str, Any]]):
 def _resolve_id(
     manager,
     endpoint: str,
-    value: Optional[str],
+    value: Any,
     label: str,
     extra_query_params: Optional[Dict[str, Any]] = None,
     service: str = "eda",
@@ -77,6 +77,19 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for EDA Credential Input Source API v1."""
 
     @classmethod
+    def resolve_reference_id(
+        cls,
+        manager,
+        endpoint: str,
+        value: Any,
+        label: str,
+        extra_query_params: Optional[Dict[str, Any]] = None,
+        service: str = "eda",
+    ) -> Optional[int]:
+        """Resolve an Ansible name, URL, or ID reference to its API ID."""
+        return _resolve_id(manager, endpoint, value, label, extra_query_params, service)
+
+    @classmethod
     def from_ansible_data(
         cls,
         ansible_instance,
@@ -99,7 +112,7 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         )
 
         organization_name = getattr(ansible_instance, "organization_name", None)
-        organization_id = _resolve_id(manager, "organizations", organization_name, "organization", service="gateway")
+        organization_id = cls.resolve_reference_id(manager, "organizations", organization_name, "organization", service="gateway")
         if organization_id is not None:
             api_data["organization_id"] = organization_id
 
@@ -113,12 +126,16 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         # FK resolution: credential name or named URL -> ID via EDA endpoint.
         target_credential = getattr(ansible_instance, "target_credential", None)
         if target_credential is not None:
-            api_data["target_credential"] = _resolve_id(manager, "eda-credentials", target_credential, "target credential", credential_scope)
+            api_data["target_credential"] = cls.resolve_reference_id(
+                manager, "eda-credentials", target_credential, "target credential", credential_scope
+            )
 
         # FK resolution: source_credential name -> ID via EDA credentials endpoint
         source_credential = getattr(ansible_instance, "source_credential", None)
         if source_credential is not None:
-            api_data["source_credential"] = _resolve_id(manager, "eda-credentials", source_credential, "source credential", credential_scope)
+            api_data["source_credential"] = cls.resolve_reference_id(
+                manager, "eda-credentials", source_credential, "source credential", credential_scope
+            )
 
         # Simple fields
         for field_name in ("description",):
