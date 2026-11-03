@@ -263,6 +263,7 @@ class BaseResourceActionPlugin(ActionBase):
     _MUTUALLY_EXCLUSIVE: list = []
     _REQUIRED_TOGETHER: list = []
     _REQUIRED_ONE_OF: list = []
+    _REQUIRED_IF: list = []
 
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
@@ -741,7 +742,7 @@ class BaseResourceActionPlugin(ActionBase):
             "mutually_exclusive": doc_data.get("mutually_exclusive", []) + list(self._MUTUALLY_EXCLUSIVE),
             "required_together": doc_data.get("required_together", []) + list(self._REQUIRED_TOGETHER),
             "required_one_of": doc_data.get("required_one_of", []) + list(self._REQUIRED_ONE_OF),
-            "required_if": doc_data.get("required_if", []),
+            "required_if": doc_data.get("required_if", []) + list(self._REQUIRED_IF),
         }
 
         return argspec
