@@ -408,6 +408,32 @@ class TestEdaCredentialInputSourceActionPlugin(unittest.TestCase):
 
         self.assertFalse(action._should_update({"organization_name": "Default"}, {"organization_name": None}))
 
+    def test_same_metadata_with_different_mapping_type_and_key_order_is_idempotent(self):
+        """Tagged task dictionaries compare structurally with API dictionaries."""
+
+        class TaggedDict(dict):
+            pass
+
+        action = ActionModule.__new__(ActionModule)
+        desired = {
+            "input_field_name": "password",
+            "target_credential": "target",
+            "source_credential": "source",
+            "description": "Integration test input source",
+            "metadata": TaggedDict([("secret_path", "secret/myapp"), ("secret_key", "password")]),
+            "organization_name": "Default",
+        }
+        current = {
+            "input_field_name": "password",
+            "target_credential": 10,
+            "source_credential": 20,
+            "description": "Integration test input source",
+            "metadata": {"secret_key": "password", "secret_path": "secret/myapp"},
+            "organization_name": None,
+        }
+
+        self.assertFalse(action._should_update(desired, current))
+
 
 class TestEdaCredentialInputSourceEnforcedUpdate(unittest.TestCase):
     """Both client implementations send explicit nulls for enforced updates."""
