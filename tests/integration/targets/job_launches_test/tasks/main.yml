@@ -10,7 +10,7 @@
 
 - name: Run job_launch against a test-owned job template
   block:
-    - name: Create a job template for the launch test
+    - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
         name: "{{ test_job_template_name }}"
         copy_from: "Demo Job Template"
