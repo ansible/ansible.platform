@@ -1342,16 +1342,21 @@ class DirectHTTPClient(BaseAPIClient):
         # This should use the cache to avoid repeated lookups
         pass
 
-    def direct_request(self, method: str, path: str, data=None) -> dict:
+    def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:
         """
         Make a raw authenticated HTTP request and return parsed JSON.
 
         Used by action plugins for non-standard endpoints (e.g. settings/all/).
+        ``retry_config`` is accepted for parity with PlatformService; this
+        direct transport makes one request per call, so non-idempotent actions
+        remain single-attempt without passing retry settings to Ansible's
+        ``Request.open``.
 
         Args:
             method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
             path: API path (e.g. '/api/gateway/v1/settings/all/')
             data: Optional dict to JSON-encode as request body
+            retry_config: Optional retry policy accepted for client API parity.
 
         Returns:
             Parsed JSON response dict (empty dict on empty body)

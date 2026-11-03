@@ -51,6 +51,8 @@ no_endpoint_for_module = [
     "workflow_launch",
     "decision_environment",
     "eda_credential",
+    "rulebook_activation",
+    "rulebook_activation_copy",
     "event_stream",
 ]
 

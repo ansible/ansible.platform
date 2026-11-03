@@ -1414,14 +1414,24 @@ class PlatformService(BaseAPIClient):
             raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
 
-    def direct_request(self, method: str, path: str, data=None) -> dict:
-        """Make a raw authenticated HTTP request and return parsed JSON."""
+    def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:
+        """Make a raw authenticated HTTP request and return parsed JSON.
+
+        Args:
+            method: HTTP method ('GET', 'POST', 'PATCH', 'DELETE', ...).
+            path: API path to request.
+            data: Optional JSON-serializable request body.
+            retry_config: Optional per-request retry policy; pass
+                RetryConfig(max_attempts=1) for non-idempotent operations
+                (e.g. restart/copy) where retrying a lost response could
+                double-execute the action.
+        """
         self.record_activity()
         url = self._build_url(path)
         kwargs = {}
         if data is not None:
             kwargs["json"] = data
-        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, retry_config=retry_config, **kwargs)
         try:
             return response.json() if response.content else {}
         except Exception:
