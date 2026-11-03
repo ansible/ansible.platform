@@ -114,6 +114,16 @@ class BaseAPIClient(ABC):
             key = f"{key}:{suffix}"
         return key
 
+    @staticmethod
+    def _normalize_composite_value(value: Any) -> Any:
+        """Normalize scalar or nested API foreign keys for scoped ID checks."""
+        if isinstance(value, dict):
+            value = value.get("id")
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return value
+
     def _prepare_resource_lookup(self, service: str) -> None:
         """Allow clients to prepare transport headers before a batch lookup."""
 

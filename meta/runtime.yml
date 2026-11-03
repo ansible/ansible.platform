@@ -27,6 +27,7 @@ action_groups:
   eda:
     - decision_environment
     - eda_controller_token
+    - eda_credential
     - rulebook_activation
     - rulebook_activation_copy
   controller:
