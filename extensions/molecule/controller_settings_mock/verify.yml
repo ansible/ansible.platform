@@ -1,0 +1,25 @@
+---
+- name: Verify Controller settings persisted in the mock API
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Read Controller settings
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/settings/all/"
+        method: GET
+        headers:
+          Authorization: "Basic bW9jazp0ZXN0cGFzcw=="
+        return_content: true
+        status_code: 200
+      register: controller_settings
+
+    - name: Assert final Controller settings
+      ansible.builtin.assert:
+        that:
+          - controller_settings.json.DEFAULT_JOB_TIMEOUT == 7200
+          - controller_settings.json.AWX_REQUEST_PROFILE is true
+          - controller_settings.json.REMOTE_HOST_HEADERS == ['HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR']
+...

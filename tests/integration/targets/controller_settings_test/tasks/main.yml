@@ -1,0 +1,75 @@
+---
+# Integration coverage for ansible.platform.controller_settings.
+# Controller settings are global, so this test toggles a non-secret boolean and
+# restores its original value in an always block.
+
+- name: Read current Controller setting
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/settings/all/"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    return_content: true
+  register: current_settings
+  delegate_to: localhost
+  no_log: true
+
+- name: Save original Controller setting
+  ansible.builtin.set_fact:
+    original_awx_request_profile: "{{ current_settings.json.AWX_REQUEST_PROFILE }}"
+    toggled_awx_request_profile: "{{ not current_settings.json.AWX_REQUEST_PROFILE }}"
+  no_log: true
+
+- name: Exercise controller_settings and restore the original value
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Check mode predicts a Controller settings change
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: "{{ toggled_awx_request_profile }}"
+      check_mode: true
+      register: planned_settings
+
+    - name: Assert check mode predicts a change
+      ansible.builtin.assert:
+        that:
+          - planned_settings is changed
+
+    - name: Toggle Controller setting
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: "{{ toggled_awx_request_profile }}"
+      register: toggled_settings
+      no_log: true
+
+    - name: Assert Controller settings changed
+      ansible.builtin.assert:
+        that:
+          - toggled_settings is changed
+
+    - name: Reapply Controller setting
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: "{{ toggled_awx_request_profile }}"
+      register: idempotent_settings
+      no_log: true
+
+    - name: Assert Controller settings are idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent_settings is not changed
+  always:
+    - name: Restore original Controller setting
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: "{{ original_awx_request_profile }}"
+      when: original_awx_request_profile is defined
+      no_log: true
+...

@@ -1,0 +1,10 @@
+---
+- name: Cleanup Controller settings mock scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: End scenario without mutating shared mock state
+      ansible.builtin.debug:
+        msg: "Controller settings mock state is discarded when the shared mock server is destroyed."
+...

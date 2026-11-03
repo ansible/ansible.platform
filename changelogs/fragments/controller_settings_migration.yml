@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - controller_settings - migrate the Controller settings module from ``awx_collection`` while retaining the legacy ``name``/``value`` and bulk ``settings`` interfaces (https://issues.redhat.com/browse/AAP-100945).
+...

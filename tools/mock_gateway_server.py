@@ -15,6 +15,8 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   service_types, services, tokens, ui_plugin_routes,
   settings (singleton), settings/all (flat dict read)
 
+Controller settings are also served at /api/controller/vX/settings/all/.
+
 Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
 The workflow_node_wait scenario uses a pending-to-successful job fixture.
@@ -250,6 +252,8 @@ class Store:
     # Settings singleton: flat key→value dict
     _settings: Dict[str, Any] = field(default_factory=dict)
     _settings_lock: threading.Lock = field(default_factory=threading.Lock)
+    _controller_settings: Dict[str, Any] = field(default_factory=dict)
+    _controller_settings_lock: threading.Lock = field(default_factory=threading.Lock)
 
     # Generic resource stores, keyed by (service, endpoint_name) so the same
     # resource name can exist under different API services (e.g. a future
@@ -423,7 +427,7 @@ class Store:
         if eda_credential_types and not eda_credential_types._items:
             eda_credential_types.seed("1", [{"id": 1, "name": "Source Control"}])
 
-        # Seed settings
+        # Seed Gateway settings
         with self._settings_lock:
             if not self._settings:
                 self._settings = {
@@ -431,6 +435,17 @@ class Store:
                     "SESSION_COOKIE_AGE": 1800,
                     "MAX_PAGE_SIZE": 200,
                     "REMOTE_HOST_HEADERS": [],
+                }
+
+        # Seed Controller settings separately from Gateway settings.  Both APIs
+        # expose a settings/all singleton, but they are different services.
+        with self._controller_settings_lock:
+            if not self._controller_settings:
+                self._controller_settings = {
+                    "AWX_REQUEST_PROFILE": False,
+                    "DEFAULT_JOB_TIMEOUT": 0,
+                    "SESSION_COOKIE_AGE": 1800,
+                    "REMOTE_HOST_HEADERS": ["REMOTE_ADDR", "REMOTE_HOST"],
                 }
 
         # Seed hosts for Controller group association tests
@@ -775,6 +790,19 @@ class Store:
             results = [{"key": k, "value": v} for k, v in self._settings.items()]
             return {"count": len(results), "results": results}
 
+    def get_controller_settings_all(self) -> Dict[str, Any]:
+        """Return the Controller settings singleton as a flat dictionary."""
+        self.seed_defaults()
+        with self._controller_settings_lock:
+            return dict(self._controller_settings)
+
+    def patch_controller_settings(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply a partial update to the Controller settings singleton."""
+        self.seed_defaults()
+        with self._controller_settings_lock:
+            self._controller_settings.update(payload)
+            return dict(self._controller_settings)
+
 
 # ---------------------------------------------------------------------------
 # HTTP Request Handler
@@ -1054,6 +1082,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     except (KeyError, ValueError) as error:
                         self._send_json(400, {"detail": str(error)})
                     return
+
+        # ---- Controller settings (singleton, no id-based CRUD) ----
+        if service == "controller" and resource == "settings":
+            # /api/controller/vX/settings/all/ — GET or partial update of flat dict
+            if len(parts) == 5 and parts[4] == "all":
+                if self.command == "GET":
+                    self._send_json(200, self.store.get_controller_settings_all())
+                    return
+                if self.command in ("PUT", "PATCH"):
+                    payload = self._parse_json_body()
+                    self._send_json(200, self.store.patch_controller_settings(payload))
+                    return
+            self._send_json(404, {"detail": "Not Found"})
+            return
 
         # ---- Settings (special: singleton, no id-based CRUD; Gateway-only) ----
         if service == "gateway" and resource == "settings":
