@@ -93,6 +93,10 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         """
         api_data: Dict[str, Any] = {}
         manager = _context_manager(context)
+        operation = context.operation if isinstance(context, TransformContext) else context.get("operation")
+        include_nulls = (
+            getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        )
 
         organization_name = getattr(ansible_instance, "organization_name", None)
         organization_id = _resolve_id(manager, "organizations", organization_name, "organization", service="gateway")
@@ -121,11 +125,15 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
             val = getattr(ansible_instance, field_name, None)
             if val is not None:
                 api_data[field_name] = val
+            elif operation == "update" and include_nulls:
+                api_data[field_name] = None
 
         # metadata: dict passed through directly (API accepts dicts)
         metadata = getattr(ansible_instance, "metadata", None)
         if metadata is not None:
             api_data["metadata"] = metadata
+        elif operation == "update" and include_nulls:
+            api_data["metadata"] = None
 
         # Read-only from API (for building URL in execute)
         for field_name in ("id",):
@@ -134,6 +142,14 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
                 api_data[field_name] = val
 
         return APIEdaCredentialInputSource_v1(**api_data)
+
+    @classmethod
+    def get_fields_to_null_for_update(cls, api_data, context: Union[TransformContext, Dict[str, Any]]) -> frozenset:
+        """Return optional fields that enforced updates should explicitly clear."""
+        include_nulls = (
+            getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
+        )
+        return frozenset({"description", "metadata"}) if include_nulls else frozenset()
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:

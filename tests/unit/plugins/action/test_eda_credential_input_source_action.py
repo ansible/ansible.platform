@@ -3,6 +3,8 @@
 
 """Unit tests for the eda_credential_input_source action plugin and transform mixin."""
 
+import json
+import threading
 import unittest
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
@@ -15,6 +17,8 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_cr
     APIEdaCredentialInputSource_v1,
     EdaCredentialInputSourceTransformMixin_v1,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 
@@ -230,6 +234,44 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         self.assertEqual(api_obj.description, "test description")
         self.assertEqual(api_obj.metadata, {"secret_path": "secret/myapp", "secret_key": "password"})
 
+    def test_enforced_update_marks_unset_description_and_metadata_for_clearing(self):
+        """Enforced updates preserve nulls for the two mutable optional fields."""
+        context = TransformContext(
+            manager=MagicMock(),
+            session=MagicMock(),
+            cache={},
+            api_version="1",
+            service="eda",
+            operation="update",
+            include_nulls_for_update=True,
+        )
+        ansible_obj = AnsibleEdaCredentialInputSource(input_field_name="password", target_credential="10", source_credential="20", id=42)
+
+        api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
+
+        self.assertIsNone(api_obj.description)
+        self.assertIsNone(api_obj.metadata)
+        self.assertEqual(
+            EdaCredentialInputSourceTransformMixin_v1.get_fields_to_null_for_update(api_obj, context),
+            {"description", "metadata"},
+        )
+
+    def test_regular_update_does_not_mark_unset_fields_for_clearing(self):
+        context = TransformContext(
+            manager=MagicMock(),
+            session=MagicMock(),
+            cache={},
+            api_version="1",
+            service="eda",
+            operation="update",
+            include_nulls_for_update=False,
+        )
+        ansible_obj = AnsibleEdaCredentialInputSource(input_field_name="password", target_credential="10", source_credential="20", id=42)
+
+        api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
+
+        self.assertEqual(EdaCredentialInputSourceTransformMixin_v1.get_fields_to_null_for_update(api_obj, context), set())
+
     def test_from_api_round_trip(self):
         """from_api converts API response to Ansible dataclass."""
         context = self._make_context()
@@ -365,6 +407,67 @@ class TestEdaCredentialInputSourceActionPlugin(unittest.TestCase):
         action = ActionModule.__new__(ActionModule)
 
         self.assertFalse(action._should_update({"organization_name": "Default"}, {"organization_name": None}))
+
+
+class TestEdaCredentialInputSourceEnforcedUpdate(unittest.TestCase):
+    """Both client implementations send explicit nulls for enforced updates."""
+
+    def setUp(self):
+        self.resource = AnsibleEdaCredentialInputSource(
+            input_field_name="password",
+            target_credential="10",
+            source_credential="20",
+            id=42,
+        )
+        self.current = {
+            "id": 42,
+            "input_field_name": "password",
+            "target_credential": "10",
+            "source_credential": "20",
+            "description": "Existing description",
+            "metadata": {"path": "existing"},
+        }
+        self.context = TransformContext(
+            manager=MagicMock(),
+            session=MagicMock(),
+            cache={},
+            api_version="1",
+            service="eda",
+            operation="update",
+            include_nulls_for_update=True,
+        )
+
+    def test_platform_service_patch_includes_explicit_nulls(self):
+        service = PlatformService.__new__(PlatformService)
+        response = MagicMock()
+        response.content = b"{}"
+        response.json.return_value = {"id": 42, "description": None, "metadata": None}
+        response.raise_for_status.return_value = None
+        service._find_resource = MagicMock(return_value=self.current)
+        service._build_url = MagicMock(return_value="https://gateway.example/api/eda/v1/credential-input-sources/42/")
+        service._request_with_auth_recovery = MagicMock(return_value=response)
+        self.context.manager = service
+
+        service._update_resource(self.resource, EdaCredentialInputSourceTransformMixin_v1, self.context)
+
+        request_data = service._request_with_auth_recovery.call_args.kwargs["json"]
+        self.assertEqual(request_data, {"description": None, "metadata": None})
+
+    def test_direct_client_patch_includes_explicit_nulls(self):
+        client = DirectHTTPClient.__new__(DirectHTTPClient)
+        client._lock = threading.Lock()
+        client._http_request_count = 0
+        response = MagicMock()
+        response.read.return_value = json.dumps({"id": 42, "description": None, "metadata": None}).encode()
+        client._find_resource = MagicMock(return_value=self.current)
+        client._build_url = MagicMock(return_value="https://gateway.example/api/eda/v1/credential-input-sources/42/")
+        client._make_request = MagicMock(return_value=response)
+        self.context.manager = client
+
+        client._update_resource(self.resource, EdaCredentialInputSourceTransformMixin_v1, self.context)
+
+        request_data = client._make_request.call_args.kwargs["json"]
+        self.assertEqual(request_data, {"description": None, "metadata": None})
 
 
 if __name__ == "__main__":

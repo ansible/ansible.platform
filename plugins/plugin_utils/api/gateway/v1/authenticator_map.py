@@ -122,7 +122,7 @@ class AuthenticatorMapTransformMixin_v1(BaseTransformMixin):
     }
 
     @classmethod
-    def get_fields_to_null_for_update(cls, api_data) -> frozenset:
+    def get_fields_to_null_for_update(cls, api_data, context=None) -> frozenset:
         """
         Return the set of field names that must be sent as null in the PATCH.
 
