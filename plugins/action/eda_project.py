@@ -126,9 +126,11 @@ class ActionModule(BaseResourceActionPlugin):
 
         if project_id is None:
             return None
+        # The ID came from the organization-scoped list lookup above. Avoid
+        # repeating the organization constraint on the detail GET: some EDA
+        # project responses omit organization_id, which makes generic
+        # composite-key validation reject a correctly scoped result.
         find_data = {"id": project_id, "name": str(name)}
-        if organization_name is not None:
-            find_data["organization_name"] = organization_name
         return self._execute_find(manager, find_data)
 
     def _execute_find(self, manager: Any, find_data: dict) -> Optional[dict]:
