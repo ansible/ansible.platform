@@ -386,6 +386,8 @@ class Store:
         # EDA resources
         eda_defs: List[tuple] = [
             ("awx-tokens", ["name", "token"], 6000),
+            ("eda-credentials", ["name"], 7200),
+            ("decision-environments", ["name"], 7300),
             ("credential-types", ["name"], 7100),
         ]
         for endpoint, required, start_id in eda_defs:
@@ -506,6 +508,17 @@ class Store:
             resource = self.resource("controller", endpoint)
             if resource and not resource._items:
                 resource.seed("2", items)
+
+        # Seed EDA fixtures for the decision_environment Molecule mock scenario.
+        # organization_name resolves against the gateway organizations endpoint
+        # (seeded above as "Default", id=1), not an eda-scoped one.
+        eda_fixtures = {
+            "eda-credentials": [{"id": 9101, "name": "Molecule Mock Decision Environment Credential"}],
+        }
+        for endpoint, items in eda_fixtures.items():
+            resource = self.resource("eda", endpoint)
+            if resource and not resource._items:
+                resource.seed("1", items)
 
     def job_template_associations(self, template_id: int, field_name: str, page: int = 1) -> Dict[str, Any]:
         """Return a DRF-style paginated association list."""
