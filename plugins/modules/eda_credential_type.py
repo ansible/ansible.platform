@@ -57,7 +57,7 @@ options:
   test_inputs:
     description:
       - Test input values to validate the credential type configuration.
-      - Only used when O(state=test).
+      - Required and non-empty when O(state=test).
     type: dict
 
   test_metadata:
@@ -125,8 +125,10 @@ EXAMPLES = """
 
 - name: Test credential type basic configuration
   ansible.platform.eda_credential_type:
-    name: "AWS Secrets Manager lookup"
+    name: "Renamed Test"
     state: test
+    test_inputs:
+      Field1: "sample-value"
 
 - name: Delete an EDA credential type
   ansible.platform.eda_credential_type:

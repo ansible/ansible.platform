@@ -79,6 +79,8 @@ class ActionModule(BaseResourceActionPlugin):
             name = validated_params.get("name")
             test_inputs = write_only_data.get("test_inputs")
             test_metadata = write_only_data.get("test_metadata")
+            if not test_inputs:
+                raise AnsibleError("test_inputs must be provided and non-empty when state=test")
 
             # Find the credential type by name
             try:
