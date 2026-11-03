@@ -110,6 +110,8 @@
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
         new_name: "{{ event_stream_renamed }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
         state: present
       register: rename_result
 
@@ -122,6 +124,8 @@
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
         new_name: "{{ event_stream_renamed }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
         state: present
       register: rename_again_result
 

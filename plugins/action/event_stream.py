@@ -59,14 +59,14 @@ class ActionModule(BaseResourceActionPlugin):
         return prepared
 
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
-        """Find by the original name, and reject an unbound rename target.
+        """Find by the original name and recognize a completed rename.
 
         Args:
             manager: Client used to query the API.
             resource_data: Validated event stream fields.
 
         Returns:
-            dict: The matching event stream.
+            dict: The matching event stream, including a matching rename target.
         """
         try:
             existing = super()._find_existing_resource(manager, resource_data)
@@ -79,16 +79,18 @@ class ActionModule(BaseResourceActionPlugin):
             renamed_data["name"] = new_name
             renamed_data.pop("new_name", None)
             try:
-                super()._find_existing_resource(manager, renamed_data)
+                rename_target = super()._find_existing_resource(manager, renamed_data)
             except Exception as target_exc:
                 if self._is_resource_not_found(target_exc):
                     raise exc
                 raise
 
-            raise ValueError(
-                "Cannot verify event stream rename from '%s' to '%s': the original was not found and the target already exists"
-                % (resource_data.get("name"), new_name)
-            ) from exc
+            if self._should_update(resource_data, rename_target):
+                raise ValueError(
+                    "Cannot verify event stream rename from '%s' to '%s': the original was not found and the target does not match the requested state"
+                    % (resource_data.get("name"), new_name)
+                ) from exc
+            return rename_target
 
         new_name = resource_data.get("new_name")
         if not new_name or new_name == resource_data.get("name") or resource_data.get("state") == "absent":

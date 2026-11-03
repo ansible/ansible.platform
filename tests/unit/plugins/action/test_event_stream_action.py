@@ -189,7 +189,7 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(r.get("failed", False))
         self.assertTrue(len(r.get("deprecations", [])) > 0)
 
-    def test_missing_original_with_existing_rename_target_is_ambiguous(self):
+    def test_missing_original_with_matching_rename_target_is_idempotent(self):
         action = self._make_action()
         manager = self._make_manager()
 
@@ -215,24 +215,47 @@ class TestEventStreamActionCRUD(unittest.TestCase):
             {"name": "old", "new_name": "new", "credential_name": "c", "organization_name": "D", "state": "present"},
         )
 
-        self.assertTrue(result["failed"])
-        self.assertIn("Cannot verify event stream rename", result["msg"])
+        self.assertFalse(result["failed"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(result["id"], 100)
         self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
         self.assertNotIn("update", [call.kwargs["operation"] for call in manager.execute.call_args_list])
 
-    def test_missing_original_with_api_not_found_and_existing_target_is_ambiguous(self):
+    def test_missing_original_with_api_not_found_and_matching_target_is_idempotent(self):
         action = ActionModule.__new__(ActionModule)
         manager = MagicMock()
+        action._client = manager
+        target = {"id": 100, "name": "new"}
 
         def find_renamed_resource(operation, module_name, ansible_data):
             if ansible_data["name"] == "old":
                 raise APIError("Not found", operation="find", status_code=404)
-            return {"id": 100, "name": "new"}
+            return target
 
         manager.execute.side_effect = find_renamed_resource
 
-        with self.assertRaisesRegex(ValueError, "Cannot verify event stream rename"):
-            action._find_existing_resource(manager, {"name": "old", "new_name": "new", "state": "present"})
+        result = action._find_existing_resource(manager, {"name": "old", "new_name": "new", "state": "present"})
+
+        self.assertIs(result, target)
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
+
+    def test_missing_original_with_different_target_state_is_rejected(self):
+        action = ActionModule.__new__(ActionModule)
+        manager = MagicMock()
+        action._client = manager
+
+        def find_renamed_resource(operation, module_name, ansible_data):
+            if ansible_data["name"] == "old":
+                raise ValueError("Resource with name=old not found")
+            return {"id": 100, "name": "new", "headers": "different"}
+
+        manager.execute.side_effect = find_renamed_resource
+
+        with self.assertRaisesRegex(ValueError, "target does not match the requested state"):
+            action._find_existing_resource(
+                manager,
+                {"name": "old", "new_name": "new", "headers": "requested", "state": "present"},
+            )
 
         self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
 
