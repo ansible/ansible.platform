@@ -19,6 +19,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "eda_credential_input_source"
     MODEL_CLASS = AnsibleEdaCredentialInputSource
+    _NO_LOG_FIELDS = BaseResourceActionPlugin._NO_LOG_FIELDS | frozenset({"metadata"})
     # The organization is used to scope creation and lookup, but the API does
     # not return organization_name and the field is not mutable after creation.
     _READ_ONLY_FIELDS = BaseResourceActionPlugin._READ_ONLY_FIELDS | frozenset({"organization_name"})
@@ -42,7 +43,7 @@ class ActionModule(BaseResourceActionPlugin):
             if organization_name is not None
             else None
         )
-        credential_scope = {"organization_id": organization_id} if organization_id is not None else None
+        credential_scope = {"organization": organization_id} if organization_id is not None else None
 
         for field, label in (("target_credential", "target credential"), ("source_credential", "source credential")):
             desired_value = desired_data.get(field)

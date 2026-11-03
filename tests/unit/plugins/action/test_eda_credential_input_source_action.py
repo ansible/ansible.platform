@@ -134,7 +134,7 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         credential_calls = [call for call in context.manager.lookup_resource_id.call_args_list if call.args[0] == "eda-credentials"]
         self.assertEqual(len(credential_calls), 2)
         for call in credential_calls:
-            self.assertEqual(call.kwargs["extra_query_params"], {"organization_id": 1})
+            self.assertEqual(call.kwargs["extra_query_params"], {"organization": 1})
             self.assertTrue(call.kwargs["require_unique"])
 
     def test_from_ansible_data_accepts_named_url_references(self):

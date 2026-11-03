@@ -116,7 +116,7 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         if organization_id is not None:
             api_data["organization_id"] = organization_id
 
-        credential_scope = {"organization_id": organization_id} if organization_id is not None else None
+        credential_scope = {"organization": organization_id} if organization_id is not None else None
 
         # input_field_name: pass through directly
         input_field_name = getattr(ansible_instance, "input_field_name", None)
