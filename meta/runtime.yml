@@ -31,6 +31,7 @@ action_groups:
     - rulebook_activation
     - rulebook_activation_copy
   controller:
+    - controller_settings
     - job_template
     - controller_credential_type
     - credential_input_source
