@@ -105,7 +105,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         find_data: dict[str, Any]
         if str(name).strip().isdigit():
-            find_data = {"id": int(str(name).strip())}
+            find_data = {"id": int(str(name).strip()), "name": str(name)}
             if organization_name is not None:
                 find_data["organization_name"] = organization_name
             return self._execute_find(manager, find_data)
@@ -126,7 +126,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         if project_id is None:
             return None
-        find_data = {"id": project_id}
+        find_data = {"id": project_id, "name": str(name)}
         if organization_name is not None:
             find_data["organization_name"] = organization_name
         return self._execute_find(manager, find_data)
