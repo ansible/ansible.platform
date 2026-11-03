@@ -173,6 +173,10 @@
         unified_job_template: "{{ job_template_name }}"
         rrule: "DTSTART:20990101T120000Z RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=2"
         enabled: true
+        credentials:
+          - "{{ name_prefix }}-Cred"
+        labels:
+          - "{{ label_name }}"
 
     # =========================================================================
     # Phase 2: Export and verify format
@@ -280,6 +284,8 @@
           - notification_template_name in job_template_export.assets.job_templates[0].notification_templates_success
           - notification_template_name in workflow_export.assets.workflow_job_templates[0].notification_templates_success
           - schedule_export.assets.schedules[0].unified_job_template == job_template_name
+          - name_prefix ~ '-Cred' in schedule_export.assets.schedules[0].credentials
+          - label_name in schedule_export.assets.schedules[0].labels
 
     - name: Export test inventory with hosts and groups
       ansible.platform.export:

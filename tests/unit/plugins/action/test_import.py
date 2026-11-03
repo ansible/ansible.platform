@@ -119,3 +119,70 @@ def test_inventory_children_association_failure_is_reported(action):
     assert hosts == {"changed": 0, "ok": 0, "failed": 0}
     assert groups == {"changed": 0, "ok": 0, "failed": 1}
     assert failed_resources == [{"type": "groups", "name": "web", "error": "association failed"}]
+
+
+def test_explicit_nulls_are_preserved_for_updates(action):
+    manager = Mock()
+    manager.execute.side_effect = [
+        {"id": 42, "name": "Example", "description": "old"},
+        {"changed": True, "id": 42},
+    ]
+
+    changed = action._import_single_resource(manager, "organization", {"name": "Example", "description": None})
+
+    assert changed is True
+    manager.execute.assert_any_call(
+        operation="update",
+        module_name="organization",
+        ansible_data={"name": "Example", "description": None, "id": 42, "_platform_enforced": True},
+    )
+
+
+def test_check_mode_resource_comparison_is_idempotent(action):
+    manager = Mock()
+    manager.execute.return_value = {"id": 42, "name": "Example", "description": "same"}
+
+    assert action._resource_would_change(manager, "organization", {"name": "Example", "description": "same"}) is False
+
+
+def test_check_mode_resource_comparison_detects_missing_resource(action):
+    manager = Mock()
+    manager.execute.side_effect = ValueError("Resource with name=Example not found")
+
+    assert action._resource_would_change(manager, "organization", {"name": "Example"}) is True
+
+
+def test_malformed_resource_collection_is_reported(action):
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {"assets": {"organizations": {"name": "Example"}}},
+            "manager": Mock(),
+        }
+    )
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is True
+    assert result["results"]["organizations"]["failed"] == 1
+    assert result["failed_resources"][0]["error"] == "Expected a list of resource dictionaries."
+
+
+def test_malformed_resource_item_is_reported(action):
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {"assets": {"organizations": ["not-a-dict"]}},
+            "manager": Mock(),
+        }
+    )
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is True
+    assert result["results"]["organizations"]["failed"] == 1
+    assert result["failed_resources"][0]["name"] == "[0]"

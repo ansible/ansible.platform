@@ -234,3 +234,24 @@ class TestFilterModule:
         assert mapping["labels"] == "label"
         assert mapping["credential_types"] == "controller_credential_type"
         assert len(mapping) == 14
+
+
+def test_resolves_additional_natural_key_fields():
+    data = {
+        "credentials": [
+            {
+                "name": "Credential",
+                "credential": {"type": "credential", "name": "Parent Credential"},
+                "signature_validation_credential": {"type": "credential", "name": "Signing Credential"},
+                "user": {"type": "user", "username": "admin"},
+                "team": {"type": "team", "name": "Platform"},
+            }
+        ]
+    }
+
+    result = from_awxkit_export(data)["credentials"][0]
+
+    assert result["credential"] == "Parent Credential"
+    assert result["signature_validation_credential"] == "Signing Credential"
+    assert result["user"] == "admin"
+    assert result["team"] == "Platform"

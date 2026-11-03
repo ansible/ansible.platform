@@ -47,10 +47,13 @@ FK_RESOLUTION_MAP = {
     "execution_environment": ("api/controller/v2/execution_environments/", "name"),
     "source_project": ("api/controller/v2/projects/", "name"),
     "default_environment": ("api/controller/v2/execution_environments/", "name"),
+    "user": ("api/gateway/v1/users/", "username"),
+    "team": ("api/gateway/v1/teams/", "name"),
     "credential": ("api/controller/v2/credentials/", "name"),
     "webhook_credential": ("api/controller/v2/credentials/", "name"),
     "insights_credential": ("api/controller/v2/credentials/", "name"),
     "vault_credential": ("api/controller/v2/credentials/", "name"),
+    "signature_validation_credential": ("api/controller/v2/credentials/", "name"),
     "unified_job_template": ("api/controller/v2/unified_job_templates/", "name"),
 }
 
@@ -153,6 +156,11 @@ RESOURCE_ASSOCIATIONS = {
         ("hosts", "hosts/", "names"),
         ("children", "children/", "names"),
     ],
+    "schedules": [
+        ("credentials", "credentials/", "names"),
+        ("labels", "labels/", "names"),
+        ("instance_groups", "instance_groups/", "names"),
+    ],
 }
 
 # Association sub-endpoints to fetch per resource type (inventory children).
@@ -238,7 +246,7 @@ class ActionModule(BaseResourceActionPlugin):
                 self._display.vvvv("Cached %d entries for %s" % (len(cache[endpoint]), endpoint))
             except Exception as exc:
                 self._display.warning("Failed to cache %s: %s" % (endpoint, exc))
-                cache[endpoint] = {}
+                raise
 
         return cache
 

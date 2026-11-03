@@ -1,7 +1,7 @@
 # Export / Import Design — Controller Configuration as Data
 
 **Jira**: AAP-95849
-**Status**: Draft / Investigation
+**Status**: Implemented
 **Branch**: `feature/import-export-module`
 
 ---
@@ -34,7 +34,7 @@ types simultaneously.
    runtime. The whole point of the migration is to use the platform SDK.
 2. **SDK architecture compliance** — no HTTP in action plugins; all network I/O
    through the manager process.
-3. **Leverage existing modules** — all 13 exportable resource types already have
+3. **Leverage existing modules** — all 14 exportable resource types already have
    fully functional CRUD modules on this branch with name-based FK resolution.
 4. **Backward compatibility** — users with existing awxkit exports (from `awx
    export` CLI or the legacy module) should be able to import them.
@@ -84,8 +84,7 @@ handle resolution internally.
 ### Schema
 
 ```yaml
-# ansible.platform native import format v1
-format_version: 1
+# ansible.platform native import format
 
 organizations:
   - name: Default
@@ -224,8 +223,9 @@ schedules:
 4. **No `new_name` / `copy_from`** — these are mutation operations, not relevant
    to restoring configuration from an export.
 
-5. **`format_version: 1`** — enables future format evolution without breaking
-   existing imports.
+5. **No format version field** — the current native format is defined by the
+   module and role parameter names; adding versioning requires an explicit
+   format migration design.
 
 ---
 
@@ -501,11 +501,10 @@ modules on the `feature/import-export-module` branch:
    `role_definition`). A mechanical port of the legacy role format is actively
    wrong. Needs separate design aligned with the platform RBAC model.
 
-4. **Credential inputs (secrets)** — exported credentials have encrypted input
-   values (`$encrypted$`). The import role passes these through, but the
-   Controller API will reject `$encrypted$` as an actual value on create. Users
-   must supply real secrets for new resources. This matches the legacy behavior
-   (awxkit's `remove_encrypted()` strips these).
+4. **Credential inputs (secrets)** — exports contain API-masked input values
+   (`$encrypted$`), never cleartext secrets. New imports must supply real
+   secret values; the integration fixture supplies credentials separately rather
+   than attempting to create them from masked values.
 
 5. **Project sync wait** — the legacy import waits up to 300s for a project's
    first update to complete before creating dependent JTs. The import role does
@@ -541,34 +540,39 @@ modules on the `feature/import-export-module` branch:
 - Edge cases: empty exports, missing resource types, resources with no
   related objects, encrypted credential inputs.
 
-### Molecule mock scenarios
+### Integration target
 
-- `export_import_test/` — import a small set of resources (org, credential
-  type, credential, project, inventory with hosts/groups, job template) against
-  the mock gateway server.
-- Verify idempotency: run import twice, assert `changed: false` on second run.
-- Verify selective import: set a subset of resource keys in `import_controller_assets`.
-- Verify error handling: import with a missing FK reference, verify behavior
-  matches the module and role failure behavior.
+The `export_import_test` integration target exercises the native export/import
+path against a live Gateway/Controller environment. It covers representative
+Gateway and Controller resources, FK dependency ordering, inventory topology,
+resource associations, cleanup, and second-run idempotency.
+
+Credentials are exported and checked for masked values, but cleartext secrets
+are supplied separately when importing because `$encrypted$` values cannot be
+used to create a new credential.
+
+### Legacy adapter coverage
+
+The `from_awxkit_export` filter is covered by unit tests for natural-key
+conversion, inline inventory children, associations, and edge cases. There is
+no dedicated Molecule scenario or live role-based legacy round-trip in this
+PR.
 
 ### Integration tests
 
-Current CI provides a full AAP environment (Gateway + Controller + EDA + Hub),
-so live integration testing is available — unlike many other Controller module
-tests, this is not blocked by infrastructure.
+The current live target covers:
 
-- Full round-trip: export from a live Controller with `awx export`, convert
-  with filter, import with role, verify resources exist.
-- Idempotency: run the import role twice against live AAP, assert
-  `changed: false` on the second run.
-- Conflict handling: pre-create resources with different field values, run
-  import, verify they are updated correctly.
-- Dependency ordering: import a full asset set (org → cred type → cred →
-  project → inventory → JT) and verify all FK references resolve.
-- Encrypted credentials: verify imported credentials with `$encrypted$` inputs
-  are created successfully (with empty/placeholder secrets).
+- Native export of organizations, credential types, credentials, execution
+  environments, notification templates, projects, labels, inventories,
+  inventory sources, job templates, workflow job templates, and schedules.
+- FK and association assertions for projects, inventory sources, job templates,
+  workflow job templates, schedules, and inventory host/group topology.
+- Representative native imports in dependency order.
+- Cleanup and a second import asserting `changed: false`.
 
----
+The test intentionally does not attempt to create new credentials from exported
+`$encrypted$` values, and does not claim live legacy-format or role-based
+round-trip coverage.
 
 ## SECTION 7: Export Module Design
 
@@ -598,7 +602,7 @@ startup (deduplicated across FK targets) and gives O(1) resolution per field.
 
 ```python
 FK_RESOLUTION_MAP = {
-    "organization":          ("api/controller/v2/organizations/", "name"),
+    "organization":          ("api/gateway/v1/organizations/", "name"),
     "inventory":             ("api/controller/v2/inventories/", "name"),
     "project":               ("api/controller/v2/projects/", "name"),
     "credential_type":       ("api/controller/v2/credential_types/", "name"),
@@ -624,6 +628,7 @@ For resource types with sub-endpoints, the export module queries each:
 | `projects` | notification_templates_started/success/error | names |
 | `inventory_sources` | notification_templates_started/success/error | names |
 | `inventory` | hosts, groups (+ group→host membership) | objects |
+| `schedules` | credentials, labels, instance_groups | names |
 
 Modes:
 - **names**: extract `name` field from each result → flat list of strings
@@ -680,8 +685,8 @@ Native format — identical to `ansible.platform.import` input. Round-trip:
 2. **Managed resources skipped** — credential types marked `managed: true` are
    excluded from export (matches awxkit behavior).
 3. **Encrypted fields** — credential inputs export as `$encrypted$` sentinel
-   values. The import module passes these through; Controller handles the
-   semantics (ignored on update, rejected on create).
+   values. Cleartext is not exposed; callers must provide real secrets when
+   creating credentials from an export.
 4. **Workflow job template nodes** — not exported. The WF node DAG structure
    requires separate design (see Future Work below).
 

@@ -86,22 +86,33 @@ class ActionModule(BaseResourceActionPlugin):
             failed_resources = []
 
             for export_key, module_name in IMPORT_ORDER:
-                resource_list = assets.get(export_key)
-                if not resource_list or not isinstance(resource_list, list):
+                if export_key not in assets:
                     continue
 
+                resource_list = assets[export_key]
                 type_result = {"changed": 0, "ok": 0, "failed": 0}
+                results_summary[export_key] = type_result
 
-                for resource_data in resource_list:
+                if not isinstance(resource_list, list):
+                    type_result["failed"] = 1
+                    failed_resources.append({"type": export_key, "name": "<collection>", "error": "Expected a list of resource dictionaries."})
+                    continue
+
+                for index, resource_data in enumerate(resource_list):
                     if not isinstance(resource_data, dict):
+                        type_result["failed"] += 1
+                        failed_resources.append({"type": export_key, "name": "[%d]" % index, "error": "Expected a resource dictionary."})
                         continue
 
-                    clean_data = {k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and v is not None}
+                    clean_data = {k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS}
                     resource_name = clean_data.get("name") or clean_data.get("username") or clean_data.get("hostname") or "unknown"
 
                     if check_mode:
-                        type_result["changed"] += 1
-                        any_changed = True
+                        if self._resource_would_change(manager, module_name, clean_data):
+                            type_result["changed"] += 1
+                            any_changed = True
+                        else:
+                            type_result["ok"] += 1
                         continue
 
                     try:
@@ -115,8 +126,6 @@ class ActionModule(BaseResourceActionPlugin):
                         type_result["failed"] += 1
                         failed_resources.append({"type": export_key, "name": resource_name, "error": str(exc)})
                         self._display.warning("Failed to import %s '%s': %s" % (module_name, resource_name, exc))
-
-                results_summary[export_key] = type_result
 
             # Import hosts and groups nested under inventories
             inventory_list = assets.get("inventory", [])
@@ -149,6 +158,33 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
+    def _resource_would_change(self, manager, module_name, resource_data):
+        """Compare desired import fields with the current resource for check mode."""
+        try:
+            existing = manager.execute(
+                operation="find",
+                module_name=module_name,
+                ansible_data=dict(resource_data),
+            )
+        except ValueError as exc:
+            if "not found" in str(exc).lower():
+                return True
+            raise
+
+        if not existing or not existing.get("id"):
+            return True
+
+        for key, desired in resource_data.items():
+            if key in {"id", "state"} or key.startswith("_"):
+                continue
+            current = existing.get(key)
+            if desired is None:
+                if current is not None:
+                    return True
+            elif desired != current:
+                return True
+        return False
+
     def _import_single_resource(self, manager, module_name, resource_data):
         """Import one resource: find → update if exists, create if not.
 
@@ -168,6 +204,8 @@ class ActionModule(BaseResourceActionPlugin):
         if existing and existing.get("id"):
             update_data = dict(resource_data)
             update_data["id"] = existing["id"]
+            if any(value is None for key, value in update_data.items() if key != "id"):
+                update_data["_platform_enforced"] = True
             update_result = manager.execute(
                 operation="update",
                 module_name=module_name,
@@ -199,8 +237,10 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
             inv_name = inv.get("name", "unknown")
 
-            for host in inv.get("hosts", []):
+            for index, host in enumerate(inv.get("hosts", [])):
                 if not isinstance(host, dict):
+                    host_results["failed"] += 1
+                    failed_resources.append({"type": "hosts", "name": "[%d]" % index, "error": "Expected a resource dictionary."})
                     continue
                 host_data = {k: v for k, v in host.items() if k not in STRIP_FIELDS and v is not None}
                 host_data["inventory"] = inv_name
@@ -221,8 +261,10 @@ class ActionModule(BaseResourceActionPlugin):
                     failed_resources.append({"type": "hosts", "name": host_name, "error": str(exc)})
 
             group_records = []
-            for group in inv.get("groups", []):
+            for index, group in enumerate(inv.get("groups", [])):
                 if not isinstance(group, dict):
+                    group_results["failed"] += 1
+                    failed_resources.append({"type": "groups", "name": "[%d]" % index, "error": "Expected a resource dictionary."})
                     continue
                 group_data = {k: v for k, v in group.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and v is not None}
                 group_data["inventory"] = inv_name

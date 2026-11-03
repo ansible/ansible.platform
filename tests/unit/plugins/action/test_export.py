@@ -10,6 +10,8 @@ from __future__ import absolute_import, division, print_function
 
 from unittest.mock import Mock
 
+import pytest
+
 __metaclass__ = type
 
 
@@ -337,3 +339,26 @@ def test_group_associations_include_hosts_and_children():
 
     assert cleaned["hosts"] == ["web01"]
     assert cleaned["children"] == ["frontend"]
+
+
+def test_additional_foreign_keys_are_resolved():
+    resource = {"name": "Credential", "user": 7, "team": 8, "signature_validation_credential": 9}
+    name_cache = {
+        "api/gateway/v1/users/": {7: "admin"},
+        "api/gateway/v1/teams/": {8: "Platform"},
+        "api/controller/v2/credentials/": {9: "Signing Credential"},
+    }
+
+    result = clean_resource(resource, name_cache)
+
+    assert result == {"name": "Credential", "user": "admin", "team": "Platform", "signature_validation_credential": "Signing Credential"}
+
+
+def test_name_cache_failures_abort_export():
+    manager = Mock()
+    manager.search_api.side_effect = RuntimeError("cache unavailable")
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    with pytest.raises(RuntimeError, match="cache unavailable"):
+        action._build_name_cache(manager, 10)
