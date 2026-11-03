@@ -148,7 +148,7 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
             {
                 "name": "Ghost Type",
                 "state": "test",
-                "test_inputs": {},
+                "test_inputs": {"username": "test_user"},
                 "test_metadata": {},
                 "new_name": None,
                 "description": None,
@@ -189,36 +189,32 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
         self.assertIn("check mode", result["test_result"]["msg"])
         manager.launch_resource.assert_not_called()
 
-    def test_test_with_no_inputs_or_metadata(self):
-        """Test state works with no test_inputs or test_metadata provided."""
-        action = self._make_action()
-        manager = self._make_manager(
-            find_result={"id": 200, "name": "Another Type"},
-            launch_result={"success": True, "message": "OK"},
-        )
+    def test_test_requires_nonempty_test_inputs(self):
+        """Missing or empty test_inputs fails before making API requests."""
+        for test_inputs in (None, {}):
+            with self.subTest(test_inputs=test_inputs):
+                action = self._make_action()
+                manager = self._make_manager(find_result={"id": 200, "name": "Another Type"})
 
-        result = self._run_test_action(
-            action,
-            manager,
-            {
-                "name": "Another Type",
-                "state": "test",
-                "test_inputs": None,
-                "test_metadata": None,
-                "new_name": None,
-                "description": None,
-                "inputs": None,
-                "injectors": None,
-            },
-        )
+                result = self._run_test_action(
+                    action,
+                    manager,
+                    {
+                        "name": "Another Type",
+                        "state": "test",
+                        "test_inputs": test_inputs,
+                        "test_metadata": None,
+                        "new_name": None,
+                        "description": None,
+                        "inputs": None,
+                        "injectors": None,
+                    },
+                )
 
-        self.assertFalse(result.get("failed", False))
-        self.assertFalse(result["changed"])
-
-        # Verify launch_resource was called with empty payload
-        manager.launch_resource.assert_called_once()
-        launch_call = manager.launch_resource.call_args
-        self.assertEqual(launch_call.kwargs["payload"], {})
+                self.assertTrue(result["failed"])
+                self.assertIn("test_inputs must be provided and non-empty", result["msg"])
+                manager.execute.assert_not_called()
+                manager.launch_resource.assert_not_called()
 
     def test_find_reraises_non_not_found_errors(self):
         """ValueError not related to 'not found' is re-raised."""
@@ -232,7 +228,7 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
             {
                 "name": "My Type",
                 "state": "test",
-                "test_inputs": {},
+                "test_inputs": {"username": "test_user"},
                 "test_metadata": {},
                 "new_name": None,
                 "description": None,
