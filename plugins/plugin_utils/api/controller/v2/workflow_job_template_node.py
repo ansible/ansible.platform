@@ -177,6 +177,9 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def get_fields_to_null_for_update(cls, api_data, context=None) -> frozenset:
+        """Clear omitted associations only for enforced updates."""
+        if not getattr(context, "include_nulls_for_update", False):
+            return frozenset()
         return frozenset({"inventory", "execution_environment"})
 
     @classmethod
