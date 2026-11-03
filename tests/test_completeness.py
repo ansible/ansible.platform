@@ -50,6 +50,7 @@ no_endpoint_for_module = [
     "license",
     "workflow_launch",
     "decision_environment",
+    "eda_credential",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
