@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - controller_project - preserve Controller project synchronization metadata and refresh it before waiting for SCM updates (ANSTRAT-1874).

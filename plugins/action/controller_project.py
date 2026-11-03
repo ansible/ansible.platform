@@ -84,6 +84,16 @@ class ActionModule(BaseResourceActionPlugin):
         if not project_id:
             return result
 
+        manager = self._client
+        if not check_mode and state not in ("absent", "exists") and (wait or update_project):
+            try:
+                project_data = self._refresh_project_sync_data(manager, result.get(self.MODULE_NAME) or {}, project_id)
+                result[self.MODULE_NAME] = project_data
+            except Exception as exc:
+                result["failed"] = True
+                result["msg"] = "Failed to refresh project sync metadata: %s" % exc
+                return result
+
         reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
         if check_mode:
             if reconcile_fields or update_project:
@@ -91,7 +101,6 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
@@ -114,6 +123,22 @@ class ActionModule(BaseResourceActionPlugin):
                 result["msg"] = "Project sync failed: %s" % exc
 
         return result
+
+    @staticmethod
+    def _refresh_project_sync_data(manager, project_data, project_id):
+        """Refresh raw Controller metadata needed to wait for SCM sync."""
+        refreshed = manager.search_api(
+            "%s/%s/" % (BASE_PATH, project_id),
+            service=_SERVICE,
+        )
+        if not isinstance(refreshed, dict):
+            raise ValueError("Controller project refresh returned a non-object response")
+
+        merged = dict(project_data)
+        for field in ("summary_fields", "scm_revision"):
+            if field in refreshed:
+                merged[field] = refreshed[field]
+        return merged
 
     def _handle_project_sync(self, result, manager, project_id, wait, update_project, interval, timeout):
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
