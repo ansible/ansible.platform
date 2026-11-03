@@ -235,7 +235,7 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
             # Parse test response
-            if isinstance(test_response, dict):
+            if isinstance(test_response, dict) and test_response:
                 test_result = test_response
             else:
                 test_result = {"success": True, "message": "Credential test accepted"}
