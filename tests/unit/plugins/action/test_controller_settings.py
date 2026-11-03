@@ -86,6 +86,17 @@ class TestControllerSettingsAction(unittest.TestCase):
         self.assertEqual(ActionModule._coerce_type("[a, b]"), ["a", "b"])
         self.assertEqual(ActionModule._coerce_type("plain"), "plain")
 
+    def test_malformed_yaml_error_is_sanitized(self):
+        from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule
+
+        with self.assertRaises(ValueError) as raised:
+            ActionModule._coerce_type("{PASSWORD: [super-secret}")
+
+        self.assertEqual(str(raised.exception), "Unable to parse setting value as YAML at line 1, column 25")
+        self.assertNotIn("super-secret", str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
+
     def test_name_value_update_and_idempotency(self):
         action, manager = self._action({"DEFAULT_JOB_TIMEOUT": 0}, {"DEFAULT_JOB_TIMEOUT": 3600})
         result = action.run(task_vars={})

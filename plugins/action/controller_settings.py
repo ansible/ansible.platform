@@ -80,7 +80,15 @@ class ActionModule(BaseResourceActionPlugin):
             try:
                 return yaml.safe_load(value)
             except yaml.YAMLError as exc:
-                raise ValueError(f"Unable to parse setting value as YAML: {exc}") from exc
+                mark = getattr(exc, "problem_mark", None)
+                if mark is not None:
+                    error_message = "Unable to parse setting value as YAML at line %d, column %d" % (mark.line + 1, mark.column + 1)
+                else:
+                    error_message = "Unable to parse setting value as YAML"
+
+            # Raise outside the except block so the parser exception is not
+            # retained as an exception context or exposed in the task result.
+            raise ValueError(error_message)
 
         if value.lower() in ("true", "false", "t", "f"):
             return value.lower() in ("true", "t")
