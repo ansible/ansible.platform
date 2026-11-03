@@ -5,19 +5,11 @@
   when: test_id is not defined
 
 - name: Exercise job_launch with a test-owned job template
-  module_defaults:
-    group/ansible.platform.controller:
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
   block:
     - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
         name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
-        project: "Demo Project"
-        playbook: hello_world.yml
-        inventory: "Demo Inventory"
+        copy_from: "Demo Job Template"
         ask_inventory_on_launch: true
         state: present
       register: test_jt
@@ -25,7 +17,7 @@
     - name: Assert test job template exists
       ansible.builtin.assert:
         that:
-          - test_jt.job_template.id is defined
+          - test_jt.id is defined
 
     - name: Launch the test job template
       ansible.platform.job_launch:
@@ -48,6 +40,6 @@
       ansible.platform.job_template:
         name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
         state: absent
-      when: test_id is defined and test_jt is defined and test_jt is succeeded
+      when: test_id is defined
       failed_when: false
 ...

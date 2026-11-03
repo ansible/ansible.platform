@@ -56,6 +56,7 @@ no_endpoint_for_module = [
     "eda_project",
     "eda_credential_input_source",
     "eda_credential_type",
+    "event_stream",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.

@@ -1084,8 +1084,18 @@ class DirectHTTPClient(BaseAPIClient):
         # Build URL
         url = self._build_url(delete_op.path.format(id=resource_id), service=context.service, api_version=context.api_version)
 
-        # Execute delete
-        _response = self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
+        # DELETE is idempotent for state=absent: a resource removed between
+        # lookup and deletion (or already absent by ID) is a no-op.
+        try:
+            self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
+        except APIError as exc:
+            if exc.status_code == 404:
+                return {"changed": False, "id": resource_id}
+            raise
+        except HTTPError as exc:
+            if exc.code == 404:
+                return {"changed": False, "id": resource_id}
+            raise
 
         return {"changed": True, "deleted": True}
 
@@ -1219,6 +1229,15 @@ class DirectHTTPClient(BaseAPIClient):
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
         api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
+        # Some list endpoints omit fields needed for idempotency comparisons.
+        # Match PlatformService by fetching the detail representation when
+        # the transform declares that the list result is incomplete.
+        if getattr(mixin_class, "full_resource_lookup", False) and api_data.get("id") and get_op:
+            full_url = self._build_url(get_op.path.replace("{id}", str(api_data["id"])), service=context.service, api_version=context.api_version)
+            full_response = self._make_request(get_op.method, full_url, operation="find", resource=mixin_class.__name__)
+            full_body = full_response.read()
+            if full_body:
+                api_data = json.loads(full_body)
         ansible_instance = mixin_class.from_api(api_data, context)
         logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
         from dataclasses import asdict

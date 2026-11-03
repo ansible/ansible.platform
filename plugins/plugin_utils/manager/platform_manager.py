@@ -851,6 +851,8 @@ class PlatformService(BaseAPIClient):
         url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
+        if response.status_code == 404:
+            return {"changed": False, "id": resource_id}
         response.raise_for_status()
         return {"changed": True, "id": resource_id}
 

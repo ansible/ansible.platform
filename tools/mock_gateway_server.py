@@ -529,9 +529,9 @@ class Store:
             if resource and not resource._items:
                 resource.seed("2", items)
 
-        # Seed EDA fixtures for the rulebook_activation Molecule mock scenario.
-        # The rulebook's "sources" list is served directly by MockGatewayHandler,
-        # so it doesn't need its own store.
+        # Seed EDA fixtures used by event stream, decision environment, and
+        # rulebook activation mock scenarios. The rulebook's "sources" list is
+        # served directly by MockGatewayHandler, so it doesn't need its own store.
         eda_fixtures = {
             "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 1}],
             "rulebooks": [
@@ -543,7 +543,11 @@ class Store:
                 }
             ],
             "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 1}],
-            "eda-credentials": [{"id": 9401, "name": "Molecule Mock EDA Credential", "credential_type_id": 1, "organization_id": 1}],
+            "eda-credentials": [
+                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 1},
+                {"id": 9102, "name": "Molecule Mock Decision Environment Credential", "organization_id": 1},
+                {"id": 9401, "name": "Molecule Mock EDA Credential", "credential_type_id": 1, "organization_id": 1},
+            ],
             "event-streams": [{"id": 9501, "name": "Molecule Mock Event Stream"}],
         }
         for endpoint, items in eda_fixtures.items():
