@@ -1097,6 +1097,21 @@ class BaseResourceActionPlugin(ActionBase):
 
         return False
 
+    @staticmethod
+    def _is_resource_not_found(exc: Exception) -> bool:
+        """Return whether a lookup exception means the resource is absent."""
+        status_code = getattr(exc, "status_code", None)
+        details = getattr(exc, "details", None)
+        if status_code is None and isinstance(details, dict):
+            status_code = details.get("status_code")
+        if status_code is None:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 404:
+            return True
+
+        message = str(exc).strip().lower()
+        return message == "not found" or (message.startswith("resource ") and message.endswith("not found"))
+
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """
         Standard run() for resource action plugins.
@@ -1188,8 +1203,9 @@ class BaseResourceActionPlugin(ActionBase):
                             return result
                         operation = "update"
                         resource.id = find_result["id"]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
 
             # ---- absent: find by lookup field to get id --------------------
             if operation == "delete" and not getattr(resource, "id", None):
