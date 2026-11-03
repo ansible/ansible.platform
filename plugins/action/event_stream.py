@@ -130,8 +130,8 @@ class ActionModule(BaseResourceActionPlugin):
                 elif current_org is not None:
                     current_org_id = EventStreamTransformMixin_v1.resolve_reference_id(manager, "organizations", current_org)
 
-            desired_scope = {"organization_id": desired_org_id} if desired_org_id is not None else None
-            current_scope = {"organization_id": current_org_id} if current_org_id is not None else None
+            desired_scope = {"organization": desired_org_id} if desired_org_id is not None else None
+            current_scope = {"organization": current_org_id} if current_org_id is not None else None
             desired_id = EventStreamTransformMixin_v1.resolve_reference_id(manager, endpoint, desired_value, extra_query_params=desired_scope)
             current_id = EventStreamTransformMixin_v1.resolve_reference_id(manager, endpoint, current_value, extra_query_params=current_scope)
             if desired_id != current_id:

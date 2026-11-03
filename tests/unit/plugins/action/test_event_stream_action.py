@@ -320,7 +320,7 @@ class TestEventStreamTransform(unittest.TestCase):
         self.assertEqual(api.organization_id, 1)
         self.assertEqual(
             mgr.lookup_resource_id.call_args_list[1].kwargs,
-            {"service": "eda", "extra_query_params": {"organization_id": 1}, "require_unique": True},
+            {"service": "eda", "extra_query_params": {"organization": 1}, "require_unique": True},
         )
         self.assertEqual(mgr.lookup_resource_id.call_args_list[0].kwargs, {"service": "eda", "extra_query_params": None, "require_unique": True})
 

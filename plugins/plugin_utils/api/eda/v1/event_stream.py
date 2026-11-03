@@ -77,7 +77,7 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
         # --- credential_name -> eda_credential_id ---
         credential_name = getattr(ansible_instance, "credential_name", None)
         if credential_name is not None:
-            org_scope = {"organization_id": api_data["organization_id"]} if api_data.get("organization_id") is not None else None
+            org_scope = {"organization": api_data["organization_id"]} if api_data.get("organization_id") is not None else None
             api_data["eda_credential_id"] = cls.resolve_reference_id(
                 mgr,
                 "eda-credentials",

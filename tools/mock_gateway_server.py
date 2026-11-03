@@ -522,9 +522,8 @@ class Store:
 
         # Seed EDA fixtures for the event_stream and decision_environment mock scenarios.
         eda_fixtures = {
-            "organizations": [{"id": 9001, "name": "Default"}],
             "eda-credentials": [
-                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 9001},
+                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 1},
                 {"id": 9102, "name": "Molecule Mock Decision Environment Credential"},
             ],
         }
