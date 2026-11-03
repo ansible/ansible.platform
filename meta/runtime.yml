@@ -27,6 +27,7 @@ action_groups:
   eda:
     - decision_environment
     - eda_controller_token
+    - eda_credential
     - eda_project
   controller:
     - job_template
