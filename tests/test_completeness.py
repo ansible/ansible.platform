@@ -381,9 +381,7 @@ if _controller_endpoints:
                     # module-to-API field comparison to perform here. DRF may
                     # omit PATCH from OPTIONS actions, so also inspect Allow.
                     write_methods = {"PUT", "PATCH"}
-                    allowed_methods = {
-                        method.strip().upper() for method in options_response.headers.get("Allow", "").split(",")
-                    }
+                    allowed_methods = {method.strip().upper() for method in options_response.headers.get("Allow", "").split(",")}
                     if not (write_methods.intersection(actions) or write_methods.intersection(allowed_methods)):
                         cause_error(module_name, "Failed, Controller settings singleton does not expose a writable method")
                 elif "POST" in actions:
