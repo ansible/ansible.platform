@@ -222,11 +222,13 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
             endpoint = ACTIVATION_ENABLE_ENDPOINT if need_enable else ACTIVATION_DISABLE_ENDPOINT
             manager.direct_request("POST", endpoint.format(id=existing["id"]), retry_config=_NO_RETRY)
+            activation_result = dict(existing)
+            activation_result["is_enabled"] = state == "enabled"
             result.update(
                 {
                     "changed": True,
                     "failed": False,
-                    self.MODULE_NAME: existing,
+                    self.MODULE_NAME: activation_result,
                     "id": existing["id"],
                 }
             )
