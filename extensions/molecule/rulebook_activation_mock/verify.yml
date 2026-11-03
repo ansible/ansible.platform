@@ -1,0 +1,45 @@
+---
+- name: Verify — rulebook_activation cleanup complete
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Ensure original activation is absent after converge cleanup
+      ansible.platform.rulebook_activation:
+        name: "molecule-mock-rulebook-activation"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_absent
+      vars:
+        ansible_connection: local
+
+    - name: Assert original activation is already absent
+      ansible.builtin.assert:
+        that: verify_absent is not changed
+        fail_msg: "Verify: activation should already be absent after converge cleanup."
+
+    - name: Ensure copied activation is absent after converge cleanup
+      ansible.platform.rulebook_activation:
+        name: "molecule-mock-rulebook-activation-copy"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_copy_absent
+      vars:
+        ansible_connection: local
+
+    - name: Assert copied activation is already absent
+      ansible.builtin.assert:
+        that: verify_copy_absent is not changed
+        fail_msg: "Verify: copied activation should already be absent after converge cleanup."
+...

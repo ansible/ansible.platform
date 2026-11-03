@@ -55,6 +55,30 @@ class TestCancelResource(TestCase):
         self.assertEqual(result, {"changed": True, "id": 42, "status": "canceled"})
         client.wait_for_completion.assert_called_once_with("/ad_hoc_commands/42/", timeout=-1, interval=1.0, service="controller")
 
+    def test_direct_request_accepts_single_attempt_retry_override(self):
+        client = DirectHTTPClient.__new__(DirectHTTPClient)
+        client._authenticated = True
+        client.api_versions = {"gateway": "1"}
+        client._build_url = MagicMock(return_value="https://controller.example/api/eda/v1/activations/42/restart/")
+        response = MagicMock()
+        response.read.return_value = b'{"id": 42}'
+        client._make_request = MagicMock(return_value=response)
+        retry_config = RetryConfig(max_attempts=1)
+
+        result = client.direct_request(
+            "POST",
+            "/api/eda/v1/activations/42/restart/",
+            retry_config=retry_config,
+        )
+
+        self.assertEqual(result, {"id": 42})
+        client._make_request.assert_called_once_with(
+            "POST",
+            "https://controller.example/api/eda/v1/activations/42/restart/",
+            operation="direct_request",
+            resource="/api/eda/v1/activations/42/restart/",
+        )
+
     def test_persistent_client_handles_empty_cancel_response(self):
         client = PlatformService.__new__(PlatformService)
         client._build_url = MagicMock(return_value="https://controller.example/api/controller/v2/ad_hoc_commands/42/cancel/")
