@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 
 class TestControllerSettingsAction(unittest.TestCase):
-    def _action(self, current, updated=None, *, check_mode=False, diff=False):
+    def _action(self, current, updated=None, *, check_mode=False, diff=False, validated_params=None):
         from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule
 
         action = ActionModule.__new__(ActionModule)
@@ -22,11 +22,38 @@ class TestControllerSettingsAction(unittest.TestCase):
         action._prepare_action = MagicMock(
             return_value={
                 "result": {},
-                "validated_params": {"name": "DEFAULT_JOB_TIMEOUT", "value": "3600", "settings": None},
+                "validated_params": validated_params or {"name": "DEFAULT_JOB_TIMEOUT", "value": "3600", "settings": None},
                 "manager": manager,
             }
         )
         return action, manager
+
+    def test_sensitive_inputs_are_marked_no_log(self):
+        from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule
+
+        action = ActionModule.__new__(ActionModule)
+        action._display = MagicMock()
+        argspec = action._build_argspec_from_docs(action._get_documentation())
+        self.assertTrue(argspec["argument_spec"]["value"]["no_log"])
+        self.assertTrue(argspec["argument_spec"]["settings"]["no_log"])
+
+    def test_masked_secret_is_resent_and_redacted(self):
+        action, manager = self._action(
+            {"SUBSCRIPTIONS_PASSWORD": "$encrypted$"},
+            {"SUBSCRIPTIONS_PASSWORD": "$encrypted$"},
+            validated_params={"name": "SUBSCRIPTIONS_PASSWORD", "value": "new-secret", "settings": None},
+        )
+
+        result = action.run(task_vars={})
+
+        # Preserve legacy behavior: a masked value is not comparable to the
+        # supplied plaintext, so the secret is sent again on every run.
+        self.assertTrue(result["changed"])
+        self.assertEqual(manager.execute.call_count, 2)
+        self.assertEqual(result["old_values"]["SUBSCRIPTIONS_PASSWORD"], "$encrypted$")
+        self.assertEqual(result["new_values"]["SUBSCRIPTIONS_PASSWORD"], "$redacted$")
+        self.assertEqual(result["value"], "$encrypted$")
+        self.assertEqual(result["controller_settings"]["settings"]["SUBSCRIPTIONS_PASSWORD"], "$encrypted$")
 
     def test_coerce_type(self):
         from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule

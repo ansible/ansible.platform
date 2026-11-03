@@ -23,6 +23,52 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "controller_settings"
     _MUTUALLY_EXCLUSIVE = [["name", "settings"]]
     _REQUIRED_ONE_OF = [["name", "settings"]]
+    _NO_LOG_FIELDS = frozenset({"value", "settings"})
+
+    _ENCRYPTED_VALUE = "$encrypted$"
+    _REDACTED_VALUE = "$redacted$"
+    _SENSITIVE_SETTING_MARKERS = (
+        "PASSWORD",
+        "SECRET",
+        "TOKEN",
+        "PRIVATE_KEY",
+        "CLIENT_KEY",
+        "CLIENT_CERT",
+        "CA_CERT",
+        "KEY_PEM",
+        "CERT_PEM",
+    )
+
+    @classmethod
+    def _is_sensitive_setting(cls, name):
+        """Return whether a dynamic Controller setting may contain a secret."""
+        upper_name = str(name).upper()
+        return any(marker in upper_name for marker in cls._SENSITIVE_SETTING_MARKERS)
+
+    @classmethod
+    def _redact_setting_value(cls, name, value):
+        """Redact secret setting values while preserving API placeholders."""
+        if cls._is_sensitive_setting(name):
+            if value is None or value == cls._ENCRYPTED_VALUE:
+                return value
+            return cls._REDACTED_VALUE
+        if isinstance(value, dict):
+            return cls._redact_settings(value)
+        if isinstance(value, list):
+            return [cls._redact_setting_value(name, item) for item in value]
+        return value
+
+    @classmethod
+    def _redact_settings(cls, settings):
+        """Redact sensitive values in a settings mapping, including nested maps."""
+        if not isinstance(settings, dict):
+            return settings
+        return {key: cls._redact_setting_value(key, value) for key, value in settings.items()}
+
+    @classmethod
+    def _redact_requested_settings(cls, settings):
+        """Redact user-supplied settings before returning them in results."""
+        return cls._redact_settings(settings)
 
     @staticmethod
     def _coerce_type(value):
@@ -47,14 +93,15 @@ class ActionModule(BaseResourceActionPlugin):
     @staticmethod
     def _result_payload(current_settings, requested_settings, updated_settings, changed):
         """Build stable legacy-compatible output fields."""
+        old_values = {key: current_settings.get(key) for key in requested_settings}
         return {
             "changed": changed,
-            "old_values": {key: current_settings.get(key) for key in requested_settings},
-            "new_values": dict(requested_settings),
+            "old_values": ActionModule._redact_settings(old_values),
+            "new_values": ActionModule._redact_requested_settings(requested_settings),
             "controller_settings": {
-                "settings": updated_settings,
-                "old_values": {key: current_settings.get(key) for key in requested_settings},
-                "new_values": dict(requested_settings),
+                "settings": ActionModule._redact_settings(updated_settings),
+                "old_values": ActionModule._redact_settings(old_values),
+                "new_values": ActionModule._redact_requested_settings(requested_settings),
                 "changed": changed,
             },
         }
@@ -89,26 +136,26 @@ class ActionModule(BaseResourceActionPlugin):
 
             if self._task.diff:
                 result["diff"] = {
-                    "before": {key: current_settings.get(key) for key in to_update},
-                    "after": dict(to_update),
+                    "before": self._redact_settings({key: current_settings.get(key) for key in to_update}),
+                    "after": self._redact_requested_settings(to_update),
                 }
 
             if not to_update:
                 result.update(self._result_payload(current_settings, requested_settings, current_settings, False))
                 result["failed"] = False
                 if name is not None:
-                    result["value"] = current_settings.get(name)
+                    result["value"] = self._redact_setting_value(name, current_settings.get(name))
                 else:
-                    result["values"] = {key: current_settings.get(key) for key in requested_settings}
+                    result["values"] = self._redact_settings({key: current_settings.get(key) for key in requested_settings})
                 return result
 
             if self._task.check_mode:
                 result.update(self._result_payload(current_settings, requested_settings, current_settings, True))
                 result["failed"] = False
                 if name is not None:
-                    result["value"] = to_update.get(name)
+                    result["value"] = self._redact_setting_value(name, to_update.get(name))
                 else:
-                    result["values"] = dict(to_update)
+                    result["values"] = self._redact_requested_settings(to_update)
                 return result
 
             update_result = manager.execute(
@@ -120,9 +167,9 @@ class ActionModule(BaseResourceActionPlugin):
             result.update(self._result_payload(current_settings, requested_settings, updated_settings, True))
             result["failed"] = False
             if name is not None:
-                result["value"] = updated_settings.get(name)
+                result["value"] = self._redact_setting_value(name, updated_settings.get(name))
             else:
-                result["values"] = {key: updated_settings.get(key) for key in requested_settings}
+                result["values"] = self._redact_settings({key: updated_settings.get(key) for key in requested_settings})
 
         except Exception as exc:
             self._display.vvv(f"Error in controller_settings action plugin: {exc}")
