@@ -1079,6 +1079,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Execute delete
         _response = self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
+        self._invalidate_resource_lookup_cache(context.service, delete_op.path)
 
         return {"changed": True, "deleted": True}
 
@@ -1285,6 +1286,9 @@ class DirectHTTPClient(BaseAPIClient):
                     operation=op_name,
                     resource=endpoint_op.path.split("/")[-2] if "/" in endpoint_op.path else "unknown",
                 )
+
+                if endpoint_op.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                    self._invalidate_resource_lookup_cache(context.service, endpoint_op.path)
 
             except Exception as e:
                 logger.error("DirectHTTPClient: API call failed: %s", e)

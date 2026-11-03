@@ -852,6 +852,7 @@ class PlatformService(BaseAPIClient):
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
+        self._invalidate_resource_lookup_cache(context.service, delete_op.path)
         return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
@@ -1047,6 +1048,9 @@ class PlatformService(BaseAPIClient):
                     json=request_data,
                 )
                 response.raise_for_status()
+
+                if endpoint_op.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                    self._invalidate_resource_lookup_cache(context.service, endpoint_op.path)
 
             except Exception as e:
                 logger.error("API call failed: %s", e)

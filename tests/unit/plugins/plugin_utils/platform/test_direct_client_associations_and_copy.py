@@ -7,9 +7,11 @@ from __future__ import absolute_import, division, print_function
 
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
@@ -302,6 +304,26 @@ class TestManageAssociations(unittest.TestCase):
         cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.assertEqual(result, 15)
         self.assertNotIn(cache_key, self.client.cache)
+
+    def test_lookup_refreshes_resource_id_after_delete(self):
+        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.get_api_version = MagicMock(return_value="2")
+        cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
+        self.client.cache[cache_key] = 14
+        self.client._make_request = MagicMock(
+            side_effect=[
+                _http_resp(),
+                _http_resp(body={"count": 1, "results": [{"id": 29, "name": "recreated"}]}),
+            ]
+        )
+        context = SimpleNamespace(service="controller", api_version="2")
+
+        self.client._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
+        resource_id = self.client.lookup_resource_id("inventories", "name", "recreated", service="controller")
+
+        self.assertEqual(resource_id, 29)
+        self.assertEqual(self.client._make_request.call_count, 2)
+        self.assertEqual(self.client.cache[cache_key], 29)
 
 
 class TestManageSubResource(unittest.TestCase):
