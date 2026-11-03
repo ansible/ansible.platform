@@ -53,6 +53,7 @@ no_endpoint_for_module = [
     "eda_credential",
     "rulebook_activation",
     "rulebook_activation_copy",
+    "eda_project",
     "eda_credential_type",
 ]
 
