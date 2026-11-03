@@ -260,7 +260,6 @@ class Connection(ConnectionBase):
                 socket_dir=socket_dir,
                 identifier=identifier,
                 process=process,
-                max_wait=50,  # 5 seconds max
             )
             logger.debug("Manager process is ready")
 
@@ -424,7 +423,6 @@ class Connection(ConnectionBase):
                 socket_dir=socket_dir,
                 identifier=inventory_hostname,
                 process=process,
-                max_wait=50,  # 5 seconds max
             )
             logger.debug("Persistent manager process is ready")
 
