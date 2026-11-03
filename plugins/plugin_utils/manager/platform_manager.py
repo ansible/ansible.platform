@@ -961,17 +961,7 @@ class PlatformService(BaseAPIClient):
             response.raise_for_status()
             list_result = response.json()
 
-            results = list_result.get("results", [])
-            if not results:
-                raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
-            if getattr(mixin_class, "require_unique_lookup", False):
-                try:
-                    multiple_matches = int(list_result.get("count", len(results)) or 0) > 1
-                except (TypeError, ValueError):
-                    multiple_matches = len(results) > 1
-                if len(results) > 1 or multiple_matches or list_result.get("next"):
-                    raise ValueError(f"Resource with {lookup_field}={unique_value} matched multiple resources; provide additional filters")
-            api_result = results[0]
+            api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
 
             # Some API list endpoints return incomplete data for certain fields
             # (e.g. the routes list omits idle_timeout_seconds / request_timeout_seconds

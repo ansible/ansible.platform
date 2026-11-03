@@ -1225,34 +1225,21 @@ class DirectHTTPClient(BaseAPIClient):
             response_data = {}
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
-        if results:
-            if getattr(mixin_class, "require_unique_lookup", False):
-                try:
-                    multiple_matches = int(response_data.get("count", len(results)) or 0) > 1
-                except (TypeError, ValueError):
-                    multiple_matches = len(results) > 1
-                if len(results) > 1 or multiple_matches or response_data.get("next"):
-                    raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources; provide additional filters")
-            # Return first match
-            api_data = results[0]
-            # Some list endpoints omit fields needed for idempotency comparisons.
-            # Match PlatformService by fetching the detail representation when
-            # the transform declares that the list result is incomplete.
-            if getattr(mixin_class, "full_resource_lookup", False) and api_data.get("id") and get_op:
-                full_url = self._build_url(get_op.path.replace("{id}", str(api_data["id"])), service=context.service, api_version=context.api_version)
-                full_response = self._make_request(get_op.method, full_url, operation="find", resource=mixin_class.__name__)
-                full_body = full_response.read()
-                if full_body:
-                    api_data = json.loads(full_body)
-            # from_api returns AnsibleUser dataclass, convert to dict for return
-            ansible_instance = mixin_class.from_api(api_data, context)
-            logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
-            from dataclasses import asdict
+        api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
+        # Some list endpoints omit fields needed for idempotency comparisons.
+        # Match PlatformService by fetching the detail representation when
+        # the transform declares that the list result is incomplete.
+        if getattr(mixin_class, "full_resource_lookup", False) and api_data.get("id") and get_op:
+            full_url = self._build_url(get_op.path.replace("{id}", str(api_data["id"])), service=context.service, api_version=context.api_version)
+            full_response = self._make_request(get_op.method, full_url, operation="find", resource=mixin_class.__name__)
+            full_body = full_response.read()
+            if full_body:
+                api_data = json.loads(full_body)
+        ansible_instance = mixin_class.from_api(api_data, context)
+        logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
+        from dataclasses import asdict
 
-            return asdict(ansible_instance)
-
-        # Not found
-        raise ValueError(f"Resource not found: {lookup_field}={lookup_value}")
+        return asdict(ansible_instance)
 
     def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None) -> dict:
         """

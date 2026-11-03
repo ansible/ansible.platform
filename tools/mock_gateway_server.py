@@ -389,6 +389,7 @@ class Store:
             ("organizations", ["name"], 7100),
             ("eda-credentials", ["name"], 7200),
             ("event-streams", ["name"], 7300),
+            ("decision-environments", ["name"], 7400),
         ]
         for endpoint, required, start_id in eda_defs:
             self._resources[("eda", endpoint)] = GenericResource(
@@ -509,10 +510,13 @@ class Store:
             if resource and not resource._items:
                 resource.seed("2", items)
 
-        # Seed EDA fixtures for the event_stream Molecule mock scenario.
+        # Seed EDA fixtures for the event_stream and decision_environment mock scenarios.
         eda_fixtures = {
             "organizations": [{"id": 9001, "name": "Default"}],
-            "eda-credentials": [{"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 9001}],
+            "eda-credentials": [
+                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 9001},
+                {"id": 9102, "name": "Molecule Mock Decision Environment Credential"},
+            ],
         }
         for endpoint, items in eda_fixtures.items():
             resource = self.resource("eda", endpoint)
