@@ -934,15 +934,10 @@ class PlatformService(BaseAPIClient):
             if composite_params:
                 for param_key, param_val in composite_params.items():
                     result_val = api_result.get(param_key)
-                    # Normalise both sides to int when possible for FK comparisons.
-                    try:
-                        param_val_cmp = int(param_val)
-                    except (TypeError, ValueError):
-                        param_val_cmp = param_val
-                    try:
-                        result_val_cmp = int(result_val) if result_val is not None else None
-                    except (TypeError, ValueError):
-                        result_val_cmp = result_val
+                    if result_val is None:
+                        result_val = api_result.get(f"{param_key}_id")
+                    param_val_cmp = self._normalize_composite_value(param_val)
+                    result_val_cmp = self._normalize_composite_value(result_val)
                     if result_val_cmp != param_val_cmp:
                         raise ValueError(f"Resource {resolved_id} found but composite key {param_key}={param_val} does not match actual value {result_val}")
         else:

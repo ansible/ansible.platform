@@ -50,6 +50,7 @@ no_endpoint_for_module = [
     "license",
     "workflow_launch",
     "decision_environment",
+    "eda_credential",
     "eda_credential_input_source",
 ]
 
