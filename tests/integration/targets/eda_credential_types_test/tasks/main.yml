@@ -1,0 +1,72 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Set credential type test data
+  ansible.builtin.set_fact:
+    credential_type_name: "EDA-Collection-Test-Credential-Type-{{ test_id }}"
+    credential_type_inputs:
+      fields:
+        - id: username
+          type: string
+          label: Username
+    credential_type_injectors:
+      extra_vars:
+        username: "{{ '{{ username }}' }}"
+
+- name: Run credential type tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Create EDA credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        inputs: "{{ credential_type_inputs }}"
+        injectors: "{{ credential_type_injectors }}"
+        state: present
+      register: create_result
+
+    - name: Assert credential type was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_credential_type.id is defined
+          - create_result.eda_credential_type.name == credential_type_name
+
+    - name: Verify credential type is idempotent
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        inputs: "{{ credential_type_inputs }}"
+        injectors: "{{ credential_type_injectors }}"
+        state: present
+      register: present_result
+
+    - name: Assert credential type is unchanged
+      ansible.builtin.assert:
+        that:
+          - present_result is not changed
+
+    - name: Delete EDA credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert credential type was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+  always:
+    - name: Cleanup EDA credential type
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        state: absent
+      failed_when: false
+      when: credential_type_name is defined
+...

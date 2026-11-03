@@ -4,17 +4,20 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Set test job template name
-  ansible.builtin.set_fact:
-    test_job_template_name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
-
-- name: Run job_launch against a test-owned job template
+- name: Exercise job_launch with a test-owned job template
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
   block:
     - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
-        name: "{{ test_job_template_name }}"
-        copy_from: "Demo Job Template"
-        organization: Default
+        name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
+        project: "Demo Project"
+        playbook: hello_world.yml
+        inventory: "Demo Inventory"
         ask_inventory_on_launch: true
         state: present
       register: test_jt
@@ -22,12 +25,11 @@
     - name: Assert test job template exists
       ansible.builtin.assert:
         that:
-          - test_jt.id is defined
+          - test_jt.job_template.id is defined
 
-    - name: Launch the test job template and wait for completion
+    - name: Launch the test job template
       ansible.platform.job_launch:
-        name: "{{ test_job_template_name }}"
-        organization: Default
+        name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
         inventory: "Demo Inventory"
         wait: true
         interval: 2
@@ -42,11 +44,10 @@
           - launched_job.status == 'successful'
 
   always:
-    - name: Remove test job template
+    - name: Remove the test job template
       ansible.platform.job_template:
-        name: "{{ test_job_template_name }}"
-        organization: Default
+        name: "AAP-Collection-Test-JobLaunch-{{ test_id }}"
         state: absent
-      when: test_jt is defined and test_jt.id is defined
+      when: test_id is defined and test_jt is defined and test_jt is succeeded
       failed_when: false
 ...

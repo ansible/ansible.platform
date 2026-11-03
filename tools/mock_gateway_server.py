@@ -1282,6 +1282,18 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
                 return
 
+        # ---- EDA: /api/eda/vX/credential-types/{id}/test/ ----
+        if service == "eda" and resource == "credential-types" and len(parts) == 6 and parts[5] == "test" and self.command == "POST":
+            self.store.seed_defaults()
+            credential_type_store = self.store.resource("eda", "credential-types")
+            try:
+                credential_type_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            self._parse_json_body()
+            self._send_json(200, {"success": True, "message": "Credential type test accepted"})
+
         # ---- EDA: /api/eda/vX/rulebooks/{id}/sources/ (read-only, seeded on the rulebook fixture) ----
         if service == "eda" and resource == "rulebooks" and len(parts) == 6 and parts[5] == "sources" and self.command == "GET":
             self.store.seed_defaults()
