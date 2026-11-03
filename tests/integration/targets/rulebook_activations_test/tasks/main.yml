@@ -264,6 +264,23 @@
         that:
           - delete_result is changed
 
+    # EDA may briefly return a recently deleted activation from the filtered
+    # list endpoint. Wait for the same lookup used by the action to observe
+    # its absence before asserting that a repeated delete is a no-op.
+    - name: Wait for deleted activation to disappear from lookup results
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/activations/?name={{ activation_name | urlencode }}"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: deleted_activation_lookup
+      retries: 30
+      delay: 2
+      until: deleted_activation_lookup.json.results | length == 0
+      delegate_to: localhost
+
     # <Delete absent — no-op> -------------------
     - name: Delete already absent activation
       ansible.platform.rulebook_activation:
