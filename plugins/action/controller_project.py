@@ -144,11 +144,13 @@ class ActionModule(BaseResourceActionPlugin):
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
         project_data = result.get(self.MODULE_NAME) or {}
-        summary_fields = project_data.get("summary_fields", {})
-        current_update = summary_fields.get("current_update", {})
+        summary_fields = project_data.get("summary_fields") or {}
+        current_update = summary_fields.get("current_update") or {}
         scm_revision_before = project_data.get("scm_revision", "")
 
         if current_update.get("id"):
+            if update_project and not wait:
+                raise ValueError("Project sync is already running (id=%s); cannot schedule update_project with wait=false" % current_update["id"])
             if wait:
                 update_result = manager.wait_for_completion(
                     "project_updates/%d" % current_update["id"],

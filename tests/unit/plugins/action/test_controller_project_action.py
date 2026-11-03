@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 from ansible.playbook.task import Task
 from ansible_collections.ansible.platform.plugins.action.controller_project import ActionModule
 
@@ -33,16 +34,12 @@ def test_refresh_project_sync_data_preserves_raw_controller_metadata():
         "summary_fields": {"current_update": {"id": 86}},
     }
 
-    result = module._refresh_project_sync_data(
-        manager, {"id": 42, "name": "project"}, 42
-    )
+    result = module._refresh_project_sync_data(manager, {"id": 42, "name": "project"}, 42)
 
     assert result["id"] == 42
     assert result["scm_revision"] == "after-sync"
     assert result["summary_fields"] == {"current_update": {"id": 86}}
-    manager.search_api.assert_called_once_with(
-        "/api/controller/v2/projects/42/", service="controller"
-    )
+    manager.search_api.assert_called_once_with("/api/controller/v2/projects/42/", service="controller")
 
 
 def test_refresh_project_sync_data_does_not_drop_existing_result_fields():
@@ -50,9 +47,7 @@ def test_refresh_project_sync_data_does_not_drop_existing_result_fields():
     manager = MagicMock()
     manager.search_api.return_value = {"scm_revision": "after-sync"}
 
-    result = module._refresh_project_sync_data(
-        manager, {"id": 42, "name": "project", "description": "kept"}, 42
-    )
+    result = module._refresh_project_sync_data(manager, {"id": 42, "name": "project", "description": "kept"}, 42)
 
     assert result == {
         "id": 42,
@@ -86,9 +81,38 @@ def test_run_refetches_sync_metadata_before_waiting():
         result = action.run(task_vars={})
 
     assert not result["failed"]
-    manager.search_api.assert_called_once_with(
-        "/api/controller/v2/projects/42/", service="controller"
-    )
-    manager.wait_for_completion.assert_called_once_with(
-        "project_updates/86", timeout=None, interval=2.0, service="controller"
-    )
+    manager.search_api.assert_called_once_with("/api/controller/v2/projects/42/", service="controller")
+    manager.wait_for_completion.assert_called_once_with("project_updates/86", timeout=None, interval=2.0, service="controller")
+
+
+def test_handle_project_sync_tolerates_null_summary_fields():
+    module = _make_module()
+    manager = MagicMock()
+    result = {
+        "controller_project": {
+            "id": 42,
+            "scm_revision": None,
+            "summary_fields": None,
+        }
+    }
+
+    module._handle_project_sync(result, manager, 42, wait=True, update_project=False, interval=2.0, timeout=None)
+
+    manager.wait_for_completion.assert_not_called()
+
+
+def test_handle_project_sync_reports_running_update_for_nowait_request():
+    module = _make_module()
+    manager = MagicMock()
+    result = {
+        "controller_project": {
+            "id": 42,
+            "summary_fields": {"current_update": {"id": 86}},
+        }
+    }
+
+    with pytest.raises(ValueError, match="cannot schedule update_project with wait=false"):
+        module._handle_project_sync(result, manager, 42, wait=False, update_project=True, interval=2.0, timeout=None)
+
+    manager.launch_resource.assert_not_called()
+    manager.wait_for_completion.assert_not_called()
