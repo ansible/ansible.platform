@@ -10,6 +10,7 @@
 
 - name: Preset resource names
   ansible.builtin.set_fact:
+    controller_organization: Default
     execution_environment_name: "{{ name_prefix }}-EE"
     notification_template_name: "{{ name_prefix }}-Notify"
     project_name: "{{ name_prefix }}-Project"
@@ -65,7 +66,7 @@
       ansible.platform.controller_credential:
         name: "{{ name_prefix }}-Cred"
         credential_type: "{{ name_prefix }}-CredType"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         inputs:
           api_key: "test-key-12345"
       register: test_cred
@@ -74,12 +75,12 @@
       ansible.platform.execution_environment:
         name: "{{ execution_environment_name }}"
         image: quay.io/ansible/awx-ee:latest
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
 
     - name: Create test notification template
       ansible.platform.notification_template:
         name: "{{ notification_template_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         notification_type: webhook
         notification_configuration:
           url: "https://example.invalid/export-import"
@@ -89,7 +90,7 @@
     - name: Create test project
       ansible.platform.controller_project:
         name: "{{ project_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         scm_type: git
         scm_url: "https://github.com/ansible/ansible-tower-samples.git"
         default_environment: "{{ execution_environment_name }}"
@@ -99,12 +100,12 @@
     - name: Create test label
       ansible.platform.label:
         name: "{{ label_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
 
     - name: Create test inventory
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Inventory"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         description: "Test inventory"
       register: test_inv
 
@@ -162,7 +163,7 @@
     - name: Create test workflow job template
       ansible.platform.workflow_job_template:
         name: "{{ workflow_job_template_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         notification_templates_success:
           - "{{ notification_template_name }}"
 
@@ -297,7 +298,7 @@
     - name: Verify exported inventory FK resolved to name
       ansible.builtin.assert:
         that:
-          - inv_export.assets.inventory[0].organization == name_prefix ~ '-Org'
+          - inv_export.assets.inventory[0].organization == controller_organization
 
     # =========================================================================
     # Phase 3: Delete test resources, then import to recreate
@@ -328,19 +329,19 @@
         - name: Delete test project
           ansible.platform.controller_project:
             name: "{{ project_name }}"
-            organization: "{{ name_prefix }}-Org"
+            organization: "{{ controller_organization }}"
             state: absent
 
         - name: Delete test notification template
           ansible.platform.notification_template:
             name: "{{ notification_template_name }}"
-            organization: "{{ name_prefix }}-Org"
+            organization: "{{ controller_organization }}"
             state: absent
 
         - name: Delete test execution environment
           ansible.platform.execution_environment:
             name: "{{ execution_environment_name }}"
-            organization: "{{ name_prefix }}-Org"
+            organization: "{{ controller_organization }}"
             state: absent
 
         - name: Delete test group
@@ -358,14 +359,14 @@
         - name: Delete test inventory
           ansible.platform.inventory:
             name: "{{ name_prefix }}-Inventory"
-            organization: "{{ name_prefix }}-Org"
+            organization: "{{ controller_organization }}"
             state: absent
 
         - name: Delete test credential
           ansible.platform.controller_credential:
             name: "{{ name_prefix }}-Cred"
             credential_type: "{{ name_prefix }}-CredType"
-            organization: "{{ name_prefix }}-Org"
+            organization: "{{ controller_organization }}"
             state: absent
 
         - name: Delete test credential type
@@ -389,7 +390,7 @@
           notification_templates: "{{ notification_export.assets.notification_templates }}"
           projects:
             - name: "{{ project_name }}"
-              organization: "{{ name_prefix }}-Org"
+              organization: "{{ controller_organization }}"
               scm_type: git
               scm_url: "https://github.com/ansible/ansible-tower-samples.git"
               default_environment: "{{ execution_environment_name }}"
@@ -404,7 +405,7 @@
               overwrite: true
           workflow_job_templates:
             - name: "{{ workflow_job_template_name }}"
-              organization: "{{ name_prefix }}-Org"
+              organization: "{{ controller_organization }}"
 
     - name: Import exported assets (should recreate everything)
       ansible.platform.import:
@@ -444,7 +445,7 @@
     - name: Verify inventory was recreated
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Inventory"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         state: exists
       register: inv_check
 
@@ -499,21 +500,21 @@
     - name: Cleanup test project
       ansible.platform.controller_project:
         name: "{{ project_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         state: absent
       failed_when: false
 
     - name: Cleanup test notification template
       ansible.platform.notification_template:
         name: "{{ notification_template_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         state: absent
       failed_when: false
 
     - name: Cleanup test execution environment
       ansible.platform.execution_environment:
         name: "{{ execution_environment_name }}"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         state: absent
       failed_when: false
 
@@ -534,7 +535,7 @@
     - name: Cleanup test inventory
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Inventory"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         state: absent
       failed_when: false
 
@@ -542,7 +543,7 @@
       ansible.platform.controller_credential:
         name: "{{ name_prefix }}-Cred"
         credential_type: "{{ name_prefix }}-CredType"
-        organization: "{{ name_prefix }}-Org"
+        organization: "{{ controller_organization }}"
         state: absent
       failed_when: false
 
