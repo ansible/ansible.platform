@@ -346,6 +346,18 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             bool: True when the error uses a recognized not-found response.
         """
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            details = getattr(exc, "details", None)
+            if isinstance(details, dict):
+                status_code = details.get("status_code")
+        if status_code is None:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code is None:
+            status_code = getattr(exc, "code", None)
+        if str(status_code) == "404":
+            return True
+
         message = str(exc).lower()
         return (message.startswith("resource with ") and message.endswith("not found")) or message.startswith("resource not found")
 
@@ -1182,7 +1194,7 @@ class BaseResourceActionPlugin(ActionBase):
                 try:
                     find_result = self._find_existing_resource(manager, resource_data)
                     exists = bool(find_result and find_result.get("id"))
-                except ValueError as exc:
+                except Exception as exc:
                     if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                         raise
                     find_result, exists = {}, False
@@ -1215,7 +1227,7 @@ class BaseResourceActionPlugin(ActionBase):
                             return result
                         operation = "update"
                         resource.id = find_result["id"]
-                except ValueError as exc:
+                except Exception as exc:
                     if not self._is_resource_not_found(exc):
                         raise
 
@@ -1235,7 +1247,7 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                except ValueError as exc:
+                except Exception as exc:
                     if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                         raise
                     result.update(
@@ -1253,7 +1265,7 @@ class BaseResourceActionPlugin(ActionBase):
                 argspec_fields = set(argspec.get("argument_spec", {}).keys())
                 try:
                     find_result = self._find_existing_resource(manager, resource_data)
-                except ValueError as exc:
+                except Exception as exc:
                     if not self._is_resource_not_found(exc):
                         raise
                     find_result = None

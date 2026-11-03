@@ -35,7 +35,6 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for Event Stream API v1."""
 
     require_unique_lookup = True
-    full_resource_lookup = True
 
     @classmethod
     def from_ansible_data(
@@ -252,12 +251,25 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
 
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
 
-        # Resolve eda_credential_id -> credential_name
-        credential_name = cls._resolve_fk_name(manager, "eda-credentials", api_data.get("eda_credential_id"))
+        # EDA returns these relationships as nested objects in resource
+        # responses, while the write payload uses *_id fields. Prefer the
+        # names already present in the response and fall back to resolving an
+        # ID for API versions that return only the foreign key.
+        credential = api_data.get("eda_credential")
+        credential_id = api_data.get("eda_credential_id")
+        if isinstance(credential, dict):
+            credential_id = credential_id if credential_id is not None else credential.get("id")
+        credential_name = credential.get("name") if isinstance(credential, dict) else None
+        if credential_name is None:
+            credential_name = cls._resolve_fk_name(manager, "eda-credentials", credential_id)
 
-        # Resolve organization_id -> organization_name
+        organization = api_data.get("organization")
         organization_id = api_data.get("organization_id")
-        organization_name = cls._resolve_fk_name(manager, "organizations", organization_id)
+        if isinstance(organization, dict):
+            organization_id = organization_id if organization_id is not None else organization.get("id")
+        organization_name = organization.get("name") if isinstance(organization, dict) else None
+        if organization_name is None:
+            organization_name = cls._resolve_fk_name(manager, "organizations", organization_id)
 
         # Reverse-transform test_mode -> forward_events (inverted)
         test_mode = api_data.get("test_mode")
