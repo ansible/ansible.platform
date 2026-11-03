@@ -57,7 +57,7 @@
         name: "{{ de_name }}"
         image_url: "quay.io/ansible/ansible-rulebook:main"
         organization_name: "Default"
-        credential: "Molecule Mock Decision Environment Credential"
+        credential: "Molecule Mock EDA Credential"
         state: present
       check_mode: true
       register: check_create
@@ -72,7 +72,7 @@
         name: "{{ de_name }}"
         image_url: "quay.io/ansible/ansible-rulebook:main"
         organization_name: "Default"
-        credential: "Molecule Mock Decision Environment Credential"
+        credential: "Molecule Mock EDA Credential"
         state: present
       register: create_result
 
@@ -87,7 +87,7 @@
         name: "{{ de_name }}"
         image_url: "quay.io/ansible/ansible-rulebook:main"
         organization_name: "Default"
-        credential: "Molecule Mock Decision Environment Credential"
+        credential: "Molecule Mock EDA Credential"
         state: present
       register: recreate_result
 
