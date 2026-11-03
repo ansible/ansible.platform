@@ -1,0 +1,348 @@
+---
+- name: Generate a test ID
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Preset vars
+  ansible.builtin.set_fact:
+    activation_name: "Collection-Test-Activation-{{ test_id }}"
+    activation_copy_name: "Collection-Test-Activation-Copy-{{ test_id }}"
+    eda_project_name: "Collection-Test-EDA-Project-{{ test_id }}"
+    eda_de_name: "Collection-Test-EDA-DE-{{ test_id }}"
+
+- name: Run Tests
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+
+  block:
+    # rulebook_activation, rulebook_activation_copy, and their FK resources
+    # (project/rulebook, decision environment) are not yet migrated as
+    # ansible.platform modules, so fixtures are created/removed with raw
+    # ansible.builtin.uri calls, the same approach setup_eda uses for its
+    # own EDA health check.
+    - name: Look up the Default organization id
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/organizations/?name=Default"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: default_org
+      delegate_to: localhost
+
+    - name: Set default_organization_id fact
+      ansible.builtin.set_fact:
+        default_organization_id: "{{ default_org.json.results[0].id }}"
+
+    # <Setup — EDA project synced from a repo with example rulebooks> -------------------
+    - name: Create EDA project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/projects/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        method: POST
+        body_format: json
+        body:
+          name: "{{ eda_project_name }}"
+          organization_id: "{{ default_organization_id }}"
+          url: "https://github.com/ansible/event-driven-ansible"
+        status_code: 201
+      register: eda_project
+      delegate_to: localhost
+
+    - name: Wait for EDA project import to complete
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/projects/{{ eda_project.json.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: eda_project_status
+      retries: 30
+      delay: 10
+      until: eda_project_status.json.import_state == "completed"
+      delegate_to: localhost
+
+    - name: Create decision environment
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/decision-environments/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        method: POST
+        body_format: json
+        body:
+          name: "{{ eda_de_name }}"
+          organization_id: "{{ default_organization_id }}"
+          image_url: "quay.io/ansible/ansible-rulebook:main"
+        status_code: 201
+      register: eda_de
+      delegate_to: localhost
+
+    # <Create> -------------------
+    - name: Create rulebook activation with check mode
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Integration test activation"
+        project_name: "{{ eda_project_name }}"
+        rulebook_name: "hello_events.yml"
+        decision_environment_name: "{{ eda_de_name }}"
+        organization_name: "Default"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create rulebook activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Integration test activation"
+        project_name: "{{ eda_project_name }}"
+        rulebook_name: "hello_events.yml"
+        decision_environment_name: "{{ eda_de_name }}"
+        organization_name: "Default"
+        state: present
+      register: create_result
+
+    - name: Assert activation was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.rulebook_activation.id is defined
+          - create_result.rulebook_activation.name == activation_name
+
+    # <Idempotency — re-create with identical parameters> -------------------
+    - name: Re-create same activation with identical parameters
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Integration test activation"
+        project_name: "{{ eda_project_name }}"
+        rulebook_name: "hello_events.yml"
+        decision_environment_name: "{{ eda_de_name }}"
+        organization_name: "Default"
+        state: present
+      register: recreate_result
+
+    - name: Assert re-create with no actual changes reports changed=false
+      ansible.builtin.assert:
+        that:
+          - recreate_result is not changed
+          - recreate_result.rulebook_activation.id == create_result.rulebook_activation.id
+
+    # <Disable before update> -------------------
+    - name: Disable the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_result
+
+    - name: Assert disable reports changed
+      ansible.builtin.assert:
+        that:
+          - disable_result is changed
+
+    - name: Wait for activation to stop after disabling
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/activations/{{ create_result.rulebook_activation.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: activation_status
+      retries: 30
+      delay: 2
+      until: not activation_status.json.is_enabled and activation_status.json.status == "stopped"
+      delegate_to: localhost
+
+    # EDA only allows activation updates after it has stopped.
+    - name: Update activation description
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        description: "Integration test activation (updated)"
+        state: present
+      register: update_result
+
+    - name: Assert updating a field reports changed
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+
+    - name: Disable the activation after the present update re-enabled it
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_after_update_result
+
+    - name: Assert disabling after the present update reports changed
+      ansible.builtin.assert:
+        that:
+          - disable_after_update_result is changed
+
+    - name: Wait for activation to stop after disabling the updated activation
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/activations/{{ create_result.rulebook_activation.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: activation_status
+      retries: 30
+      delay: 2
+      until: not activation_status.json.is_enabled and activation_status.json.status == "stopped"
+      delegate_to: localhost
+
+    - name: Disable the already-disabled activation again
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: disabled
+      register: disable_again_result
+
+    - name: Assert disabling an already-disabled activation is a no-op
+      ansible.builtin.assert:
+        that:
+          - disable_again_result is not changed
+
+    - name: Enable the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: enabled
+      register: enable_result
+
+    - name: Assert enable reports changed
+      ansible.builtin.assert:
+        that:
+          - enable_result is changed
+
+    # <Restart — non-idempotent> -------------------
+    - name: Restart the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        restart: true
+      register: restart_result
+
+    - name: Assert restart always reports changed
+      ansible.builtin.assert:
+        that:
+          - restart_result is changed
+
+    # <Copy> -------------------
+    - name: Copy the activation
+      ansible.platform.rulebook_activation_copy:
+        name: "{{ activation_copy_name }}"
+        copy_from: "{{ activation_name }}"
+      register: copy_result
+
+    - name: Assert copy created a new activation
+      ansible.builtin.assert:
+        that:
+          - copy_result is changed
+          - copy_result.rulebook_activation_copy.id is defined
+          - copy_result.rulebook_activation_copy.id != create_result.rulebook_activation.id
+
+    - name: Delete the copied activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_copy_name }}"
+        state: absent
+      register: delete_copy_result
+
+    - name: Assert copy delete reports changed
+      ansible.builtin.assert:
+        that:
+          - delete_copy_result is changed
+
+    # <Delete> -------------------
+    - name: Delete the activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert activation was deleted
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    # EDA may briefly return a recently deleted activation from the filtered
+    # list endpoint. Wait for the same lookup used by the action to observe
+    # its absence before asserting that a repeated delete is a no-op.
+    - name: Wait for deleted activation to disappear from lookup results
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/activations/?name={{ activation_name | urlencode }}"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        status_code: 200
+      register: deleted_activation_lookup
+      retries: 30
+      delay: 2
+      until: deleted_activation_lookup.json.results | length == 0
+      delegate_to: localhost
+
+    # <Delete absent — no-op> -------------------
+    - name: Delete already absent activation
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete absent is no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+
+  always:
+    - name: Cleanup — delete test activation (if still present)
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup — delete test activation copy (if still present)
+      ansible.platform.rulebook_activation:
+        name: "{{ activation_copy_name }}"
+        state: absent
+      failed_when: false
+
+    - name: Cleanup — delete decision environment
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/decision-environments/{{ eda_de.json.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        method: DELETE
+        status_code: [204, 404]
+      failed_when: false
+      delegate_to: localhost
+      when: eda_de is defined and eda_de.json is defined
+
+    - name: Cleanup — delete EDA project
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/eda/v1/projects/{{ eda_project.json.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        method: DELETE
+        status_code: [204, 404]
+      failed_when: false
+      delegate_to: localhost
+      when: eda_project is defined and eda_project.json is defined
+...
