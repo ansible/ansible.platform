@@ -385,6 +385,9 @@ class Store:
 
         # EDA resources
         eda_defs: List[tuple] = [
+            ("organizations", ["name"], 1000),
+            ("credential-types", ["name"], 1100),
+            ("eda-credentials", ["name", "credential_type_id", "organization_id"], 1200),
             ("awx-tokens", ["name", "token"], 6000),
             ("organizations", ["name"], 7100),
             ("eda-credentials", ["name"], 7200),
@@ -404,16 +407,23 @@ class Store:
 
     def seed_defaults(self) -> None:
         with self.lock:
-            if self.orgs_by_id:
-                return
-            default_orgs = [
-                {"id": 1, "name": "Default"},
-                {"id": 2, "name": "Engineering"},
-                {"id": 3, "name": "DevOps"},
-            ]
-            for org in default_orgs:
-                self.orgs_by_id[org["id"]] = org
-                self.orgs_by_name[org["name"]] = org["id"]
+            if not self.orgs_by_id:
+                default_orgs = [
+                    {"id": 1, "name": "Default"},
+                    {"id": 2, "name": "Engineering"},
+                    {"id": 3, "name": "DevOps"},
+                ]
+                for org in default_orgs:
+                    self.orgs_by_id[org["id"]] = org
+                    self.orgs_by_name[org["name"]] = org["id"]
+
+        # EDA uses its own organization and credential-type endpoints.
+        eda_orgs = self._resources.get(("eda", "organizations"))
+        if eda_orgs and not eda_orgs._items:
+            eda_orgs.seed("1", [{"id": 1, "name": "Default"}, {"id": 2, "name": "Engineering"}])
+        eda_credential_types = self._resources.get(("eda", "credential-types"))
+        if eda_credential_types and not eda_credential_types._items:
+            eda_credential_types.seed("1", [{"id": 1, "name": "Source Control"}])
 
         # Seed settings
         with self._settings_lock:
@@ -829,6 +839,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         if len(parts) == 4:
             if self.command == "GET":
                 filters = {k: v[0] for k, v in qs.items() if v}
+                # The EDA API exposes the foreign key filter as `organization`,
+                # while the credential write payload stores `organization_id`.
+                if service == "eda" and resource_name == "eda-credentials" and "organization" in filters:
+                    filters["organization_id"] = filters.pop("organization")
                 self._send_json(200, store.list_items(filters or None))
                 return True
             if self.command == "POST":
@@ -1248,6 +1262,36 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         if service == "eda" and len(parts) >= 6 and parts[3] == "users" and parts[4] == "me" and parts[5] == "awx-tokens":
             remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
+                return
+
+        # ---- EDA credential actions ----
+        if service == "eda" and resource == "eda-credentials" and len(parts) == 6:
+            credential_store = self.store.resource("eda", "eda-credentials")
+            try:
+                credential_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            if parts[5] == "copy" and self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                    source = credential_store.get(credential_id)
+                    copy_data = {k: v for k, v in source.items() if k not in {"id", "created", "modified", "url"}}
+                    copy_data["name"] = payload["name"]
+                    self._send_json(201, credential_store.create(version, copy_data))
+                except (KeyError, ValueError) as error:
+                    self._send_json(400, {"detail": str(error)})
+                return
+
+            if parts[5] == "test" and self.command == "POST":
+                try:
+                    credential_store.get(credential_id)
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                else:
+                    self._parse_json_body()
+                    self._send_json(200, {"success": True, "message": "Credential test successful"})
                 return
 
         # ---- All other resources — generic handler ----
