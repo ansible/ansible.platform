@@ -3,6 +3,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  vars:
+    ansible_connection: local
   tasks:
     - name: End scenario without mutating shared mock state
       ansible.builtin.debug:

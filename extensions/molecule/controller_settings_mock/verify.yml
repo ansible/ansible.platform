@@ -4,6 +4,7 @@
   connection: local
   gather_facts: false
   vars:
+    ansible_connection: local
     gateway_hostname: "http://127.0.0.1:8000"
   tasks:
     - name: Read Controller settings
