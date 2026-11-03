@@ -241,6 +241,53 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
         self.assertIn("Authentication failed", result["msg"])
 
 
+class TestEdaCredentialTypeRenameLookup(unittest.TestCase):
+    """Test rename lookup behavior for credential types."""
+
+    def setUp(self):
+        self.action = ActionModule.__new__(ActionModule)
+        self.manager = MagicMock()
+        self.resource_data = {"name": "Old Type", "new_name": "New Type", "state": "present"}
+
+    def test_existing_target_with_missing_original_is_rejected_as_ambiguous(self):
+        """Do not assume a target name belongs to a missing original resource."""
+        self.manager.execute.side_effect = [
+            ValueError("Resource with name=Old Type not found"),
+            {"id": 20, "name": "New Type"},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "original was not found and the target already exists"):
+            self.action._find_existing_resource(self.manager, self.resource_data)
+
+        self.assertEqual(
+            [call.kwargs["ansible_data"]["name"] for call in self.manager.execute.call_args_list],
+            ["Old Type", "New Type"],
+        )
+
+    def test_existing_original_with_missing_target_returns_original(self):
+        """A free rename target leaves the original as the update candidate."""
+        existing = {"id": 10, "name": "Old Type"}
+        self.manager.execute.side_effect = [existing, ValueError("Resource with name=New Type not found")]
+
+        result = self.action._find_existing_resource(self.manager, self.resource_data)
+
+        self.assertIs(result, existing)
+        self.assertEqual(
+            [call.kwargs["ansible_data"]["name"] for call in self.manager.execute.call_args_list],
+            ["Old Type", "New Type"],
+        )
+
+    def test_existing_different_target_is_rejected(self):
+        """Do not rename over another credential type."""
+        self.manager.execute.side_effect = [
+            {"id": 10, "name": "Old Type"},
+            {"id": 20, "name": "New Type"},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "credential type 'New Type' already exists"):
+            self.action._find_existing_resource(self.manager, self.resource_data)
+
+
 class TestEdaCredentialTypeTransform(unittest.TestCase):
     """Test EDA credential type transform mixin round-trips."""
 

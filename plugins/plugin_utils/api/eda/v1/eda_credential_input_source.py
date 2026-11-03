@@ -76,6 +76,8 @@ class APIEdaCredentialInputSource_v1(BaseTransformMixin):
 class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for EDA Credential Input Source API v1."""
 
+    find_list_requires_all_results = True
+
     @classmethod
     def resolve_reference_id(
         cls,

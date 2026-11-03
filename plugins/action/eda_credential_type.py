@@ -15,7 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-from typing import Optional
+from typing import Any, Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -32,6 +32,59 @@ class ActionModule(BaseResourceActionPlugin):
     # be stripped before the base class builds MODEL_CLASS for CRUD states.
     _WRITE_ONLY_FIELDS = frozenset({"test_inputs", "test_metadata"})
     _NO_LOG_FIELDS = frozenset({"test_inputs"})
+
+    def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
+        """Find credential types by their current name and validate rename targets.
+
+        Args:
+            manager: Client used to query the EDA API.
+            resource_data: Validated credential type fields.
+
+        Returns:
+            dict: The matching credential type.
+        """
+        try:
+            existing = super()._find_existing_resource(manager, resource_data)
+        except Exception as exc:
+            new_name = resource_data.get("new_name")
+            if not new_name or resource_data.get("state") in ("absent", "exists") or not self._is_resource_not_found(exc):
+                raise
+
+            renamed_data = dict(resource_data)
+            renamed_data["name"] = new_name
+            renamed_data.pop("new_name", None)
+            try:
+                super()._find_existing_resource(manager, renamed_data)
+            except Exception as target_exc:
+                if self._is_resource_not_found(target_exc):
+                    raise exc
+                raise
+
+            raise ValueError(
+                "Cannot verify credential type rename from '%s' to '%s': the original was not found and the target already exists"
+                % (resource_data.get("name"), new_name)
+            ) from exc
+
+        new_name = resource_data.get("new_name")
+        if not new_name or new_name == resource_data.get("name") or resource_data.get("state") == "absent":
+            return existing
+
+        renamed_data = dict(resource_data)
+        renamed_data["name"] = new_name
+        renamed_data.pop("new_name", None)
+        try:
+            rename_target = super()._find_existing_resource(manager, renamed_data)
+        except Exception as exc:
+            if self._is_resource_not_found(exc):
+                return existing
+            raise
+
+        existing_id = existing.get("id")
+        target_id = rename_target.get("id")
+        if existing_id is None or target_id is None or str(existing_id) != str(target_id):
+            raise ValueError("Cannot rename credential type '%s': credential type '%s' already exists" % (resource_data.get("name"), new_name))
+
+        return existing
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Route to test handler or delegate to base class for CRUD.

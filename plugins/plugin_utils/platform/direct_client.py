@@ -1201,31 +1201,34 @@ class DirectHTTPClient(BaseAPIClient):
             query_params[lookup_field] = lookup_value
         if composite_params:
             query_params.update(composite_params)
-        # Build URL with query parameter(s)
-        url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)
-        logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
-        # Execute list request
-        logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
-        try:
-            # Increment HTTP request counter (thread-safe)
-            with self._lock:
-                self._http_request_count += 1
-            logger.info("DirectHTTPClient: HTTP request counter incremented for find: %s", self._http_request_count)
-            response = self._make_request(list_op.method, url, operation="find", resource=mixin_class.__name__)
-            logger.info("DirectHTTPClient: Response for %s: %s", mixin_class.__name__, response)
-        except Exception as req_e:
-            logger.error("DirectHTTPClient: _make_request for find raised exception: %s", req_e)
-            import traceback
+        if getattr(mixin_class, "find_list_requires_all_results", False):
+            response_data = self.search_api(list_op.path, query_params, return_all=True, service=context.service)
+        else:
+            # Build URL with query parameter(s)
+            url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)
+            logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
+            # Execute list request
+            logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
+            try:
+                # Increment HTTP request counter (thread-safe)
+                with self._lock:
+                    self._http_request_count += 1
+                logger.info("DirectHTTPClient: HTTP request counter incremented for find: %s", self._http_request_count)
+                response = self._make_request(list_op.method, url, operation="find", resource=mixin_class.__name__)
+                logger.info("DirectHTTPClient: Response for %s: %s", mixin_class.__name__, response)
+            except Exception as req_e:
+                logger.error("DirectHTTPClient: _make_request for find raised exception: %s", req_e)
+                import traceback
 
-            logger.error("DirectHTTPClient: _make_request for find traceback: %s", traceback.format_exc())
-            raise
-        # Parse response - Ansible's Request response uses .read() to get body
-        try:
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-        except Exception as e:
-            logger.error("DirectHTTPClient: Failed to parse response: %s", e)
-            response_data = {}
+                logger.error("DirectHTTPClient: _make_request for find traceback: %s", traceback.format_exc())
+                raise
+            # Parse response - Ansible's Request response uses .read() to get body
+            try:
+                response_body = response.read()
+                response_data = json.loads(response_body) if response_body else {}
+            except Exception as e:
+                logger.error("DirectHTTPClient: Failed to parse response: %s", e)
+                response_data = {}
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
         api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
@@ -1291,7 +1294,7 @@ class DirectHTTPClient(BaseAPIClient):
                         ):
                             request_data[field] = None
                         continue
-                    if value == "":
+                    if value == "" and not (field == "description" and context.operation == "update"):
                         continue
                     request_data[field] = value
 

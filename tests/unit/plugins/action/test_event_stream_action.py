@@ -14,6 +14,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ev
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.event_stream import (
     EventStreamTransformMixin_v1,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
 
 class TestEventStreamActionPlugin(unittest.TestCase):
@@ -105,6 +106,10 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         ):
             return action.run(task_vars={})
 
+    def _run_with_documentation(self, action, manager):
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            return action.run(task_vars={})
+
     def test_create_new(self):
         action = self._make_action()
         mgr = self._make_manager(create_result={"id": 100, "name": "s", "changed": True})
@@ -150,6 +155,25 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertIn("already absent", result["msg"])
         self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old"])
 
+    def test_exists_does_not_fall_back_to_new_name(self):
+        """state=exists checks the requested name, not its rename target."""
+        action = self._make_action()
+        manager = self._make_manager()
+
+        def find_by_requested_name(operation, module_name, ansible_data):
+            if ansible_data.get("name") == "old":
+                raise APIError("Not found", operation="find", status_code=404)
+            if ansible_data.get("name") == "new":
+                return {"id": 100, "name": "new"}
+            raise AssertionError("Unexpected lookup")
+
+        manager.execute.side_effect = find_by_requested_name
+        result = self._run(action, manager, {"name": "old", "new_name": "new", "state": "exists"})
+
+        self.assertFalse(result["failed"])
+        self.assertFalse(result["exists"])
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old"])
+
     def test_check_mode_present(self):
         action = self._make_action(check_mode=True)
         mgr = self._make_manager()
@@ -165,7 +189,7 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(r.get("failed", False))
         self.assertTrue(len(r.get("deprecations", [])) > 0)
 
-    def test_completed_rename_is_idempotent(self):
+    def test_missing_original_with_existing_rename_target_is_ambiguous(self):
         action = self._make_action()
         manager = self._make_manager()
 
@@ -191,8 +215,52 @@ class TestEventStreamActionCRUD(unittest.TestCase):
             {"name": "old", "new_name": "new", "credential_name": "c", "organization_name": "D", "state": "present"},
         )
 
-        self.assertFalse(result["changed"])
+        self.assertTrue(result["failed"])
+        self.assertIn("Cannot verify event stream rename", result["msg"])
         self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
+        self.assertNotIn("update", [call.kwargs["operation"] for call in manager.execute.call_args_list])
+
+    def test_missing_original_with_api_not_found_and_existing_target_is_ambiguous(self):
+        action = ActionModule.__new__(ActionModule)
+        manager = MagicMock()
+
+        def find_renamed_resource(operation, module_name, ansible_data):
+            if ansible_data["name"] == "old":
+                raise APIError("Not found", operation="find", status_code=404)
+            return {"id": 100, "name": "new"}
+
+        manager.execute.side_effect = find_renamed_resource
+
+        with self.assertRaisesRegex(ValueError, "Cannot verify event stream rename"):
+            action._find_existing_resource(manager, {"name": "old", "new_name": "new", "state": "present"})
+
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
+
+    def test_available_rename_target_handles_api_not_found(self):
+        action = ActionModule.__new__(ActionModule)
+        manager = MagicMock()
+        existing = {"id": 100, "name": "old"}
+
+        def find_available_target(operation, module_name, ansible_data):
+            if ansible_data["name"] == "old":
+                return existing
+            raise APIError("Not found", operation="find", status_code=404)
+
+        manager.execute.side_effect = find_available_target
+        result = action._find_existing_resource(manager, {"name": "old", "new_name": "new", "state": "present"})
+
+        self.assertIs(result, existing)
+        self.assertEqual([call.kwargs["ansible_data"]["name"] for call in manager.execute.call_args_list], ["old", "new"])
+
+    def test_rename_lookup_reraises_non_not_found_api_error(self):
+        action = ActionModule.__new__(ActionModule)
+        manager = MagicMock()
+        manager.execute.side_effect = APIError("Forbidden", operation="find", status_code=403)
+
+        with self.assertRaises(APIError):
+            action._find_existing_resource(manager, {"name": "old", "new_name": "new", "state": "present"})
+
+        manager.execute.assert_called_once()
 
     def test_rename_rejects_a_target_name_owned_by_another_event_stream(self):
         action = self._make_action()
@@ -243,17 +311,45 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertTrue(result["failed"])
         manager.execute.assert_called_once()
 
-    def test_documentation_validation_preserves_legacy_forward_events_default(self):
+    def test_documentation_validation_keeps_omitted_forward_events_unset(self):
         action = self._make_action()
         action._task.args = {"name": "s", "credential_name": "c", "organization_name": "D", "state": "present"}
         manager = self._make_manager(create_result={"id": 100, "name": "s", "changed": True})
 
-        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
-            result = action.run(task_vars={})
+        result = self._run_with_documentation(action, manager)
 
         self.assertFalse(result.get("failed", False))
         create_call = next(call for call in manager.execute.call_args_list if call.kwargs.get("operation") == "create")
-        self.assertFalse(create_call.kwargs["ansible_data"]["forward_events"])
+        self.assertIsNone(create_call.kwargs["ansible_data"]["forward_events"])
+
+    def test_omitted_forward_events_does_not_update_existing_stream(self):
+        action = self._make_action()
+        action._task.args = {"name": "s", "credential_name": "c", "organization_name": "D", "state": "present"}
+        manager = self._make_manager(find_result={"id": 100, "name": "s", "credential_name": "c", "organization_name": "D", "forward_events": True})
+
+        result = self._run_with_documentation(action, manager)
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
+
+    def test_explicit_false_forward_events_is_sent_on_update(self):
+        action = self._make_action()
+        action._task.args = {
+            "name": "s",
+            "credential_name": "c",
+            "organization_name": "D",
+            "forward_events": False,
+            "state": "present",
+        }
+        manager = self._make_manager(find_result={"id": 100, "name": "s", "credential_name": "c", "organization_name": "D", "forward_events": True})
+
+        result = self._run_with_documentation(action, manager)
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        update_call = next(call for call in manager.execute.call_args_list if call.kwargs["operation"] == "update")
+        self.assertIs(update_call.kwargs["ansible_data"]["forward_events"], False)
 
     def test_create_fails_when_required_references_missing(self):
         """credential_name/organization_name are enforced by the transform's
@@ -287,6 +383,7 @@ class TestAnsibleEventStreamModel(unittest.TestCase):
         es = AnsibleEventStream(name="test")
         self.assertEqual(es.state, "present")
         self.assertIsNone(es.id)
+        self.assertIsNone(es.forward_events)
 
     def test_uuid_validation(self):
         with self.assertRaises(ValueError):
@@ -338,6 +435,14 @@ class TestEventStreamTransform(unittest.TestCase):
 
     def test_forward_events_defaults_to_legacy_false(self):
         api = EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s", credential_name="10", organization_name="1"), self._ctx("create"))
+        self.assertTrue(api.test_mode)
+
+    def test_update_omits_unspecified_forward_events(self):
+        api = EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s"), self._ctx("update"))
+        self.assertIsNone(api.test_mode)
+
+    def test_update_includes_explicit_false_forward_events(self):
+        api = EventStreamTransformMixin_v1.from_ansible_data(AnsibleEventStream(name="s", forward_events=False), self._ctx("update"))
         self.assertTrue(api.test_mode)
 
     def test_forward_events_true(self):

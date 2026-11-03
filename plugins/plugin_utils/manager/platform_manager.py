@@ -950,11 +950,14 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
-            logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-            response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
-            response.raise_for_status()
-            list_result = response.json()
+            if getattr(mixin_class, "find_list_requires_all_results", False):
+                list_result = self.search_api(list_op.path, query_params, return_all=True, service=context.service)
+            else:
+                url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
+                logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
+                response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
+                response.raise_for_status()
+                list_result = response.json()
 
             api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
 

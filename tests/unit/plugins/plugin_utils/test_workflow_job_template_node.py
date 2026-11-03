@@ -133,6 +133,15 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
 
+    def test_fields_to_null_for_update_accepts_optional_context(self):
+        api = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(
+            AnsibleWorkflowJobTemplateNode(identifier="n1", workflow_job_template="1"), {"operation": "update"}
+        )
+        expected = frozenset({"inventory", "execution_environment"})
+
+        self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_fields_to_null_for_update(api), expected)
+        self.assertEqual(WorkflowJobTemplateNodeTransformMixin_v2.get_fields_to_null_for_update(api, context={}), expected)
+
     def test_from_api_resolves_fk_names_from_summary_fields(self):
         api_data = {
             "id": 77,

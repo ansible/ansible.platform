@@ -52,6 +52,16 @@
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs }}"
   tasks:
+    - name: Remove leftover credential type before test
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_name }}"
+        state: absent
+
+    - name: Remove leftover renamed credential type before test
+      ansible.platform.eda_credential_type:
+        name: "{{ credential_type_renamed }}"
+        state: absent
+
     - name: Create credential type with check mode
       ansible.platform.eda_credential_type:
         name: "{{ credential_type_name }}"

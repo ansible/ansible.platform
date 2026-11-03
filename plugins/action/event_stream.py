@@ -16,7 +16,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-from typing import Any
+from typing import Any, Optional
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.event_stream import AnsibleEventStream
@@ -42,8 +42,24 @@ class ActionModule(BaseResourceActionPlugin):
     # in _should_update() so genuine FK changes trigger the update path.
     _MUTABLE_FK_FIELDS = frozenset({"credential_name", "organization_name"})
 
+    def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
+        """Keep the documented forward_events default from becoming an update request.
+
+        Args:
+            tmp: Temporary directory passed through to the base action.
+            task_vars: Ansible task variables used to initialize the manager.
+
+        Returns:
+            dict: Prepared inputs with forward_events omitted when it was not
+                explicitly set for a non-enforced task.
+        """
+        prepared = super()._prepare_action(tmp, task_vars)
+        if prepared["validated_params"].get("state", "present") != "enforced" and "forward_events" not in self._task.args:
+            prepared["resource_data"].pop("forward_events", None)
+        return prepared
+
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
-        """Find by the original name first, then recognize a completed rename.
+        """Find by the original name, and reject an unbound rename target.
 
         Args:
             manager: Client used to query the API.
@@ -54,15 +70,25 @@ class ActionModule(BaseResourceActionPlugin):
         """
         try:
             existing = super()._find_existing_resource(manager, resource_data)
-        except ValueError as exc:
+        except Exception as exc:
             new_name = resource_data.get("new_name")
-            if not new_name or resource_data.get("state") == "absent" or not self._is_resource_not_found(exc):
+            if not new_name or resource_data.get("state") in ("absent", "exists") or not self._is_resource_not_found(exc):
                 raise
 
             renamed_data = dict(resource_data)
             renamed_data["name"] = new_name
             renamed_data.pop("new_name", None)
-            return super()._find_existing_resource(manager, renamed_data)
+            try:
+                super()._find_existing_resource(manager, renamed_data)
+            except Exception as target_exc:
+                if self._is_resource_not_found(target_exc):
+                    raise exc
+                raise
+
+            raise ValueError(
+                "Cannot verify event stream rename from '%s' to '%s': the original was not found and the target already exists"
+                % (resource_data.get("name"), new_name)
+            ) from exc
 
         new_name = resource_data.get("new_name")
         if not new_name or new_name == resource_data.get("name") or resource_data.get("state") == "absent":
@@ -73,7 +99,7 @@ class ActionModule(BaseResourceActionPlugin):
         renamed_data.pop("new_name", None)
         try:
             rename_target = super()._find_existing_resource(manager, renamed_data)
-        except ValueError as exc:
+        except Exception as exc:
             if self._is_resource_not_found(exc):
                 return existing
             raise
