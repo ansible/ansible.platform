@@ -1,0 +1,28 @@
+---
+- name: Verify — decision_environment cleanup complete
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Ensure renamed decision environment is absent after converge cleanup
+      ansible.platform.decision_environment:
+        name: "molecule-mock-decision-environment-renamed"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_absent
+      vars:
+        ansible_connection: local
+
+    - name: Assert renamed decision environment is already absent
+      ansible.builtin.assert:
+        that: verify_absent is not changed
+        fail_msg: "Verify: decision environment should already be absent after converge cleanup."
+...

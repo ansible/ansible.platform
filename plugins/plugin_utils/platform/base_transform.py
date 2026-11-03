@@ -31,6 +31,28 @@ class BaseTransformMixin(ABC):
     # Subclasses must define these class variables
     _field_mapping: Optional[Dict] = None
     _transform_registry: Optional[Dict] = None
+    require_unique_lookup = False
+
+    @classmethod
+    def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
+        """Select the resource returned by a list-based find operation.
+
+        Most resources retain the existing first-result behavior. Mixins that
+        set ``require_unique_lookup`` reject ambiguous names instead of
+        silently selecting an arbitrary resource.
+        """
+        results = list_result.get("results", [])
+        if not results:
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} not found")
+        if not cls.require_unique_lookup:
+            return results[0]
+
+        matches = [item for item in results if str(item.get(lookup_field)) == str(lookup_value)]
+        if not matches:
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} not found")
+        if len(matches) > 1 or list_result.get("count", len(results)) > 1 or list_result.get("next"):
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
+        return matches[0]
 
     def to_ansible(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:
         """
