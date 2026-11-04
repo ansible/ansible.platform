@@ -67,6 +67,9 @@ controller_no_api_parameter_ok = {
     "controller_project": ["wait", "update_project", "interval"],
     "workflow_job_template_node": ["organization"],
     "ad_hoc_command": ["wait", "interval", "timeout"],
+    # These are client-side inputs for the dynamic settings/all singleton,
+    # whose arbitrary setting keys cannot be compared against a static schema.
+    "controller_settings": ["name", "value", "settings"],
 }
 
 # Modules that have conditional endpoints (only exist under certain configuration conditions)
@@ -361,14 +364,29 @@ if _controller_endpoints:
                 singular = singular[:-3] + "y"
             elif singular.endswith("s"):
                 singular = singular[:-1]
-            if module_name == singular or module_name == f"controller_{singular}":
+            is_controller_settings = module_name == "controller_settings" and endpoint_key == "settings"
+            if module_name == singular or module_name == f"controller_{singular}" or is_controller_settings:
+                if is_controller_settings:
+                    # Controller settings is a singleton subresource, not the
+                    # read-only /settings/ index. Its write operation is PATCH.
+                    endpoint_url = f"{endpoint_url.rstrip('/')}/all/"
                 option_comparison[module_name]["endpoint"] = endpoint_url
                 option_comparison[module_name]["api_options"] = {}
                 if module_name in controller_no_api_parameter_ok:
                     no_api_parameter_ok[module_name] = controller_no_api_parameter_ok[module_name]
                 options_response = request_session.options(f"{container_startup_info['gateway_host']}{endpoint_url}", verify=False)
-                if "POST" in options_response.json().get("actions", {}):
-                    option_comparison[module_name]["api_options"] = options_response.json().get("actions").get("POST")
+                actions = options_response.json().get("actions", {})
+                if is_controller_settings:
+                    # Setting names are dynamic and the module maps name/value
+                    # or settings to the PATCH body, so there is no static
+                    # module-to-API field comparison to perform here. DRF may
+                    # omit PATCH from OPTIONS actions, so also inspect Allow.
+                    write_methods = {"PUT", "PATCH"}
+                    allowed_methods = {method.strip().upper() for method in options_response.headers.get("Allow", "").split(",")}
+                    if not (write_methods.intersection(actions) or write_methods.intersection(allowed_methods)):
+                        cause_error(module_name, "Failed, Controller settings singleton does not expose a writable method")
+                elif "POST" in actions:
+                    option_comparison[module_name]["api_options"] = actions["POST"]
                 else:
                     read_only_endpoint.append(module_name)
                 print(f"Controller fallback: validating {module_name} against {endpoint_key}")

@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - base action - propagate API errors during idempotency lookups instead of treating them as a missing resource and issuing a duplicate create request.
+...

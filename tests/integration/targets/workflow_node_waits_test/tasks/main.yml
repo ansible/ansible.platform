@@ -1,69 +1,141 @@
 ---
-- name: Look up Demo Job Template
+- name: Generate a unique test identifier
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
+
+- name: Look up Default organization in Controller
   ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
     method: GET
     user: "{{ gateway_username }}"
     password: "{{ gateway_password }}"
     force_basic_auth: true
     validate_certs: "{{ gateway_validate_certs | bool }}"
     status_code: [200]
-  register: demo_jt
+  register: default_org
   delegate_to: localhost
 
-- name: Assert Demo Job Template exists
+- name: Assert Default organization exists
   ansible.builtin.assert:
     that:
-      - demo_jt.json.results | length > 0
+      - default_org.json.count | int > 0
+    fail_msg: "Controller organization 'Default' was not found."
 
-- name: Launch a bulk job to create a workflow
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/bulk/job_launch/"
-    method: POST
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    body_format: json
-    body:
-      name: "WNW Integration Test"
-      jobs:
-        - unified_job_template: "{{ demo_jt.json.results[0].id }}"
-    status_code: [201]
-  register: bulk_launch
-  delegate_to: localhost
+- name: Exercise workflow_node_wait with an isolated localhost inventory
+  block:
+    - name: Create a test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}-Inventory"
+          organization: "{{ default_org.json.results[0].id }}"
+        status_code: [201]
+      register: test_inventory
+      delegate_to: localhost
 
-- name: Wait briefly for workflow to initialize
-  ansible.builtin.pause:
-    seconds: 3
+    - name: Add localhost to the test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: localhost
+          variables: '{"ansible_connection": "local"}'
+        status_code: [201]
+      delegate_to: localhost
 
-- name: Wait for the Demo Job Template node
-  ansible.platform.workflow_node_wait:
-    workflow_job_id: "{{ bulk_launch.json.id }}"
-    name: "Demo Job Template"
-    timeout: 120
-    interval: 2
-  register: wait_result
+    - name: Create a job template that accepts inventory prompts
+      ansible.platform.job_template:
+        name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}"
+        copy_from: "Demo Job Template"
+        ask_inventory_on_launch: true
+        state: present
+      register: test_jt
 
-- name: Assert wait returned node data
-  ansible.builtin.assert:
-    that:
-      - wait_result is not failed
-      - wait_result.id is defined
-      - wait_result.status == "successful"
+    - name: Launch a bulk job to create a workflow
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/bulk/job_launch/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}"
+          jobs:
+            - unified_job_template: "{{ test_jt.id | int }}"
+              inventory: "{{ test_inventory.json.id | int }}"
+        status_code: [201]
+      register: bulk_launch
+      delegate_to: localhost
 
-- name: Wait for non-existent node (should timeout)
-  ansible.platform.workflow_node_wait:
-    workflow_job_id: "{{ bulk_launch.json.id }}"
-    name: "Nonexistent Node"
-    timeout: 5
-    interval: 1
-  register: timeout_result
-  ignore_errors: true
+    - name: Wait briefly for workflow to initialize
+      ansible.builtin.pause:
+        seconds: 3
 
-- name: Assert timeout result
-  ansible.builtin.assert:
-    that:
-      - timeout_result is failed
-      - "'Timed out' in timeout_result.msg"
+    - name: Wait for the test job template node
+      ansible.platform.workflow_node_wait:
+        workflow_job_id: "{{ bulk_launch.json.id }}"
+        name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}"
+        timeout: 120
+        interval: 2
+      register: wait_result
+
+    - name: Assert wait returned node data
+      ansible.builtin.assert:
+        that:
+          - wait_result is not failed
+          - wait_result.id is defined
+          - wait_result.status == "successful"
+
+    - name: Wait for a non-existent node
+      ansible.platform.workflow_node_wait:
+        workflow_job_id: "{{ bulk_launch.json.id }}"
+        name: "Nonexistent Node"
+        timeout: 5
+        interval: 1
+      register: timeout_result
+      ignore_errors: true
+
+    - name: Assert timeout result
+      ansible.builtin.assert:
+        that:
+          - timeout_result is failed
+          - "'Timed out' in timeout_result.msg"
+
+  always:
+    - name: Remove the test job template
+      ansible.platform.job_template:
+        name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}"
+        state: absent
+      when: test_jt is defined
+      failed_when: false
+
+    - name: Remove the test inventory
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
+      delegate_to: localhost
+      when:
+        - test_inventory is defined
+        - test_inventory.json is defined
+        - test_inventory.json.id is defined
+      failed_when: false
 ...

@@ -32,6 +32,7 @@ action_groups:
     - rulebook_activation_copy
     - eda_project
   controller:
+    - controller_settings
     - job_template
     - controller_credential_type
     - credential_input_source
