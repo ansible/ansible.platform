@@ -184,6 +184,34 @@ class TestResourceLookup(unittest.TestCase):
                         f"/api/controller/v2/{endpoint}/{named_key.replace(' ', '%20')}/",
                     )
 
+    def test_credential_named_url_preserves_named_key_separators(self):
+        named_key = "test_cred++Machine+ssh++"
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"id": 42, "name": "test_cred"}))
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(_lookup(client, endpoint="credentials", value=named_key), 42)
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/credentials/test_cred++Machine+ssh++/")
+
+    def test_credential_named_url_404_falls_back_to_full_key_lookup(self):
+        named_key = "test_cred++Machine+ssh++"
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                APIError("Named URL not found", status_code=404),
+                _response(body={"count": 1, "results": [{"id": 42, "name": named_key}]}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(_lookup(client, endpoint="credentials", value=named_key), 42)
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 2)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/credentials/test_cred++Machine+ssh++/")
+                self.assertEqual(urlparse(calls[1].args[1]).path, "/api/controller/v2/credentials/")
+                self.assertEqual(_request_filters(client, calls[1]), {"name": [named_key]})
+
     def test_composite_controller_key_fallback_does_not_treat_suffix_as_organization(self):
         named_key = "my-host++Production Inventory++Default"
         for client in (_service(), _direct_client()):
