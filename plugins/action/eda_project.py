@@ -148,6 +148,30 @@ class ActionModule(BaseResourceActionPlugin):
             self._project_organization_supported = supported
         return supported
 
+    def _validate_existing_project_organization(self, manager: Any, existing: dict, organization_name: str) -> None:
+        """Ensure a name-only lookup did not select a project from another organization."""
+        existing_organization = existing.get("organization_name")
+        if existing_organization is None:
+            existing_organization = existing.get("organization_id")
+        if existing_organization is None:
+            existing_organization = existing.get("organization")
+        if isinstance(existing_organization, dict):
+            organization_id = existing_organization.get("id")
+            existing_organization = organization_id if organization_id is not None else existing_organization.get("name")
+        if existing_organization is None:
+            raise AnsibleError(
+                "Cannot verify organization ownership for existing EDA project %r: the API response has no organization"
+                % existing.get("name", existing.get("id"))
+            )
+
+        requested_id = self._resolve_foreign_key(manager, "organizations", organization_name, _SERVICE)
+        existing_id = self._resolve_foreign_key(manager, "organizations", existing_organization, _SERVICE)
+        if requested_id != existing_id:
+            raise AnsibleError(
+                "EDA project %r belongs to organization %r, not requested organization %r"
+                % (existing.get("name", existing.get("id")), existing_organization, organization_name)
+            )
+
     def _resolve_foreign_key(self, manager: Any, endpoint: str, value: Any, service: str) -> Optional[int]:
         """Resolve a foreign key once per action run for validation and comparison."""
         cache: dict[tuple[str, str, str], Optional[int]] = getattr(self, "_resolved_fk_ids", {})
@@ -241,6 +265,13 @@ class ActionModule(BaseResourceActionPlugin):
                 existing = self._find_project(manager, new_name)
                 found_by_new_name = existing is not None
 
+            should_check_organization_support = (state == "present" and not existing) or (
+                organization_name is not None and (state == "present" or bool(existing))
+            )
+            organization_supported = self._supports_organization(manager) if should_check_organization_support else False
+            if existing and organization_name is not None and organization_supported:
+                self._validate_existing_project_organization(manager, existing, organization_name)
+
             # ---- state: absent ------------------------------------------------
             if state == "absent":
                 if not existing:
@@ -279,8 +310,6 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # ---- state: present -----------------------------------------------
-            organization_supported = self._supports_organization(manager)
-
             # Validate required fields for creation
             url = validated_params.get("url")
             if not existing and not url:

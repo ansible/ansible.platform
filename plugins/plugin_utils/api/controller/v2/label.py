@@ -50,7 +50,7 @@ class LabelTransformMixin_v2(BaseTransformMixin):
             elif name is not None and not str(name).strip().isdigit():
                 api_data["name"] = name
 
-        # FK resolution: organization name → ID (Gateway-owned, use default service)
+        # Resolve the organization in Controller's ID space for this Controller FK.
         organization = getattr(ansible_instance, "organization", None)
         if organization is not None:
             manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")

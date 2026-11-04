@@ -88,6 +88,14 @@ class TestResourceLookup(unittest.TestCase):
                 self.assertEqual(_lookup(client, value="71"), 71)
                 self.assertEqual(_request_calls(client), [])
 
+    def test_numeric_name_can_be_resolved_when_id_shortcut_is_disabled(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"count": 1, "results": [{"id": 71, "name": "123"}]}))
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(_lookup(client, value="123", numeric_is_id=False), 71)
+                self.assertEqual(_request_filters(client, _request_calls(client)[0]), {"name": ["123"]})
+
     def test_organization_name_lookup_uses_requested_service(self):
         for client in (_service(), _direct_client()):
             _set_responses(client, _response(body={"id": 900, "name": "Default"}))
@@ -124,6 +132,21 @@ class TestResourceLookup(unittest.TestCase):
                 self.assertEqual(urlparse(urls[0]).path, "/api/controller/v2/organizations/")
                 self.assertEqual(_request_filters(client, calls[0]), {"name": ["Default"]})
                 self.assertEqual(urlparse(urls[1]).path, "/api/controller/v2/inventories/")
+                self.assertEqual(_request_filters(client, calls[1]), {"name": ["Shared"], "organization": ["900"]})
+
+    def test_numeric_organization_component_in_named_key_resolves_by_name(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 1, "results": [{"id": 900, "name": "123"}]}),
+                _response(body={"count": 1, "results": [{"id": 71, "name": "Shared", "organization": 900}]}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(_lookup(client, value="Shared++123"), 71)
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 2)
+                self.assertEqual(_request_filters(client, calls[0]), {"name": ["123"]})
                 self.assertEqual(_request_filters(client, calls[1]), {"name": ["Shared"], "organization": ["900"]})
 
     def test_trailing_named_url_separator_resolves_as_plain_name(self):

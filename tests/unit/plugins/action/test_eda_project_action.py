@@ -29,7 +29,9 @@ class TestEdaProjectAction(unittest.TestCase):
 
         def lookup_resource_id(endpoint, lookup_field, lookup_value, service="gateway", extra_query_params=None, require_unique=False):
             if endpoint == "organizations":
-                return 901 if service == "eda" else 1
+                if service == "eda":
+                    return {"Default": 901, "Other": 902}.get(str(lookup_value), 901)
+                return 1
             if endpoint == "projects" and find_result and find_result.get("name") == lookup_value:
                 return find_result["id"]
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
@@ -224,10 +226,11 @@ class TestEdaProjectAction(unittest.TestCase):
     def test_update_existing_project(self):
         """Update project when it exists and has changes."""
         action = self._make_action()
-        existing = {"id": 99, "name": "my-project", "description": "old desc"}
+        existing = {"id": 99, "name": "my-project", "description": "old desc", "organization_name": "Default"}
         manager = self._make_manager(
             find_result=existing,
             update_result={"id": 99, "name": "my-project", "description": "new desc", "changed": True},
+            organization_supported=True,
         )
 
         result = self._run_action(
@@ -236,6 +239,7 @@ class TestEdaProjectAction(unittest.TestCase):
             {
                 "name": "my-project",
                 "description": "new desc",
+                "organization_name": "Default",
                 "state": "present",
                 "sync": False,
                 "wait": True,
@@ -272,6 +276,27 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertFalse(result["changed"])
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertNotIn("update", calls)
+
+    def test_existing_present_without_organization_skips_capability_probe(self):
+        """Do not probe organization support for an unscoped existing project update."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 99, "name": "my-project", "description": "same"}, organization_supported=True)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-project",
+                "description": "same",
+                "state": "present",
+                "sync": False,
+                "wait": True,
+            },
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        manager.search_api.assert_not_called()
 
     # ---- Delete tests ----
 
@@ -318,7 +343,7 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertFalse(result["changed"])
         self.assertIn("already absent", result["msg"])
 
-    def test_delete_with_organization_does_not_require_organization_endpoint(self):
+    def test_delete_with_organization_skips_ownership_check_when_unsupported(self):
         """Older EDA versions still find and delete projects by their supported name filter."""
         action = self._make_action()
         manager = self._make_manager(find_result={"id": 99, "name": "my-project"}, organization_supported=False)
@@ -338,8 +363,75 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
         manager.lookup_resource_id.assert_called_once_with("projects", "name", "my-project", service="eda", require_unique=True)
-        manager.search_api.assert_not_called()
+        manager.search_api.assert_called_once_with("config", service="eda")
         self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find", "delete"])
+
+    def test_delete_rejects_project_from_different_organization(self):
+        """Do not delete a same-named project owned by another organization."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 99, "name": "my-project", "organization_name": "Other"}, organization_supported=True)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-project",
+                "organization_name": "Default",
+                "state": "absent",
+                "sync": False,
+                "wait": True,
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("not requested organization", result["msg"])
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
+
+    def test_present_rejects_new_name_match_from_different_organization(self):
+        """The rename fallback must validate ownership before updating the target."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 99, "name": "new-name", "organization_name": "Other"}, organization_supported=True)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "old-name",
+                "new_name": "new-name",
+                "organization_name": "Default",
+                "url": "https://example.com/repo.git",
+                "state": "present",
+                "sync": False,
+                "wait": False,
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("not requested organization", result["msg"])
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
+
+    def test_present_rejects_project_when_owner_is_missing(self):
+        """Do not update a project when the supported API omits its owner."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 99, "name": "my-project"}, organization_supported=True)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-project",
+                "organization_name": "Default",
+                "description": "updated",
+                "url": "https://example.com/repo.git",
+                "state": "present",
+                "sync": False,
+                "wait": False,
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("no organization", result["msg"])
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
 
     def test_create_with_organization_omits_unsupported_relationship(self):
         """EDA versions without config/organizations endpoints create without organization resolution."""

@@ -182,16 +182,18 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
         """
         from ansible.errors import AnsibleError
 
-        if str(name).isdigit():
-            return int(name), None
-
-        lookup_kwargs = {"service": "controller", "require_unique": True}
         organization_id = None
         if organization:
             org_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             if org_id is None:
                 raise AnsibleError(f"Organization '{organization}' not found")
             organization_id = int(org_id)
+
+        if str(name).isdigit():
+            return int(name), organization_id
+
+        lookup_kwargs = {"service": "controller", "require_unique": True}
+        if organization_id is not None:
             lookup_kwargs["extra_query_params"] = {"organization": organization_id}
 
         try:

@@ -59,7 +59,7 @@ class ExecutionEnvironmentTransformMixin_v2(BaseTransformMixin):
 
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
 
-        # FK resolution: organization (Gateway-owned, default service)
+        # Resolve the organization in Controller's ID space for this Controller FK.
         organization = getattr(ansible_instance, "organization", None)
         organization_id = None
         if organization is not None:

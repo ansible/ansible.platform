@@ -196,7 +196,7 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         if webhook_credential is not None:
             api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, **lookup_kwargs)
 
-        # project: organization (Gateway-owned, see docs/12-api-landscape.md) disambiguates
+        # project: Controller organization scope disambiguates
         # between same-named projects in different orgs, matching the legacy awx_collection
         # job_template module's get_one(..., data={"organization": organization_id}) lookup.
         project = getattr(ansible_instance, "project", None)

@@ -159,7 +159,14 @@ class BaseAPIClient(ABC):
             raise ValueError("Invalid Controller named key %r; expected name++organization" % value)
 
         # Resolve scope IDs in the service whose foreign key consumes them.
-        organization_id = self.lookup_resource_id("organizations", "name", organization_name, service=service, require_unique=True)
+        organization_id = self.lookup_resource_id(
+            "organizations",
+            "name",
+            organization_name,
+            service=service,
+            require_unique=True,
+            numeric_is_id=False,
+        )
         if organization_id is None:
             raise ValueError("Organization %r from Controller named key %r was not found" % (organization_name, value))
 
@@ -221,6 +228,7 @@ class BaseAPIClient(ABC):
         service: str = "gateway",
         extra_query_params: dict = None,
         require_unique: bool = True,
+        numeric_is_id: bool = True,
     ) -> Optional[int]:
         """Resolve an ID or uniquely matched resource name through the shared lookup path.
 
@@ -231,7 +239,7 @@ class BaseAPIClient(ABC):
         """
         if not lookup_value:
             return None
-        if str(lookup_value).isdigit():
+        if numeric_is_id and str(lookup_value).isdigit():
             return int(lookup_value)
 
         if lookup_field == "name" and "++" in str(lookup_value) and service != "controller" and not extra_query_params:

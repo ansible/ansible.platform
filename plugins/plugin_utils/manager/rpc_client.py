@@ -100,6 +100,7 @@ class ManagerRPCClient:
         service: str = "gateway",
         extra_query_params: dict = None,
         require_unique: bool = True,
+        numeric_is_id: bool = True,
     ):
         """
         Resolve a resource name to its integer ID via the manager process.
@@ -114,6 +115,7 @@ class ManagerRPCClient:
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
             extra_query_params: Additional filter params (e.g. {'organization': 42})
             require_unique: Reject names that match multiple resources
+            numeric_is_id: Treat all-digit lookup values as IDs instead of names
 
         Returns:
             Integer resource ID
@@ -121,7 +123,15 @@ class ManagerRPCClient:
         Raises:
             ValueError: If the resource is not found
         """
-        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {}, require_unique)
+        return self.service_proxy.lookup_resource_id(
+            endpoint,
+            lookup_field,
+            lookup_value,
+            service,
+            extra_query_params or {},
+            require_unique,
+            numeric_is_id,
+        )
 
     def lookup_organization_ids(self, organization_names: list, service: str = "gateway") -> list:
         """Resolve organization names to IDs through the manager process."""
