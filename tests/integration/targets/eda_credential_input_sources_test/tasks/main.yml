@@ -56,7 +56,6 @@
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
         organization_name: Default
-        description: "Integration test input source"
         metadata:
           secret_path: "secret/myapp"
           secret_key: "password"
@@ -76,7 +75,6 @@
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
         organization_name: Default
-        description: "Integration test input source"
         metadata:
           secret_path: "secret/myapp"
           secret_key: "password"
@@ -96,7 +94,6 @@
         target_credential: "{{ target_cred_name }}"
         source_credential: "{{ source_cred_name }}"
         organization_name: Default
-        description: "Integration test input source"
         metadata:
           secret_path: "secret/myapp"
           secret_key: "password"
@@ -108,8 +105,8 @@
         that:
           - idempotent_result is not changed
 
-    # <Update — change description and metadata> -------------------
-    - name: Update credential input source description and metadata
+    # <Update — change metadata> -------------------
+    - name: Update credential input source metadata
       ansible.platform.eda_credential_input_source:
         input_field_name: password
         target_credential: "{{ target_cred_name }}"
@@ -127,7 +124,6 @@
         that:
           - update_result is changed
           - update_result.eda_credential_input_source.id is defined
-          - update_result.eda_credential_input_source.description == "Updated integration test input source"
           - update_result.eda_credential_input_source.metadata.secret_path == "secret/updated"
           - update_result.eda_credential_input_source.metadata.secret_key == "new_password"
 
