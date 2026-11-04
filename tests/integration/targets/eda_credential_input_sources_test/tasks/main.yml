@@ -16,35 +16,29 @@
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
-    ansible.eda.credential:
-      aap_hostname: "{{ gateway_hostname }}"
-      aap_username: "{{ gateway_username }}"
-      aap_password: "{{ gateway_password }}"
-      aap_validate_certs: "{{ gateway_validate_certs | bool }}"
-
   block:
     # <Setup — create target and source credentials> -------------------
     - name: Create target EDA credential for testing
-      ansible.eda.credential:
+      ansible.platform.eda_credential:
         name: "{{ target_cred_name }}"
-        credential_type_name: "Source Control"
+        credential_type: "Source Control"
         inputs:
           username: "test-user-{{ test_id }}"
           password: "test-password-{{ test_id }}"
-        organization_name: Default
+        organization: Default
         state: present
       delegate_to: localhost
       register: target_cred
 
     - name: Create source EDA credential for testing
-      ansible.eda.credential:
+      ansible.platform.eda_credential:
         name: "{{ source_cred_name }}"
-        credential_type_name: "HashiCorp Vault Secret Lookup"
+        credential_type: "HashiCorp Vault Secret Lookup"
         inputs:
           url: "https://vault.example.invalid"
           api_version: v2
           token: test-token
-        organization_name: Default
+        organization: Default
         state: present
       delegate_to: localhost
       register: source_cred
@@ -200,14 +194,14 @@
       failed_when: false
 
     - name: Cleanup — delete target credential
-      ansible.eda.credential:
+      ansible.platform.eda_credential:
         name: "{{ target_cred_name }}"
         state: absent
       delegate_to: localhost
       failed_when: false
 
     - name: Cleanup — delete source credential
-      ansible.eda.credential:
+      ansible.platform.eda_credential:
         name: "{{ source_cred_name }}"
         state: absent
       delegate_to: localhost
