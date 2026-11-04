@@ -99,7 +99,7 @@ class ManagerRPCClient:
         lookup_value: str,
         service: str = "gateway",
         extra_query_params: dict = None,
-        require_unique: bool = False,
+        require_unique: bool = True,
     ):
         """
         Resolve a resource name to its integer ID via the manager process.
@@ -123,9 +123,13 @@ class ManagerRPCClient:
         """
         return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {}, require_unique)
 
-    def lookup_organization_names(self, organization_ids: list) -> list:
+    def lookup_organization_ids(self, organization_names: list, service: str = "gateway") -> list:
+        """Resolve organization names to IDs through the manager process."""
+        return self.service_proxy.lookup_organization_ids(organization_names, service)
+
+    def lookup_organization_names(self, organization_ids: list, service: str = "gateway") -> list:
         """Resolve organization IDs to names via the manager process."""
-        return self.service_proxy.lookup_organization_names(organization_ids)
+        return self.service_proxy.lookup_organization_names(organization_ids, service)
 
     def manage_associations(
         self,

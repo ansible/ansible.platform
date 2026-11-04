@@ -47,18 +47,8 @@ class TestWorkflowLaunchActionModule:
         action_module._task.args = {"name": "Test Workflow", "inventory": "Production"}
 
         mock_manager = MagicMock()
-        mock_manager.search_api.side_effect = [
-            {"count": 1, "results": [{"id": 7, "name": "Production"}]},
-            {
-                "results": [
-                    {
-                        "id": 10,
-                        "name": "Test Workflow",
-                        "ask_inventory_on_launch": True,
-                    }
-                ]
-            },
-        ]
+        mock_manager.lookup_resource_id.return_value = 7
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test Workflow", "ask_inventory_on_launch": True}]}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
             mock_prepare.return_value = {
@@ -85,12 +75,10 @@ class TestWorkflowLaunchActionModule:
 
         assert result["changed"] is True
         assert "check mode" in result["msg"]
-        assert mock_manager.search_api.call_args_list[0].args[0] == "/api/controller/v2/inventories/"
-        assert mock_manager.search_api.call_args_list[0].kwargs == {
-            "query_params": {"name": "Production"},
-            "return_all": True,
-        }
-        assert mock_manager.search_api.call_args_list[1].kwargs == {"query_params": {"name": "Test Workflow"}, "return_all": True}
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "inventories", "name", "Production", service="controller", extra_query_params=None, require_unique=True
+        )
+        mock_manager.search_api.assert_called_once_with("/api/controller/v2/workflow_job_templates/", query_params={"name": "Test Workflow"}, return_all=True)
         mock_manager.launch_resource.assert_not_called()
         mock_manager.wait_for_completion.assert_not_called()
 
@@ -537,18 +525,8 @@ class TestWorkflowLaunchActionModule:
     def test_inventory_fk_resolution(self, action_module):
         """Inventory name should be resolved to a unique Controller inventory ID."""
         mock_manager = MagicMock()
-        mock_manager.search_api.side_effect = [
-            {"count": 1, "results": [{"id": 7, "name": "Production"}]},
-            {
-                "results": [
-                    {
-                        "id": 10,
-                        "name": "Test WJT",
-                        "ask_inventory_on_launch": True,
-                    }
-                ]
-            },
-        ]
+        mock_manager.lookup_resource_id.return_value = 7
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test WJT", "ask_inventory_on_launch": True}]}
         mock_manager.launch_resource.return_value = {"id": 42, "status": "pending"}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
@@ -575,11 +553,9 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        assert mock_manager.search_api.call_args_list[0].args[0] == "/api/controller/v2/inventories/"
-        assert mock_manager.search_api.call_args_list[0].kwargs == {
-            "query_params": {"name": "Production"},
-            "return_all": True,
-        }
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "inventories", "name", "Production", service="controller", extra_query_params=None, require_unique=True
+        )
         call_args = mock_manager.launch_resource.call_args
         payload = call_args[0][1]
         assert payload["inventory"] == 7
@@ -587,13 +563,7 @@ class TestWorkflowLaunchActionModule:
     def test_inventory_name_ambiguity_fails(self, action_module):
         """An inventory name matching multiple organizations must fail safely."""
         mock_manager = MagicMock()
-        mock_manager.search_api.return_value = {
-            "count": 2,
-            "results": [
-                {"id": 7, "name": "Production", "organization": 1},
-                {"id": 8, "name": "Production", "organization": 2},
-            ],
-        }
+        mock_manager.lookup_resource_id.side_effect = ValueError("Resource 'inventories' with name=Production matched multiple resources")
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
             mock_prepare.return_value = {
@@ -619,17 +589,15 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["failed"] is True
-        assert "More than one inventory matched" in result["msg"]
+        assert "matched multiple resources" in result["msg"]
+        mock_manager.search_api.assert_not_called()
         mock_manager.launch_resource.assert_not_called()
 
     def test_named_urls_resolve_organization_and_inventory(self, action_module):
         """Legacy named URL references should resolve before querying or launching."""
         mock_manager = MagicMock()
-        mock_manager.search_api.side_effect = [
-            {"id": 3, "name": "Default"},
-            {"id": 7, "name": "Production"},
-            {"results": [{"id": 10, "name": "Test WJT", "ask_inventory_on_launch": True}]},
-        ]
+        mock_manager.lookup_resource_id.side_effect = [3, 7]
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test WJT", "ask_inventory_on_launch": True}]}
         mock_manager.launch_resource.return_value = {"id": 42, "status": "pending"}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
@@ -656,12 +624,19 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        assert mock_manager.search_api.call_args_list[0].args[0] == "/api/gateway/v1/organizations/Default++/"
-        assert mock_manager.search_api.call_args_list[1].args[0] == "/api/controller/v2/inventories/Production++/"
-        assert mock_manager.search_api.call_args_list[2].kwargs == {
-            "query_params": {"name": "Test WJT", "organization": 3},
-            "return_all": True,
+        assert mock_manager.lookup_resource_id.call_args_list[0].kwargs == {
+            "service": "controller",
+            "extra_query_params": None,
+            "require_unique": True,
         }
+        assert mock_manager.lookup_resource_id.call_args_list[1].kwargs == {
+            "service": "controller",
+            "extra_query_params": {"organization": 3},
+            "require_unique": True,
+        }
+        mock_manager.search_api.assert_called_once_with(
+            "/api/controller/v2/workflow_job_templates/", query_params={"name": "Test WJT", "organization": 3}, return_all=True
+        )
         assert mock_manager.launch_resource.call_args.args[1] == {"inventory": 7}
 
     def test_organization_lookup_for_wjt(self, action_module):
@@ -695,7 +670,9 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "organizations", "name", "Default", service="controller", extra_query_params=None, require_unique=True
+        )
         mock_manager.search_api.assert_called_once_with(
             "/api/controller/v2/workflow_job_templates/",
             query_params={"name": "Test WJT", "organization": 3},

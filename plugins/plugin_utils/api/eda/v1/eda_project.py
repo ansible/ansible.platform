@@ -13,7 +13,7 @@ EDA_PROJECTS_DETAIL_ENDPOINT = "/api/eda/v1/projects/{id}/"
 EDA_PROJECTS_SYNC_ENDPOINT = "/api/eda/v1/projects/{id}/sync/"
 
 
-def resolve_foreign_key_id(manager, endpoint: str, lookup_field: str, value, service: str = "gateway") -> Optional[int]:
+def resolve_foreign_key_id(manager, endpoint: str, lookup_field: str, value, service: str = "eda") -> Optional[int]:
     """Resolve a supplied foreign-key name or ID to its canonical integer ID."""
     if value is None:
         return None
@@ -46,8 +46,8 @@ def _related_resource_name(manager, api_data: Dict[str, Any], id_field: str, rel
         return None
     if manager is not None:
         try:
-            if endpoint == "organizations" and service == "gateway":
-                names = manager.lookup_organization_names([int(resource_id)])
+            if endpoint == "organizations":
+                names = manager.lookup_organization_names([int(resource_id)], service=service)
                 if names and names[0] is not None:
                     return str(names[0])
             response = manager.search_api(
@@ -94,7 +94,7 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
         Resolves foreign key fields:
         - credential (name) -> eda_credential_id (int) via EDA credentials endpoint
-        - organization_name (name) -> organization_id (int) via gateway organizations endpoint
+        - organization_name (name) -> organization_id (int) via EDA organizations endpoint
         """
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
@@ -118,7 +118,7 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
         # Resolve organization_name -> organization_id
         organization_name = getattr(ansible_instance, "organization_name", None)
         if organization_name is not None:
-            api_data["organization_id"] = resolve_foreign_key_id(manager, "organizations", "name", organization_name, service="gateway")
+            api_data["organization_id"] = resolve_foreign_key_id(manager, "organizations", "name", organization_name, service="eda")
 
         # Read-only fields
         for field in ("id",):
@@ -219,7 +219,7 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
         credential = _related_resource_name(manager, api_data, "eda_credential_id", "eda_credential", "eda-credentials", "eda")
-        organization = _related_resource_name(manager, api_data, "organization_id", "organization", "organizations", "gateway")
+        organization = _related_resource_name(manager, api_data, "organization_id", "organization", "organizations", "eda")
         if credential is not None:
             ansible_data["credential"] = credential
         if organization is not None:

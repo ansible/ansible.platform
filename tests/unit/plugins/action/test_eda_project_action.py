@@ -28,7 +28,7 @@ class TestEdaProjectAction(unittest.TestCase):
 
         def lookup_resource_id(endpoint, lookup_field, lookup_value, service="gateway", extra_query_params=None, require_unique=False):
             if endpoint == "organizations":
-                return 1
+                return 901 if service == "eda" else 1
             if endpoint == "projects" and find_result and find_result.get("name") == lookup_value:
                 return find_result["id"]
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
@@ -112,8 +112,9 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertEqual(result["id"], 100)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertEqual(calls, ["create"])
+        manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="eda", require_unique=True)
         manager.lookup_resource_id.assert_any_call(
-            "projects", "name", "my-project", service="eda", extra_query_params={"organization_id": 1}, require_unique=True
+            "projects", "name", "my-project", service="eda", extra_query_params={"organization_id": 901}, require_unique=True
         )
 
     def test_create_without_url_fails(self):

@@ -75,17 +75,25 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: organization (Gateway-owned, default service)
         organization = getattr(ansible_instance, "organization", None)
+        organization_id = None
         if organization is not None:
             if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
-                api_data["organization"] = int(organization) if organization is not None else None
+                organization_id = int(organization) if organization is not None else None
+            if organization_id is None:
+                raise ValueError("Could not resolve organization %r to an ID" % organization)
+            api_data["organization"] = organization_id
+        organization_scope = {"organization": organization_id} if organization_id is not None else None
+        lookup_kwargs: Dict[str, Any] = {"service": "controller"}
+        if organization_scope:
+            lookup_kwargs["extra_query_params"] = organization_scope
 
         # FK resolution: credential (Controller-owned)
         credential = getattr(ansible_instance, "credential", None)
         if credential is not None:
             if manager is not None and not str(credential).strip().isdigit():
-                api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, service="controller")
+                api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, **lookup_kwargs)
             else:
                 api_data["credential"] = int(credential) if credential is not None else None
 
@@ -93,7 +101,7 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
         default_environment = getattr(ansible_instance, "default_environment", None)
         if default_environment is not None:
             if manager is not None and not str(default_environment).strip().isdigit():
-                api_data["default_environment"] = manager.lookup_resource_id("execution_environments", "name", default_environment, service="controller")
+                api_data["default_environment"] = manager.lookup_resource_id("execution_environments", "name", default_environment, **lookup_kwargs)
             else:
                 api_data["default_environment"] = int(default_environment) if default_environment is not None else None
 
@@ -101,7 +109,7 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
         sig_cred = getattr(ansible_instance, "signature_validation_credential", None)
         if sig_cred is not None:
             if manager is not None and not str(sig_cred).strip().isdigit():
-                api_data["signature_validation_credential"] = manager.lookup_resource_id("credentials", "name", sig_cred, service="controller")
+                api_data["signature_validation_credential"] = manager.lookup_resource_id("credentials", "name", sig_cred, **lookup_kwargs)
             else:
                 api_data["signature_validation_credential"] = int(sig_cred) if sig_cred is not None else None
 
@@ -246,7 +254,7 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
         organization = str(org_id) if org_id is not None else None
         if manager and org_id is not None:
             try:
-                names = manager.lookup_organization_names([org_id])
+                names = manager.lookup_organization_names([org_id], service="controller")
                 if names:
                     organization = names[0]
             except Exception:

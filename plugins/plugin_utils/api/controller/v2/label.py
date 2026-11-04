@@ -55,7 +55,7 @@ class LabelTransformMixin_v2(BaseTransformMixin):
         if organization is not None:
             manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
             if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
                 api_data["organization"] = int(organization) if organization is not None else None
 

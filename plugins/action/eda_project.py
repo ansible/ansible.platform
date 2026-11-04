@@ -101,7 +101,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         query_params: dict[str, Any] = {}
         if organization_name is not None:
-            query_params["organization_id"] = self._resolve_foreign_key(manager, "organizations", organization_name, "gateway")
+            query_params["organization_id"] = self._resolve_foreign_key(manager, "organizations", organization_name, "eda")
 
         find_data: dict[str, Any]
         if str(name).strip().isdigit():
@@ -188,7 +188,7 @@ class ActionModule(BaseResourceActionPlugin):
         manager = getattr(self, "_client", None)
         fk_fields = {
             "credential": ("eda-credentials", "eda"),
-            "organization_name": ("organizations", "gateway"),
+            "organization_name": ("organizations", "eda"),
         }
         for field, (endpoint, service) in fk_fields.items():
             desired_value = comparable_data.get(field)
@@ -306,7 +306,7 @@ class ActionModule(BaseResourceActionPlugin):
             # updates, where the manager would otherwise not run the transform.
             for field, (endpoint, service) in {
                 "credential": ("eda-credentials", "eda"),
-                "organization_name": ("organizations", "gateway"),
+                "organization_name": ("organizations", "eda"),
             }.items():
                 value = validated_params.get(field)
                 if value is not None:

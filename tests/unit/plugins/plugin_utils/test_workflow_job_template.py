@@ -55,13 +55,13 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         self.assertIsNone(api.organization)
         self.assertIsNone(api.extra_vars)
 
-    def test_org_fk_uses_default_service(self):
+    def test_org_fk_uses_controller_service(self):
         mock_manager = MagicMock()
         mock_manager.lookup_resource_id.return_value = 42
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleWorkflowJobTemplate(name="wf", organization="Default")
         api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="controller")
         self.assertEqual(api.organization, 42)
 
     def test_inventory_fk_uses_controller_service(self):

@@ -21,6 +21,16 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_pr
 class TestEdaProjectTransform(unittest.TestCase):
     """Verify EDA project API relationships are returned as names."""
 
+    def test_from_ansible_data_resolves_organization_in_eda_service(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 901
+        project = AnsibleEdaProject(name="project", organization_name="Default")
+
+        api_data = EdaProjectTransformMixin_v1.from_ansible_data(project, {"manager": manager})
+
+        self.assertEqual(api_data.organization_id, 901)
+        manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="eda", require_unique=True)
+
     def test_from_api_hydrates_credential_and_organization_names(self):
         manager = MagicMock()
         manager.lookup_organization_names.return_value = ["Default"]
@@ -34,7 +44,7 @@ class TestEdaProjectTransform(unittest.TestCase):
         self.assertIsInstance(project, AnsibleEdaProject)
         self.assertEqual(project.credential, "SCM Credential")
         self.assertEqual(project.organization_name, "Default")
-        manager.lookup_organization_names.assert_called_once_with([7])
+        manager.lookup_organization_names.assert_called_once_with([7], service="eda")
         manager.search_api.assert_called_once_with(
             "/api/eda/v1/eda-credentials/",
             query_params={"id": 42},
@@ -49,7 +59,7 @@ class TestEdaProjectTransform(unittest.TestCase):
         project = EdaProjectTransformMixin_v1.from_api({"name": "project", "organization_id": 7}, {"manager": manager})
 
         self.assertEqual(project.organization_name, "Default")
-        manager.search_api.assert_called_once_with("/api/gateway/v1/organizations/", query_params={"id": 7}, service="gateway")
+        manager.search_api.assert_called_once_with("/api/eda/v1/organizations/", query_params={"id": 7}, service="eda")
 
 
 if __name__ == "__main__":

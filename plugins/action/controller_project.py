@@ -32,7 +32,7 @@ class ActionModule(BaseResourceActionPlugin):
     def _resolve_lookup(self, resource, resource_data, validated_params):
         organization = getattr(resource, "organization", None)
         if organization is not None and str(organization).strip().isdigit():
-            names = self._client.lookup_organization_names([int(organization)])
+            names = self._client.lookup_organization_names([int(organization)], service=_SERVICE)
             if names:
                 resource.organization = names[0]
                 resource_data["organization"] = names[0]
@@ -66,7 +66,7 @@ class ActionModule(BaseResourceActionPlugin):
                     if str(organization).strip().isdigit():
                         query_params["organization"] = int(organization)
                     else:
-                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization, service=_SERVICE)
                 existing = manager.search_api(BASE_PATH, query_params=query_params)
                 if not any(item.get("name") == name for item in existing.get("results", [])):
                     manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
