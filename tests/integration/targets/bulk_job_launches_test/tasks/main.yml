@@ -4,61 +4,43 @@
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
 
-- name: Look up Default organization in Controller
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [200]
-  register: default_org
-  delegate_to: localhost
+- name: Set test resource names
+  ansible.builtin.set_fact:
+    test_inventory_name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-Inventory"
+    test_host_name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-localhost"
+    test_job_template_name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}"
 
-- name: Assert Default organization exists
-  ansible.builtin.assert:
-    that:
-      - default_org.json.count | int > 0
-    fail_msg: "Controller organization 'Default' was not found."
-
-- name: Exercise bulk_job_launch with an isolated localhost inventory
+- name: Exercise bulk_job_launch with a local test inventory
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
   block:
     - name: Create a test inventory
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
-        method: POST
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        body_format: json
-        body:
-          name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-Inventory"
-          organization: "{{ default_org.json.results[0].id }}"
-        status_code: [201]
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: present
       register: test_inventory
-      delegate_to: localhost
 
     - name: Add localhost to the test inventory
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/hosts/"
-        method: POST
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        body_format: json
-        body:
-          name: localhost
-          variables: '{"ansible_connection": "local"}'
-        status_code: [201]
-      delegate_to: localhost
+      ansible.platform.host:
+        name: "{{ test_host_name }}"
+        inventory: "{{ test_inventory_name }}"
+        variables:
+          ansible_connection: local
+        state: present
+      register: test_host
 
     - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
-        name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}"
-        copy_from: "Demo Job Template"
+        name: "{{ test_job_template_name }}"
+        organization: Default
+        project: Demo Project
+        playbook: hello_world.yml
+        inventory: "{{ test_inventory_name }}"
         ask_inventory_on_launch: true
         state: present
       register: test_jt
@@ -66,15 +48,15 @@
     - name: Assert test job template exists
       ansible.builtin.assert:
         that:
-          - test_jt.id is defined
+          - test_jt.job_template.id is defined
 
     - name: Bulk launch jobs and wait for completion
       ansible.platform.bulk_job_launch:
-        name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-Wait"
+        name: "{{ test_job_template_name }}-Wait"
         jobs:
-          - unified_job_template: "{{ test_jt.id }}"
+          - unified_job_template: "{{ test_jt.job_template.id }}"
         organization: Default
-        inventory: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-Inventory"
+        inventory: "{{ test_inventory_name }}"
         wait: true
         timeout: 120
         interval: 2
@@ -90,11 +72,11 @@
 
     - name: Bulk launch without waiting
       ansible.platform.bulk_job_launch:
-        name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-NoWait"
+        name: "{{ test_job_template_name }}-NoWait"
         jobs:
-          - unified_job_template: "{{ test_jt.id }}"
+          - unified_job_template: "{{ test_jt.job_template.id }}"
         organization: Default
-        inventory: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}-Inventory"
+        inventory: "{{ test_inventory_name }}"
         wait: false
       register: nowait_result
 
@@ -128,24 +110,23 @@
   always:
     - name: Remove test job template
       ansible.platform.job_template:
-        name: "AAP-Collection-Test-BulkJobLaunch-{{ test_id }}"
+        name: "{{ test_job_template_name }}"
         state: absent
-      when: test_jt is defined
+      when: test_id is defined
       failed_when: false
 
-    - name: Remove test inventory
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ test_inventory.json.id }}/"
-        method: DELETE
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        status_code: [202, 204, 404]
-      delegate_to: localhost
-      when:
-        - test_inventory is defined
-        - test_inventory.json is defined
-        - test_inventory.json.id is defined
+    - name: Remove the test host
+      ansible.platform.host:
+        name: "{{ test_host_name }}"
+        inventory: "{{ test_inventory_name }}"
+        state: absent
+      when: test_id is defined
       failed_when: false
+
+    - name: Remove the test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: absent
+      when: test_id is defined
 ...

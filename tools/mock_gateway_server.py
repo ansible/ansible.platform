@@ -399,11 +399,10 @@ class Store:
             ("credential-types", ["name"], 1100),
             ("eda-credentials", ["name", "credential_type_id", "organization_id"], 1200),
             ("awx-tokens", ["name", "token"], 6000),
-            ("organizations", ["name"], 7100),
+            ("credential-input-sources", ["input_field_name", "target_credential", "source_credential"], 6200),
             ("projects", ["name"], 7200),
             ("rulebooks", ["name", "project_id"], 7300),
             ("decision-environments", ["name"], 7400),
-            ("eda-credentials", ["name"], 7500),
             ("event-streams", ["name"], 7600),
             ("activations", ["name"], 7700),
         ]
@@ -412,6 +411,7 @@ class Store:
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
+                patch_fields=["description", "metadata"] if endpoint == "credential-input-sources" else None,
                 service="eda",
             )
 
@@ -544,12 +544,11 @@ class Store:
             if resource and not resource._items:
                 resource.seed("2", items)
 
-        # Seed EDA fixtures for the rulebook_activation Molecule mock scenario.
-        # The rulebook's "sources" list is served directly by MockGatewayHandler,
-        # so it doesn't need its own store.
+        # Seed EDA fixtures used by event stream, decision environment, and
+        # rulebook activation mock scenarios. The rulebook's "sources" list is
+        # served directly by MockGatewayHandler, so it doesn't need its own store.
         eda_fixtures = {
-            "organizations": [{"id": 9001, "name": "Default"}],
-            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 9001}],
+            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 1}],
             "rulebooks": [
                 {
                     "id": 9201,
@@ -558,8 +557,12 @@ class Store:
                     "sources": [{"name": "range", "rulebook_hash": "mock-rulebook-hash-range"}],
                 }
             ],
-            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 9001}],
-            "eda-credentials": [{"id": 9401, "name": "Molecule Mock EDA Credential"}],
+            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 1}],
+            "eda-credentials": [
+                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 1},
+                {"id": 9102, "name": "Molecule Mock Decision Environment Credential", "organization_id": 1},
+                {"id": 9401, "name": "Molecule Mock EDA Credential", "credential_type_id": 1, "organization_id": 1},
+            ],
             "event-streams": [{"id": 9501, "name": "Molecule Mock Event Stream"}],
         }
         for endpoint, items in eda_fixtures.items():
@@ -1324,6 +1327,19 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
                 return
+
+        # ---- EDA: /api/eda/vX/credential-types/{id}/test/ ----
+        if service == "eda" and resource == "credential-types" and len(parts) == 6 and parts[5] == "test" and self.command == "POST":
+            self.store.seed_defaults()
+            credential_type_store = self.store.resource("eda", "credential-types")
+            try:
+                credential_type_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            self._parse_json_body()
+            self._send_json(200, {"success": True, "message": "Credential type test accepted"})
+            return
 
         # ---- EDA: /api/eda/vX/rulebooks/{id}/sources/ (read-only, seeded on the rulebook fixture) ----
         if service == "eda" and resource == "rulebooks" and len(parts) == 6 and parts[5] == "sources" and self.command == "GET":
