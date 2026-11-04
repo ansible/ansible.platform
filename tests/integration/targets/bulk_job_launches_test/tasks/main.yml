@@ -47,13 +47,13 @@
     - name: Assert test job template exists
       ansible.builtin.assert:
         that:
-          - test_jt.id is defined
+          - test_jt.job_template.id is defined
 
     - name: Bulk launch jobs and wait for completion
       ansible.platform.bulk_job_launch:
         name: "{{ test_job_template_name }}-Wait"
         jobs:
-          - unified_job_template: "{{ test_jt.id }}"
+          - unified_job_template: "{{ test_jt.job_template.id }}"
         organization: Default
         inventory: "{{ test_inventory_name }}"
         wait: true
@@ -73,7 +73,7 @@
       ansible.platform.bulk_job_launch:
         name: "{{ test_job_template_name }}-NoWait"
         jobs:
-          - unified_job_template: "{{ test_jt.id }}"
+          - unified_job_template: "{{ test_jt.job_template.id }}"
         organization: Default
         inventory: "{{ test_inventory_name }}"
         wait: false

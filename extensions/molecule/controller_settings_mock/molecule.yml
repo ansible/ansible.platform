@@ -1,0 +1,25 @@
+---
+# Scenario: exercise the Controller settings singleton against the mock server.
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+  config_options:
+    defaults:
+      collections_path: "${MOLECULE_SCENARIO_DIRECTORY}/../../../../../../"
+      log_verbosity: 4
+
+scenario:
+  test_sequence:
+    - converge
+    - verify
+    - cleanup
+...

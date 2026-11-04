@@ -1,0 +1,157 @@
+---
+- name: Ensure the Controller settings mock is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+- name: Controller settings — local connection
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: testpass
+    gateway_validate_certs: false
+  tasks:
+    - name: Establish the known Controller settings baseline
+      ansible.platform.controller_settings:
+        settings:
+          DEFAULT_JOB_TIMEOUT: 0
+          AWX_REQUEST_PROFILE: false
+          REMOTE_HOST_HEADERS:
+            - REMOTE_ADDR
+            - REMOTE_HOST
+
+    - name: Set one Controller setting using the legacy name/value form
+      ansible.platform.controller_settings:
+        name: DEFAULT_JOB_TIMEOUT
+        value: "3600"
+      register: local_single
+
+    - name: Assert the legacy value was coerced to an integer
+      ansible.builtin.assert:
+        that:
+          - local_single is changed
+          - local_single.value == 3600
+          - local_single.old_values.DEFAULT_JOB_TIMEOUT == 0
+          - local_single.new_values.DEFAULT_JOB_TIMEOUT == 3600
+
+    - name: Repeat the single-setting update
+      ansible.platform.controller_settings:
+        name: DEFAULT_JOB_TIMEOUT
+        value: "3600"
+      register: local_single_idempotent
+
+    - name: Assert the single-setting update is idempotent
+      ansible.builtin.assert:
+        that:
+          - local_single_idempotent is not changed
+
+    - name: Preview a bulk update in check mode
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: true
+          REMOTE_HOST_HEADERS:
+            - HTTP_X_FORWARDED_FOR
+            - REMOTE_ADDR
+      check_mode: true
+      diff: true
+      register: local_check
+
+    - name: Assert check mode reports the pending update without changing the server
+      ansible.builtin.assert:
+        that:
+          - local_check is changed
+          - local_check.diff.before.AWX_REQUEST_PROFILE is false
+          - local_check.diff.after.AWX_REQUEST_PROFILE is true
+
+- name: Controller settings — direct HTTP connection
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: testpass
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: false
+  tasks:
+    - name: Apply a bulk Controller settings update
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: true
+          REMOTE_HOST_HEADERS:
+            - HTTP_X_FORWARDED_FOR
+            - REMOTE_ADDR
+      register: direct_bulk
+
+    - name: Assert the bulk update changed the settings
+      ansible.builtin.assert:
+        that:
+          - direct_bulk is changed
+          - direct_bulk['values'].AWX_REQUEST_PROFILE is true
+          - direct_bulk['values'].REMOTE_HOST_HEADERS | length == 2
+
+    - name: Repeat the bulk update
+      ansible.platform.controller_settings:
+        settings:
+          AWX_REQUEST_PROFILE: true
+          REMOTE_HOST_HEADERS:
+            - HTTP_X_FORWARDED_FOR
+            - REMOTE_ADDR
+      register: direct_bulk_idempotent
+
+    - name: Assert the bulk update is idempotent
+      ansible.builtin.assert:
+        that:
+          - direct_bulk_idempotent is not changed
+
+- name: Controller settings — persistent HTTP connection
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: testpass
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  tasks:
+    - name: Change a setting through the persistent connection
+      ansible.platform.controller_settings:
+        name: DEFAULT_JOB_TIMEOUT
+        value: "7200"
+      register: persistent_single
+
+    - name: Assert the persistent update succeeded
+      ansible.builtin.assert:
+        that:
+          - persistent_single is changed
+          - persistent_single.value == 7200
+
+    - name: Repeat the persistent update
+      ansible.platform.controller_settings:
+        name: DEFAULT_JOB_TIMEOUT
+        value: "7200"
+      register: persistent_single_idempotent
+
+    - name: Assert persistent mode is idempotent
+      ansible.builtin.assert:
+        that:
+          - persistent_single_idempotent is not changed
+...

@@ -63,6 +63,7 @@ This document maps the three AAP services and their resource coverage to help yo
 - Organizations: `organizations`, `teams`, `users`
 - Authentication: `authenticators`, `authenticator_map`
 - Access Control: `role_definitions`, `role_user_assignments`, `role_team_assignments`
+- Platform configuration: `settings` (exposed as `controller_settings` to distinguish it from Gateway settings)
 - More: `labels`, `schedules`, `notifications`, `webhook_receivers`, etc.
 
 **Current Collection Coverage**: 0 modules (planned)
@@ -97,7 +98,9 @@ These resources exist in Gateway, EDA, AND Controller:
 ### Gateway + Controller Only (2 resources)
 - `ping`, `settings`
 
-**Action**: No conflict expected; use unprefixed names if added from these specs.
+**Action**: Gateway settings remains `settings`; Controller settings is exposed as
+`controller_settings` because the collection provides separate service-specific
+implementations and preserves the legacy Controller module interface.
 
 ---
 

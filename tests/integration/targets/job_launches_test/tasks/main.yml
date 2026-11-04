@@ -47,7 +47,7 @@
     - name: Assert test job template exists
       ansible.builtin.assert:
         that:
-          - test_jt.id is defined
+          - test_jt.job_template.id is defined
 
     - name: Launch the test job template
       ansible.platform.job_launch:

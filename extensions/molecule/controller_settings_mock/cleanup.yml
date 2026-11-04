@@ -1,0 +1,25 @@
+---
+- name: Cleanup Controller settings mock scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: testpass
+    gateway_validate_certs: false
+  tasks:
+    - name: Restore the shared Controller settings baseline
+      ansible.platform.controller_settings:
+        settings:
+          DEFAULT_JOB_TIMEOUT: 0
+          AWX_REQUEST_PROFILE: false
+          REMOTE_HOST_HEADERS:
+            - REMOTE_ADDR
+            - REMOTE_HOST
+
+    - name: Confirm shared mock state was restored
+      ansible.builtin.debug:
+        msg: "Controller settings mock baseline restored while the shared mock server remains active."
+...

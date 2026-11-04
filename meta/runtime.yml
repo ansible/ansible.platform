@@ -35,6 +35,7 @@ action_groups:
     - eda_credential_type
     - event_stream
   controller:
+    - controller_settings
     - job_template
     - controller_credential_type
     - credential_input_source
