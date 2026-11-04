@@ -126,10 +126,11 @@ class BaseAPIClient(ABC):
     ) -> tuple:
         """Normalize a lookup reference and its filters, including Controller named keys.
 
-        Named keys use ``resource-name++organization``. Resolve the organization
-        once and turn the composite key into the same scoped name query used for
-        ordinary references. Controller keys follow the documented
-        ``resource-name++organization`` order.
+        Normalize only the simple Controller key form
+        ``resource-name++organization``. Composite Controller keys remain
+        unchanged for the list-query fallback; without caller filters,
+        lookup_resource_id first tries the complete value against the detail
+        endpoint.
         """
         filters = dict(extra_query_params or {})
         value = str(lookup_value)
@@ -138,9 +139,14 @@ class BaseAPIClient(ABC):
                 self._normalize_organization_filter(filters, service)
             return value, filters
 
-        # Other services may expose a different named key format. Their
-        # existing server-side detail lookup is preserved by the clients.
+        # Server-side detail lookup is the source of truth for named keys.
         if service != "controller":
+            return value, filters
+
+        # Controller has resource-specific named-key formats (for example,
+        # hosts include inventory and organization). Only normalize the simple
+        # one-separator form; caller filters may have skipped detail lookup.
+        if value.count("++") != 1:
             return value, filters
 
         resource_name, organization_name = self._parse_controller_named_key(value)
@@ -242,7 +248,10 @@ class BaseAPIClient(ABC):
         if numeric_is_id and str(lookup_value).isdigit():
             return int(lookup_value)
 
-        if lookup_field == "name" and "++" in str(lookup_value) and service != "controller" and not extra_query_params:
+        # A detail lookup has no way to apply additional caller-supplied
+        # filters. Preserve the filtered list lookup when the caller provided
+        # scope explicitly; otherwise let the service parse its named-key form.
+        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
             service_version = self.get_api_version(service)
             self._prepare_resource_lookup(service)
             named_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/{quote(str(lookup_value), safe='+')}/"

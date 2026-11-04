@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
 
 __metaclass__ = type
 
@@ -120,6 +120,7 @@ class TestResourceLookup(unittest.TestCase):
         for client in (_service(), _direct_client()):
             _set_responses(
                 client,
+                APIError("Named URL not found", status_code=404),
                 _response(body={"count": 1, "results": [{"id": 900, "name": "Default"}]}),
                 _response(body={"count": 1, "results": [{"id": 71, "name": "Shared", "organization": 900}]}),
             )
@@ -127,17 +128,29 @@ class TestResourceLookup(unittest.TestCase):
             with self.subTest(client=type(client).__name__):
                 self.assertEqual(_lookup(client, value="Shared++Default"), 71)
                 calls = _request_calls(client)
-                self.assertEqual(len(calls), 2)
+                self.assertEqual(len(calls), 3)
                 urls = [call.args[1] for call in calls]
-                self.assertEqual(urlparse(urls[0]).path, "/api/controller/v2/organizations/")
-                self.assertEqual(_request_filters(client, calls[0]), {"name": ["Default"]})
-                self.assertEqual(urlparse(urls[1]).path, "/api/controller/v2/inventories/")
-                self.assertEqual(_request_filters(client, calls[1]), {"name": ["Shared"], "organization": ["900"]})
+                self.assertEqual(urlparse(urls[0]).path, "/api/controller/v2/inventories/Shared++Default/")
+                self.assertEqual(urlparse(urls[1]).path, "/api/controller/v2/organizations/")
+                self.assertEqual(_request_filters(client, calls[1]), {"name": ["Default"]})
+                self.assertEqual(urlparse(urls[2]).path, "/api/controller/v2/inventories/")
+                self.assertEqual(_request_filters(client, calls[2]), {"name": ["Shared"], "organization": ["900"]})
+
+    def test_simple_controller_named_key_uses_server_resolution_first(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"id": 71, "name": "Shared", "organization": 900}))
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(_lookup(client, value="Shared++Default"), 71)
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/inventories/Shared++Default/")
 
     def test_numeric_organization_component_in_named_key_resolves_by_name(self):
         for client in (_service(), _direct_client()):
             _set_responses(
                 client,
+                APIError("Named URL not found", status_code=404),
                 _response(body={"count": 1, "results": [{"id": 900, "name": "123"}]}),
                 _response(body={"count": 1, "results": [{"id": 71, "name": "Shared", "organization": 900}]}),
             )
@@ -145,19 +158,63 @@ class TestResourceLookup(unittest.TestCase):
             with self.subTest(client=type(client).__name__):
                 self.assertEqual(_lookup(client, value="Shared++123"), 71)
                 calls = _request_calls(client)
-                self.assertEqual(len(calls), 2)
-                self.assertEqual(_request_filters(client, calls[0]), {"name": ["123"]})
-                self.assertEqual(_request_filters(client, calls[1]), {"name": ["Shared"], "organization": ["900"]})
+                self.assertEqual(len(calls), 3)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/inventories/Shared++123/")
+                self.assertEqual(_request_filters(client, calls[1]), {"name": ["123"]})
+                self.assertEqual(_request_filters(client, calls[2]), {"name": ["Shared"], "organization": ["900"]})
+
+    def test_composite_controller_named_keys_use_server_resolution(self):
+        named_keys = {
+            "credentials": "My Credential++Source Control+scm++Default",
+            "hosts": "my-host++Production Inventory++Default",
+            "workflow_job_template_nodes": "node-identifier++Nightly Workflow++Default",
+        }
+        for client in (_service(), _direct_client()):
+            for endpoint, named_key in named_keys.items():
+                with self.subTest(client=type(client).__name__, endpoint=endpoint):
+                    client._make_request.reset_mock()
+                    _set_responses(client, _response(body={"id": 71, "name": named_key.split("++", 1)[0]}))
+
+                    self.assertEqual(_lookup(client, endpoint=endpoint, value=named_key), 71)
+
+                    calls = _request_calls(client)
+                    self.assertEqual(len(calls), 1)
+                    self.assertEqual(
+                        urlparse(calls[0].args[1]).path,
+                        f"/api/controller/v2/{endpoint}/{named_key.replace(' ', '%20')}/",
+                    )
+
+    def test_composite_controller_key_fallback_does_not_treat_suffix_as_organization(self):
+        named_key = "my-host++Production Inventory++Default"
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                APIError("Named URL not found", status_code=404),
+                _response(body={"count": 0, "results": []}),
+            )
+
+            with self.subTest(client=type(client).__name__), self.assertRaisesRegex(ValueError, "not found"):
+                _lookup(client, endpoint="hosts", value=named_key)
+
+            calls = _request_calls(client)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(urlparse(calls[1].args[1]).path, "/api/controller/v2/hosts/")
+            self.assertEqual(_request_filters(client, calls[1]), {"name": [named_key]})
 
     def test_trailing_named_url_separator_resolves_as_plain_name(self):
         for client in (_service(), _direct_client()):
-            _set_responses(client, _response(body={"count": 1, "results": [{"id": 71, "name": "Shared"}]}))
+            _set_responses(
+                client,
+                APIError("Named URL not found", status_code=404),
+                _response(body={"count": 1, "results": [{"id": 71, "name": "Shared"}]}),
+            )
 
             with self.subTest(client=type(client).__name__):
                 self.assertEqual(_lookup(client, value="Shared++"), 71)
                 calls = _request_calls(client)
-                self.assertEqual(len(calls), 1)
-                self.assertEqual(_request_filters(client, calls[0]), {"name": ["Shared"]})
+                self.assertEqual(len(calls), 2)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/inventories/Shared++/")
+                self.assertEqual(_request_filters(client, calls[1]), {"name": ["Shared"]})
 
     def test_named_key_must_match_explicit_organization_scope(self):
         for client in (_service(), _direct_client()):
