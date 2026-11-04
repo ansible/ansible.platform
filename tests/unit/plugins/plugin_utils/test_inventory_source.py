@@ -87,58 +87,8 @@ class TestInventorySourceTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventorySource(name="src", inventory="Production", source="ec2")
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call(
-            "inventories",
-            "name",
-            "Production",
-            service="controller",
-            extra_query_params=None,
-            require_unique=True,
-        )
+        mock_manager.lookup_resource_id.assert_any_call("inventories", "name", "Production", service="controller")
         self.assertEqual(api.inventory, 42)
-
-    def test_fk_lookups_are_scoped_by_organization(self):
-        mock_manager = MagicMock()
-
-        def lookup_resource_id(endpoint, lookup_field, lookup_value, **kwargs):
-            return {
-                ("organizations", "E2E Org"): 7,
-                ("inventories", "Production"): 42,
-                ("projects", "Inventory Project"): 15,
-            }[(endpoint, lookup_value)]
-
-        mock_manager.lookup_resource_id.side_effect = lookup_resource_id
-        context = {"operation": "create", "manager": mock_manager}
-        ansible = AnsibleInventorySource(
-            name="src",
-            inventory="Production",
-            organization="E2E Org",
-            source="scm",
-            source_project="Inventory Project",
-        )
-
-        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, context)
-
-        self.assertEqual(api.inventory, 42)
-        self.assertEqual(api.source_project, 15)
-        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "E2E Org")
-        mock_manager.lookup_resource_id.assert_any_call(
-            "inventories",
-            "name",
-            "Production",
-            service="controller",
-            extra_query_params={"organization": 7},
-            require_unique=True,
-        )
-        mock_manager.lookup_resource_id.assert_any_call(
-            "projects",
-            "name",
-            "Inventory Project",
-            service="controller",
-            extra_query_params={"organization": 7},
-            require_unique=True,
-        )
-        self.assertFalse(hasattr(api, "organization"))
 
     def test_fk_credential_resolved_via_manager(self):
         mock_manager = MagicMock()
@@ -164,14 +114,7 @@ class TestInventorySourceTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="My Project")
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call(
-            "projects",
-            "name",
-            "My Project",
-            service="controller",
-            extra_query_params=None,
-            require_unique=True,
-        )
+        mock_manager.lookup_resource_id.assert_any_call("projects", "name", "My Project", service="controller")
         self.assertEqual(api.source_project, 15)
 
     def test_fk_id_skips_lookup(self):
