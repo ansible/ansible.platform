@@ -99,7 +99,6 @@ _write_integration_config:
 	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
 collection-test: collection-install _write_integration_config
-	ansible-galaxy collection install -r tests/integration/requirements.yml -p /tmp/collections
 	cd /tmp/collections/ansible_collections/ansible/platform && \
 	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage --continue-on-error
 

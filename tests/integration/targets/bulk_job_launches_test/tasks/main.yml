@@ -128,5 +128,4 @@
         organization: Default
         state: absent
       when: test_id is defined
-      failed_when: false
 ...
