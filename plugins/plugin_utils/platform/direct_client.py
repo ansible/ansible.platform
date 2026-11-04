@@ -21,6 +21,7 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
 from .base_client import BaseAPIClient
+from .base_transform import BaseTransformMixin
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
@@ -776,16 +777,6 @@ class DirectHTTPClient(BaseAPIClient):
         self._make_request("DELETE", url, operation="delete_resource", resource="config")
         return {}
 
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
-        self._ensure_authenticated()
-        url = self._build_url("/bulk/host_create/", service=service)
-        payload = {"inventory": inventory_id, "hosts": hosts}
-        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
-        response_body = response.read()
-        response_data = json.loads(response_body) if response_body else {}
-        return response_data
-
     def search_api(
         self,
         endpoint: str,
@@ -1289,24 +1280,19 @@ class DirectHTTPClient(BaseAPIClient):
             logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
             url = self._build_url(url, service=context.service, api_version=context.api_version)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
-            # Prepare request data; include "" on update so enforced can clear e.g. email
-            request_data = {}
-            if endpoint_op.fields:
-                for field in endpoint_op.fields:
-                    value = getattr(api_data, field, None)
-                    if value is None:
-                        if field in fields_to_null or (
-                            context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
-                        ):
-                            request_data[field] = None
-                        continue
-                    if value == "" and not (field == "description" and context.operation == "update"):
-                        continue
-                    request_data[field] = value
-
-            # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
-                request_data = next(iter(request_data.values()))
+            # The transform owns operation field selection. Keep null and empty
+            # value handling here because it depends on update semantics.
+            null_fields = set(fields_to_null)
+            if context.operation == "update" and context.include_nulls_for_update:
+                null_fields.update({"organization", "credential"})
+            preserve_empty_fields = {"description"} if context.operation == "update" else set()
+            request_data = BaseTransformMixin.to_operation_payload(
+                api_data,
+                endpoint_op,
+                include_null_fields=null_fields,
+                omit_empty=True,
+                preserve_empty_fields=preserve_empty_fields,
+            )
 
             # Skip secondary (dependent) operations that have no data to send.
             # This prevents calling e.g. /users/{id}/organizations/ when organizations is not set.

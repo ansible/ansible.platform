@@ -41,6 +41,7 @@ class TestJobLaunchAction(unittest.TestCase):
         self._patch_prepare(action)
 
         action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.return_value = {"results": [{"id": 1, "name": "Demo"}]}
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
@@ -53,6 +54,12 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "pending")
+        self.assertEqual(
+            action._client.launch_resource.call_args.args,
+            ("/api/controller/v2/job_templates/1/launch/", {}),
+        )
+        self.assertEqual(action._client.launch_resource.call_args.kwargs, {"service": "controller", "retry": False})
+        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/", query_params={"name": "Demo"})
         action._client.wait_for_completion.assert_not_called()
 
     def test_launch_with_wait_successful(self):

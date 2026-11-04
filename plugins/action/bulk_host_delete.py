@@ -14,7 +14,6 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import json
-from dataclasses import asdict
 from typing import Optional
 
 from ansible.errors import AnsibleError
@@ -98,7 +97,8 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data = AnsibleBulkHostDelete(hosts=hosts)
             api_data = BulkHostDeleteTransformMixin_v2.from_ansible_data(ansible_data)
             create_operation = BulkHostDeleteTransformMixin_v2.get_endpoint_operations()["create"]
-            manager.launch_resource(launch_url=create_operation.path, payload=asdict(api_data), service="controller", retry=False)
+            payload = BulkHostDeleteTransformMixin_v2.to_operation_payload(api_data, create_operation)
+            manager.launch_resource(launch_url=create_operation.path, payload=payload, service="controller", retry=False)
 
             result["changed"] = True
 

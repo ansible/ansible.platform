@@ -184,19 +184,18 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
         if str(name).isdigit():
             return int(name), None
         if organization:
-            org_id = manager.lookup_resource_id("organizations", "name", organization)
+            org_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
+            list_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["list"]
             data = manager.search_api(
-                CONTROLLER_JOB_TEMPLATES_ENDPOINT,
+                list_operation.path,
                 query_params={"name": name, "organization": org_id},
             )
             results = data.get("results", [])
             if not results:
                 raise AnsibleError(f"Job template '{name}' not found in organization '{organization}'")
             return results[0]["id"], org_id
-        data = manager.search_api(
-            CONTROLLER_JOB_TEMPLATES_ENDPOINT,
-            query_params={"name": name},
-        )
+        list_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["list"]
+        data = manager.search_api(list_operation.path, query_params={"name": name})
         results = data.get("results", [])
         if not results:
             raise AnsibleError(f"Job template '{name}' not found")
@@ -207,35 +206,19 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def to_launch_payload(cls, api_data: "APIJobLaunch_v2") -> Dict[str, Any]:
-        """Build the POST payload from the API dataclass, excluding None values and the resolved template ID."""
-        payload = {}
-        for field_name in (
-            "job_type",
-            "limit",
-            "scm_branch",
-            "verbosity",
-            "diff_mode",
-            "forks",
-            "job_slice_count",
-            "extra_vars",
-            "job_tags",
-            "skip_tags",
-            "timeout",
-            "credential_passwords",
-            "inventory",
-            "execution_environment",
-            "credentials",
-            "instance_groups",
-            "labels",
-        ):
-            val = getattr(api_data, field_name, None)
-            if val is not None:
-                payload[field_name] = val
-        return payload
+        """Build the launch body using the launch operation's declared fields."""
+        return cls.to_operation_payload(api_data, cls.get_endpoint_operations()["launch"])
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
+            "list": EndpointOperation(
+                path=CONTROLLER_JOB_TEMPLATES_ENDPOINT,
+                method="GET",
+                fields=[],
+                required_for="find",
+                order=1,
+            ),
             "launch": EndpointOperation(
                 path=CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
                 method="POST",

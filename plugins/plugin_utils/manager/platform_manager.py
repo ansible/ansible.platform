@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     import requests
 
 from ..platform.base_client import BaseAPIClient
+from ..platform.base_transform import BaseTransformMixin
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
@@ -1013,25 +1014,12 @@ class PlatformService(BaseAPIClient):
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            # For update: include "" (empty string) so enforced can clear fields like email
-            request_data = {}
-            for field in endpoint_op.fields:
-                if field not in api_data_dict:
-                    continue
-                val = api_data_dict[field]
-                if val is None:
-                    # Include as explicit null only for fields declared by the mixin
-                    # as needing to be cleared, or for associations in enforced updates.
-                    if field in _fields_to_null or (
-                        context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
-                    ):
-                        request_data[field] = None
-                    continue
-                request_data[field] = val
-
-            # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
-                request_data = next(iter(request_data.values()))
+            # The transform owns operation field selection. Keep null handling
+            # here because it depends on the current operation context.
+            null_fields = set(_fields_to_null)
+            if context.operation == "update" and context.include_nulls_for_update:
+                null_fields.update({"organization", "credential"})
+            request_data = BaseTransformMixin.to_operation_payload(api_data, endpoint_op, include_null_fields=null_fields)
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)
@@ -1400,27 +1388,6 @@ class PlatformService(BaseAPIClient):
             retry_config=RetryConfig(max_attempts=1),
             json=payload,
         )
-        return response.json()
-
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the Controller bulk/host_create endpoint.
-
-        Retries are disabled: this is a non-idempotent POST — retrying a lost
-        response could create duplicate hosts or trigger 400 errors.
-        """
-        self.record_activity()
-        url = self._build_url("/bulk/host_create/", service=service)
-        payload = {"inventory": inventory_id, "hosts": hosts}
-        response = self._make_request(
-            "post",
-            url,
-            operation="bulk_host_create",
-            resource="bulk",
-            retry_config=RetryConfig(max_attempts=1),
-            json=payload,
-        )
-        if response.status_code != 201:
-            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
 
     def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:

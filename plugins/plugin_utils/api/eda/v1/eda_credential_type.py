@@ -113,6 +113,14 @@ class EdaCredentialTypeTransformMixin_v1(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
+            "test": EndpointOperation(
+                path=EDA_CREDENTIAL_TYPE_TEST_ENDPOINT,
+                method="POST",
+                fields=["inputs", "metadata"],
+                path_params=["id"],
+                required_for="test",
+                order=1,
+            ),
         }
 
     @classmethod

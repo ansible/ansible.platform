@@ -12,8 +12,6 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_launch import AnsibleJobLaunch
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_launch import (
-    CONTROLLER_JOB_ENDPOINT,
-    CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
     JobLaunchTransformMixin_v2,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
@@ -78,9 +76,10 @@ class ActionModule(BaseResourceActionPlugin):
             api_data = JobLaunchTransformMixin_v2.from_ansible_data(ansible_obj, context)
             payload = JobLaunchTransformMixin_v2.to_launch_payload(api_data)
             jt_id = api_data.job_template_id
+            launch_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["launch"]
 
             launch_result = manager.launch_resource(
-                CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT.format(id=jt_id),
+                launch_operation.path.format(id=jt_id),
                 payload,
                 service="controller",
                 retry=False,
@@ -94,7 +93,8 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True, "failed": True, "msg": "Launch response did not include a job ID"})
             return result
         job_status = launch_result.get("status", "unknown")
-        job_url = launch_result.get("url", CONTROLLER_JOB_ENDPOINT.format(id=job_id))
+        job_detail_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["get"]
+        job_url = launch_result.get("url", job_detail_operation.path.format(id=job_id))
 
         ignored_fields = launch_result.get("ignored_fields", {})
         if ignored_fields:

@@ -10,12 +10,12 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import json
-
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_create import (
     AnsibleBulkHostCreate,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_create import BulkHostCreateTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -33,17 +33,22 @@ class ActionModule(BaseResourceActionPlugin):
 
             hosts = validated_params.get("hosts", [])
             inventory = validated_params.get("inventory")
-            organization = validated_params.get("organization")
-
-            org_id = None
-            if organization is not None:
-                if not str(organization).strip().isdigit():
-                    org_id = manager.lookup_resource_id("organizations", "name", str(organization))
-                else:
-                    org_id = int(organization)
-            org_scope = {"organization": org_id} if org_id is not None else None
-
-            inv_id = manager.lookup_resource_id("inventories", "name", inventory, service="controller", extra_query_params=org_scope)
+            ansible_data = AnsibleBulkHostCreate(
+                hosts=hosts,
+                inventory=inventory,
+                organization=validated_params.get("organization"),
+            )
+            context = TransformContext(
+                manager=manager,
+                session=getattr(manager, "session", None),
+                cache={},
+                api_version="2",
+                service="controller",
+                operation="create",
+            )
+            api_data = BulkHostCreateTransformMixin_v2.from_ansible_data(ansible_data, context)
+            create_operation = BulkHostCreateTransformMixin_v2.get_endpoint_operations()["create"]
+            payload = BulkHostCreateTransformMixin_v2.to_operation_payload(api_data, create_operation)
 
             if self._task.check_mode:
                 result.update(
@@ -56,18 +61,7 @@ class ActionModule(BaseResourceActionPlugin):
                 )
                 return result
 
-            prepared_hosts = []
-            for h in hosts:
-                host_entry = dict(h)
-                if "variables" in host_entry and host_entry["variables"] is not None:
-                    host_entry["variables"] = json.dumps(host_entry["variables"])
-                prepared_hosts.append(host_entry)
-
-            response = manager.bulk_host_create(
-                inventory_id=inv_id,
-                hosts=prepared_hosts,
-                service="controller",
-            )
+            response = manager.launch_resource(create_operation.path, payload, service="controller", retry=False)
 
             result.update(
                 {

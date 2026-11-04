@@ -20,10 +20,7 @@ from typing import Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_launch import AnsibleWorkflowLaunch
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_launch import (
-    WJT_LIST_ENDPOINT,
-    WorkflowLaunchTransformMixin_v2,
-)
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_launch import WorkflowLaunchTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
@@ -63,11 +60,8 @@ class ActionModule(BaseResourceActionPlugin):
             if organization is not None:
                 query_params["organization"] = organization
 
-            wjt_response = manager.search_api(
-                WJT_LIST_ENDPOINT,
-                query_params=query_params,
-                return_all=True,
-            )
+            find_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["list"]
+            wjt_response = manager.search_api(find_operation.path, query_params=query_params, return_all=True)
             wjt_results = wjt_response.get("results", [])
             if not wjt_results:
                 raise AnsibleError(f"Unable to find workflow job template '{launch.name}'")
@@ -107,8 +101,9 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # Launch the workflow
+            launch_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["launch"]
             launch_result = manager.launch_resource(
-                f"workflow_job_templates/{wjt_id}/launch",
+                launch_operation.path.format(id=wjt_id),
                 post_data,
                 service="controller",
                 retry=False,
@@ -141,8 +136,9 @@ class ActionModule(BaseResourceActionPlugin):
                 # The legacy module waited indefinitely when timeout was omitted.
                 # The SDK uses negative timeout values for an unbounded wait.
                 wait_timeout = -1.0 if not timeout else float(timeout)
+                wait_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["workflow_job"]
                 job_result = manager.wait_for_completion(
-                    f"workflow_jobs/{workflow_job_id}",
+                    wait_operation.path.format(id=workflow_job_id),
                     timeout=wait_timeout,
                     interval=interval,
                     service="controller",

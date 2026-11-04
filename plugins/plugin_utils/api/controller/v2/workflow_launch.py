@@ -5,7 +5,7 @@ The launch action uses the transform to resolve foreign keys and normalize
 launch fields before calling the SDK launch endpoint.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 from urllib.parse import quote
 
@@ -14,10 +14,10 @@ from ....platform.exceptions import APIError
 from ....platform.types import EndpointOperation, TransformContext
 
 WJT_LIST_ENDPOINT = "/api/controller/v2/workflow_job_templates/"
-WORKFLOW_JOBS_ENDPOINT = "/api/controller/v2/workflow_jobs/"
+WORKFLOW_JOBS_ENDPOINT = "workflow_jobs/{id}"
+WORKFLOW_TEMPLATE_LAUNCH_ENDPOINT = "workflow_job_templates/{id}/launch"
 _ORGANIZATION_LIST_ENDPOINT = "/api/gateway/v1/organizations/"
 _INVENTORY_LIST_ENDPOINT = "/api/controller/v2/inventories/"
-_LAUNCH_PAYLOAD_FIELDS = frozenset({"inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"})
 
 
 @dataclass
@@ -133,13 +133,12 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def to_launch_payload(cls, api_instance: "APIWorkflowLaunch_v2") -> Dict[str, Any]:
-        """Build the Controller launch payload from a transformed request."""
-        api_data = asdict(api_instance)
-        return {field: api_data[field] for field in _LAUNCH_PAYLOAD_FIELDS if api_data.get(field) is not None}
+        """Build the Controller launch body from the operation's declared fields."""
+        return cls.to_operation_payload(api_instance, cls.get_endpoint_operations()["launch"])
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
-        """Define the read operations used to validate the workflow template."""
+        """Declare template lookup, launch, and workflow-job wait endpoints."""
         return {
             "list": EndpointOperation(
                 path=WJT_LIST_ENDPOINT,
@@ -148,12 +147,20 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
-            "get": EndpointOperation(
-                path="/api/controller/v2/workflow_job_templates/{id}/",
+            "launch": EndpointOperation(
+                path=WORKFLOW_TEMPLATE_LAUNCH_ENDPOINT,
+                method="POST",
+                fields=["inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"],
+                path_params=["id"],
+                required_for="launch",
+                order=1,
+            ),
+            "workflow_job": EndpointOperation(
+                path=WORKFLOW_JOBS_ENDPOINT,
                 method="GET",
                 fields=[],
                 path_params=["id"],
-                required_for="find",
+                required_for="wait",
                 order=1,
             ),
         }

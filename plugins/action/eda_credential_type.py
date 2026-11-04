@@ -20,7 +20,7 @@ from typing import Any, Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential_type import AnsibleEdaCredentialType
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_type import EDA_CREDENTIAL_TYPE_TEST_ENDPOINT
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_type import EdaCredentialTypeTransformMixin_v1
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -197,14 +197,13 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # Build test payload matching EDA API format
-            test_payload = {}
-            if test_inputs:
-                test_payload["inputs"] = test_inputs
-            if test_metadata:
-                test_payload["metadata"] = test_metadata
+            test_operation = EdaCredentialTypeTransformMixin_v1.get_endpoint_operations()["test"]
+            test_payload = EdaCredentialTypeTransformMixin_v1.to_operation_payload(
+                {"inputs": test_inputs, "metadata": test_metadata if test_metadata else None}, test_operation
+            )
 
             # POST to the test sub-endpoint via the SDK launch_resource method
-            test_url = EDA_CREDENTIAL_TYPE_TEST_ENDPOINT.format(id=credential_type_id)
+            test_url = test_operation.path.format(id=credential_type_id)
             test_response = manager.launch_resource(
                 launch_url=test_url,
                 payload=test_payload,
