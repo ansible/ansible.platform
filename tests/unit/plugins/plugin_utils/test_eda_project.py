@@ -23,6 +23,7 @@ class TestEdaProjectTransform(unittest.TestCase):
 
     def test_from_ansible_data_resolves_organization_in_eda_service(self):
         manager = MagicMock()
+        manager.cache = {}
         manager.lookup_resource_id.return_value = 901
         project = AnsibleEdaProject(name="project", organization_name="Default")
 
@@ -30,6 +31,22 @@ class TestEdaProjectTransform(unittest.TestCase):
 
         self.assertEqual(api_data.organization_id, 901)
         manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="eda", require_unique=True)
+        manager.search_api.assert_called_once_with("config", service="eda")
+
+    def test_from_ansible_data_omits_organization_when_eda_config_endpoint_is_missing(self):
+        manager = MagicMock()
+        manager.cache = {}
+        manager.search_api.side_effect = ValueError("404 Not Found")
+        project = AnsibleEdaProject(name="project", organization_name="Default")
+
+        api_data = EdaProjectTransformMixin_v1.from_ansible_data(project, {"manager": manager})
+
+        self.assertIsNone(api_data.organization_id)
+        manager.search_api.assert_called_once_with("config", service="eda")
+        manager.lookup_resource_id.assert_not_called()
+
+    def test_project_find_list_does_not_send_unsupported_organization_filter(self):
+        self.assertEqual(EdaProjectTransformMixin_v1.get_find_list_query_params({"organization_id": 901}), {})
 
     def test_from_api_hydrates_credential_and_organization_names(self):
         manager = MagicMock()

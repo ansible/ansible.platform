@@ -538,7 +538,7 @@ class Store:
             ff_store.seed("1", flags)
 
         controller_fixtures = {
-            "inventories": [{"id": 5101, "name": "Mock Inventory"}],
+            "inventories": [{"id": 5101, "name": "Mock Inventory", "organization": 1}],
             "projects": [{"id": 5201, "name": "Mock Project", "organization": 1}],
             "execution_environments": [{"id": 5301, "name": "Mock EE"}],
             "credentials": [{"id": 5401, "name": "Mock Credential"}, {"id": 5402, "name": "Mock Vault Credential"}],

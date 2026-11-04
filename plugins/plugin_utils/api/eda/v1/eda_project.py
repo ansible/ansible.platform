@@ -11,6 +11,46 @@ from ....platform.types import EndpointOperation, TransformContext
 EDA_PROJECTS_LIST_ENDPOINT = "/api/eda/v1/projects/"
 EDA_PROJECTS_DETAIL_ENDPOINT = "/api/eda/v1/projects/{id}/"
 EDA_PROJECTS_SYNC_ENDPOINT = "/api/eda/v1/projects/{id}/sync/"
+_PROJECT_ORGANIZATION_SUPPORT_CACHE_KEY = "capability:eda:project_organization"
+
+
+def supports_project_organization(manager: Any) -> bool:
+    """Return whether this EDA API supports project organizations.
+
+    EDA 2.4 lacks the ``config`` and ``organizations`` endpoints. The legacy
+    ``ansible.eda.project`` module uses the config endpoint as its capability
+    check and omits organization fields when that endpoint returns 404.
+    """
+    if manager is None:
+        return False
+
+    cache = getattr(manager, "cache", None)
+    if isinstance(cache, dict) and _PROJECT_ORGANIZATION_SUPPORT_CACHE_KEY in cache:
+        return cache[_PROJECT_ORGANIZATION_SUPPORT_CACHE_KEY]
+
+    supported = True
+    try:
+        manager.search_api("config", service="eda")
+    except Exception as exc:
+        details = getattr(exc, "details", None)
+        status_code = details.get("status_code") if isinstance(details, dict) else None
+        status_code = status_code or getattr(exc, "status_code", None)
+        status_code = status_code or getattr(getattr(exc, "response", None), "status_code", None)
+        if str(status_code) == "404" or (isinstance(exc, ValueError) and "404" in str(exc)):
+            supported = False
+        else:
+            raise
+
+    if isinstance(cache, dict):
+        cache[_PROJECT_ORGANIZATION_SUPPORT_CACHE_KEY] = supported
+    return supported
+
+
+def resolve_project_organization_id(manager: Any, value: Any) -> Optional[int]:
+    """Resolve an organization only when this EDA version supports projects organizations."""
+    if value is None or not supports_project_organization(manager):
+        return None
+    return resolve_foreign_key_id(manager, "organizations", "name", value, service="eda")
 
 
 def resolve_foreign_key_id(manager, endpoint: str, lookup_field: str, value, service: str = "eda") -> Optional[int]:
@@ -94,7 +134,7 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
         Resolves foreign key fields:
         - credential (name) -> eda_credential_id (int) via EDA credentials endpoint
-        - organization_name (name) -> organization_id (int) via EDA organizations endpoint
+        - organization_name (name) -> organization_id (int) when supported by this EDA version
         """
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
@@ -118,7 +158,9 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
         # Resolve organization_name -> organization_id
         organization_name = getattr(ansible_instance, "organization_name", None)
         if organization_name is not None:
-            api_data["organization_id"] = resolve_foreign_key_id(manager, "organizations", "name", organization_name, service="eda")
+            organization_id = resolve_project_organization_id(manager, organization_name)
+            if organization_id is not None:
+                api_data["organization_id"] = organization_id
 
         # Read-only fields
         for field in ("id",):
@@ -199,9 +241,8 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
 
     @classmethod
     def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
-        """Scope project existence checks to the requested organization."""
-        organization_id = api_data.get("organization_id") if isinstance(api_data, dict) else getattr(api_data, "organization_id", None)
-        return {"organization_id": organization_id} if organization_id is not None else {}
+        """Use the EDA project list contract, which looks projects up by name."""
+        return {}
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> "AnsibleEdaProject":

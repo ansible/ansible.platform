@@ -332,6 +332,8 @@ class BaseAPIClient(ABC):
 
             candidate = batch_values + [value]
             query = {f"{lookup_field}__in": ",".join(candidate)}
+            if lookup_filters:
+                query.update(lookup_filters)
             url_length = len(self._build_url(api_path, query).encode("utf-8"))
             if url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
                 batch_values = candidate
@@ -339,7 +341,10 @@ class BaseAPIClient(ABC):
 
             resolve_batch(batch_values)
             batch_values = []
-            single_url_length = len(self._build_url(api_path, {f"{lookup_field}__in": value}).encode("utf-8"))
+            single_query = {f"{lookup_field}__in": value}
+            if lookup_filters:
+                single_query.update(lookup_filters)
+            single_url_length = len(self._build_url(api_path, single_query).encode("utf-8"))
             if single_url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
                 batch_values = [value]
             else:

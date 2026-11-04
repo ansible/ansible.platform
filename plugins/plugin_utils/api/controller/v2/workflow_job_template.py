@@ -76,7 +76,7 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
 
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
 
-        # FK resolution: organization (Gateway-owned, default service)
+        # FK resolution: organization (Controller-owned)
         organization = getattr(ansible_instance, "organization", None)
         organization_id = None
         if organization is not None:
@@ -295,7 +295,7 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
         return AnsibleWorkflowJobTemplate(
             name=api_data.get("name", ""),
             description=api_data.get("description"),
-            organization=_resolve_fk_name("/api/gateway/v1/organizations/", api_data.get("organization")),
+            organization=_resolve_fk_name("/api/controller/v2/organizations/", api_data.get("organization")),
             extra_vars=extra_vars,
             survey_enabled=api_data.get("survey_enabled"),
             allow_simultaneous=api_data.get("allow_simultaneous"),

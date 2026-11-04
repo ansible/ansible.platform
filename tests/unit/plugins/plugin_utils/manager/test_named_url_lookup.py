@@ -235,6 +235,53 @@ class TestResourceLookup(unittest.TestCase):
                     client._lookup_resource_ids("inventories", "name", ["Shared", "Other"], service="controller")
                 self.assertEqual(len(_request_calls(client)), 2)
 
+    def test_batch_lookup_url_budget_includes_scope_filters(self):
+        endpoint = "/api/controller/v2/inventories/"
+        filters = {"organization": int("9" * 50)}
+        first_name = "a"
+        second_name = "b" * 64
+        first_query = {"name__in": first_name, **filters}
+
+        for client in (_service(), _direct_client()):
+            client.MAX_BATCH_LOOKUP_URL_BYTES = len(client._build_url(endpoint, first_query).encode("utf-8"))
+            self.assertGreater(
+                len(client._build_url(endpoint, {"name__in": f"{first_name},{second_name}"}).encode("utf-8")),
+                client.MAX_BATCH_LOOKUP_URL_BYTES,
+            )
+            self.assertLessEqual(
+                len(client._build_url(endpoint, {"name__in": second_name}).encode("utf-8")),
+                client.MAX_BATCH_LOOKUP_URL_BYTES,
+            )
+            self.assertGreater(
+                len(client._build_url(endpoint, {"name__in": second_name, **filters}).encode("utf-8")),
+                client.MAX_BATCH_LOOKUP_URL_BYTES,
+            )
+            results = {
+                first_name: {"id": 1, "name": first_name},
+                second_name: {"id": 2, "name": second_name},
+            }
+
+            def search_api(_endpoint, query_params=None, **_kwargs):
+                values = query_params.get("name__in", query_params.get("name")).split(",")
+                return {"results": [results[value] for value in values]}
+
+            client.search_api = MagicMock(side_effect=search_api)
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(
+                    client._lookup_resource_ids(
+                        "inventories",
+                        "name",
+                        [first_name, second_name],
+                        service="controller",
+                        extra_query_params=filters,
+                    ),
+                    {first_name: 1, second_name: 2},
+                )
+                queries = [call.kwargs["query_params"] for call in client.search_api.call_args_list]
+                self.assertEqual(queries[0], {"name__in": first_name, "organization": filters["organization"]})
+                self.assertEqual(queries[1], {"name": second_name, "organization": filters["organization"]})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,8 +23,9 @@ class TestEdaProjectAction(unittest.TestCase):
         action._display.verbosity = 0
         return action
 
-    def _make_manager(self, find_result=None, create_result=None, update_result=None, delete_error=None):
+    def _make_manager(self, find_result=None, create_result=None, update_result=None, delete_error=None, organization_supported=False):
         manager = MagicMock()
+        manager.cache = {}
 
         def lookup_resource_id(endpoint, lookup_field, lookup_value, service="gateway", extra_query_params=None, require_unique=False):
             if endpoint == "organizations":
@@ -34,7 +35,13 @@ class TestEdaProjectAction(unittest.TestCase):
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
 
         manager.lookup_resource_id.side_effect = lookup_resource_id
-        manager.search_api.side_effect = ValueError("404 Not Found")
+
+        def search_api_side_effect(endpoint, service="gateway", **kwargs):
+            if endpoint == "config" and service == "eda" and not organization_supported:
+                raise ValueError("404 Not Found")
+            return {}
+
+        manager.search_api.side_effect = search_api_side_effect
 
         def execute_side_effect(operation, module_name, ansible_data):
             if operation == "find":
@@ -91,6 +98,7 @@ class TestEdaProjectAction(unittest.TestCase):
         manager = self._make_manager(
             find_result=None,
             create_result={"id": 100, "name": "my-project", "changed": True},
+            organization_supported=True,
         )
         result = self._run_action(
             action,
@@ -113,9 +121,7 @@ class TestEdaProjectAction(unittest.TestCase):
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertEqual(calls, ["create"])
         manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="eda", require_unique=True)
-        manager.lookup_resource_id.assert_any_call(
-            "projects", "name", "my-project", service="eda", extra_query_params={"organization_id": 901}, require_unique=True
-        )
+        manager.lookup_resource_id.assert_any_call("projects", "name", "my-project", service="eda", require_unique=True)
 
     def test_create_without_url_fails(self):
         """Creating a project without url raises an error."""
@@ -136,6 +142,27 @@ class TestEdaProjectAction(unittest.TestCase):
 
         self.assertTrue(result["failed"])
         self.assertIn("url", result["msg"].lower())
+
+    def test_create_requires_organization_when_supported(self):
+        """Newer EDA APIs require organization_name when creating a project."""
+        action = self._make_action()
+        manager = self._make_manager(find_result=None, organization_supported=True)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-project",
+                "url": "https://example.com/repo.git",
+                "state": "present",
+                "sync": False,
+                "wait": True,
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("organization_name", result["msg"])
+        self.assertFalse(any(call.kwargs.get("operation") == "create" for call in manager.execute.call_args_list))
 
     def test_create_waits_for_import(self):
         """Create with wait=True polls import_state."""
@@ -290,6 +317,62 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertFalse(result["changed"])
         self.assertIn("already absent", result["msg"])
+
+    def test_delete_with_organization_does_not_require_organization_endpoint(self):
+        """Older EDA versions still find and delete projects by their supported name filter."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 99, "name": "my-project"}, organization_supported=False)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-project",
+                "organization_name": "Default",
+                "state": "absent",
+                "sync": False,
+                "wait": True,
+            },
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.lookup_resource_id.assert_called_once_with("projects", "name", "my-project", service="eda", require_unique=True)
+        manager.search_api.assert_not_called()
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find", "delete"])
+
+    def test_create_with_organization_omits_unsupported_relationship(self):
+        """EDA versions without config/organizations endpoints create without organization resolution."""
+        action = self._make_action()
+        manager = self._make_manager(find_result=None, organization_supported=False)
+
+        result = self._run_action(
+            action,
+            manager,
+            {
+                "name": "my-project",
+                "url": "https://example.com/repo.git",
+                "organization_name": "Default",
+                "state": "present",
+                "sync": False,
+                "wait": True,
+            },
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.lookup_resource_id.assert_called_once_with("projects", "name", "my-project", service="eda", require_unique=True)
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["create"])
+
+    def test_comparison_ignores_organization_when_endpoint_is_unsupported(self):
+        action = self._make_action()
+        manager = self._make_manager(organization_supported=False)
+        action._client = manager
+        action._resolved_fk_ids = {}
+
+        self.assertFalse(action._should_update({"organization_name": "Default"}, {"name": "my-project"}))
+        manager.search_api.assert_called_once_with("config", service="eda")
+        manager.lookup_resource_id.assert_not_called()
 
     # ---- Check mode tests ----
 

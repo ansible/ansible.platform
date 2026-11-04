@@ -114,7 +114,7 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
     def test_from_api_resolves_fk_ids_to_names(self):
         def _mock_search(path):
             lookup = {
-                "/api/gateway/v1/organizations/5/": {"name": "Default"},
+                "/api/controller/v2/organizations/5/": {"name": "Default"},
                 "/api/controller/v2/inventories/10/": {"name": "Prod Inventory"},
                 "/api/controller/v2/credentials/3/": {"name": "GH Token"},
             }
