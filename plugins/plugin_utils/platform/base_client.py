@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import quote
 
 from ..platform.config import GatewayConfig
@@ -143,10 +143,11 @@ class BaseAPIClient(ABC):
         if service != "controller":
             return value, filters
 
-        # Legacy named URLs for unscoped resources use ``name++``. The list
-        # query is equivalent once the suffix is removed.
-        if value.endswith("++") and value.count("++") == 1:
-            resource_name = value[:-2].strip()
+        resource_name, organization_name = self._parse_controller_named_key(value)
+
+        # An empty organization component is the documented named URL form for
+        # unscoped resources (``name++``). Its list query is just a name query.
+        if organization_name is None:
             if not resource_name:
                 raise ValueError("Invalid named key %r; a resource name is required" % value)
             return resource_name, filters
@@ -154,8 +155,6 @@ class BaseAPIClient(ABC):
             return value, filters
 
         self._normalize_organization_filter(filters, service)
-
-        resource_name, organization_name = (part.strip() for part in value.split("++", 1))
         if not resource_name or not organization_name:
             raise ValueError("Invalid Controller named key %r; expected name++organization" % value)
 
@@ -171,6 +170,21 @@ class BaseAPIClient(ABC):
 
         filters["organization"] = organization_id
         return resource_name, filters
+
+    @staticmethod
+    def _parse_controller_named_key(value: str) -> Tuple[str, Optional[str]]:
+        """Split a Controller named key into its name and optional organization.
+
+        The trailing ``++`` form represents a resource without organization
+        scope, so its organization component is returned as ``None``. For
+        scoped keys, everything after the first separator remains the scope.
+        """
+        resource_name, separator, organization_name = value.partition("++")
+        if not separator:
+            return value.strip(), None
+        if value.endswith("++") and value.count("++") == 1:
+            return resource_name.strip(), None
+        return resource_name.strip(), organization_name.strip()
 
     def _normalize_organization_filter(self, filters: dict, service: str) -> None:
         """Replace an organization name or API object with an ID from its owning service."""
