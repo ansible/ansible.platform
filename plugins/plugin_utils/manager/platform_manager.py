@@ -23,6 +23,7 @@ from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
+from ..platform.normalization import canonicalize_sub_resource
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext
 
@@ -1303,9 +1304,10 @@ class PlatformService(BaseAPIClient):
         if data is None:
             return False
         self.record_activity()
+        desired = canonicalize_sub_resource(sub_path, data)
         sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
 
-        if data == {}:
+        if desired == {}:
             response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
             if response.status_code == 404:
                 return False
@@ -1314,10 +1316,11 @@ class PlatformService(BaseAPIClient):
 
         current_response = self.session.get(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
         current_response.raise_for_status()
-        if current_response.json() == data:
+        current = canonicalize_sub_resource(sub_path, current_response.json())
+        if current == desired:
             return False
 
-        response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
+        response = self.session.post(sub_url, json=desired, timeout=self.request_timeout, verify=self.requests_verify)
         response.raise_for_status()
         return True
 

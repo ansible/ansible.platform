@@ -24,6 +24,7 @@ from .base_client import BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
+from .normalization import canonicalize_sub_resource
 from .retry import RetryConfig
 from .types import TransformContext
 
@@ -689,9 +690,10 @@ class DirectHTTPClient(BaseAPIClient):
         if data is None:
             return False
         self._ensure_authenticated()
+        desired = canonicalize_sub_resource(sub_path, data)
         sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
 
-        if data == {}:
+        if desired == {}:
             try:
                 self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
             except APIError as err:
@@ -707,11 +709,11 @@ class DirectHTTPClient(BaseAPIClient):
             return True
 
         response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
-        current = json.loads(response.read())
-        if current == data:
+        current = canonicalize_sub_resource(sub_path, json.loads(response.read()))
+        if current == desired:
             return False
 
-        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
+        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=desired)
         return True
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:

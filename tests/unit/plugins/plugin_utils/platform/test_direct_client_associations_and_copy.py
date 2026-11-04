@@ -341,6 +341,34 @@ class TestManageSubResource(unittest.TestCase):
         self.assertFalse(changed)
         self.assertEqual(mock_request.call_count, 1)
 
+    def test_survey_metadata_and_key_order_are_ignored(self):
+        desired = {
+            "name": "survey",
+            "description": "description",
+            "spec": [{"variable": "answer", "question_name": "Answer", "type": "text", "required": True}],
+        }
+        current = {
+            "description": "description",
+            "spec": [
+                {
+                    "id": 42,
+                    "required": True,
+                    "type": "text",
+                    "question_name": "Answer",
+                    "variable": "answer",
+                    "summary_fields": {},
+                }
+            ],
+            "name": "survey",
+            "id": 17,
+            "summary_fields": {},
+        }
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body=current)) as mock_request:
+            changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", desired)
+
+        self.assertFalse(changed)
+        self.assertEqual(mock_request.call_count, 1)
+
     def test_different_data_posts_update(self):
         with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"name": "old"})) as mock_request:
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {"name": "new"})

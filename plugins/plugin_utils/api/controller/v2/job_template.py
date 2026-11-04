@@ -75,6 +75,10 @@ class APIJobTemplate_v2(BaseTransformMixin):
     description: Optional[str] = None
     job_type: Optional[str] = None
     inventory: Optional[int] = None
+    # Lookup-only scope. Controller derives the Job Template organization from
+    # its project; this field is used to disambiguate list lookups and is not
+    # included in the create/update endpoint field lists.
+    organization: Optional[int] = None
     project: Optional[int] = None
     playbook: Optional[str] = None
     scm_branch: Optional[str] = None
@@ -148,6 +152,19 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         service = getattr(context, "service", "controller") if isinstance(context, TransformContext) else context.get("service", "controller")
         api_version = getattr(context, "api_version", None) if isinstance(context, TransformContext) else context.get("api_version")
 
+        # Organization is a lookup-only compatibility parameter. It scopes the
+        # Job Template lookup itself and disambiguates same-named projects,
+        # matching the legacy awx_collection implementation.
+        organization = getattr(ansible_instance, "organization", None)
+        organization_id = None
+        if organization is not None:
+            if str(organization).strip().isdigit():
+                organization_id = int(str(organization).strip())
+            else:
+                organization_id = manager.lookup_resource_id("organizations", "name", organization)
+            if organization_id is None:
+                raise ValueError("Cannot look up projects without a value for scope field organization")
+
         # Create: use name; Update: use new_name if set, else echo back current name.
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
@@ -187,24 +204,25 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         # between same-named projects in different orgs, matching the legacy awx_collection
         # job_template module's get_one(..., data={"organization": organization_id}) lookup.
         project = getattr(ansible_instance, "project", None)
-        organization = getattr(ansible_instance, "organization", None)
         if project is not None:
             if str(project).isdigit():
                 api_data["project"] = int(project)
-            elif organization is not None:
-                org_id = manager.lookup_resource_id("organizations", "name", organization)
+            elif organization_id is not None:
                 api_data["project"] = lookup_resource_id_with_scope(
                     manager,
                     endpoint="projects",
                     lookup_field="name",
                     lookup_value=project,
                     scope_field="organization",
-                    scope_value=org_id,
+                    scope_value=organization_id,
                     service=service,
                     api_version=api_version,
                 )
             else:
                 api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
+
+        if organization_id is not None:
+            api_data["organization"] = organization_id
 
         # Read-only fields from API (for building URL in execute).
         for field in ("id", "created", "modified", "url"):
@@ -279,6 +297,17 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
+        """Scope Job Template list lookups by organization when requested."""
+        organization_id = getattr(api_data, "organization", None)
+        if organization_id is not None:
+            try:
+                return {"organization": int(str(organization_id).strip())}
+            except (TypeError, ValueError):
+                pass
+        return {}
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
@@ -330,10 +359,21 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 cache[cache_key] = name
             return name
 
+        summary_fields = api_data.get("summary_fields") or {}
+        summary_organization = summary_fields.get("organization") or {}
+        organization = (
+            summary_organization.get("name", summary_organization.get("id"))
+            if isinstance(summary_organization, dict)
+            else api_data.get("organization")
+        )
+        if organization is None:
+            organization = api_data.get("organization")
+
         kwargs = {field: api_data.get(field) for field in _SCALAR_FIELDS}
         return AnsibleJobTemplate(
             name=api_data.get("name"),
             inventory=_resolve_fk_name("inventories", api_data.get("inventory")),
+            organization=str(organization) if organization is not None else None,
             project=_resolve_fk_name("projects", api_data.get("project")),
             execution_environment=_resolve_fk_name("execution_environments", api_data.get("execution_environment")),
             webhook_credential=_resolve_fk_name("credentials", api_data.get("webhook_credential")),

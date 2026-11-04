@@ -110,7 +110,14 @@ class ActionModule(BaseResourceActionPlugin):
                 self._task_vars = task_vars
                 manager, facts_to_set = self._get_or_spawn_manager(task_vars)
                 self._client = manager
-                existing = manager.search_api(BASE_PATH, query_params={"name": name})
+                query_params = {"name": name}
+                organization = self._task.args.get("organization")
+                if organization is not None:
+                    if str(organization).strip().isdigit():
+                        query_params["organization"] = int(str(organization).strip())
+                    else:
+                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                existing = manager.search_api(BASE_PATH, query_params=query_params)
                 if not any(item.get("name") == name for item in existing.get("results", [])):
                     manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
                     copied = True
@@ -140,9 +147,30 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             manager = self._client
             changed = False
+            organization = self._task.args.get("organization")
+            organization_id = None
+            if organization is not None:
+                if str(organization).strip().isdigit():
+                    organization_id = int(str(organization).strip())
+                else:
+                    organization_id = manager.lookup_resource_id("organizations", "name", organization)
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(BASE_PATH, jt_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                if desired is None:
+                    continue
+                extra_query_params = {"organization": organization_id} if field == "labels" and organization_id is not None else None
+                association_kwargs = {"service": _SERVICE}
+                if extra_query_params is not None:
+                    association_kwargs["extra_query_params"] = extra_query_params
+                if manager.manage_associations(
+                    BASE_PATH,
+                    jt_id,
+                    field,
+                    desired,
+                    lookup_endpoint,
+                    lookup_field,
+                    **association_kwargs,
+                ):
                     changed = True
             if survey_spec is not None and manager.manage_sub_resource(BASE_PATH, jt_id, "survey_spec", survey_spec):
                 changed = True

@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleJobTemplate
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import JobTemplateTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import APIJobTemplate_v2, JobTemplateTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 __metaclass__ = type
@@ -199,6 +199,16 @@ class TestProjectResolution(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "has no ID"):
             JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
+    def test_find_list_query_params_scope_by_organization(self):
+        api_data = APIJobTemplate_v2(name="Ping", organization=99)
+
+        self.assertEqual(JobTemplateTransformMixin_v2.get_find_list_query_params(api_data), {"organization": 99})
+
+    def test_find_list_query_params_omit_unset_organization(self):
+        api_data = APIJobTemplate_v2(name="Ping")
+
+        self.assertEqual(JobTemplateTransformMixin_v2.get_find_list_query_params(api_data), {})
+
 
 class TestFromApi(unittest.TestCase):
     def test_round_trips_scalar_fields_and_resolves_fk_ids_to_names(self):
@@ -212,6 +222,8 @@ class TestFromApi(unittest.TestCase):
         api_data = {
             "id": 5,
             "name": "Ping",
+            "organization": 1,
+            "summary_fields": {"organization": {"id": 1, "name": "Default"}},
             "job_type": "run",
             "inventory": 10,
             "project": 20,
@@ -232,6 +244,7 @@ class TestFromApi(unittest.TestCase):
         # _should_update() compare a name against an int and always report "changed".
         self.assertEqual(result.inventory, "Local")
         self.assertEqual(result.project, "Demo")
+        self.assertEqual(result.organization, "Default")
         self.assertEqual(result.execution_environment, "EE")
         self.assertEqual(result.webhook_credential, "Webhook Cred")
         self.assertEqual(result.extra_vars, {"foo": "bar"})

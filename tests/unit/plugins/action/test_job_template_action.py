@@ -38,6 +38,38 @@ class TestAssociationReconciliation(unittest.TestCase):
         manager.manage_associations.assert_called_once_with(BASE_PATH, 5, "credentials", ["Local"], "credentials", "name", service="controller")
         self.assertTrue(result["changed"])
 
+    def test_labels_are_scoped_by_organization(self):
+        action = _action({"name": "Ping", "organization": "Default", "labels": ["release"], "state": "present"})
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 7
+        manager.manage_associations.return_value = False
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "failed": False, "id": 5}):
+            action._client = manager
+            action.run(task_vars={})
+
+        manager.manage_associations.assert_called_once_with(
+            BASE_PATH,
+            5,
+            "labels",
+            ["release"],
+            "labels",
+            "name",
+            service="controller",
+            extra_query_params={"organization": 7},
+        )
+
+    def test_unchanged_associations_do_not_mark_result_changed(self):
+        action = _action({"name": "Ping", "credentials": ["Local"], "state": "present"})
+        manager = MagicMock()
+        manager.manage_associations.return_value = False
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "failed": False, "id": 5}):
+            action._client = manager
+            result = action.run(task_vars={})
+
+        self.assertFalse(result["changed"])
+
     def test_survey_spec_applied_after_create(self):
         action = _action({"name": "Ping", "survey_spec": {"name": "survey"}, "state": "present"})
         manager = MagicMock()

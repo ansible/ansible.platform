@@ -308,6 +308,35 @@ class TestManageSubResource(unittest.TestCase):
         self.assertFalse(changed)
         self.svc.session.post.assert_not_called()
 
+    def test_survey_metadata_and_key_order_are_ignored(self):
+        desired = {
+            "name": "survey",
+            "description": "description",
+            "spec": [{"variable": "answer", "question_name": "Answer", "type": "text", "required": True}],
+        }
+        current = {
+            "description": "description",
+            "spec": [
+                {
+                    "id": 42,
+                    "required": True,
+                    "type": "text",
+                    "question_name": "Answer",
+                    "variable": "answer",
+                    "summary_fields": {},
+                }
+            ],
+            "name": "survey",
+            "id": 17,
+            "summary_fields": {},
+        }
+        self.svc.session.get.return_value = _resp(json_data=current)
+
+        changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", desired)
+
+        self.assertFalse(changed)
+        self.svc.session.post.assert_not_called()
+
     def test_different_data_posts_update(self):
         self.svc.session.get.return_value = _resp(json_data={"name": "old"})
         new_spec = {"name": "new"}
