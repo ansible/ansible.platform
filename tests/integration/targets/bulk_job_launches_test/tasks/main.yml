@@ -37,6 +37,7 @@
     - name: Create a job template that accepts inventory prompts
       ansible.platform.job_template:
         name: "{{ test_job_template_name }}"
+        organization: Default
         project: Demo Project
         playbook: hello_world.yml
         inventory: "{{ test_inventory_name }}"

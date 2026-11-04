@@ -70,6 +70,28 @@ class TestActionPreparation(unittest.TestCase):
 
         return result, manager
 
+    def _run_lookup_state_with_find_error(self, state, find_error):
+        action = ExampleAction.__new__(ExampleAction)
+        action._task = MagicMock()
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager.execute.side_effect = find_error
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {}, "value": {}}},
+            "validated_params": {"name": "resource", "value": 3, "state": state},
+            "resource_data": {"name": "resource", "value": 3},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            result = action.run(task_vars={})
+
+        return result, manager
+
     def test_prepare_action_reuses_documentation_validation_and_manager(self):
         action = self._make_action()
         manager = MagicMock()
@@ -128,6 +150,18 @@ class TestActionPreparation(unittest.TestCase):
         self.assertEqual(manager.execute.call_count, 2)
         self.assertEqual(manager.execute.call_args_list[0].kwargs["operation"], "find")
         self.assertEqual(manager.execute.call_args_list[1].kwargs["operation"], "create")
+
+    def test_qualified_resource_not_found_is_false_for_lookup_states(self):
+        error = ValueError("Resource 'credential-types' with name=unknown not found")
+
+        self.assertTrue(BaseResourceActionPlugin._is_resource_not_found(error))
+        for state in ("find", "exists", "gathered"):
+            with self.subTest(state=state):
+                result, manager = self._run_lookup_state_with_find_error(state, error)
+
+                self.assertFalse(result["failed"])
+                self.assertFalse(result["exists"])
+                manager.execute.assert_called_once()
 
     def test_run_does_not_create_after_lookup_error(self):
         result, manager = self._run_present_with_find_error(ValueError("503 Service Unavailable"))
