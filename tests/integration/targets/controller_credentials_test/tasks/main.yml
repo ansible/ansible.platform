@@ -34,7 +34,75 @@
           - created is changed
           - created.controller_credential.id is defined
 
+    - name: Reapply credential to verify idempotency
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Test"
+        description: "Integration test credential"
+        credential_type: "Machine"
+        organization: "Default"
+        inputs:
+          username: testuser
+        state: present
+      register: idempotent
+
+    - name: Assert credential reapply is idempotent
+      ansible.builtin.assert:
+        that:
+          - idempotent is not changed
+
+    - name: Check credential exists
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Test"
+        credential_type: "Machine"
+        organization: "Default"
+        state: exists
+      register: exists_check
+
+    - name: Assert credential exists without changing
+      ansible.builtin.assert:
+        that:
+          - exists_check is not changed
+          - exists_check.exists
+
+    - name: Update credential description
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Test"
+        description: "Updated integration test credential"
+        credential_type: "Machine"
+        organization: "Default"
+        state: present
+      register: updated
+
+    - name: Assert credential update changed the resource
+      ansible.builtin.assert:
+        that:
+          - updated is changed
+          - updated.controller_credential.description == "Updated integration test credential"
+
+    - name: Copy credential
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Copy"
+        copy_from: "{{ name_prefix }}-Test"
+        credential_type: "Machine"
+        organization: "Default"
+        state: present
+      register: copied
+
+    - name: Assert credential copy changed the resource
+      ansible.builtin.assert:
+        that:
+          - copied is changed
+          - copied.controller_credential.name == (name_prefix ~ "-Copy")
+
   always:
+    - name: Delete copied credential
+      ansible.platform.controller_credential:
+        name: "{{ name_prefix }}-Copy"
+        credential_type: "Machine"
+        organization: "Default"
+        state: absent
+      failed_when: false
+
     - name: Delete credential
       ansible.platform.controller_credential:
         name: "{{ name_prefix }}-Test"

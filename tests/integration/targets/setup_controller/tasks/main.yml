@@ -13,4 +13,8 @@
 - name: Skip play when controller is not available
   ansible.builtin.meta: end_play
   when: controller_ping.status | default(0) != 200
+
+- name: Cache stable Controller fixture IDs for dependent targets
+  ansible.builtin.include_tasks: ../../support/controller_fixtures.yml
+  when: controller_ping.status | default(0) == 200
 ...

@@ -19,22 +19,11 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    - name: Look up Demo Inventory for a notification template organization
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
-        method: GET
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        status_code: [200]
-      register: demo_inventory
-      delegate_to: localhost
-
-    - name: Assert Demo Inventory is available
+    - name: Assert the cached Demo Inventory is available
       ansible.builtin.assert:
         that:
-          - demo_inventory.json.results | length > 0
+          - controller_demo_inventory_id is defined
+        fail_msg: "The shared Demo Inventory fixture was not found."
 
     - name: Create a webhook notification template for the association test
       ansible.builtin.uri:
@@ -47,7 +36,7 @@
         body_format: json
         body:
           name: "{{ name_prefix }}-Notification"
-          organization: "{{ demo_inventory.json.results[0].organization }}"
+          organization: "{{ controller_default_organization_id }}"
           notification_type: webhook
           notification_configuration:
             url: https://example.invalid/
