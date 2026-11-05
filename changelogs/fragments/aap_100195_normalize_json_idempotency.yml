@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - resource updates - skip unnecessary PATCH requests when transformed JSON object fields have equivalent dictionary and JSON string values.
+...

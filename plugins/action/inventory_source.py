@@ -20,6 +20,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleInventorySource
 
     _WRITE_ONLY_FIELDS = frozenset(_NOTIFICATION_FIELDS)
+    _JSON_OBJECT_FIELDS = frozenset({"source_vars"})
 
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")

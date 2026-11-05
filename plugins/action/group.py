@@ -30,6 +30,7 @@ _PRESERVE_ALIASES = {
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "group"
     MODEL_CLASS = AnsibleGroup
+    _JSON_OBJECT_FIELDS = frozenset({"variables"})
 
     _WRITE_ONLY_FIELDS = frozenset(list(_ASSOCIATION_FIELDS) + list(_PRESERVE_FIELDS.values()) + list(_ASSOCIATION_ALIASES) + list(_PRESERVE_ALIASES))
 

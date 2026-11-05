@@ -33,6 +33,8 @@ class APIGroup_v2(BaseTransformMixin):
 class GroupTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for Group API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"variables"})
+
     @classmethod
     def from_ansible_data(
         cls,

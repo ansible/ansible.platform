@@ -73,6 +73,8 @@ class APIWorkflowJobTemplateNode_v2(BaseTransformMixin):
 class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for WorkflowJobTemplateNode API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"extra_data"})
+
     @classmethod
     def from_ansible_data(
         cls,

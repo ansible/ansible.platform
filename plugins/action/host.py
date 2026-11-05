@@ -12,3 +12,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ho
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "host"
     MODEL_CLASS = AnsibleHost
+    _JSON_OBJECT_FIELDS = frozenset({"variables"})

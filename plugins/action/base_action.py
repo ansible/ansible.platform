@@ -29,6 +29,7 @@ from ansible.utils.display import Display
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.idempotency import canonical_json_object
 
 # ---------------------------------------------------------------------------
 # Logging strategy for action plugins
@@ -283,6 +284,11 @@ class BaseResourceActionPlugin(ActionBase):
     # order than the user specified (e.g. permissions lists).
     # Example:  _ORDER_INSENSITIVE_FIELDS = frozenset({"permissions"})
     _ORDER_INSENSITIVE_FIELDS: frozenset = frozenset()
+
+    # Fields represented as dictionaries in task arguments and JSON object
+    # strings by some API responses. Subclasses opt in only fields whose API
+    # contract treats both representations as the same object.
+    _JSON_OBJECT_FIELDS: frozenset = frozenset()
 
     _AUTH_PARAMS = frozenset(
         {
@@ -1104,6 +1110,8 @@ class BaseResourceActionPlugin(ActionBase):
         - new_name: always triggers an update (it's a rename operation).
         - Dict/list fields are compared structurally, regardless of concrete
           container subclass.
+        - Resource-specific JSON object fields compare dictionaries and JSON
+          object strings using the same sorted-key representation.
         """
         if desired_data.get("new_name"):
             return True
@@ -1124,6 +1132,10 @@ class BaseResourceActionPlugin(ActionBase):
                 and not desired_val.isdigit()
                 and current_val.isdigit()
             ):
+                continue
+            if key in self._JSON_OBJECT_FIELDS:
+                if canonical_json_object(desired_val) != canonical_json_object(current_val):
+                    return True
                 continue
             # Compare structured values by contents instead of stringifying
             # concrete subclasses such as Ansible's tagged dictionaries.
