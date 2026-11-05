@@ -12,14 +12,14 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_c
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 
-def _make_action(variables):
+def _make_action(variables, state="present"):
     action = ActionModule.__new__(ActionModule)
     action._task = MagicMock()
     action._task.args = {
         "name": "web-1",
         "inventory": "10",
         "variables": variables,
-        "state": "present",
+        "state": state,
     }
     action._task.check_mode = False
     action._task.environment = []
@@ -39,21 +39,51 @@ def _run_action(action, manager):
 def test_equivalent_variables_do_not_update_existing_host():
     action = _make_action({"z": 2, "a": 1})
     manager = MagicMock()
-    manager.execute.return_value = {
+    current_host = {
         "id": 17,
         "name": "web-1",
         "inventory": "10",
         "variables": '{"a": 1, "z": 2}',
     }
+    manager.execute.return_value = current_host
 
     result = _run_action(action, manager)
 
-    assert result["changed"] is False
-    assert result["failed"] is False
-    assert result["id"] == 17
-    assert result["host"] == manager.execute.return_value
-    assert result["name"] == "web-1"
-    assert result["variables"] == result["host"]["variables"]
+    assert result == {
+        "changed": False,
+        "failed": False,
+        "host": current_host,
+        "id": 17,
+        "name": "web-1",
+        "inventory": "10",
+        "variables": '{"a": 1, "z": 2}',
+    }
+    manager.execute.assert_called_once()
+    assert manager.execute.call_args.kwargs["operation"] == "find"
+
+
+def test_enforced_equivalent_variables_return_flat_and_nested_fields():
+    action = _make_action({"z": 2, "a": 1}, state="enforced")
+    manager = MagicMock()
+    current_host = {
+        "id": 17,
+        "name": "web-1",
+        "inventory": "10",
+        "variables": '{"a": 1, "z": 2}',
+    }
+    manager.execute.return_value = current_host
+
+    result = _run_action(action, manager)
+
+    assert result == {
+        "changed": False,
+        "failed": False,
+        "host": current_host,
+        "id": 17,
+        "name": "web-1",
+        "inventory": "10",
+        "variables": '{"a": 1, "z": 2}',
+    }
     manager.execute.assert_called_once()
     assert manager.execute.call_args.kwargs["operation"] == "find"
 
