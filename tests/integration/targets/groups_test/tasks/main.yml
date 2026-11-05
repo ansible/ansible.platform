@@ -7,12 +7,21 @@
 - name: Preset vars
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-Group-{{ test_id }}"
+    test_inventory_name: "AAP-Collection-Test-Group-{{ test_id }}-Inventory"
 
-- name: Assert the cached Demo Inventory is available
-  ansible.builtin.assert:
-    that:
-      - controller_demo_inventory_id is defined
-    fail_msg: "The shared Demo Inventory fixture was not found."
+- name: Copy Demo Inventory for this test run
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  ansible.platform.inventory:
+    name: "{{ test_inventory_name }}"
+    copy_from: "{{ controller_demo_inventory_id }}"
+    organization: Default
+    state: present
+  register: test_inventory
 
 - name: Create a host for the group association test
   ansible.builtin.uri:
@@ -25,7 +34,7 @@
     body_format: json
     body:
       name: "{{ name_prefix }}-Host"
-      inventory: "{{ controller_demo_inventory_id }}"
+      inventory: "{{ test_inventory.inventory.id }}"
       description: "Integration test host for group association"
     status_code: [201]
   register: test_host
@@ -43,7 +52,7 @@
     - name: Delete a non-existent group
       ansible.platform.group:
         name: "{{ name_prefix }}-Missing"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: absent
       register: missing_group
 
@@ -56,7 +65,7 @@
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
         description: "Integration test group"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         variables:
           env: test
         state: present
@@ -75,7 +84,7 @@
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
         description: "Integration test group"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         variables:
           env: test
         state: present
@@ -89,7 +98,7 @@
     - name: Update group description and variables
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         description: "Updated integration test group"
         variables:
           env: updated
@@ -106,7 +115,7 @@
     - name: Reapply the updated group
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         description: "Updated integration test group"
         variables:
           env: updated
@@ -120,14 +129,14 @@
     - name: Create a child group for the association test
       ansible.platform.group:
         name: "{{ name_prefix }}-Child"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: present
       register: child_group
 
     - name: Associate a host and child group
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         hosts:
           - "{{ test_host.json.name }}"
         children:
@@ -172,7 +181,7 @@
     - name: Check group association idempotency
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         hosts:
           - "{{ test_host.json.name }}"
         children:
@@ -188,7 +197,7 @@
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
         new_name: "{{ name_prefix }}-Renamed"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
       register: renamed_group
 
     - name: Assert rename changed
@@ -203,7 +212,7 @@
     - name: Check exists
       ansible.platform.group:
         name: "{{ name_prefix }}-Renamed"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: exists
       register: exists_check
 
@@ -216,7 +225,7 @@
     - name: Delete the renamed group
       ansible.platform.group:
         name: "{{ name_prefix }}-Renamed"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: absent
       register: deleted_group
 
@@ -229,21 +238,21 @@
     - name: Delete group (renamed)
       ansible.platform.group:
         name: "{{ name_prefix }}-Renamed"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: absent
       failed_when: false
 
     - name: Delete group (original, in case rename failed)
       ansible.platform.group:
         name: "{{ name_prefix }}-Test"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: absent
       failed_when: false
 
     - name: Delete the child group
       ansible.platform.group:
         name: "{{ name_prefix }}-Child"
-        inventory: "Demo Inventory"
+        inventory: "{{ test_inventory_name }}"
         state: absent
       failed_when: false
 
@@ -261,4 +270,13 @@
         - test_host.json.id is defined
       delegate_to: localhost
       failed_when: false
+
+    - name: Delete test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: absent
+      when: test_inventory is defined
+      failed_when: false
+
 ...

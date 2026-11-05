@@ -68,6 +68,22 @@
   register: test_inventory
   delegate_to: localhost
 
+- name: Create a separate inventory for the wrong-inventory assertion
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/"
+    method: POST
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    body_format: json
+    body:
+      name: "{{ name_prefix }}-Wrong-Inventory"
+      organization: "{{ controller_default_organization_id }}"
+    status_code: [201]
+  register: wrong_inventory
+  delegate_to: localhost
+
 - name: Create a custom-script inventory source
   ansible.builtin.uri:
     url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventory_sources/"
@@ -138,7 +154,7 @@
 - name: Trigger update by numeric source ID in wrong inventory (should fail)
   ansible.platform.inventory_source_update:
     name: "{{ test_source.json.id }}"
-    inventory: "Demo Inventory"
+    inventory: "{{ wrong_inventory.json.name }}"
     wait: false
   register: wrong_inventory_result
   ignore_errors: true
@@ -170,6 +186,19 @@
     validate_certs: "{{ gateway_validate_certs | bool }}"
     status_code: [202, 204]
   delegate_to: localhost
+
+- name: Clean up wrong test inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/{{ wrong_inventory.json.id }}/"
+    method: DELETE
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [202, 204, 404]
+  when: wrong_inventory is defined and wrong_inventory.json.id is defined
+  delegate_to: localhost
+  failed_when: false
 
 - name: Clean up test project
   ansible.builtin.uri:

@@ -15,6 +15,6 @@
   when: controller_ping.status | default(0) != 200
 
 - name: Cache stable Controller fixture IDs for dependent targets
-  ansible.builtin.include_tasks: ../../support/controller_fixtures.yml
+  ansible.builtin.include_tasks: controller_fixtures.yml
   when: controller_ping.status | default(0) == 200
 ...
