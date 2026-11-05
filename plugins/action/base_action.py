@@ -263,6 +263,7 @@ class BaseResourceActionPlugin(ActionBase):
     _MUTUALLY_EXCLUSIVE: list = []
     _REQUIRED_TOGETHER: list = []
     _REQUIRED_ONE_OF: list = []
+    _REQUIRED_IF: list = []
 
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
@@ -335,6 +336,57 @@ class BaseResourceActionPlugin(ActionBase):
             resource_data: The filtered dict used to build *resource*.
             validated_params: Full validated input parameters.
         """
+
+    @staticmethod
+    def _is_resource_not_found(exc: Exception) -> bool:
+        """Return whether a find error represents an ordinary missing resource.
+
+        Args:
+            exc: Error raised while looking up a resource.
+
+        Returns:
+            bool: True when the error uses a recognized not-found response.
+        """
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            details = getattr(exc, "details", None)
+            if isinstance(details, dict):
+                status_code = details.get("status_code")
+        if status_code is None:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code is None:
+            status_code = getattr(exc, "code", None)
+        if str(status_code) == "404":
+            return True
+
+        message = str(exc).lower()
+        return (
+            message == "not found"
+            or (message.startswith("resource with ") and message.endswith("not found"))
+            or message.startswith("resource not found")
+            or (message.startswith("resource '") and message.endswith(" not found"))
+        )
+
+    @staticmethod
+    def _is_resource_scope_mismatch(exc: Exception) -> bool:
+        """Return whether an ID lookup found a resource outside the requested scope."""
+        message = str(exc).lower()
+        return "composite key" in message and ("does not match" in message or "do not match" in message)
+
+    def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
+        """Find a resource using its declared lookup fields.
+
+        Resource actions may override this to support lookup aliases such as a
+        rename target while retaining the common CRUD state machine.
+
+        Args:
+            manager: Client used to query the API.
+            resource_data: Validated resource fields used for the lookup.
+
+        Returns:
+            dict: The matching resource.
+        """
+        return manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=resource_data)
 
     def _build_ansible_data(self, resource: Any, validated_params: dict, operation: str) -> dict:
         """Build the ansible_data dict that is sent to manager.execute().
@@ -741,7 +793,7 @@ class BaseResourceActionPlugin(ActionBase):
             "mutually_exclusive": doc_data.get("mutually_exclusive", []) + list(self._MUTUALLY_EXCLUSIVE),
             "required_together": doc_data.get("required_together", []) + list(self._REQUIRED_TOGETHER),
             "required_one_of": doc_data.get("required_one_of", []) + list(self._REQUIRED_ONE_OF),
-            "required_if": doc_data.get("required_if", []),
+            "required_if": doc_data.get("required_if", []) + list(self._REQUIRED_IF),
         }
 
         return argspec
@@ -1050,7 +1102,8 @@ class BaseResourceActionPlugin(ActionBase):
           (an int FK that from_api converted to str), the comparison is
           skipped — e.g. authenticator='my-auth' vs '3100'.
         - new_name: always triggers an update (it's a rename operation).
-        - Dict/list fields are compared via equality; type mismatches skip.
+        - Dict/list fields are compared structurally, regardless of concrete
+          container subclass.
         """
         if desired_data.get("new_name"):
             return True
@@ -1072,9 +1125,14 @@ class BaseResourceActionPlugin(ActionBase):
                 and current_val.isdigit()
             ):
                 continue
+            # Compare structured values by contents instead of stringifying
+            # concrete subclasses such as Ansible's tagged dictionaries.
+            if isinstance(desired_val, dict) and isinstance(current_val, dict):
+                if desired_val != current_val:
+                    return True
             # List comparison: order-insensitive for opted-in fields only,
             # order-sensitive (default) for everything else.
-            if isinstance(desired_val, list) and isinstance(current_val, list):
+            elif isinstance(desired_val, list) and isinstance(current_val, list):
                 if key in self._ORDER_INSENSITIVE_FIELDS:
                     # Opted-in: the API may return items in a different order
                     # (e.g. permissions come back alphabetically).
@@ -1146,13 +1204,11 @@ class BaseResourceActionPlugin(ActionBase):
             # ---- state: exists (read-only) ----------------------------------
             if state == "exists":
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
+                    find_result = self._find_existing_resource(manager, resource_data)
                     exists = bool(find_result and find_result.get("id"))
-                except Exception:
+                except Exception as exc:
+                    if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                        raise
                     find_result, exists = {}, False
                 result.update(
                     {
@@ -1168,11 +1224,7 @@ class BaseResourceActionPlugin(ActionBase):
             # ---- present: idempotent create (find -> compare ->  update only if changed) -----
             if operation == "create" and state == "present":
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
+                    find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
                         if not self._should_update(resource_data, find_result):
                             # Nothing changed — return current state without touching API
@@ -1187,17 +1239,14 @@ class BaseResourceActionPlugin(ActionBase):
                             return result
                         operation = "update"
                         resource.id = find_result["id"]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
 
             # ---- absent: find by lookup field to get id --------------------
             if operation == "delete" and not getattr(resource, "id", None):
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
+                    find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
                         resource.id = find_result["id"]
                     else:
@@ -1210,7 +1259,9 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                except Exception:
+                except Exception as exc:
+                    if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                        raise
                     result.update(
                         {
                             "changed": False,
@@ -1225,12 +1276,10 @@ class BaseResourceActionPlugin(ActionBase):
             if operation == "enforced":
                 argspec_fields = set(argspec.get("argument_spec", {}).keys())
                 try:
-                    find_result = manager.execute(
-                        operation="find",
-                        module_name=self.MODULE_NAME,
-                        ansible_data=resource_data,
-                    )
-                except ValueError:
+                    find_result = self._find_existing_resource(manager, resource_data)
+                except Exception as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
                     find_result = None
                 if find_result and find_result.get("id"):
                     merged = {}
@@ -1298,7 +1347,7 @@ class BaseResourceActionPlugin(ActionBase):
                     ansible_data=ansible_data,
                 )
             except ValueError as exc:
-                if operation == "find" and ("not found" in str(exc).lower() or "resource with" in str(exc).lower()):
+                if operation == "find" and self._is_resource_not_found(exc):
                     result.update(
                         {
                             "changed": False,
@@ -1306,6 +1355,16 @@ class BaseResourceActionPlugin(ActionBase):
                             self.MODULE_NAME: {},
                             "exists": False,
                             "msg": "%s '%s' does not exist" % (self.MODULE_NAME, lookup_val),
+                        }
+                    )
+                    return result
+                if operation == "delete" and self._is_resource_scope_mismatch(exc):
+                    result.update(
+                        {
+                            "changed": False,
+                            "failed": False,
+                            self.MODULE_NAME: {"state": "absent"},
+                            "msg": "%s '%s' does not exist in the requested scope (already absent)" % (self.MODULE_NAME, lookup_val),
                         }
                     )
                     return result

@@ -1,69 +1,120 @@
 ---
-- name: Look up Demo Job Template
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [200]
-  register: demo_jt
-  delegate_to: localhost
+- name: Generate a unique test identifier
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
 
-- name: Assert Demo Job Template exists
-  ansible.builtin.assert:
-    that:
-      - demo_jt.json.results | length > 0
+- name: Set test resource names
+  ansible.builtin.set_fact:
+    test_inventory_name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}-Inventory"
+    test_host_name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}-localhost"
+    test_job_template_name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}"
 
-- name: Launch a bulk job to create a workflow
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/bulk/job_launch/"
-    method: POST
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    body_format: json
-    body:
-      name: "WNW Integration Test"
-      jobs:
-        - unified_job_template: "{{ demo_jt.json.results[0].id }}"
-    status_code: [201]
-  register: bulk_launch
-  delegate_to: localhost
+- name: Exercise workflow_node_wait using a test-owned local job template
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Create a test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: present
+      register: test_inventory
 
-- name: Wait briefly for workflow to initialize
-  ansible.builtin.pause:
-    seconds: 3
+    - name: Add localhost to the test inventory
+      ansible.platform.host:
+        name: "{{ test_host_name }}"
+        inventory: "{{ test_inventory_name }}"
+        variables:
+          ansible_connection: local
+        state: present
+      register: test_host
 
-- name: Wait for the Demo Job Template node
-  ansible.platform.workflow_node_wait:
-    workflow_job_id: "{{ bulk_launch.json.id }}"
-    name: "Demo Job Template"
-    timeout: 120
-    interval: 2
-  register: wait_result
+    - name: Create a job template for the workflow node
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        project: Demo Project
+        playbook: hello_world.yml
+        inventory: "{{ test_inventory_name }}"
+        state: present
+      register: test_jt
 
-- name: Assert wait returned node data
-  ansible.builtin.assert:
-    that:
-      - wait_result is not failed
-      - wait_result.id is defined
-      - wait_result.status == "successful"
+    - name: Launch a bulk job to create a workflow
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/bulk/job_launch/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "AAP-Collection-Test-WorkflowNodeWait-{{ test_id }}"
+          jobs:
+            - unified_job_template: "{{ test_jt.job_template.id }}"
+        status_code: [201]
+      register: bulk_launch
+      delegate_to: localhost
 
-- name: Wait for non-existent node (should timeout)
-  ansible.platform.workflow_node_wait:
-    workflow_job_id: "{{ bulk_launch.json.id }}"
-    name: "Nonexistent Node"
-    timeout: 5
-    interval: 1
-  register: timeout_result
-  ignore_errors: true
+    - name: Wait briefly for workflow to initialize
+      ansible.builtin.pause:
+        seconds: 3
 
-- name: Assert timeout result
-  ansible.builtin.assert:
-    that:
-      - timeout_result is failed
-      - "'Timed out' in timeout_result.msg"
+    - name: Wait for the test job template node
+      ansible.platform.workflow_node_wait:
+        workflow_job_id: "{{ bulk_launch.json.id }}"
+        name: "{{ test_job_template_name }}"
+        timeout: 120
+        interval: 2
+      register: wait_result
+
+    - name: Assert wait returned successful node data
+      ansible.builtin.assert:
+        that:
+          - wait_result is not failed
+          - wait_result.id is defined
+          - wait_result.status == "successful"
+
+    - name: Wait for a nonexistent node (should time out)
+      ansible.platform.workflow_node_wait:
+        workflow_job_id: "{{ bulk_launch.json.id }}"
+        name: Nonexistent Node
+        timeout: 5
+        interval: 1
+      register: timeout_result
+      ignore_errors: true
+
+    - name: Assert timeout result
+      ansible.builtin.assert:
+        that:
+          - timeout_result is failed
+          - "'Timed out' in timeout_result.msg"
+
+  always:
+    - name: Remove the test job template
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        state: absent
+      when: test_id is defined
+      failed_when: false
+
+    - name: Remove the test host
+      ansible.platform.host:
+        name: "{{ test_host_name }}"
+        inventory: "{{ test_inventory_name }}"
+        state: absent
+      when: test_id is defined
+      failed_when: false
+
+    - name: Remove the test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: absent
+      when: test_id is defined
+      failed_when: false
 ...

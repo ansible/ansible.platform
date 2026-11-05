@@ -8,9 +8,9 @@
     force_basic_auth: true
   delegate_to: localhost
   register: controller_ping
-  ignore_errors: true
+  failed_when: false
 
 - name: Skip play when controller is not available
   ansible.builtin.meta: end_play
-  when: controller_ping is not success
+  when: controller_ping.status | default(0) != 200
 ...

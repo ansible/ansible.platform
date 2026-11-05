@@ -15,6 +15,9 @@ module_test_name_overrides = {
     "controller_project": "controller_project_test",
     "schedule": "schedule_test",
     "bulk_job_launch": "bulk_job_launches_test",
+    "job_launch": "job_launches_test",
+    # Both activation modules are exercised by the shared CRUD target.
+    "rulebook_activation_copy": "rulebook_activations_test",
 }
 tests_to_ignore = [
     "lookup_test",
@@ -40,6 +43,7 @@ plugins = get_files(os.path.join(base_dir, "plugins", "modules"))
 tests = get_dirs(os.path.join(base_dir, "tests", "integration", "targets"))
 for test_name in tests_to_ignore:
     tests.remove(test_name)
+matched_tests = set()
 
 missing_tests = []
 for plugin in plugins:
@@ -53,7 +57,7 @@ for plugin in plugins:
     if test_name not in tests:
         missing_tests.append(plugin)
     else:
-        tests.remove(test_name)
+        matched_tests.add(test_name)
 
 exit_code = 0
 if missing_tests:
@@ -65,9 +69,10 @@ if missing_tests:
             print(f"    {test_name}")
             exit_code = 1
 
-if tests:
+unused_tests = [test_name for test_name in tests if test_name not in matched_tests]
+if unused_tests:
     print("We have tests for no plugins:")
-    for test_name in tests:
+    for test_name in unused_tests:
         print(f"    {test_name}")
     exit_code = 1
 

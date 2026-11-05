@@ -25,8 +25,17 @@ action_groups:
     - ui_plugin_route
     - user
   eda:
+    - decision_environment
     - eda_controller_token
+    - eda_credential
+    - rulebook_activation
+    - rulebook_activation_copy
+    - eda_project
+    - eda_credential_input_source
+    - eda_credential_type
+    - event_stream
   controller:
+    - controller_settings
     - job_template
     - controller_credential_type
     - credential_input_source
@@ -51,12 +60,15 @@ action_groups:
     - workflow_approval
     - workflow_node_wait
     - job_wait
+    - ad_hoc_command_cancel
     - bulk_host_delete
     - bulk_job_launch
     - inventory_source_update
     - project_update
-    - bulk_host_delete
     - ad_hoc_command_wait
     - ad_hoc_command
     - job_cancel
+    - job_launch
+    - license
+    - workflow_launch
 ...

@@ -1,85 +1,131 @@
 ---
-- name: Check module fails with correct msg for nonexistent job
-  ansible.platform.job_wait:
-    job_id: 99999999
-  register: result
-  ignore_errors: true
-
-- name: Assert missing job is rejected
-  ansible.builtin.assert:
-    that:
-      - result is failed
-      - "'could not be found' in result.msg"
-
-- name: Launch Demo Job Template via URI (get template ID)
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    force_basic_auth: true
-    method: GET
-    status_code: [200]
-  register: jt_lookup
-  delegate_to: localhost
-
-- name: Assert Demo Job Template is available
-  ansible.builtin.assert:
-    that:
-      - jt_lookup.json.results | length > 0
-
-- name: Extract template ID
+- name: Generate a unique test identifier
   ansible.builtin.set_fact:
-    demo_jt_id: "{{ jt_lookup.json.results[0].id }}"
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
 
-- name: Launch Demo Job Template via URI
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ demo_jt_id }}/launch/"
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    force_basic_auth: true
-    method: POST
-    body_format: json
-    body: {}
-    status_code:
-      - 201
-  register: launched_job
-  delegate_to: localhost
+- name: Set test resource names
+  ansible.builtin.set_fact:
+    test_inventory_name: "AAP-Collection-Test-JobWait-{{ test_id }}-Inventory"
+    test_host_name: "AAP-Collection-Test-JobWait-{{ test_id }}-localhost"
+    test_job_template_name: "AAP-Collection-Test-JobWait-{{ test_id }}"
 
-- name: Assert the demo job was launched
-  ansible.builtin.assert:
-    that:
-      - launched_job.status == 201
-      - launched_job.json.id is defined
+- name: Exercise job_wait using a test-owned local job template
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Check module fails with correct msg for nonexistent job
+      ansible.platform.job_wait:
+        job_id: 99999999
+      register: result
+      ignore_errors: true
 
-- name: Wait for the Job to finish
-  ansible.platform.job_wait:
-    job_id: "{{ launched_job.json.id }}"
-    timeout: 120
-  register: wait_results
+    - name: Assert missing job is rejected
+      ansible.builtin.assert:
+        that:
+          - result is failed
+          - "'could not be found' in result.msg"
 
-- name: Assert the job wait result
-  ansible.builtin.assert:
-    that:
-      - wait_results is successful
-      - wait_results.changed == false
-      - "'elapsed' in wait_results"
-      - "'id' in wait_results"
-      - "'status' in wait_results"
-      - wait_results.finished is boolean
-      - wait_results.finished_at is string
-      - wait_results.status == "successful"
+    - name: Create a test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: present
+      register: test_inventory
 
-- name: Wait for already-finished job (should return immediately)
-  ansible.platform.job_wait:
-    job_id: "{{ launched_job.json.id }}"
-    timeout: 10
-  register: wait_results_again
+    - name: Add localhost to the test inventory
+      ansible.platform.host:
+        name: "{{ test_host_name }}"
+        inventory: "{{ test_inventory_name }}"
+        variables:
+          ansible_connection: local
+        state: present
+      register: test_host
 
-- name: Assert waiting for a completed job returns immediately
-  ansible.builtin.assert:
-    that:
-      - wait_results_again is successful
-      - wait_results_again.status == "successful"
+    - name: Create a job template for job_wait
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        project: Demo Project
+        playbook: hello_world.yml
+        inventory: "{{ test_inventory_name }}"
+        state: present
+      register: test_jt
+
+    - name: Launch the test job template via URI
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/{{ test_jt.job_template.id }}/launch/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+        method: POST
+        body_format: json
+        body: {}
+        status_code: [201]
+      register: launched_job
+      delegate_to: localhost
+
+    - name: Assert the job was launched
+      ansible.builtin.assert:
+        that:
+          - launched_job.status == 201
+          - launched_job.json.id is defined
+
+    - name: Wait for the job to finish
+      ansible.platform.job_wait:
+        job_id: "{{ launched_job.json.id }}"
+        timeout: 120
+      register: wait_results
+
+    - name: Assert the job wait result
+      ansible.builtin.assert:
+        that:
+          - wait_results is successful
+          - wait_results.changed == false
+          - "'elapsed' in wait_results"
+          - "'id' in wait_results"
+          - "'status' in wait_results"
+          - wait_results.finished is boolean
+          - wait_results.finished_at is string
+          - wait_results.status == "successful"
+
+    - name: Wait for an already-finished job (should return immediately)
+      ansible.platform.job_wait:
+        job_id: "{{ launched_job.json.id }}"
+        timeout: 10
+      register: wait_results_again
+
+    - name: Assert waiting for a completed job returns immediately
+      ansible.builtin.assert:
+        that:
+          - wait_results_again is successful
+          - wait_results_again.status == "successful"
+
+  always:
+    - name: Remove the test job template
+      ansible.platform.job_template:
+        name: "{{ test_job_template_name }}"
+        state: absent
+      when: test_id is defined
+      failed_when: false
+
+    - name: Remove the test host
+      ansible.platform.host:
+        name: "{{ test_host_name }}"
+        inventory: "{{ test_inventory_name }}"
+        state: absent
+      when: test_id is defined
+      failed_when: false
+
+    - name: Remove the test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: absent
+      when: test_id is defined
+      failed_when: false
 ...

@@ -92,6 +92,9 @@ class PlatformService(BaseAPIClient):
 
         self._auth_lock = threading.Lock()
         self._last_auth_error = None
+        # Authentication records activity before the service is fully initialized.
+        self._activity_lock = threading.Lock()
+        self._last_activity_monotonic = time.monotonic()
 
         try:
             self._authenticate()
@@ -111,10 +114,6 @@ class PlatformService(BaseAPIClient):
 
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
-
-        # Idle timeout: last time the service handled user-facing work (RPC / HTTP)
-        self._activity_lock = threading.Lock()
-        self._last_activity_monotonic = time.monotonic()
 
         self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
 
@@ -166,50 +165,56 @@ class PlatformService(BaseAPIClient):
         Raises:
             PlatformError: Classified platform error
         """
-        self.record_activity()
 
-        @retry_http_request(config=retry_config or self.retry_config)
+        @retry_http_request(config=retry_config if retry_config is not None else self.retry_config)
         def _execute_with_retry():
-            request_kwargs = kwargs.copy()
-            if "timeout" not in request_kwargs:
-                request_kwargs["timeout"] = self.request_timeout
-            if "verify" not in request_kwargs:
-                request_kwargs["verify"] = self.requests_verify
-
-            session_method = getattr(self.session, method.lower())
-
-            # Track request count
-            with self._lock:
-                self._http_request_count += 1
-
-            response = session_method(url, **request_kwargs)
+            response = self._request_with_auth_recovery(method, url, operation, resource, **kwargs)
 
             if response.status_code >= 400:
-                if response.status_code == 401:
-                    if self._handle_auth_error(response):
-                        response = session_method(url, **request_kwargs)
-                        if response.status_code == 401:
-                            raise AuthenticationError(
-                                message=f"Authentication failed: HTTP {response.status_code}",
-                                operation=operation,
-                                resource=resource,
-                                details={"status_code": response.status_code, "url": url, "response_body": response.text[:500]},
-                                status_code=response.status_code,
-                            )
-                    else:
-                        raise AuthenticationError(
-                            message=f"Authentication failed: HTTP {response.status_code}",
-                            operation=operation,
-                            resource=resource,
-                            details={"status_code": response.status_code, "url": url, "response_body": response.text[:500]},
-                            status_code=response.status_code,
-                        )
-
                 response.raise_for_status()
 
             return response
 
         return _execute_with_retry()
+
+    def _request_with_auth_recovery(self, method: str, url: str, operation: str, resource: str, **kwargs) -> "requests.Response":
+        """Send one request, recovering once from an expired authentication token.
+
+        Unlike :meth:`_make_request`, this helper does not retry transient
+        failures. It is used by SDK endpoint operations that preserve their
+        existing single-attempt behavior while sharing the manager's 401 recovery.
+        """
+        self.record_activity()
+        request_kwargs = kwargs.copy()
+        request_kwargs.setdefault("timeout", self.request_timeout)
+        request_kwargs.setdefault("verify", self.requests_verify)
+        session_method = getattr(self.session, method.lower())
+
+        def send_request():
+            with self._lock:
+                self._http_request_count += 1
+            return session_method(url, **request_kwargs)
+
+        response = send_request()
+        if response.status_code == 401:
+            if not self._handle_auth_error(response):
+                raise AuthenticationError(
+                    message="Authentication failed: HTTP 401",
+                    operation=operation,
+                    resource=resource,
+                    details={"status_code": response.status_code, "url": url, "response_body": response.text[:500]},
+                )
+
+            response = send_request()
+            if response.status_code == 401:
+                raise AuthenticationError(
+                    message="Authentication failed: HTTP 401",
+                    operation=operation,
+                    resource=resource,
+                    details={"status_code": response.status_code, "url": url, "response_body": response.text[:500]},
+                )
+
+        return response
 
     def _authenticate(self) -> None:
         """Authenticate with the platform API."""
@@ -668,7 +673,7 @@ class PlatformService(BaseAPIClient):
         # user provided an incompatible field the API will reject it with a clear
         # validation error, which is the correct behaviour.
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
-            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
+            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data, context)
             for field in candidate_fields:
                 if field in user_unset_fields:
                     fields_to_null.add(field)
@@ -846,6 +851,8 @@ class PlatformService(BaseAPIClient):
         url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
+        if response.status_code == 404:
+            return {"changed": False, "id": resource_id}
         response.raise_for_status()
         return {"changed": True, "id": resource_id}
 
@@ -877,13 +884,12 @@ class PlatformService(BaseAPIClient):
                 raise ValueError("No GET operation defined for singleton resource")
             url = self._build_url(get_op.path, service=context.service, api_version=context.api_version)
             method = getattr(get_op, "method", "GET").upper()
-            kwargs = {"timeout": self.request_timeout, "verify": self.requests_verify}
+            kwargs = {}
             if method == "POST":
                 api_data = mixin_class.from_ansible_data(ansible_data, context)
                 payload = {f: getattr(api_data, f) for f in (get_op.fields or []) if getattr(api_data, f, None) is not None}
                 kwargs["json"] = payload
-            session_method = getattr(self.session, method.lower())
-            response = session_method(url, **kwargs)
+            response = self._request_with_auth_recovery(method, url, operation="find", resource=mixin_class.__name__, **kwargs)
             response.raise_for_status()
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
@@ -918,7 +924,7 @@ class PlatformService(BaseAPIClient):
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
             url = self._build_url(get_op.path.replace("{id}", str(resolved_id)), service=context.service, api_version=context.api_version)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
+            response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
             response.raise_for_status()
             api_result = response.json()
 
@@ -930,15 +936,10 @@ class PlatformService(BaseAPIClient):
             if composite_params:
                 for param_key, param_val in composite_params.items():
                     result_val = api_result.get(param_key)
-                    # Normalise both sides to int when possible for FK comparisons.
-                    try:
-                        param_val_cmp = int(param_val)
-                    except (TypeError, ValueError):
-                        param_val_cmp = param_val
-                    try:
-                        result_val_cmp = int(result_val) if result_val is not None else None
-                    except (TypeError, ValueError):
-                        result_val_cmp = result_val
+                    if result_val is None:
+                        result_val = api_result.get(f"{param_key}_id")
+                    param_val_cmp = self._normalize_composite_value(param_val)
+                    result_val_cmp = self._normalize_composite_value(result_val)
                     if result_val_cmp != param_val_cmp:
                         raise ValueError(f"Resource {resolved_id} found but composite key {param_key}={param_val} does not match actual value {result_val}")
         else:
@@ -949,16 +950,22 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
-            logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
-            list_result = response.json()
+            if getattr(mixin_class, "find_list_requires_all_results", False):
+                list_result = self.search_api(
+                    list_op.path,
+                    query_params,
+                    return_all=True,
+                    max_objects=getattr(mixin_class, "find_list_max_objects", 1000),
+                    service=context.service,
+                )
+            else:
+                url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
+                logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
+                response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
+                response.raise_for_status()
+                list_result = response.json()
 
-            results = list_result.get("results", [])
-            if not results:
-                raise ValueError(f"Resource with {lookup_field}={unique_value} not found")
-            api_result = results[0]
+            api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
 
             # Some API list endpoints return incomplete data for certain fields
             # (e.g. the routes list omits idle_timeout_seconds / request_timeout_seconds
@@ -968,7 +975,7 @@ class PlatformService(BaseAPIClient):
             if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
                 full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])), service=context.service, api_version=context.api_version)
                 logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
-                full_response = self.session.get(full_url, timeout=self.request_timeout, verify=self.requests_verify)
+                full_response = self._request_with_auth_recovery("get", full_url, operation="find", resource=mixin_class.__name__)
                 if full_response.ok:
                     api_result = full_response.json()
 
@@ -1043,11 +1050,13 @@ class PlatformService(BaseAPIClient):
             logger.debug("Calling %s %s", endpoint_op.method, url)
 
             try:
-                # Increment HTTP request counter (thread-safe)
-                with self._lock:
-                    self._http_request_count += 1
-
-                response = self.session.request(endpoint_op.method, url, json=request_data, timeout=self.request_timeout, verify=self.requests_verify)
+                response = self._request_with_auth_recovery(
+                    endpoint_op.method,
+                    url,
+                    operation=op_name,
+                    resource=endpoint_op.path,
+                    json=request_data,
+                )
                 response.raise_for_status()
 
             except Exception as e:
@@ -1355,13 +1364,27 @@ class PlatformService(BaseAPIClient):
         response = self._make_request("get", url, operation=operation, resource=resource)
         return response.json()
 
-    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
-        """POST JSON via _make_request and return parsed JSON."""
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown", retry: bool = True) -> dict:
+        """POST JSON and return parsed data, using an empty dictionary for empty responses."""
         self.record_activity()
-        response = self._make_request("post", url, operation=operation, resource=resource, json=payload)
-        if not response.content:
+        retry_config = None if retry else RetryConfig(max_attempts=1)
+        response = self._make_request("post", url, operation=operation, resource=resource, json=payload, retry_config=retry_config)
+        return response.json() if response.content else {}
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        url = self._build_url(endpoint, service=service)
+        extra = {} if retry else {"retry_config": RetryConfig(max_attempts=1)}
+        response = self._make_request("post", url, operation="post_resource", resource="config", json=data, **extra)
+        if response.status_code == 204 or not response.content:
             return {}
         return response.json()
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        url = self._build_url(endpoint, service=service)
+        self._make_request("delete", url, operation="delete_resource", resource="config")
+        return {}
 
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST to a launch endpoint, optionally suppressing transient retries."""
@@ -1388,24 +1411,36 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
         url = self._build_url("/bulk/host_create/", service=service)
         payload = {"inventory": inventory_id, "hosts": hosts}
-        saved_config = self.retry_config
-        self.retry_config = RetryConfig(max_attempts=1)
-        try:
-            response = self._make_request("post", url, operation="bulk_host_create", resource="bulk", json=payload)
-        finally:
-            self.retry_config = saved_config
+        response = self._make_request(
+            "post",
+            url,
+            operation="bulk_host_create",
+            resource="bulk",
+            retry_config=RetryConfig(max_attempts=1),
+            json=payload,
+        )
         if response.status_code != 201:
             raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
 
-    def direct_request(self, method: str, path: str, data=None) -> dict:
-        """Make a raw authenticated HTTP request and return parsed JSON."""
+    def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:
+        """Make a raw authenticated HTTP request and return parsed JSON.
+
+        Args:
+            method: HTTP method ('GET', 'POST', 'PATCH', 'DELETE', ...).
+            path: API path to request.
+            data: Optional JSON-serializable request body.
+            retry_config: Optional per-request retry policy; pass
+                RetryConfig(max_attempts=1) for non-idempotent operations
+                (e.g. restart/copy) where retrying a lost response could
+                double-execute the action.
+        """
         self.record_activity()
         url = self._build_url(path)
         kwargs = {}
         if data is not None:
             kwargs["json"] = data
-        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
+        response = self._make_request(method.upper(), url, operation="direct_request", resource=path, retry_config=retry_config, **kwargs)
         try:
             return response.json() if response.content else {}
         except Exception:

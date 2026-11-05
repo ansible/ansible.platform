@@ -15,9 +15,17 @@ Supported endpoints (all under /api/gateway/v{1,2}/):
   service_types, services, tokens, ui_plugin_routes,
   settings (singleton), settings/all (flat dict read)
 
+Controller settings are also served at /api/controller/vX/settings/all/.
+
 Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
 The workflow_node_wait scenario uses a pending-to-successful job fixture.
+
+EDA endpoints (under /api/eda/v{1,2}/) include awx-tokens, organizations,
+projects, rulebooks (with a seeded rulebooks/{id}/sources/ sub-resource),
+decision-environments, eda-credentials, event-streams, and activations
+(with enable/disable/restart/copy sub-actions) for the rulebook_activation
+and rulebook_activation_copy Molecule scenarios.
 
 Notes
 -----
@@ -250,6 +258,8 @@ class Store:
     # Settings singleton: flat key→value dict
     _settings: Dict[str, Any] = field(default_factory=dict)
     _settings_lock: threading.Lock = field(default_factory=threading.Lock)
+    _controller_settings: Dict[str, Any] = field(default_factory=dict)
+    _controller_settings_lock: threading.Lock = field(default_factory=threading.Lock)
 
     # Generic resource stores, keyed by (service, endpoint_name) so the same
     # resource name can exist under different API services (e.g. a future
@@ -385,13 +395,23 @@ class Store:
 
         # EDA resources
         eda_defs: List[tuple] = [
+            ("organizations", ["name"], 1000),
+            ("credential-types", ["name"], 1100),
+            ("eda-credentials", ["name", "credential_type_id", "organization_id"], 1200),
             ("awx-tokens", ["name", "token"], 6000),
+            ("credential-input-sources", ["input_field_name", "target_credential", "source_credential"], 6200),
+            ("projects", ["name"], 7200),
+            ("rulebooks", ["name", "project_id"], 7300),
+            ("decision-environments", ["name"], 7400),
+            ("event-streams", ["name"], 7600),
+            ("activations", ["name"], 7700),
         ]
         for endpoint, required, start_id in eda_defs:
             self._resources[("eda", endpoint)] = GenericResource(
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
+                patch_fields=["description", "metadata"] if endpoint == "credential-input-sources" else None,
                 service="eda",
             )
 
@@ -400,18 +420,25 @@ class Store:
 
     def seed_defaults(self) -> None:
         with self.lock:
-            if self.orgs_by_id:
-                return
-            default_orgs = [
-                {"id": 1, "name": "Default"},
-                {"id": 2, "name": "Engineering"},
-                {"id": 3, "name": "DevOps"},
-            ]
-            for org in default_orgs:
-                self.orgs_by_id[org["id"]] = org
-                self.orgs_by_name[org["name"]] = org["id"]
+            if not self.orgs_by_id:
+                default_orgs = [
+                    {"id": 1, "name": "Default"},
+                    {"id": 2, "name": "Engineering"},
+                    {"id": 3, "name": "DevOps"},
+                ]
+                for org in default_orgs:
+                    self.orgs_by_id[org["id"]] = org
+                    self.orgs_by_name[org["name"]] = org["id"]
 
-        # Seed settings
+        # EDA uses its own organization and credential-type endpoints.
+        eda_orgs = self._resources.get(("eda", "organizations"))
+        if eda_orgs and not eda_orgs._items:
+            eda_orgs.seed("1", [{"id": 1, "name": "Default"}, {"id": 2, "name": "Engineering"}])
+        eda_credential_types = self._resources.get(("eda", "credential-types"))
+        if eda_credential_types and not eda_credential_types._items:
+            eda_credential_types.seed("1", [{"id": 1, "name": "Source Control"}])
+
+        # Seed Gateway settings
         with self._settings_lock:
             if not self._settings:
                 self._settings = {
@@ -419,6 +446,17 @@ class Store:
                     "SESSION_COOKIE_AGE": 1800,
                     "MAX_PAGE_SIZE": 200,
                     "REMOTE_HOST_HEADERS": [],
+                }
+
+        # Seed Controller settings separately from Gateway settings.  Both APIs
+        # expose a settings/all singleton, but they are different services.
+        with self._controller_settings_lock:
+            if not self._controller_settings:
+                self._controller_settings = {
+                    "AWX_REQUEST_PROFILE": False,
+                    "DEFAULT_JOB_TIMEOUT": 0,
+                    "SESSION_COOKIE_AGE": 1800,
+                    "REMOTE_HOST_HEADERS": ["REMOTE_ADDR", "REMOTE_HOST"],
                 }
 
         # Seed hosts for Controller group association tests
@@ -505,6 +543,32 @@ class Store:
             resource = self.resource("controller", endpoint)
             if resource and not resource._items:
                 resource.seed("2", items)
+
+        # Seed EDA fixtures used by event stream, decision environment, and
+        # rulebook activation mock scenarios. The rulebook's "sources" list is
+        # served directly by MockGatewayHandler, so it doesn't need its own store.
+        eda_fixtures = {
+            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 1}],
+            "rulebooks": [
+                {
+                    "id": 9201,
+                    "name": "hello_controller.yml",
+                    "project_id": 9101,
+                    "sources": [{"name": "range", "rulebook_hash": "mock-rulebook-hash-range"}],
+                }
+            ],
+            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 1}],
+            "eda-credentials": [
+                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 1},
+                {"id": 9102, "name": "Molecule Mock Decision Environment Credential", "organization_id": 1},
+                {"id": 9401, "name": "Molecule Mock EDA Credential", "credential_type_id": 1, "organization_id": 1},
+            ],
+            "event-streams": [{"id": 9501, "name": "Molecule Mock Event Stream"}],
+        }
+        for endpoint, items in eda_fixtures.items():
+            resource = self.resource("eda", endpoint)
+            if resource and not resource._items:
+                resource.seed("1", items)
 
     def job_template_associations(self, template_id: int, field_name: str, page: int = 1) -> Dict[str, Any]:
         """Return a DRF-style paginated association list."""
@@ -752,6 +816,19 @@ class Store:
             results = [{"key": k, "value": v} for k, v in self._settings.items()]
             return {"count": len(results), "results": results}
 
+    def get_controller_settings_all(self) -> Dict[str, Any]:
+        """Return the Controller settings singleton as a flat dictionary."""
+        self.seed_defaults()
+        with self._controller_settings_lock:
+            return dict(self._controller_settings)
+
+    def patch_controller_settings(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply a partial update to the Controller settings singleton."""
+        self.seed_defaults()
+        with self._controller_settings_lock:
+            self._controller_settings.update(payload)
+            return dict(self._controller_settings)
+
 
 # ---------------------------------------------------------------------------
 # HTTP Request Handler
@@ -812,6 +889,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         if len(parts) == 4:
             if self.command == "GET":
                 filters = {k: v[0] for k, v in qs.items() if v}
+                # The EDA API exposes the foreign key filter as `organization`,
+                # while the credential write payload stores `organization_id`.
+                if service == "eda" and resource_name == "eda-credentials" and "organization" in filters:
+                    filters["organization_id"] = filters.pop("organization")
                 self._send_json(200, store.list_items(filters or None))
                 return True
             if self.command == "POST":
@@ -1028,6 +1109,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(400, {"detail": str(error)})
                     return
 
+        # ---- Controller settings (singleton, no id-based CRUD) ----
+        if service == "controller" and resource == "settings":
+            # /api/controller/vX/settings/all/ — GET or partial update of flat dict
+            if len(parts) == 5 and parts[4] == "all":
+                if self.command == "GET":
+                    self._send_json(200, self.store.get_controller_settings_all())
+                    return
+                if self.command in ("PUT", "PATCH"):
+                    payload = self._parse_json_body()
+                    self._send_json(200, self.store.patch_controller_settings(payload))
+                    return
+            self._send_json(404, {"detail": "Not Found"})
+            return
+
         # ---- Settings (special: singleton, no id-based CRUD; Gateway-only) ----
         if service == "gateway" and resource == "settings":
             # /api/gateway/vX/settings/all/  — GET (flat dict) or PUT (full replace)
@@ -1180,6 +1275,39 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                         self._send_json(404, {"detail": "Not Found"})
                     return
 
+        # ---- Controller config (license) ----
+        if service == "controller" and resource == "config":
+            if self.command == "GET":
+                self._send_json(200, self.server._license_config)
+                return
+            if self.command == "POST":
+                payload = self._parse_json_body()
+                if len(parts) >= 5 and parts[4] == "attach":
+                    self.server._license_config["license_info"] = {
+                        "license_type": "enterprise",
+                        "valid_key": True,
+                        "subscription_name": "Mock Subscription",
+                        "instance_count": 100,
+                        "trial": False,
+                    }
+                else:
+                    if "manifest" not in payload:
+                        self._send_json(400, {"detail": "manifest is required"})
+                        return
+                    self.server._license_config["license_info"] = {
+                        "license_type": "enterprise",
+                        "valid_key": True,
+                        "subscription_name": "Mock Manifest License",
+                        "instance_count": 100,
+                        "trial": False,
+                    }
+                self._send_json(200, self.server._license_config)
+                return
+            if self.command == "DELETE":
+                self.server._license_config["license_info"] = {}
+                self._send_empty(204)
+                return
+
         # ---- Controller bulk/host_create ----
         if service == "controller" and resource == "bulk" and len(parts) >= 5 and parts[4] == "host_create" and self.command == "POST":
             try:
@@ -1198,6 +1326,98 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         if service == "eda" and len(parts) >= 6 and parts[3] == "users" and parts[4] == "me" and parts[5] == "awx-tokens":
             remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
+                return
+
+        # ---- EDA: /api/eda/vX/credential-types/{id}/test/ ----
+        if service == "eda" and resource == "credential-types" and len(parts) == 6 and parts[5] == "test" and self.command == "POST":
+            self.store.seed_defaults()
+            credential_type_store = self.store.resource("eda", "credential-types")
+            try:
+                credential_type_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            self._parse_json_body()
+            self._send_json(200, {"success": True, "message": "Credential type test accepted"})
+            return
+
+        # ---- EDA: /api/eda/vX/rulebooks/{id}/sources/ (read-only, seeded on the rulebook fixture) ----
+        if service == "eda" and resource == "rulebooks" and len(parts) == 6 and parts[5] == "sources" and self.command == "GET":
+            self.store.seed_defaults()
+            rulebook_store = self.store.resource("eda", "rulebooks")
+            try:
+                rulebook = rulebook_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            sources = rulebook.get("sources", [])
+            self._send_json(200, {"count": len(sources), "results": sources})
+            return
+
+        # ---- EDA: /api/eda/vX/activations/{id}/{enable,disable,restart,copy}/ ----
+        activation_sub_actions = ("enable", "disable", "restart", "copy")
+        if service == "eda" and resource == "activations" and len(parts) == 6 and parts[5] in activation_sub_actions and self.command == "POST":
+            self.store.seed_defaults()
+            activation_store = self.store.resource("eda", "activations")
+            try:
+                activation_id = int(parts[4])
+                activation_store.get(activation_id)
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            sub_action = parts[5]
+            if sub_action == "enable":
+                self._send_json(200, activation_store.patch(activation_id, {"is_enabled": True}))
+                return
+            if sub_action == "disable":
+                self._send_json(200, activation_store.patch(activation_id, {"is_enabled": False}))
+                return
+            if sub_action == "restart":
+                self._send_json(200, activation_store.get(activation_id))
+                return
+            # copy: clone the source activation under the new name from the request body
+            try:
+                new_name = self._parse_json_body()["name"]
+            except (KeyError, ValueError):
+                self._send_json(400, {"detail": "'name' is required"})
+                return
+            source = activation_store.get(activation_id)
+            clone_payload = {k: v for k, v in source.items() if k not in ("id", "created", "modified", "url")}
+            clone_payload["name"] = new_name
+            try:
+                self._send_json(201, activation_store.create(version, clone_payload))
+            except ValueError as e:
+                self._send_json(400, {"detail": str(e)})
+            return
+
+        # ---- EDA credential actions ----
+        if service == "eda" and resource == "eda-credentials" and len(parts) == 6:
+            credential_store = self.store.resource("eda", "eda-credentials")
+            try:
+                credential_id = int(parts[4])
+            except ValueError:
+                self._send_json(404, {"detail": "Not Found"})
+                return
+
+            if parts[5] == "copy" and self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                    source = credential_store.get(credential_id)
+                    copy_data = {k: v for k, v in source.items() if k not in {"id", "created", "modified", "url"}}
+                    copy_data["name"] = payload["name"]
+                    self._send_json(201, credential_store.create(version, copy_data))
+                except (KeyError, ValueError) as error:
+                    self._send_json(400, {"detail": str(error)})
+                return
+
+            if parts[5] == "test" and self.command == "POST":
+                try:
+                    credential_store.get(credential_id)
+                except KeyError:
+                    self._send_json(404, {"detail": "Not Found"})
+                else:
+                    self._parse_json_body()
+                    self._send_json(200, {"success": True, "message": "Credential test successful"})
                 return
 
         # ---- All other resources — generic handler ----
@@ -1233,6 +1453,7 @@ class MockGatewayServer(ThreadingHTTPServer):
         super().__init__(server_address, RequestHandlerClass)
         self.store = store
         self.reported_api_version = reported_api_version
+        self._license_config = {"license_info": {}}
 
 
 def main() -> int:

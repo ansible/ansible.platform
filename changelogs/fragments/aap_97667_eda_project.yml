@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - eda_project - new module to manage projects in EDA controller,
+    migrated from ``ansible.eda`` collection
+    (`AAP-97667 <https://issues.redhat.com/browse/AAP-97667>`_).
+...

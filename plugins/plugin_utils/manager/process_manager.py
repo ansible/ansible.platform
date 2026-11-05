@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Manager imports can take longer on cold or heavily loaded CI workers.
+DEFAULT_STARTUP_MAX_WAIT = 150  # 15 seconds in 0.1-second intervals
+
 
 @dataclass
 class ProcessConnectionInfo:
@@ -363,7 +366,13 @@ class ProcessManager:
         return env
 
     @staticmethod
-    def wait_for_process_startup(socket_path: str, socket_dir: Path, identifier: str, process: subprocess.Popen, max_wait: int = 50) -> None:
+    def wait_for_process_startup(
+        socket_path: str,
+        socket_dir: Path,
+        identifier: str,
+        process: subprocess.Popen,
+        max_wait: int = DEFAULT_STARTUP_MAX_WAIT,
+    ) -> None:
         """
         Wait for manager process to start and create socket.
 
@@ -493,7 +502,7 @@ def spawn_ephemeral_client(task_vars, gateway_config, task_env=None):
         owner_pid=os.getppid(),
         task_env=task_env,
     )
-    ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=identifier, process=process, max_wait=50)
+    ProcessManager.wait_for_process_startup(socket_path=socket_path, socket_dir=socket_dir, identifier=identifier, process=process)
 
     client = ManagerRPCClient(gateway_config.base_url, socket_path, authkey)
     client._ephemeral = True

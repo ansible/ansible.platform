@@ -176,7 +176,7 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         return APIWorkflowJobTemplateNode_v2(**api_data)
 
     @classmethod
-    def get_fields_to_null_for_update(cls, api_data) -> frozenset:
+    def get_fields_to_null_for_update(cls, api_data, context=None) -> frozenset:
         return frozenset({"inventory", "execution_environment"})
 
     @classmethod

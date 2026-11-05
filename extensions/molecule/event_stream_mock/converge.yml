@@ -1,0 +1,163 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure /tmp/ap directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Create manager survive flag (Molecule keeps manager alive across phases)
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Converge — event_stream (mock, connection local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+    event_stream_name: "molecule-mock-event-stream"
+    event_stream_renamed: "molecule-mock-event-stream-renamed"
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+  tasks:
+    - name: Create event stream with check mode
+      ansible.platform.event_stream:
+        name: "{{ event_stream_name }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
+        state: present
+      check_mode: true
+      register: check_create
+
+    - name: Assert check mode reports changed
+      ansible.builtin.assert:
+        that:
+          - check_create is changed
+
+    - name: Create event stream
+      ansible.platform.event_stream:
+        name: "{{ event_stream_name }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
+        state: present
+      register: create_result
+
+    - name: Assert event stream was created
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.event_stream.id is defined
+
+    - name: Re-create same event stream with identical parameters (idempotency)
+      ansible.platform.event_stream:
+        name: "{{ event_stream_name }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
+        state: present
+      register: recreate_result
+
+    - name: Assert re-create with no actual changes reports changed=false
+      ansible.builtin.assert:
+        that:
+          - recreate_result is not changed
+          - recreate_result.event_stream.id == create_result.event_stream.id
+
+    - name: Update event stream headers (real change)
+      ansible.platform.event_stream:
+        name: "{{ event_stream_name }}"
+        headers: "Content-Type,X-Custom-Header"
+        state: present
+      register: update_result
+
+    - name: Assert updating a field reports changed
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+
+    - name: Rename the event stream
+      ansible.platform.event_stream:
+        name: "{{ event_stream_name }}"
+        new_name: "{{ event_stream_renamed }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
+        state: present
+      register: rename_result
+
+    - name: Assert rename reports changed
+      ansible.builtin.assert:
+        that:
+          - rename_result is changed
+
+    - name: Re-run the same rename task (completed-rename idempotency)
+      ansible.platform.event_stream:
+        name: "{{ event_stream_name }}"
+        new_name: "{{ event_stream_renamed }}"
+        credential_name: "Molecule Mock Event Stream Credential"
+        organization_name: "Default"
+        state: present
+      register: rename_again_result
+
+    - name: Assert re-running a completed rename is a no-op
+      ansible.builtin.assert:
+        that:
+          - rename_again_result is not changed
+        fail_msg: >-
+          Re-running a task with name=<old> and new_name=<new> after the
+          rename already completed must be idempotent, since the old name
+          no longer exists and a naive find-by-name would otherwise create
+          a duplicate under the old name.
+
+    - name: Delete the event stream
+      ansible.platform.event_stream:
+        name: "{{ event_stream_renamed }}"
+        state: absent
+      register: delete_result
+
+    - name: Assert delete reports changed
+      ansible.builtin.assert:
+        that:
+          - delete_result is changed
+
+    - name: Delete already-absent event stream
+      ansible.platform.event_stream:
+        name: "{{ event_stream_renamed }}"
+        state: absent
+      register: delete_absent_result
+
+    - name: Assert delete-absent is a no-op
+      ansible.builtin.assert:
+        that:
+          - delete_absent_result is not changed
+...

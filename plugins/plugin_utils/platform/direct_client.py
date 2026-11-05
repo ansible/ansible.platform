@@ -374,7 +374,6 @@ class DirectHTTPClient(BaseAPIClient):
                                 operation=operation,
                                 resource=resource,
                                 details={"status_code": he2.code, "url": url, "response_body": response_body},
-                                status_code=he2.code,
                             )
                         raise
                 else:
@@ -388,7 +387,6 @@ class DirectHTTPClient(BaseAPIClient):
                         operation=operation,
                         resource=resource,
                         details={"status_code": he.code, "url": url, "response_body": response_body},
-                        status_code=he.code,
                     )
 
             # For other HTTP errors, raise appropriate exception
@@ -747,14 +745,36 @@ class DirectHTTPClient(BaseAPIClient):
         response = self._make_request("GET", url, operation=operation, resource=resource)
         return json.loads(response.read())
 
-    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown") -> dict:
-        """POST JSON via _make_request and return parsed JSON."""
+    def _post_json(self, url: str, payload: dict, operation: str = "http_request", resource: str = "unknown", retry: bool = True) -> dict:
+        """POST JSON via _make_request and return parsed JSON.
+
+        Empty successful responses are represented as an empty dictionary.
+        The direct client does not retry requests; ``retry`` is accepted to
+        keep the shared client interface.
+        """
         self._ensure_authenticated()
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
         body = response.read()
         if not body:
             return {}
         return json.loads(body)
+
+    def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
+        """POST JSON data to an API endpoint and return the response."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        response = self._make_request("POST", url, operation="post_resource", resource="config", json=data)
+        body = response.read()
+        if not body:
+            return {}
+        return json.loads(body)
+
+    def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
+        """DELETE an API endpoint."""
+        self._ensure_authenticated()
+        url = self._build_url(endpoint, service=service)
+        self._make_request("DELETE", url, operation="delete_resource", resource="config")
+        return {}
 
     def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
         """Create hosts in bulk via the Controller bulk/host_create endpoint."""
@@ -996,6 +1016,11 @@ class DirectHTTPClient(BaseAPIClient):
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
 
+        fields_to_null = set()
+        if hasattr(mixin_class, "get_fields_to_null_for_update"):
+            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data, context)
+            fields_to_null = {field for field in candidate_fields if getattr(api_data, field, None) is None}
+
         # Pre-PATCH idempotency check: compare only the fields we'd update.
         # Timestamps (modified, created, url) change on every PATCH so they
         # must be excluded from the comparison.
@@ -1019,13 +1044,15 @@ class DirectHTTPClient(BaseAPIClient):
                 and current_data.get(f) != "$encrypted$"
             )
             if not needs_update:
+                needs_update = any(current_data.get(field) is not None for field in fields_to_null)
+            if not needs_update:
                 # Nothing to change — return current state with changed=False
                 result = dict(current_data)
                 result["changed"] = False
                 return result
 
         # Execute update operation
-        api_result = self._execute_operations(operations, api_data, context, required_for="update")
+        api_result = self._execute_operations(operations, api_data, context, required_for="update", fields_to_null=fields_to_null)
 
         # REVERSE TRANSFORM: API -> Ansible
         if api_result:
@@ -1057,8 +1084,18 @@ class DirectHTTPClient(BaseAPIClient):
         # Build URL
         url = self._build_url(delete_op.path.format(id=resource_id), service=context.service, api_version=context.api_version)
 
-        # Execute delete
-        _response = self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
+        # DELETE is idempotent for state=absent: a resource removed between
+        # lookup and deletion (or already absent by ID) is a no-op.
+        try:
+            self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
+        except APIError as exc:
+            if exc.status_code == 404:
+                return {"changed": False, "id": resource_id}
+            raise
+        except HTTPError as exc:
+            if exc.code == 404:
+                return {"changed": False, "id": resource_id}
+            raise
 
         return {"changed": True, "deleted": True}
 
@@ -1136,14 +1173,10 @@ class DirectHTTPClient(BaseAPIClient):
                     composite_match = True
                     for param_key, param_val in composite_params.items():
                         result_val = id_data.get(param_key)
-                        try:
-                            pv = int(param_val)
-                        except (TypeError, ValueError):
-                            pv = param_val
-                        try:
-                            rv = int(result_val) if result_val is not None else None
-                        except (TypeError, ValueError):
-                            rv = result_val
+                        if result_val is None:
+                            result_val = id_data.get(f"{param_key}_id")
+                        pv = self._normalize_composite_value(param_val)
+                        rv = self._normalize_composite_value(result_val)
                         if rv != pv:
                             composite_match = False
                             break
@@ -1168,47 +1201,61 @@ class DirectHTTPClient(BaseAPIClient):
             query_params[lookup_field] = lookup_value
         if composite_params:
             query_params.update(composite_params)
-        # Build URL with query parameter(s)
-        url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)
-        logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
-        # Execute list request
-        logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
-        try:
-            # Increment HTTP request counter (thread-safe)
-            with self._lock:
-                self._http_request_count += 1
-            logger.info("DirectHTTPClient: HTTP request counter incremented for find: %s", self._http_request_count)
-            response = self._make_request(list_op.method, url, operation="find", resource=mixin_class.__name__)
-            logger.info("DirectHTTPClient: Response for %s: %s", mixin_class.__name__, response)
-        except Exception as req_e:
-            logger.error("DirectHTTPClient: _make_request for find raised exception: %s", req_e)
-            import traceback
+        if getattr(mixin_class, "find_list_requires_all_results", False):
+            response_data = self.search_api(
+                list_op.path,
+                query_params,
+                return_all=True,
+                max_objects=getattr(mixin_class, "find_list_max_objects", 1000),
+                service=context.service,
+            )
+        else:
+            # Build URL with query parameter(s)
+            url = self._build_url(list_op.path, query_params, service=context.service, api_version=context.api_version)
+            logger.info("DirectHTTPClient: URL for %s: %s", mixin_class.__name__, url)
+            # Execute list request
+            logger.info("DirectHTTPClient: About to call _make_request for find: method=%s, url=%s", list_op.method, url)
+            try:
+                # Increment HTTP request counter (thread-safe)
+                with self._lock:
+                    self._http_request_count += 1
+                logger.info("DirectHTTPClient: HTTP request counter incremented for find: %s", self._http_request_count)
+                response = self._make_request(list_op.method, url, operation="find", resource=mixin_class.__name__)
+                logger.info("DirectHTTPClient: Response for %s: %s", mixin_class.__name__, response)
+            except Exception as req_e:
+                logger.error("DirectHTTPClient: _make_request for find raised exception: %s", req_e)
+                import traceback
 
-            logger.error("DirectHTTPClient: _make_request for find traceback: %s", traceback.format_exc())
-            raise
-        # Parse response - Ansible's Request response uses .read() to get body
-        try:
-            response_body = response.read()
-            response_data = json.loads(response_body) if response_body else {}
-        except Exception as e:
-            logger.error("DirectHTTPClient: Failed to parse response: %s", e)
-            response_data = {}
+                logger.error("DirectHTTPClient: _make_request for find traceback: %s", traceback.format_exc())
+                raise
+            # Parse response - Ansible's Request response uses .read() to get body
+            try:
+                response_body = response.read()
+                response_data = json.loads(response_body) if response_body else {}
+            except Exception as e:
+                logger.error("DirectHTTPClient: Failed to parse response: %s", e)
+                response_data = {}
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
-        if results:
-            # Return first match
-            api_data = results[0]
-            # from_api returns AnsibleUser dataclass, convert to dict for return
-            ansible_instance = mixin_class.from_api(api_data, context)
-            logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
-            from dataclasses import asdict
+        api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
+        # Some list endpoints omit fields needed for idempotency comparisons.
+        # Match PlatformService by fetching the detail representation when
+        # the transform declares that the list result is incomplete.
+        if getattr(mixin_class, "full_resource_lookup", False) and api_data.get("id") and get_op:
+            full_url = self._build_url(get_op.path.replace("{id}", str(api_data["id"])), service=context.service, api_version=context.api_version)
+            full_response = self._make_request(get_op.method, full_url, operation="find", resource=mixin_class.__name__)
+            full_body = full_response.read()
+            if full_body:
+                api_data = json.loads(full_body)
+        ansible_instance = mixin_class.from_api(api_data, context)
+        logger.info("DirectHTTPClient: Ansible instance for %s: %s", mixin_class.__name__, ansible_instance)
+        from dataclasses import asdict
 
-            return asdict(ansible_instance)
+        return asdict(ansible_instance)
 
-        # Not found
-        raise ValueError(f"Resource not found: {lookup_field}={lookup_value}")
-
-    def _execute_operations(self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None) -> dict:
+    def _execute_operations(
+        self, operations: Dict, api_data: Any, context: TransformContext, required_for: str = None, fields_to_null: Optional[set] = None
+    ) -> dict:
         """
         Execute endpoint operations (potentially multi-endpoint).
 
@@ -1216,6 +1263,7 @@ class DirectHTTPClient(BaseAPIClient):
         (e.g., create user, then associate organizations).
         """
         results = {}
+        fields_to_null = fields_to_null or set()
         logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
 
         # Filter operations by required_for
@@ -1247,10 +1295,12 @@ class DirectHTTPClient(BaseAPIClient):
                 for field in endpoint_op.fields:
                     value = getattr(api_data, field, None)
                     if value is None:
-                        if context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}:
+                        if field in fields_to_null or (
+                            context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
+                        ):
                             request_data[field] = None
                         continue
-                    if value == "":
+                    if value == "" and not (field == "description" and context.operation == "update"):
                         continue
                     request_data[field] = value
 
@@ -1313,16 +1363,21 @@ class DirectHTTPClient(BaseAPIClient):
         # This should use the cache to avoid repeated lookups
         pass
 
-    def direct_request(self, method: str, path: str, data=None) -> dict:
+    def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:
         """
         Make a raw authenticated HTTP request and return parsed JSON.
 
         Used by action plugins for non-standard endpoints (e.g. settings/all/).
+        ``retry_config`` is accepted for parity with PlatformService; this
+        direct transport makes one request per call, so non-idempotent actions
+        remain single-attempt without passing retry settings to Ansible's
+        ``Request.open``.
 
         Args:
             method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
             path: API path (e.g. '/api/gateway/v1/settings/all/')
             data: Optional dict to JSON-encode as request body
+            retry_config: Optional retry policy accepted for client API parity.
 
         Returns:
             Parsed JSON response dict (empty dict on empty body)
