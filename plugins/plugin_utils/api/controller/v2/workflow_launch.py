@@ -13,7 +13,8 @@ from ....platform.types import EndpointOperation, TransformContext
 
 WORKFLOW_JOBS_ENDPOINT = "/api/controller/v2/workflow_jobs/{id}/"
 WJT_LIST_ENDPOINT = "/api/controller/v2/workflow_job_templates/"
-WORKFLOW_TEMPLATE_LAUNCH_ENDPOINT = "/api/controller/v2/workflow_job_templates/{id}/launch/"
+WJT_LAUNCH_ENDPOINT = "/api/controller/v2/workflow_job_templates/{id}/launch/"
+_LAUNCH_FIELDS = ["inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"]
 
 
 @dataclass
@@ -102,11 +103,6 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
         )
 
     @classmethod
-    def to_launch_payload(cls, api_instance: "APIWorkflowLaunch_v2") -> Dict[str, Any]:
-        """Build the Controller launch body from the operation's declared fields."""
-        return cls.to_operation_payload(api_instance, cls.get_endpoint_operations()["launch"])
-
-    @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         """Declare template lookup, launch, and workflow-job wait endpoints."""
         return {
@@ -118,9 +114,9 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
                 order=1,
             ),
             "launch": EndpointOperation(
-                path=WORKFLOW_TEMPLATE_LAUNCH_ENDPOINT,
+                path=WJT_LAUNCH_ENDPOINT,
                 method="POST",
-                fields=["inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"],
+                fields=_LAUNCH_FIELDS,
                 path_params=["id"],
                 required_for="launch",
                 order=1,
@@ -134,6 +130,14 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
                 order=1,
             ),
         }
+
+    @classmethod
+    def get_find_list_query_params(cls, api_data: "APIWorkflowLaunch_v2") -> Dict[str, Any]:
+        """Build the workflow-template lookup filters from transformed inputs."""
+        query_params = {"name": api_data.name} if api_data.name is not None else {}
+        if api_data.organization is not None:
+            query_params["organization"] = api_data.organization
+        return query_params
 
     @classmethod
     def get_lookup_field(cls) -> str:

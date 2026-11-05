@@ -21,12 +21,11 @@ from ansible.module_utils.six.moves.urllib.error import HTTPError
 from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
 
 from .base_client import BaseAPIClient
-from .base_transform import BaseTransformMixin
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError, format_error_response_body
 from .retry import RetryConfig
-from .types import TransformContext
+from .types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -1189,31 +1188,19 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.depends_on and endpoint_op.depends_on not in results:
                 continue
             logger.info("DirectHTTPClient: Checking dependencies for %s: %s", endpoint_op, endpoint_op.depends_on)
-            # Build URL
-            url = endpoint_op.path
-            logger.info("DirectHTTPClient: Building URL for %s: %s", endpoint_op, url)
-            if endpoint_op.path_params:
-                # Replace path parameters
-                for param in endpoint_op.path_params:
-                    param_value = results.get("id") or getattr(api_data, "id", None)
-                    if param_value:
-                        url = url.replace(f"{{{param}}}", str(param_value))
-            logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
+            path, request_data = build_endpoint_request(
+                endpoint_op,
+                api_data,
+                context,
+                path_values=results,
+                fields_to_null=fields_to_null,
+                omit_empty_strings=True,
+            )
+            body_fields = list(request_data) if isinstance(request_data, dict) else "flattened body"
+            logger.info("DirectHTTPClient: Built endpoint request path %s with fields %s", path, body_fields)
+            url = path
             url = self._build_url(url, service=context.service, api_version=context.api_version)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
-            # The transform owns operation field selection. Keep null and empty
-            # value handling here because it depends on update semantics.
-            null_fields = set(fields_to_null)
-            if context.operation == "update" and context.include_nulls_for_update:
-                null_fields.update({"organization", "credential"})
-            preserve_empty_fields = {"description"} if context.operation == "update" else set()
-            request_data = BaseTransformMixin.to_operation_payload(
-                api_data,
-                endpoint_op,
-                include_null_fields=null_fields,
-                omit_empty=True,
-                preserve_empty_fields=preserve_empty_fields,
-            )
 
             # Skip secondary (dependent) operations that have no data to send.
             # This prevents calling e.g. /users/{id}/organizations/ when organizations is not set.

@@ -20,8 +20,11 @@ from typing import Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_launch import AnsibleWorkflowLaunch
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_launch import WorkflowLaunchTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_launch import (
+    WorkflowLaunchTransformMixin_v2,
+)
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -53,15 +56,15 @@ class ActionModule(BaseResourceActionPlugin):
                 raise AnsibleError("Polling interval must be positive, got %s" % interval)
 
             launch_request = WorkflowLaunchTransformMixin_v2.from_ansible_data(launch, {"manager": manager})
+            operations = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()
             organization = launch_request.organization
 
             # Look up the workflow job template
-            query_params = {"name": launch.name}
-            if organization is not None:
-                query_params["organization"] = organization
-
-            find_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["list"]
-            wjt_response = manager.search_api(find_operation.path, query_params=query_params, return_all=True)
+            wjt_response = manager.search_api(
+                operations["list"].path,
+                query_params=WorkflowLaunchTransformMixin_v2.get_find_list_query_params(launch_request),
+                return_all=True,
+            )
             wjt_results = wjt_response.get("results", [])
             if not wjt_results:
                 raise AnsibleError(f"Unable to find workflow job template '{launch.name}'")
@@ -72,7 +75,10 @@ class ActionModule(BaseResourceActionPlugin):
             wjt_id = wjt["id"]
 
             # Build the launch payload from the transformed API request.
-            post_data = WorkflowLaunchTransformMixin_v2.to_launch_payload(launch_request)
+            launch_operation = operations["launch"]
+            if launch_operation.method != "POST":
+                raise AnsibleError("Workflow launch endpoint operation must use POST")
+            launch_path, post_data = build_endpoint_request(launch_operation, launch_request, path_values={"id": wjt_id})
 
             # Validate prompt-on-launch settings
             prompt_checks = {
@@ -101,9 +107,8 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # Launch the workflow
-            launch_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["launch"]
             launch_result = manager.launch_resource(
-                launch_operation.path.format(id=wjt_id),
+                launch_path,
                 post_data,
                 service="controller",
                 retry=False,

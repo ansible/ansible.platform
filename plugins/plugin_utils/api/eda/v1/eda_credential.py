@@ -68,6 +68,7 @@ class APIEdaCredential_v1(BaseTransformMixin):
     credential_type_id: Optional[int] = None
     organization_id: Optional[int] = None
     inputs: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     # Read-only fields from API
     id: Optional[int] = None
@@ -162,7 +163,20 @@ class EdaCredentialTransformMixin_v1(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
+            "test": EndpointOperation(
+                path=TEST_PATH,
+                method="POST",
+                fields=["metadata"],
+                path_params=["id"],
+                required_for="test",
+                order=1,
+            ),
         }
+
+    @classmethod
+    def to_test_request(cls, credential_id: int, metadata: Optional[Dict[str, Any]]) -> APIEdaCredential_v1:
+        """Map credential test inputs to the EDA test endpoint representation."""
+        return APIEdaCredential_v1(id=credential_id, metadata=metadata)
 
     @classmethod
     def get_lookup_field(cls) -> str:

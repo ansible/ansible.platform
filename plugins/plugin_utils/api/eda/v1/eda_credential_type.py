@@ -20,6 +20,7 @@ class APIEdaCredentialType_v1(BaseTransformMixin):
     description: Optional[str] = None
     inputs: Optional[Dict[str, Any]] = None
     injectors: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     # Read-only fields from API
     id: Optional[int] = None
@@ -122,6 +123,11 @@ class EdaCredentialTypeTransformMixin_v1(BaseTransformMixin):
                 order=1,
             ),
         }
+
+    @classmethod
+    def to_test_request(cls, credential_type_id: int, test_inputs: Dict[str, Any], test_metadata: Optional[Dict[str, Any]] = None) -> APIEdaCredentialType_v1:
+        """Map task test inputs to the credential type test API fields."""
+        return APIEdaCredentialType_v1(id=credential_type_id, inputs=test_inputs, metadata=test_metadata if test_metadata else None)
 
     @classmethod
     def get_lookup_field(cls) -> str:

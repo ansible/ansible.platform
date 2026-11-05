@@ -15,7 +15,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
     JobLaunchTransformMixin_v2,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _ACTION_ONLY_FIELDS = frozenset({"wait", "interval", "timeout"})
 
@@ -65,21 +65,15 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}
             ansible_obj = AnsibleJobLaunch(**{k: v for k, v in params.items() if v is not None and k not in self._AUTH_PARAMS and k in model_fields})
-            context = TransformContext(
-                manager=manager,
-                session=getattr(manager, "session", None),
-                cache={},
-                api_version="2",
-                service="controller",
-                operation="launch",
-            )
+            context = {"manager": manager, "operation": "launch"}
             api_data = JobLaunchTransformMixin_v2.from_ansible_data(ansible_obj, context)
-            payload = JobLaunchTransformMixin_v2.to_launch_payload(api_data)
-            jt_id = api_data.job_template_id
             launch_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["launch"]
+            if launch_operation.method != "POST":
+                raise AnsibleError("Job launch endpoint operation must use POST")
+            launch_path, payload = build_endpoint_request(launch_operation, api_data, path_values={"id": api_data.job_template_id})
 
             launch_result = manager.launch_resource(
-                launch_operation.path.format(id=jt_id),
+                launch_path,
                 payload,
                 service="controller",
                 retry=False,

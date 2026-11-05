@@ -517,10 +517,12 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        call_args = mock_manager.launch_resource.call_args
-        payload = call_args[0][1]
-        assert payload["job_tags"] == "web,deploy"
-        assert payload["skip_tags"] == "debug"
+        mock_manager.launch_resource.assert_called_once_with(
+            "/api/controller/v2/workflow_job_templates/10/launch/",
+            {"job_tags": "web,deploy", "skip_tags": "debug"},
+            service="controller",
+            retry=False,
+        )
 
     def test_inventory_fk_resolution(self, action_module):
         """Inventory name should be resolved to a unique Controller inventory ID."""

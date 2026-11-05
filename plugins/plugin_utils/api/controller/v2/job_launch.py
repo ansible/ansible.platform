@@ -211,11 +211,6 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
         return int(job_template_id), int(organization_id) if organization_id is not None else None
 
     @classmethod
-    def to_launch_payload(cls, api_data: "APIJobLaunch_v2") -> Dict[str, Any]:
-        """Build the launch body using the launch operation's declared fields."""
-        return cls.to_operation_payload(api_data, cls.get_endpoint_operations()["launch"])
-
-    @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
             "list": EndpointOperation(

@@ -24,7 +24,6 @@ ACTIVATION_DETAIL_ENDPOINT = "/api/eda/v1/activations/{id}/"
 ACTIVATION_RESTART_ENDPOINT = "/api/eda/v1/activations/{id}/restart/"
 ACTIVATION_ENABLE_ENDPOINT = "/api/eda/v1/activations/{id}/enable/"
 ACTIVATION_DISABLE_ENDPOINT = "/api/eda/v1/activations/{id}/disable/"
-ACTIVATION_COPY_ENDPOINT = "/api/eda/v1/activations/{id}/copy/"
 
 _EDA_SERVICE = "eda"
 

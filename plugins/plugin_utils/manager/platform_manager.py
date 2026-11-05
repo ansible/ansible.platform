@@ -10,7 +10,6 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -20,12 +19,11 @@ if TYPE_CHECKING:
     import requests
 
 from ..platform.base_client import BaseAPIClient
-from ..platform.base_transform import BaseTransformMixin
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import APIError, AuthenticationError, format_error_response_body
 from ..platform.retry import RetryConfig, retry_http_request
-from ..platform.types import TransformContext
+from ..platform.types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -1007,30 +1005,16 @@ class PlatformService(BaseAPIClient):
         sorted_ops = self._sort_operations(relevant_ops)
 
         results = {}
-        api_data_dict = asdict(api_data)
         _fields_to_null = fields_to_null or set()
 
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            # The transform owns operation field selection. Keep null handling
-            # here because it depends on the current operation context.
-            null_fields = set(_fields_to_null)
-            if context.operation == "update" and context.include_nulls_for_update:
-                null_fields.update({"organization", "credential"})
-            request_data = BaseTransformMixin.to_operation_payload(api_data, endpoint_op, include_null_fields=null_fields)
+            path, request_data = build_endpoint_request(endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null)
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)
                 continue
-
-            path = endpoint_op.path
-            if endpoint_op.path_params:
-                for param in endpoint_op.path_params:
-                    if param in results:
-                        path = path.replace(f"{{{param}}}", str(results[param]))
-                    elif param == "id" and "id" in api_data_dict:
-                        path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
 
             url = self._build_url(path, service=context.service, api_version=context.api_version)
 
