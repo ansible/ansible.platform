@@ -85,14 +85,21 @@ class TestWorkflowApprovalTransformMixin(unittest.TestCase):
         self.assertEqual(api_data.interval, 2.0)
         self.assertEqual(api_data.timeout, 30)
 
-    def test_get_endpoint_operations_has_list_and_get(self):
+    def test_get_endpoint_operations_declares_lookup_and_action_requests(self):
         ops = WorkflowApprovalTransformMixin_v2.get_endpoint_operations()
-        self.assertIn("list", ops)
-        self.assertIn("get", ops)
         self.assertEqual(ops["list"].path, "/api/controller/v2/workflow_approvals/")
         self.assertEqual(ops["list"].method, "GET")
         self.assertEqual(ops["get"].path, "/api/controller/v2/workflow_approvals/{id}/")
         self.assertEqual(ops["get"].method, "GET")
+        self.assertEqual(ops["workflow_nodes"].path, "/api/controller/v2/workflow_jobs/{workflow_job_id}/workflow_nodes/")
+        self.assertEqual(ops["workflow_nodes"].method, "GET")
+        self.assertEqual(ops["approve"].path, "/api/controller/v2/workflow_approvals/{id}/approve/")
+        self.assertEqual(ops["approve"].method, "POST")
+        self.assertEqual(ops["deny"].path, "/api/controller/v2/workflow_approvals/{id}/deny/")
+        self.assertEqual(ops["deny"].method, "POST")
+
+    def test_workflow_node_query_params(self):
+        self.assertEqual(WorkflowApprovalTransformMixin_v2.get_workflow_node_query_params("approval"), {"job__name": "approval"})
 
     def test_get_lookup_field(self):
         self.assertEqual(WorkflowApprovalTransformMixin_v2.get_lookup_field(), "name")
