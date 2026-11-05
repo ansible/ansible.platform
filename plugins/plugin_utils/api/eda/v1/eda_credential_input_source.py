@@ -116,7 +116,7 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         )
 
         organization_name = getattr(ansible_instance, "organization_name", None)
-        organization_id = cls.resolve_reference_id(manager, "organizations", organization_name, "organization", service="gateway")
+        organization_id = cls.resolve_reference_id(manager, "organizations", organization_name, "organization", service="eda")
         if organization_id is not None:
             api_data["organization_id"] = organization_id
 

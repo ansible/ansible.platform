@@ -19,6 +19,8 @@ Controller settings are also served at /api/controller/vX/settings/all/.
 
 Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
+Controller organizations are served independently from Gateway organizations,
+matching the service-scoped organization lookups used by Controller resources.
 The workflow_node_wait scenario uses a pending-to-successful job fixture.
 
 EDA endpoints (under /api/eda/v{1,2}/) include awx-tokens, organizations,
@@ -351,6 +353,7 @@ class Store:
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
         controller_resources = (
+            ("organizations", ["name"], 1000),
             ("job_templates", ["name"], 5000),
             ("inventories", ["name"], 5100),
             ("projects", ["name"], 5200),
@@ -430,7 +433,11 @@ class Store:
                     self.orgs_by_id[org["id"]] = org
                     self.orgs_by_name[org["name"]] = org["id"]
 
-        # EDA uses its own organization and credential-type endpoints.
+        # Controller and EDA use service-local organization endpoints and IDs.
+        controller_orgs = self._resources.get(("controller", "organizations"))
+        if controller_orgs and not controller_orgs._items:
+            controller_orgs.seed("1", [{"id": 1, "name": "Default"}, {"id": 2, "name": "Engineering"}])
+
         eda_orgs = self._resources.get(("eda", "organizations"))
         if eda_orgs and not eda_orgs._items:
             eda_orgs.seed("1", [{"id": 1, "name": "Default"}, {"id": 2, "name": "Engineering"}])
@@ -531,9 +538,9 @@ class Store:
             ff_store.seed("1", flags)
 
         controller_fixtures = {
-            "inventories": [{"id": 5101, "name": "Mock Inventory"}],
+            "inventories": [{"id": 5101, "name": "Mock Inventory", "organization": 1}],
             "projects": [{"id": 5201, "name": "Mock Project", "organization": 1}],
-            "execution_environments": [{"id": 5301, "name": "Mock EE"}],
+            "execution_environments": [{"id": 5301, "name": "Mock EE", "organization": 1}],
             "credentials": [{"id": 5401, "name": "Mock Credential"}, {"id": 5402, "name": "Mock Vault Credential"}],
             "labels": [{"id": 5501, "name": "Mock Label 1"}, {"id": 5502, "name": "Mock Label 2"}, {"id": 5503, "name": "Mock Label 3"}],
             "instance_groups": [{"id": 5601, "name": "Mock Instance Group"}],

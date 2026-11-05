@@ -117,6 +117,7 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
                     "name",
                     execution_environment,
                     service="controller",
+                    extra_query_params=org_scope,
                     require_unique=True,
                 )
 
@@ -181,29 +182,33 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
         """
         from ansible.errors import AnsibleError
 
-        if str(name).isdigit():
-            return int(name), None
+        organization_id = None
         if organization:
-            org_id = manager.lookup_resource_id("organizations", "name", organization)
-            data = manager.search_api(
-                CONTROLLER_JOB_TEMPLATES_ENDPOINT,
-                query_params={"name": name, "organization": org_id},
-            )
-            results = data.get("results", [])
-            if not results:
-                raise AnsibleError(f"Job template '{name}' not found in organization '{organization}'")
-            return results[0]["id"], org_id
-        data = manager.search_api(
-            CONTROLLER_JOB_TEMPLATES_ENDPOINT,
-            query_params={"name": name},
-        )
-        results = data.get("results", [])
-        if not results:
+            org_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
+            if org_id is None:
+                raise AnsibleError(f"Organization '{organization}' not found")
+            organization_id = int(org_id)
+
+        if str(name).isdigit():
+            return int(name), organization_id
+
+        lookup_kwargs = {"service": "controller", "require_unique": True}
+        if organization_id is not None:
+            lookup_kwargs["extra_query_params"] = {"organization": organization_id}
+
+        try:
+            job_template_id = manager.lookup_resource_id("job_templates", "name", name, **lookup_kwargs)
+        except ValueError as exc:
+            raise AnsibleError(str(exc)) from exc
+        if job_template_id is None:
             raise AnsibleError(f"Job template '{name}' not found")
-        if len(results) > 1:
-            orgs = [r.get("organization") for r in results]
-            raise AnsibleError(f"Multiple job templates named '{name}' found (organizations: {orgs}). Specify 'organization' to disambiguate.")
-        return results[0]["id"], results[0].get("organization")
+
+        if organization_id is None:
+            template = manager.search_api(f"{CONTROLLER_JOB_TEMPLATES_ENDPOINT}{job_template_id}/")
+            organization_value = template.get("organization")
+            organization_id = organization_value.get("id") if isinstance(organization_value, dict) else organization_value
+
+        return int(job_template_id), int(organization_id) if organization_id is not None else None
 
     @classmethod
     def to_launch_payload(cls, api_data: "APIJobLaunch_v2") -> Dict[str, Any]:

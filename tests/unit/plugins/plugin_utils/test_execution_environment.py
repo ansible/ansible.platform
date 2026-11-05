@@ -61,7 +61,7 @@ class TestExecutionEnvironmentTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleExecutionEnvironment(name="ee", organization="Default")
         api = ExecutionEnvironmentTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
         self.assertEqual(api.organization, 42)
 
     def test_create_with_credential_name_resolves_with_controller_service(self):

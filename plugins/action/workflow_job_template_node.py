@@ -84,7 +84,7 @@ class ActionModule(BaseResourceActionPlugin):
             org_id = None
             if organization is not None:
                 if not str(organization).strip().isdigit():
-                    org_id = manager.lookup_resource_id("organizations", "name", str(organization))
+                    org_id = manager.lookup_resource_id("organizations", "name", str(organization), service="controller")
                 else:
                     org_id = int(organization)
             org_scope = {"organization": org_id} if org_id is not None else None

@@ -28,6 +28,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_pr
     EDA_PROJECTS_DETAIL_ENDPOINT,
     EDA_PROJECTS_SYNC_ENDPOINT,
     resolve_foreign_key_id,
+    supports_project_organization,
 )
 
 _SERVICE = "eda"
@@ -94,20 +95,14 @@ class ActionModule(BaseResourceActionPlugin):
             remaining = max(timeout - (time.monotonic() - start), 0)
             time.sleep(min(_IMPORT_POLL_INTERVAL, remaining))
 
-    def _find_project(self, manager: Any, name: Optional[str], organization_name: Optional[str]) -> Optional[dict]:
-        """Find exactly one project by name, scoped to an organization when given."""
+    def _find_project(self, manager: Any, name: Optional[str]) -> Optional[dict]:
+        """Find exactly one project by name using EDA's name-only list filter."""
         if not name:
             return None
-
-        query_params: dict[str, Any] = {}
-        if organization_name is not None:
-            query_params["organization_id"] = self._resolve_foreign_key(manager, "organizations", organization_name, "gateway")
 
         find_data: dict[str, Any]
         if str(name).strip().isdigit():
             find_data = {"id": int(str(name).strip()), "name": str(name)}
-            if organization_name is not None:
-                find_data["organization_name"] = organization_name
             return self._execute_find(manager, find_data)
 
         try:
@@ -116,7 +111,6 @@ class ActionModule(BaseResourceActionPlugin):
                 "name",
                 str(name),
                 service=_SERVICE,
-                extra_query_params=query_params,
                 require_unique=True,
             )
         except ValueError as exc:
@@ -146,20 +140,37 @@ class ActionModule(BaseResourceActionPlugin):
                 return None
             raise
 
-    @staticmethod
-    def _supports_organization(manager: Any) -> bool:
-        """Check whether this EDA API exposes organization-aware project creation."""
-        try:
-            manager.search_api("config", service=_SERVICE)
-        except Exception as exc:
-            response = getattr(exc, "response", None)
-            details = getattr(exc, "details", None)
-            status_code = details.get("status_code") if isinstance(details, dict) else None
-            status_code = status_code or getattr(response, "status_code", None) or getattr(exc, "status_code", None)
-            if status_code == 404 or (isinstance(exc, ValueError) and "404" in str(exc)):
-                return False
-            raise
-        return True
+    def _supports_organization(self, manager: Any) -> bool:
+        """Check and cache whether this EDA API supports project organizations."""
+        supported = getattr(self, "_project_organization_supported", None)
+        if supported is None:
+            supported = supports_project_organization(manager)
+            self._project_organization_supported = supported
+        return supported
+
+    def _validate_existing_project_organization(self, manager: Any, existing: dict, organization_name: str) -> None:
+        """Ensure a name-only lookup did not select a project from another organization."""
+        existing_organization = existing.get("organization_name")
+        if existing_organization is None:
+            existing_organization = existing.get("organization_id")
+        if existing_organization is None:
+            existing_organization = existing.get("organization")
+        if isinstance(existing_organization, dict):
+            organization_id = existing_organization.get("id")
+            existing_organization = organization_id if organization_id is not None else existing_organization.get("name")
+        if existing_organization is None:
+            raise AnsibleError(
+                "Cannot verify organization ownership for existing EDA project %r: the API response has no organization"
+                % existing.get("name", existing.get("id"))
+            )
+
+        requested_id = self._resolve_foreign_key(manager, "organizations", organization_name, _SERVICE)
+        existing_id = self._resolve_foreign_key(manager, "organizations", existing_organization, _SERVICE)
+        if requested_id != existing_id:
+            raise AnsibleError(
+                "EDA project %r belongs to organization %r, not requested organization %r"
+                % (existing.get("name", existing.get("id")), existing_organization, organization_name)
+            )
 
     def _resolve_foreign_key(self, manager: Any, endpoint: str, value: Any, service: str) -> Optional[int]:
         """Resolve a foreign key once per action run for validation and comparison."""
@@ -188,7 +199,6 @@ class ActionModule(BaseResourceActionPlugin):
         manager = getattr(self, "_client", None)
         fk_fields = {
             "credential": ("eda-credentials", "eda"),
-            "organization_name": ("organizations", "gateway"),
         }
         for field, (endpoint, service) in fk_fields.items():
             desired_value = comparable_data.get(field)
@@ -200,6 +210,19 @@ class ActionModule(BaseResourceActionPlugin):
             if desired_id != current_id:
                 return True
             comparable_data.pop(field, None)
+
+        if "organization_name" in comparable_data:
+            if self._supports_organization(manager):
+                desired_value = comparable_data["organization_name"]
+                if "organization_name" in current_data:
+                    current_value = current_data["organization_name"]
+                    desired_id = self._resolve_foreign_key(manager, "organizations", desired_value, "eda")
+                    current_id = self._resolve_foreign_key(manager, "organizations", current_value, "eda")
+                    if desired_id != current_id:
+                        return True
+                    comparable_data.pop("organization_name", None)
+            else:
+                comparable_data.pop("organization_name", None)
 
         return super()._should_update(comparable_data, current_data)
 
@@ -221,6 +244,7 @@ class ActionModule(BaseResourceActionPlugin):
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
             self._resolved_fk_ids = {}
+            self._project_organization_supported = None
             validated_params = prepared["validated_params"]
             resource_data = prepared["resource_data"]
             write_only_data = prepared["write_only_data"]
@@ -235,11 +259,18 @@ class ActionModule(BaseResourceActionPlugin):
             # Find the current name first, then the requested new name so a
             # repeated rename remains idempotent rather than creating a copy.
             organization_name = validated_params.get("organization_name")
-            existing = self._find_project(manager, name, organization_name)
+            existing = self._find_project(manager, name)
             found_by_new_name = False
             if existing is None and new_name and new_name != name:
-                existing = self._find_project(manager, new_name, organization_name)
+                existing = self._find_project(manager, new_name)
                 found_by_new_name = existing is not None
+
+            should_check_organization_support = (state == "present" and not existing) or (
+                organization_name is not None and (state == "present" or bool(existing))
+            )
+            organization_supported = self._supports_organization(manager) if should_check_organization_support else False
+            if existing and organization_name is not None and organization_supported:
+                self._validate_existing_project_organization(manager, existing, organization_name)
 
             # ---- state: absent ------------------------------------------------
             if state == "absent":
@@ -283,7 +314,7 @@ class ActionModule(BaseResourceActionPlugin):
             url = validated_params.get("url")
             if not existing and not url:
                 raise AnsibleError("Parameter 'url' is required when state is present and project does not exist")
-            if not existing and organization_name is None and self._supports_organization(manager):
+            if not existing and organization_name is None and organization_supported:
                 raise AnsibleError("Parameter 'organization_name' is required when state is present and project does not exist")
 
             # Defaults apply at creation. For updates, omitted values should
@@ -306,11 +337,12 @@ class ActionModule(BaseResourceActionPlugin):
             # updates, where the manager would otherwise not run the transform.
             for field, (endpoint, service) in {
                 "credential": ("eda-credentials", "eda"),
-                "organization_name": ("organizations", "gateway"),
             }.items():
                 value = validated_params.get(field)
                 if value is not None:
                     self._resolve_foreign_key(manager, endpoint, value, service)
+            if organization_supported and organization_name is not None:
+                self._resolve_foreign_key(manager, "organizations", organization_name, "eda")
 
             if self._task.check_mode:
                 comparison_data = self._comparison_data(resource_data, found_by_new_name, new_name)

@@ -76,19 +76,27 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
 
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
 
-        # FK resolution: organization (Gateway-owned, default service)
+        # FK resolution: organization (Controller-owned)
         organization = getattr(ansible_instance, "organization", None)
+        organization_id = None
         if organization is not None:
             if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
-                api_data["organization"] = int(organization) if organization is not None else None
+                organization_id = int(organization) if organization is not None else None
+            if organization_id is None:
+                raise ValueError("Could not resolve organization %r to an ID" % organization)
+            api_data["organization"] = organization_id
+        organization_scope = {"organization": organization_id} if organization_id is not None else None
+        lookup_kwargs: Dict[str, Any] = {"service": "controller"}
+        if organization_scope:
+            lookup_kwargs["extra_query_params"] = organization_scope
 
         # FK resolution: inventory (Controller-owned)
         inventory = getattr(ansible_instance, "inventory", None)
         if inventory is not None:
             if manager is not None and not str(inventory).strip().isdigit():
-                api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
+                api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, **lookup_kwargs)
             else:
                 api_data["inventory"] = int(inventory) if inventory is not None else None
 
@@ -96,7 +104,7 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
         webhook_credential = getattr(ansible_instance, "webhook_credential", None)
         if webhook_credential is not None:
             if manager is not None and not str(webhook_credential).strip().isdigit():
-                api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, service="controller")
+                api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, **lookup_kwargs)
             else:
                 api_data["webhook_credential"] = int(webhook_credential) if webhook_credential is not None else None
 
@@ -287,7 +295,7 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
         return AnsibleWorkflowJobTemplate(
             name=api_data.get("name", ""),
             description=api_data.get("description"),
-            organization=_resolve_fk_name("/api/gateway/v1/organizations/", api_data.get("organization")),
+            organization=_resolve_fk_name("/api/controller/v2/organizations/", api_data.get("organization")),
             extra_vars=extra_vars,
             survey_enabled=api_data.get("survey_enabled"),
             allow_simultaneous=api_data.get("allow_simultaneous"),
