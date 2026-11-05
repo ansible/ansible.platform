@@ -23,7 +23,7 @@ from ..platform.base_client import BaseAPIClient
 from ..platform.base_transform import BaseTransformMixin
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
-from ..platform.exceptions import APIError, AuthenticationError
+from ..platform.exceptions import APIError, AuthenticationError, format_error_response_body
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext
 
@@ -1053,24 +1053,16 @@ class PlatformService(BaseAPIClient):
 
             except Exception as e:
                 logger.error("API call failed: %s", e)
-                if hasattr(e, "response") and e.response is not None:
-                    logger.error("Response status: %s", e.response.status_code)
-                    logger.error("Response body: %s", e.response.text)
-                    # Include response body in message so callers (e.g. tests) can assert on
-                    # validation errors.  Parse as JSON and use str() so the output uses
-                    # Python's single-quote repr (e.g. {'triggers': ['Triggers must be a
-                    # valid dict']}) rather than raw JSON double-quotes.  Tests written
-                    # against the old AAPModule architecture relied on this format.
-                    body_text = getattr(e.response, "text", "") or ""
-                    if body_text:
-                        import json as _json
-
-                        try:
-                            body_formatted = str(_json.loads(body_text))
-                        except (_json.JSONDecodeError, ValueError):
-                            body_formatted = body_text[:1000]
-                        if body_formatted not in str(e):
-                            raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
+                response = getattr(e, "response", None)
+                details = getattr(e, "details", None) or {}
+                status_code = getattr(response, "status_code", None) or details.get("status_code")
+                if status_code is not None:
+                    logger.error("Response status: %s", status_code)
+                body_formatted = format_error_response_body(e)
+                if body_formatted:
+                    logger.error("Response body: %s", body_formatted)
+                    if body_formatted not in str(e):
+                        raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
             result_data = response.json() if response.content else {}

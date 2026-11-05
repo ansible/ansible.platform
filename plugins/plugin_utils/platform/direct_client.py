@@ -24,7 +24,7 @@ from .base_client import BaseAPIClient
 from .base_transform import BaseTransformMixin
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
-from .exceptions import APIError, AuthenticationError
+from .exceptions import APIError, AuthenticationError, format_error_response_body
 from .retry import RetryConfig
 from .types import TransformContext
 
@@ -1240,6 +1240,9 @@ class DirectHTTPClient(BaseAPIClient):
                 elif hasattr(e, "response") and e.response is not None:
                     status = getattr(e.response, "status", getattr(e.response, "code", "unknown"))
                     logger.error("Response status: %s", status)
+                body_formatted = format_error_response_body(e)
+                if body_formatted and body_formatted not in str(e):
+                    raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
             # Store result - Ansible's Request response uses .read() to get body

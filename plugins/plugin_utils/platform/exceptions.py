@@ -5,10 +5,32 @@ This module defines a hierarchy of exceptions for platform operations,
 enabling proper error classification and retry logic.
 """
 
+import json
 import logging
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def format_error_response_body(exception: Exception) -> str:
+    """Return a readable API response body attached to an exception, if any."""
+    response = getattr(exception, "response", None)
+    body = getattr(response, "text", None) if response is not None else None
+    if not body:
+        details = getattr(exception, "details", None) or {}
+        body = details.get("response_body") or getattr(exception, "response_body", None)
+    if not body:
+        return ""
+
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    if isinstance(body, (dict, list)):
+        return str(body)
+
+    try:
+        return str(json.loads(body))
+    except (TypeError, ValueError):
+        return str(body)[:1000]
 
 
 class PlatformError(Exception):
@@ -307,13 +329,18 @@ def classify_exception(exception: Exception, operation: Optional[str] = None, re
     elif isinstance(exception, requests.exceptions.HTTPError):
         status_code = None
         response = getattr(exception, "response", None)
+        response_body = None
         if response is not None:
             status_code = getattr(response, "status_code", None)
+            response_body = getattr(response, "text", None)
+        details = {"status_code": status_code, "original_exception": str(exception)}
+        if response_body:
+            details["response_body"] = response_body[:500]
         return APIError(
             message=f"{status_code} {str(exception)}" if status_code else str(exception),
             operation=operation,
             resource=resource,
-            details={"status_code": status_code, "original_exception": str(exception)},
+            details=details,
             status_code=status_code,
         )
 
