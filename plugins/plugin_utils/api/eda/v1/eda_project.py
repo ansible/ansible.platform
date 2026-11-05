@@ -232,6 +232,14 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
+            "sync": EndpointOperation(
+                path=EDA_PROJECTS_SYNC_ENDPOINT,
+                method="POST",
+                fields=[],
+                path_params=["id"],
+                required_for="sync",
+                order=1,
+            ),
         }
 
     @classmethod

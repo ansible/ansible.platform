@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from ansible.errors import AnsibleError
@@ -93,3 +93,30 @@ class TestResolveInventorySource:
         manager.search_api.return_value = {"results": []}
         with pytest.raises(AnsibleError, match="not found in inventory"):
             action_module._resolve_inventory_source(manager, "Missing Source", 10)
+
+
+def test_sync_request_uses_declared_endpoint_operation(action_module):
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": [{"id": 23}]}
+    manager.launch_resource.return_value = {"id": 55, "status": "pending"}
+    action_module._task.check_mode = False
+    prepared = {
+        "result": {},
+        "validated_params": {"name": "AWS Source", "inventory": "10", "wait": False},
+        "manager": manager,
+    }
+
+    with patch.object(action_module, "_prepare_action", return_value=prepared):
+        result = action_module.run(task_vars={})
+
+    assert result["id"] == 55
+    manager.search_api.assert_called_once_with(
+        "/api/controller/v2/inventory_sources/",
+        query_params={"inventory": 10, "name": "AWS Source"},
+    )
+    manager.launch_resource.assert_called_once_with(
+        "/api/controller/v2/inventory_sources/23/update/",
+        {},
+        service="controller",
+        retry=False,
+    )

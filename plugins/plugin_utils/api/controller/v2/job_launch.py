@@ -211,34 +211,6 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
         return int(job_template_id), int(organization_id) if organization_id is not None else None
 
     @classmethod
-    def to_launch_payload(cls, api_data: "APIJobLaunch_v2") -> Dict[str, Any]:
-        """Build the POST payload from the API dataclass, excluding None values and the resolved template ID."""
-        payload = {}
-        for field_name in (
-            "job_type",
-            "limit",
-            "scm_branch",
-            "verbosity",
-            "diff_mode",
-            "forks",
-            "job_slice_count",
-            "extra_vars",
-            "job_tags",
-            "skip_tags",
-            "timeout",
-            "credential_passwords",
-            "inventory",
-            "execution_environment",
-            "credentials",
-            "instance_groups",
-            "labels",
-        ):
-            val = getattr(api_data, field_name, None)
-            if val is not None:
-                payload[field_name] = val
-        return payload
-
-    @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
             "launch": EndpointOperation(

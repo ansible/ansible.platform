@@ -23,9 +23,10 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential import AnsibleEdaCredential
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential import (
     BASE_PATH,
-    TEST_PATH,
+    EdaCredentialTransformMixin_v1,
     resolve_eda_credential_fk,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -227,10 +228,12 @@ class ActionModule(BaseResourceActionPlugin):
 
             # POST to credential test endpoint
             metadata = params.get("metadata")
-            test_data = {"metadata": metadata} if metadata else {}
+            test_request = EdaCredentialTransformMixin_v1.to_test_request(credential_id, metadata if metadata else None)
+            test_operation = EdaCredentialTransformMixin_v1.get_endpoint_operations()["test"]
+            test_path, test_data = build_endpoint_request(test_operation, test_request)
             test_response = manager.direct_request(
-                "POST",
-                TEST_PATH.format(id=credential_id),
+                test_operation.method,
+                test_path,
                 data=test_data,
             )
 

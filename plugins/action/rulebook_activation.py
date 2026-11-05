@@ -28,12 +28,10 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.rulebook_activation import AnsibleRulebookActivation
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation import (
-    ACTIVATION_DISABLE_ENDPOINT,
-    ACTIVATION_ENABLE_ENDPOINT,
-    ACTIVATION_RESTART_ENDPOINT,
     RulebookActivationTransformMixin_v1,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 # Restart/enable/disable are non-idempotent POSTs: retrying a lost response
 # could double-execute the action, so they disable the manager's default
@@ -140,7 +138,12 @@ class ActionModule(BaseResourceActionPlugin):
         if self._task.check_mode:
             result.update({"changed": True, "failed": False, self.MODULE_NAME: existing})
             return result
-        manager.direct_request("POST", ACTIVATION_RESTART_ENDPOINT.format(id=existing["id"]), retry_config=_NO_RETRY)
+        operation = RulebookActivationTransformMixin_v1.get_endpoint_operations()["restart"]
+        endpoint, payload = build_endpoint_request(operation, {"id": existing["id"]})
+        if payload:
+            manager.direct_request(operation.method, endpoint, data=payload, retry_config=_NO_RETRY)
+        else:
+            manager.direct_request(operation.method, endpoint, retry_config=_NO_RETRY)
         result.update(
             {
                 "changed": True,
@@ -220,8 +223,13 @@ class ActionModule(BaseResourceActionPlugin):
             if self._task.check_mode:
                 result.update({"changed": True, "failed": False, self.MODULE_NAME: existing})
                 return result
-            endpoint = ACTIVATION_ENABLE_ENDPOINT if need_enable else ACTIVATION_DISABLE_ENDPOINT
-            manager.direct_request("POST", endpoint.format(id=existing["id"]), retry_config=_NO_RETRY)
+            operation_name = "enable" if need_enable else "disable"
+            operation = RulebookActivationTransformMixin_v1.get_endpoint_operations()[operation_name]
+            endpoint, payload = build_endpoint_request(operation, {"id": existing["id"]})
+            if payload:
+                manager.direct_request(operation.method, endpoint, data=payload, retry_config=_NO_RETRY)
+            else:
+                manager.direct_request(operation.method, endpoint, retry_config=_NO_RETRY)
             activation_result = dict(existing)
             activation_result["is_enabled"] = state == "enabled"
             result.update(
