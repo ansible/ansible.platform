@@ -454,19 +454,13 @@ class BaseResourceActionPlugin(ActionBase):
         result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
 
-        doc = self._get_documentation()
-        argspec = self._build_argspec_from_docs(doc) if doc else None
-        if not argspec:
-            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        argspec, validated_params = self._validate_action_input()
         manager, facts_to_set = self._get_or_spawn_manager(task_vars)
         self._client = manager
         if facts_to_set:
             result["ansible_facts"] = facts_to_set
             result["_ansible_facts_cacheable"] = True
 
-        validated_params = validated_input.validated_parameters
         resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
 
         for field, (msg, version) in self._DEPRECATED_FIELDS.items():
@@ -483,6 +477,24 @@ class BaseResourceActionPlugin(ActionBase):
             "write_only_data": write_only_data,
             "manager": manager,
         }
+
+    def _validate_action_input(self) -> Tuple[dict, dict]:
+        """Validate the original task arguments against the module documentation.
+
+        This input-only helper lets custom action plugins validate before they
+        extract control fields or perform a preparatory API request. The shared
+        preparation path uses the same helper before it creates the manager.
+
+        Returns:
+            tuple: The generated argument specification and validated parameters.
+        """
+        doc = self._get_documentation()
+        argspec = self._build_argspec_from_docs(doc) if doc else None
+        if not argspec:
+            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
+
+        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        return argspec, validated_input.validated_parameters
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """

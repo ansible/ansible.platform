@@ -22,6 +22,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "license"
     MODEL_CLASS = AnsibleLicense
     _MUTUALLY_EXCLUSIVE = [["manifest", "subscription_id"]]
+    _REQUIRED_IF = [["state", "present", ["manifest", "subscription_id"], True]]
 
     def run(self, tmp=None, task_vars=None):
         result = {}
@@ -44,8 +45,6 @@ class ActionModule(BaseResourceActionPlugin):
 
             if subscription_id:
                 return self._handle_subscription(manager, result, subscription_id, force)
-
-            result.update({"changed": False, "failed": True, "msg": "One of 'manifest' or 'subscription_id' is required when state=present"})
 
         except Exception as e:
             import traceback

@@ -12,6 +12,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.se
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "service_key"
     MODEL_CLASS = AnsibleServiceKey
+    _NO_LOG_FIELDS = frozenset({"secret"})
 
     # Gateway no longer permits creating service keys through its API.  Keep
     # accepting these arguments during their deprecation period, but do not

@@ -71,14 +71,13 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        # Pop extra fields before CRUD — they aren't AnsibleJobTemplate fields.
-        copy_from = self._task.args.pop("copy_from", None)
-        survey_spec = self._task.args.pop("survey_spec", None)
-        association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+        copy_from = self._task.args.get("copy_from")
+        survey_spec = self._task.args.get("survey_spec")
+        association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
 
         # Legacy credential/vault_credential aliases fold into credentials.
-        credential = self._task.args.pop("credential", None)
-        vault_credential = self._task.args.pop("vault_credential", None)
+        credential = self._task.args.get("credential")
+        vault_credential = self._task.args.get("vault_credential")
         deprecations = []
         if credential or vault_credential:
             credentials = list(association_data.get("credentials") or [])
@@ -105,6 +104,10 @@ class ActionModule(BaseResourceActionPlugin):
         # (not finding a resource under the target name) reports a simulated create.
         copied = False
         if copy_from and state not in ("absent", "exists") and not check_mode:
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             try:
                 super(BaseResourceActionPlugin, self).run(tmp, task_vars)
                 self._task_vars = task_vars

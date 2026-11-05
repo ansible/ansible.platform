@@ -40,23 +40,13 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Could not load DOCUMENTATION for subscriptions module")
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            _, validated_params = self._validate_action_input()
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
             if facts_to_set:
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
-
-            validated_params = validated_input.validated_parameters
 
             username = validated_params.get("username")
             password = validated_params.get("password")

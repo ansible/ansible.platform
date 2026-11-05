@@ -18,13 +18,22 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "role_team_assignment"
     MODEL_CLASS = AnsibleRoleTeamAssignment
     LOOKUP_FIELD = "id"
+    _WRITE_ONLY_FIELDS = frozenset({"assignment_objects"})
+    _MUTUALLY_EXCLUSIVE = [
+        ["team", "team_ansible_id"],
+        ["object_id", "object_ansible_id"],
+        ["object_id", "assignment_objects"],
+        ["object_ansible_id", "assignment_objects"],
+    ]
 
     def _resolve_fks_to_strings(self, manager, data_dict):
         if "role_definition" in data_dict:
             if not str(data_dict["role_definition"]).isdigit():
                 try:
                     data_dict["role_definition"] = str(manager.lookup_resource_id("role_definitions", "name", data_dict["role_definition"]))
-                except Exception as _exc:
+                except ValueError as _exc:
+                    if not self._is_resource_not_found(_exc):
+                        raise
                     self._display.warning(
                         "role_team_assignment: could not resolve role_definition %r to an ID (%s). "
                         "Pass the numeric ID directly to skip lookup." % (data_dict["role_definition"], _exc)
@@ -37,7 +46,9 @@ class ActionModule(BaseResourceActionPlugin):
             if not str(data_dict["team"]).isdigit():
                 try:
                     data_dict["team"] = str(manager.lookup_resource_id("teams", "name", data_dict["team"]))
-                except Exception as _exc:
+                except ValueError as _exc:
+                    if not self._is_resource_not_found(_exc):
+                        raise
                     self._display.warning(
                         "role_team_assignment: could not resolve team name %r to an ID (%s). "
                         "Pass the team's numeric ID or ansible_id directly to skip lookup." % (data_dict["team"], _exc)
@@ -49,6 +60,9 @@ class ActionModule(BaseResourceActionPlugin):
         return data_dict
 
     def run(self, tmp=None, task_vars=None):
+        if not self._task.args.get("assignment_objects"):
+            return super().run(tmp, task_vars)
+
         if task_vars is None:
             task_vars = {}
         self._task_vars = task_vars
@@ -56,12 +70,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-            validated_params = validated_input.validated_parameters
+            _, validated_params = self._validate_action_input()
 
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             if facts_to_set:
@@ -71,19 +80,12 @@ class ActionModule(BaseResourceActionPlugin):
             state = validated_params.get("state", "present")
             assignment_objects_raw = validated_params.get("assignment_objects") or []
 
-            if not assignment_objects_raw:
-                return self._run_standard(result, manager, argspec, validated_params, state)
-
             role_def_name = validated_params.get("role_definition", "")
-            _role_def_obj = None
-            try:
-                _role_def_obj = manager.execute(
-                    operation="find",
-                    module_name="role_definition",
-                    ansible_data={"name": role_def_name},
-                )
-            except Exception:
-                pass
+            _role_def_obj = manager.execute(
+                operation="find",
+                module_name="role_definition",
+                ansible_data={"name": role_def_name},
+            )
             _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
 
             _skip = self._AUTH_PARAMS | {"assignment_objects", "state", "object_id", "object_ansible_id"}
@@ -159,8 +161,9 @@ class ActionModule(BaseResourceActionPlugin):
                         if find_result and find_result.get("id"):
                             assignments.append(_humanise(find_result, obj))
                             continue
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                            raise
                     mgr_result = manager.execute(operation="create", module_name=self.MODULE_NAME, ansible_data=per_obj)
                     all_changed = True
                     assignments.append(_humanise(mgr_result, obj))
@@ -168,22 +171,25 @@ class ActionModule(BaseResourceActionPlugin):
                 elif state == "absent":
                     try:
                         find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=per_obj)
-                        if find_result and find_result.get("id"):
-                            delete_payload = dict(per_obj)
-                            delete_payload["id"] = find_result["id"]
-                            manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
-                            all_changed = True
-                            assignments.append(_humanise(find_result, obj))
                     except Exception as exc:
-                        self._display.vvv("Delete failed: %s" % exc)
+                        if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                            raise
+                        find_result = None
+                    if find_result and find_result.get("id"):
+                        delete_payload = dict(per_obj)
+                        delete_payload["id"] = find_result["id"]
+                        manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
+                        all_changed = True
+                        assignments.append(_humanise(find_result, obj))
 
                 elif state == "exists":
                     try:
                         find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=per_obj)
                         if find_result and find_result.get("id"):
                             assignments.append(_humanise(find_result, obj))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                            raise
 
             if state == "exists" and not assignments:
                 raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
@@ -211,66 +217,5 @@ class ActionModule(BaseResourceActionPlugin):
             result["msg"] = str(exc)
             if self._display.verbosity >= 3:
                 result["exception"] = _tb.format_exc()
-
-        return result
-
-    def _run_standard(self, result, manager, argspec, validated_params, state):
-        from dataclasses import asdict
-
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in self._AUTH_PARAMS and k != "assignment_objects"}
-        resource_data = self._resolve_fks_to_strings(manager, resource_data)
-
-        if "object_id" in resource_data and resource_data["object_id"] is not None:
-            resource_data["object_id"] = str(resource_data["object_id"])
-
-        try:
-            resource = self.MODEL_CLASS(**resource_data)
-        except TypeError as exc:
-            result["failed"] = True
-            result["msg"] = str(exc)
-            return result
-
-        operation = self._detect_operation(validated_params)
-        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "assignment_objects", "assignments"}
-
-        if state == "present" and operation == "create":
-            try:
-                find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=resource_data)
-                if find_result and find_result.get("id"):
-                    if not self._should_update(resource_data, find_result):
-                        clean = {k: v for k, v in find_result.items() if k not in _strip}
-                        result.update({"changed": False, "failed": False, self.MODULE_NAME: clean, **clean})
-                        return result
-                    operation = "update"
-                    resource.id = find_result["id"]
-            except Exception:
-                pass
-
-        if operation == "delete" and not getattr(resource, "id", None):
-            try:
-                find_result = manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=resource_data)
-                if find_result and find_result.get("id"):
-                    resource.id = find_result["id"]
-                else:
-                    result.update({"changed": False, "failed": False, self.MODULE_NAME: {"state": "absent"}})
-                    return result
-            except Exception:
-                result.update({"changed": False, "failed": False, self.MODULE_NAME: {"state": "absent"}})
-                return result
-
-        ansible_data = asdict(resource)
-        manager_result = manager.execute(operation=operation, module_name=self.MODULE_NAME, ansible_data=ansible_data)
-
-        clean = {k: v for k, v in manager_result.items() if k not in _strip}
-        result.update(
-            {
-                "changed": manager_result.get("changed", False),
-                "failed": False,
-                self.MODULE_NAME: clean,
-                **(clean if operation != "delete" else {}),
-            }
-        )
-        if operation == "delete":
-            result[self.MODULE_NAME]["state"] = "absent"
 
         return result

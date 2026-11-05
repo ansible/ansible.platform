@@ -38,7 +38,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     _ANSIBLE_DIRECTIVES = BaseResourceActionPlugin._ANSIBLE_DIRECTIVES | frozenset({"copy_from", "metadata", "update_secrets"})
     _WRITE_ONLY_FIELDS = frozenset({"inputs"})
-    _NO_LOG_FIELDS = frozenset({"inputs"})
+    _NO_LOG_FIELDS = frozenset({"inputs", "metadata"})
 
     def _prepare_action(self, tmp: Optional[object] = None, task_vars: Optional[dict] = None) -> dict:
         """Prepare validated input and retain intent for write-only fields.

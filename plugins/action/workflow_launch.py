@@ -46,9 +46,6 @@ class ActionModule(BaseResourceActionPlugin):
             resource_data = prepared["resource_data"] or prepared["validated_params"]
             launch = AnsibleWorkflowLaunch(**resource_data)
 
-            if not launch.name:
-                raise AnsibleError("name is required")
-
             wait = launch.wait
             interval = launch.interval
             timeout = launch.timeout

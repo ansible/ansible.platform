@@ -26,6 +26,7 @@ class ActionModule(BaseResourceActionPlugin):
     """Action plugin for token module."""
 
     MODULE_NAME = "token"
+    _NO_LOG_FIELDS = frozenset({"existing_token"})
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -36,15 +37,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Could not load DOCUMENTATION for token module")
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            _, validated_params = self._validate_action_input()
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
@@ -52,7 +45,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
 
-            validated_params = validated_input.validated_parameters
             state = validated_params.get("state", "present")
 
             if state == "absent":
@@ -102,7 +94,7 @@ class ActionModule(BaseResourceActionPlugin):
                         }
                     )
                 except Exception as e:
-                    if "404" in str(e) or "not found" in str(e).lower():
+                    if self._is_resource_not_found(e):
                         result.update(
                             {
                                 "changed": False,
