@@ -54,7 +54,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             # ---- poll for the approval node ---------------------------------
             operations = WorkflowApprovalTransformMixin_v2.get_endpoint_operations()
-            nodes_endpoint, _ = build_endpoint_request(operations["workflow_nodes"], {"workflow_job_id": workflow_job_id})
+            nodes_endpoint = build_endpoint_request(operations["workflow_nodes"], {"workflow_job_id": workflow_job_id})[0]
 
             approval_node = None
             start_time = time.time()
@@ -104,11 +104,11 @@ class ActionModule(BaseResourceActionPlugin):
             # ---- resolve the approval job endpoint --------------------------
             related_job = approval_node.get("related", {}).get("job", "")
             action_operation = operations[action]
-            _, action_payload = build_endpoint_request(action_operation, {})
+            action_payload = build_endpoint_request(action_operation, {})[1]
             if not related_job:
                 job_id = approval_node.get("summary_fields", {}).get("job", {}).get("id")
                 if job_id:
-                    related_job, _ = build_endpoint_request(operations["get"], {"id": job_id})
+                    related_job = build_endpoint_request(operations["get"], {"id": job_id})[0]
                 else:
                     result["failed"] = True
                     result["changed"] = False

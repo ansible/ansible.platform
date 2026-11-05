@@ -47,7 +47,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         try:
             operations = ControllerProjectTransformMixin_v2.get_endpoint_operations()
-            detail_path, _ = build_endpoint_request(operations["get"], {"id": project_id})
+            detail_path = build_endpoint_request(operations["get"], {"id": project_id})[0]
             project_data = manager.search_api(detail_path)
             scm_revision_original = project_data.get("scm_revision", "")
 
