@@ -260,6 +260,10 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override with module-specific fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
 
+    # Selector IDs that are user-visible response fields. Other ``*_id`` fields
+    # are stripped from final output because they are internal resolved FKs.
+    _PRESERVE_RESULT_ID_FIELDS: frozenset = frozenset()
+
     # Fields the API stores as space-separated strings but argument_spec declares as list.
     # Conversion is applied in the output layer only so the internal update path is unaffected.
     # Subclasses override with module-specific fields.
@@ -1432,7 +1436,9 @@ class BaseResourceActionPlugin(ActionBase):
             validated_output = {
                 k: v
                 for k, v in validated_output.items()
-                if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
+                if k not in _strip_from_resource
+                and not k.startswith("new_")
+                and not (k.endswith("_id") and k != "id" and k not in self._PRESERVE_RESULT_ID_FIELDS)
             }
 
             # Output-layer type conversion: space-separated API strings - lists.

@@ -239,6 +239,24 @@ class TestLicenseAction(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "manifest|subscription_id"):
             module._validate_action_input()
 
+    def test_present_with_empty_manifest_and_subscription_fails(self):
+        """Empty license source values fail without calling a license handler."""
+        module = _make_module()
+        manager = _make_manager()
+
+        result = self._run_with_prepare(module, manager, {"state": "present", "manifest": "", "subscription_id": ""})
+
+        self.assertEqual(
+            result,
+            {
+                "changed": False,
+                "failed": True,
+                "msg": "Either manifest or subscription_id must be non-empty when state=present",
+            },
+        )
+        manager.execute.assert_not_called()
+        manager.post_resource.assert_not_called()
+
     def test_manifest_file_not_found(self):
         """Missing manifest file returns failed result."""
         module = _make_module()

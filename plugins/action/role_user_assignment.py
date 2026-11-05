@@ -15,6 +15,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleRoleUserAssignment
     LOOKUP_FIELD = "id"
     _WRITE_ONLY_FIELDS = frozenset({"object_ids"})
+    _PRESERVE_RESULT_ID_FIELDS = frozenset({"object_id"})
     _MUTUALLY_EXCLUSIVE = [
         ["object_id", "object_ids"],
         ["object_id", "object_ansible_id"],
@@ -27,12 +28,16 @@ class ActionModule(BaseResourceActionPlugin):
         Custom run() for role_user_assignment.
 
         Supports three object-selection modes:
-        - object_id (scalar): standard single-object path via the base class.
+        - object_id/object_ansible_id (scalar): standard path via the base class,
+          except state=exists, which shares the multi-object result contract.
         - object_ids (list): iterate, resolving each entry -> object_id, then
           idempotent create/delete per object.
         - Neither: system-wide assignment, single-object path via the base class.
         """
-        if not self._task.args.get("object_ids"):
+        task_args = self._task.args
+        state = task_args.get("state", "present")
+        has_scalar_selector = task_args.get("object_id") is not None or bool(task_args.get("object_ansible_id"))
+        if not task_args.get("object_ids") and not (state == "exists" and has_scalar_selector):
             return super().run(tmp, task_vars)
 
         if task_vars is None:
@@ -53,10 +58,15 @@ class ActionModule(BaseResourceActionPlugin):
 
             state = validated_params.get("state", "present")
             object_ids_raw = validated_params.get("object_ids") or []
+            if state == "exists" and not object_ids_raw:
+                if validated_params.get("object_id") is not None:
+                    object_ids_raw = [{"object_id": validated_params["object_id"]}]
+                elif validated_params.get("object_ansible_id"):
+                    object_ids_raw = [{"object_ansible_id": validated_params["object_ansible_id"]}]
 
             # ---- multi-object path: iterate over object_ids ------------------
             # Base data (role + user, shared across all assignments)
-            _skip = self._AUTH_PARAMS | {"object_ids", "state", "object_id"}
+            _skip = self._AUTH_PARAMS | {"object_ids", "state", "object_id", "object_ansible_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and k not in _skip}
 
             all_changed = False
@@ -67,7 +77,10 @@ class ActionModule(BaseResourceActionPlugin):
                 # from_ansible_data's existing FK resolver handles str->int
                 # resolution (via role_definition-type-aware endpoint probing).
                 per_obj = dict(base_data)
-                per_obj["object_id"] = raw_oid
+                if isinstance(raw_oid, dict):
+                    per_obj.update(raw_oid)
+                else:
+                    per_obj["object_id"] = raw_oid
 
                 if state == "present":
                     # Idempotency: find existing assignment
@@ -128,12 +141,19 @@ class ActionModule(BaseResourceActionPlugin):
             # ---- build clean result -------------------------------------------
             _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
 
-            # For state=exists: fail (without setting MODULE_NAME key) if nothing
-            # was found — mirrors the single-object path's "not found" behaviour
-            # so that `failed_when: false` + `result.role_user_assignment is not defined`
-            # idiom works identically for both scalar and list object selectors.
+            # A state=exists miss fails for both scalar and list selectors. Keep
+            # a stable empty resource mapping so callers can inspect the result.
             if state == "exists" and not assignments:
-                raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": True,
+                        "exists": False,
+                        self.MODULE_NAME: {},
+                        "msg": "No %s found matching the given criteria" % self.MODULE_NAME,
+                    }
+                )
+                return result
 
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
@@ -148,6 +168,8 @@ class ActionModule(BaseResourceActionPlugin):
                     **clean,
                 }
             )
+            if state == "exists":
+                result["exists"] = True
             if len(assignments) > 1:
                 result["assignments"] = [{k: v for k, v in a.items() if k not in _strip} for a in assignments]
 

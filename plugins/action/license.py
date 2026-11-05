@@ -40,6 +40,16 @@ class ActionModule(BaseResourceActionPlugin):
             if state == "absent":
                 return self._handle_absent(manager, result)
 
+            if not manifest_path and not subscription_id:
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": True,
+                        "msg": "Either manifest or subscription_id must be non-empty when state=present",
+                    }
+                )
+                return result
+
             if manifest_path:
                 return self._handle_manifest(manager, result, manifest_path, force)
 

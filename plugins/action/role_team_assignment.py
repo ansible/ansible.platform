@@ -19,6 +19,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleRoleTeamAssignment
     LOOKUP_FIELD = "id"
     _WRITE_ONLY_FIELDS = frozenset({"assignment_objects"})
+    _PRESERVE_RESULT_ID_FIELDS = frozenset({"object_id"})
     _MUTUALLY_EXCLUSIVE = [
         ["team", "team_ansible_id"],
         ["object_id", "object_ansible_id"],
@@ -81,12 +82,14 @@ class ActionModule(BaseResourceActionPlugin):
             assignment_objects_raw = validated_params.get("assignment_objects") or []
 
             role_def_name = validated_params.get("role_definition", "")
-            _role_def_obj = manager.execute(
-                operation="find",
-                module_name="role_definition",
-                ansible_data={"name": role_def_name},
-            )
-            _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
+            _role_content_type = None
+            if any(obj.get("name") and obj.get("type") for obj in assignment_objects_raw):
+                _role_def_obj = manager.execute(
+                    operation="find",
+                    module_name="role_definition",
+                    ansible_data={"name": role_def_name},
+                )
+                _role_content_type = (_role_def_obj or {}).get("content_type") if _role_def_obj else None
 
             _skip = self._AUTH_PARAMS | {"assignment_objects", "state", "object_id", "object_ansible_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and v != "" and k not in _skip}
