@@ -4,8 +4,8 @@ This module contains dataclasses and type definitions used throughout
 the framework.
 """
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, is_dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from requests import Session
@@ -86,3 +86,70 @@ class TransformContext:
     service: str = "gateway"
     operation: Optional[str] = None
     include_nulls_for_update: bool = False
+
+
+def build_endpoint_request(
+    operation: EndpointOperation,
+    api_data: Any,
+    context: Optional[TransformContext] = None,
+    *,
+    path_values: Optional[Dict[str, Any]] = None,
+    fields_to_null: Optional[Set[str]] = None,
+    omit_empty_strings: bool = False,
+) -> tuple[str, Any]:
+    """Build an endpoint path and body from API data and operation metadata.
+
+    Both CRUD execution and action-oriented operations use this function so
+    endpoint field declarations remain the source of request bodies.
+
+    Args:
+        operation: Endpoint declaration providing path parameters, fields, and
+            optional flattened-body behavior.
+        api_data: API dataclass or mapping produced by the transform.
+        context: Request context used for update null semantics.
+        path_values: Optional values from prior operations. These override
+            values on ``api_data`` when resolving path parameters.
+        fields_to_null: Fields that must be sent as explicit nulls.
+        omit_empty_strings: Preserve the direct client behavior of omitting
+            empty strings, except for update descriptions.
+
+    Returns:
+        A tuple of the resolved endpoint path and request body.
+    """
+    if is_dataclass(api_data):
+        data = asdict(api_data)
+    elif isinstance(api_data, dict):
+        data = api_data
+    else:
+        raise TypeError("API request data must be a dataclass or dict")
+
+    resolved_values = dict(data)
+    if path_values:
+        resolved_values.update(path_values)
+
+    path = operation.path
+    for parameter in operation.path_params or []:
+        value = resolved_values.get(parameter)
+        if value is not None:
+            path = path.replace("{%s}" % parameter, str(value))
+
+    request_data = {}
+    null_fields = fields_to_null or set()
+    operation_name = context.operation if context is not None else None
+    include_nulls_for_update = context.include_nulls_for_update if context is not None else False
+    for field in operation.fields or []:
+        if field not in data:
+            continue
+        value = data[field]
+        if value is None:
+            if field in null_fields or (operation_name == "update" and include_nulls_for_update and field in {"organization", "credential"}):
+                request_data[field] = None
+            continue
+        if omit_empty_strings and value == "" and not (field == "description" and operation_name == "update"):
+            continue
+        request_data[field] = value
+
+    if operation.flatten_body and len(request_data) == 1:
+        request_data = next(iter(request_data.values()))
+
+    return path, request_data

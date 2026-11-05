@@ -9,10 +9,9 @@ __metaclass__ = type
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.project_update import (
-    CONTROLLER_PROJECTS_ENDPOINT,
-)
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_project import ControllerProjectTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _SERVICE = "controller"
 
@@ -47,10 +46,16 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            project_data = manager.search_api(CONTROLLER_PROJECTS_ENDPOINT + str(project_id) + "/")
+            operations = ControllerProjectTransformMixin_v2.get_endpoint_operations()
+            detail_path, _ = build_endpoint_request(operations["get"], {"id": project_id})
+            project_data = manager.search_api(detail_path)
             scm_revision_original = project_data.get("scm_revision", "")
 
-            launch_result = manager.launch_resource("projects/%d/update" % project_id, {}, service=_SERVICE)
+            sync_operation = operations["sync"]
+            if sync_operation.method != "POST":
+                raise AnsibleError("Controller project sync endpoint operation must use POST")
+            sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": project_id})
+            launch_result = manager.launch_resource(sync_path, sync_payload, service=_SERVICE)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
             return result

@@ -5,7 +5,7 @@ The launch action uses the transform to resolve foreign keys and normalize
 launch fields before calling the SDK launch endpoint.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
@@ -13,7 +13,8 @@ from ....platform.types import EndpointOperation, TransformContext
 
 WORKFLOW_JOBS_ENDPOINT = "/api/controller/v2/workflow_jobs/"
 WJT_LIST_ENDPOINT = "/api/controller/v2/workflow_job_templates/"
-_LAUNCH_PAYLOAD_FIELDS = frozenset({"inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"})
+WJT_LAUNCH_ENDPOINT = "/api/controller/v2/workflow_job_templates/{id}/launch/"
+_LAUNCH_FIELDS = ["inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"]
 
 
 @dataclass
@@ -102,14 +103,8 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
         )
 
     @classmethod
-    def to_launch_payload(cls, api_instance: "APIWorkflowLaunch_v2") -> Dict[str, Any]:
-        """Build the Controller launch payload from a transformed request."""
-        api_data = asdict(api_instance)
-        return {field: api_data[field] for field in _LAUNCH_PAYLOAD_FIELDS if api_data.get(field) is not None}
-
-    @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
-        """Define the read operations used to validate the workflow template."""
+        """Define the lookup and launch operations for workflow templates."""
         return {
             "list": EndpointOperation(
                 path=WJT_LIST_ENDPOINT,
@@ -126,7 +121,23 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
+            "launch": EndpointOperation(
+                path=WJT_LAUNCH_ENDPOINT,
+                method="POST",
+                fields=_LAUNCH_FIELDS,
+                path_params=["id"],
+                required_for="launch",
+                order=1,
+            ),
         }
+
+    @classmethod
+    def get_find_list_query_params(cls, api_data: "APIWorkflowLaunch_v2") -> Dict[str, Any]:
+        """Build the workflow-template lookup filters from transformed inputs."""
+        query_params = {"name": api_data.name} if api_data.name is not None else {}
+        if api_data.organization is not None:
+            query_params["organization"] = api_data.organization
+        return query_params
 
     @classmethod
     def get_lookup_field(cls) -> str:

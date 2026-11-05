@@ -208,6 +208,14 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
+            "sync": EndpointOperation(
+                path="/api/controller/v2/projects/{id}/update/",
+                method="POST",
+                fields=[],
+                path_params=["id"],
+                required_for="sync",
+                order=1,
+            ),
         }
 
     @classmethod

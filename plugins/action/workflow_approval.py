@@ -26,9 +26,9 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.wo
     AnsibleWorkflowApproval,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_approval import (
-    WORKFLOW_APPROVALS_PATH,
-    WORKFLOW_JOBS_PATH,
+    WorkflowApprovalTransformMixin_v2,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
@@ -53,7 +53,8 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 1.0)
 
             # ---- poll for the approval node ---------------------------------
-            nodes_endpoint = "%s/%d/workflow_nodes/" % (WORKFLOW_JOBS_PATH, workflow_job_id)
+            operations = WorkflowApprovalTransformMixin_v2.get_endpoint_operations()
+            nodes_endpoint, _ = build_endpoint_request(operations["workflow_nodes"], {"workflow_job_id": workflow_job_id})
 
             approval_node = None
             start_time = time.time()
@@ -63,7 +64,7 @@ class ActionModule(BaseResourceActionPlugin):
                 try:
                     nodes_response = manager.search_api(
                         nodes_endpoint,
-                        query_params={"job__name": name},
+                        query_params=WorkflowApprovalTransformMixin_v2.get_workflow_node_query_params(name),
                     )
                 except Exception as poll_exc:
                     status_code = getattr(poll_exc, "status_code", None)
@@ -102,10 +103,12 @@ class ActionModule(BaseResourceActionPlugin):
 
             # ---- resolve the approval job endpoint --------------------------
             related_job = approval_node.get("related", {}).get("job", "")
+            action_operation = operations[action]
+            _, action_payload = build_endpoint_request(action_operation, {})
             if not related_job:
                 job_id = approval_node.get("summary_fields", {}).get("job", {}).get("id")
                 if job_id:
-                    related_job = "%s/%d/" % (WORKFLOW_APPROVALS_PATH, job_id)
+                    related_job, _ = build_endpoint_request(operations["get"], {"id": job_id})
                 else:
                     result["failed"] = True
                     result["changed"] = False
@@ -115,8 +118,10 @@ class ActionModule(BaseResourceActionPlugin):
             if not related_job.endswith("/"):
                 related_job += "/"
 
-            # ---- POST approve or deny ---------------------------------------
-            action_url = "%s%s/" % (related_job, action)
+            # The API's related URL identifies the approval resource; the
+            # operation declaration supplies the action suffix and method.
+            action_suffix = action_operation.path.split("/{id}/", 1)[1]
+            action_url = "%s/%s" % (related_job.rstrip("/"), action_suffix)
 
             if self._task.check_mode:
                 action_past = "approved" if action == "approve" else "denied"
@@ -126,7 +131,10 @@ class ActionModule(BaseResourceActionPlugin):
 
             self._display.vvv("workflow_approval: POSTing to %s" % action_url)
 
-            manager.direct_request("POST", action_url)
+            if action_payload:
+                manager.direct_request(action_operation.method, action_url, data=action_payload)
+            else:
+                manager.direct_request(action_operation.method, action_url)
 
             result["changed"] = True
             result["failed"] = False

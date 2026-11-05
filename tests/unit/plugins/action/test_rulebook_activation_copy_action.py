@@ -65,11 +65,17 @@ class TestRulebookActivationCopyAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 200)
-        # Should call direct_request with POST to copy endpoint
         manager.direct_request.assert_called_once()
         call_args = manager.direct_request.call_args
-        self.assertEqual(call_args[0][0], "POST")
-        self.assertIn("copy", call_args[0][1])
+        self.assertEqual(
+            {"method": call_args.args[0], "path": call_args.args[1], "body": call_args.kwargs["data"]},
+            {
+                "method": "POST",
+                "path": "/api/eda/v1/activations/42/copy/",
+                "body": {"name": "new-activation"},
+            },
+        )
+        self.assertEqual(call_args.kwargs["retry_config"].max_attempts, 1)
 
     def test_copy_nonexistent_activation_fails(self):
         """Fail when source activation does not exist."""

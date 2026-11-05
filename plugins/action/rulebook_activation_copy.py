@@ -19,10 +19,11 @@ from typing import Any, Dict, Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.rulebook_activation_copy import AnsibleRulebookActivationCopy
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation import (
-    ACTIVATION_COPY_ENDPOINT,
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation_copy import (
+    RulebookActivationCopyTransformMixin_v1,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _SERVICE = "eda"
 # Copy is a non-idempotent POST: retrying a lost response could create a
@@ -90,9 +91,12 @@ class ActionModule(BaseResourceActionPlugin):
                 )
                 return result
 
-            # POST to activations/{id}/copy/ with the new name
-            copy_url = ACTIVATION_COPY_ENDPOINT.format(id=existing["id"])
-            copy_result = manager.direct_request("POST", copy_url, data={"name": name}, retry_config=_NO_RETRY)
+            copy_api_data = RulebookActivationCopyTransformMixin_v1.from_ansible_data(AnsibleRulebookActivationCopy(name=name), {"operation": "copy"})
+            copy_operation = RulebookActivationCopyTransformMixin_v1.get_endpoint_operations()["copy"]
+            if copy_operation.method != "POST":
+                raise AnsibleError("Rulebook activation copy endpoint operation must use POST")
+            copy_url, copy_payload = build_endpoint_request(copy_operation, copy_api_data, path_values={"id": existing["id"]})
+            copy_result = manager.direct_request(copy_operation.method, copy_url, data=copy_payload, retry_config=_NO_RETRY)
 
             result.update(
                 {
