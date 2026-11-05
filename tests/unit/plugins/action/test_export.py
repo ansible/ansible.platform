@@ -226,6 +226,12 @@ class TestExportImportRoundTrip:
         assert "id" not in cleaned
         assert "url" not in cleaned
 
+    @pytest.mark.parametrize("field", ["organization_ids", "scm_revision"])
+    def test_api_response_only_fields_are_not_exported_as_module_inputs(self, field):
+        cleaned = clean_resource({"name": "Example", field: [1, 2] if field == "organization_ids" else "abc123"}, {})
+
+        assert cleaned == {"name": "Example"}
+
 
 def test_default_environment_is_preserved_and_resolved():
     resource = {"name": "Project", "default_environment": 7}

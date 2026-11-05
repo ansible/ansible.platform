@@ -404,6 +404,13 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             dict: Data to pass as ``ansible_data`` to manager.execute().
         """
+        explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+        if explicit_fields is not None:
+            data = {field: getattr(resource, field) for field in explicit_fields if hasattr(resource, field)}
+            if getattr(resource, "id", None) is not None:
+                data["id"] = resource.id
+            return data
+
         from dataclasses import asdict
 
         return asdict(resource)
@@ -467,7 +474,13 @@ class BaseResourceActionPlugin(ActionBase):
             result["_ansible_facts_cacheable"] = True
 
         validated_params = validated_input.validated_parameters
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
+        explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+        preserve_explicit_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False)
+        resource_data = {
+            k: v
+            for k, v in validated_params.items()
+            if k not in self._AUTH_PARAMS and (v is not None or (preserve_explicit_nulls and explicit_fields is not None and k in explicit_fields))
+        }
 
         for field, (msg, version) in self._DEPRECATED_FIELDS.items():
             if resource_data.pop(field, None) is not None:
@@ -508,6 +521,12 @@ class BaseResourceActionPlugin(ActionBase):
             AnsibleError: If gateway URL is missing or connection plugin doesn't support get_client()
             RuntimeError: If manager fails to start
         """
+        # Composite actions such as ``import`` may delegate resource work to a
+        # resource action plugin while sharing their already-open manager.
+        manager_override = getattr(self, "_manager_override", None)
+        if manager_override is not None:
+            return manager_override, None
+
         # Import platform SDK modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import extract_gateway_config
 
@@ -1104,6 +1123,8 @@ class BaseResourceActionPlugin(ActionBase):
         - new_name: always triggers an update (it's a rename operation).
         - Dict/list fields are compared structurally, regardless of concrete
           container subclass.
+        - Explicit nulls are ignored by default; composite import actions can
+          opt in to treating a null as a change when the current value is set.
         """
         if desired_data.get("new_name"):
             return True
@@ -1111,7 +1132,17 @@ class BaseResourceActionPlugin(ActionBase):
         skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS | self._WRITE_ONLY_FIELDS
 
         for key, desired_val in desired_data.items():
-            if key in skip_keys or desired_val is None:
+            if key in skip_keys:
+                continue
+            if desired_val is None:
+                explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+                if (
+                    getattr(self, "_preserve_explicit_nulls_for_update", False)
+                    and explicit_fields is not None
+                    and key in explicit_fields
+                    and current_data.get(key) is not None
+                ):
+                    return True
                 continue
             if key not in current_data:
                 # Field not returned by API — cannot compare, assume no change
@@ -1313,7 +1344,10 @@ class BaseResourceActionPlugin(ActionBase):
 
             # ---- check mode ------------------------------------------------
             ansible_data = self._build_ansible_data(resource, validated_params, operation)
-            if operation == "update" and state == "enforced":
+            preserve_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False) and any(
+                value is None for key, value in ansible_data.items() if key != "id"
+            )
+            if operation == "update" and (state == "enforced" or preserve_nulls):
                 ansible_data["_platform_enforced"] = True
 
             if self._task.check_mode and operation in ("create", "update", "delete"):

@@ -6,8 +6,9 @@
 
 """Action plugin for ansible.platform.import.
 
-Thin wrapper that imports resources by calling manager.execute() for each
-resource in dependency order. Uses one manager connection for all operations.
+Imports resources in dependency order through their resource action plugins,
+sharing one manager connection so resource-specific transformations and
+association handling are preserved.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -50,11 +51,15 @@ STRIP_FIELDS = frozenset(
         "managed",
         "user_capabilities",
         "object_roles",
+        # API response fields that are not resource-module inputs.
+        "organization_ids",
+        "scm_revision",
     }
 )
 
 # Fields that are inline children, not direct module params — popped and handled separately.
 INLINE_CHILDREN_FIELDS = frozenset({"hosts", "groups"})
+IMPORT_CONTROL_FIELDS = frozenset({"state"})
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -78,6 +83,8 @@ class ActionModule(BaseResourceActionPlugin):
 
             if validated_params.get("auto_convert_legacy", False):
                 assets = from_awxkit_export(assets)
+
+            task_vars = task_vars or {}
 
             check_mode = self._play_context.check_mode
 
@@ -104,19 +111,12 @@ class ActionModule(BaseResourceActionPlugin):
                         failed_resources.append({"type": export_key, "name": "[%d]" % index, "error": "Expected a resource dictionary."})
                         continue
 
-                    clean_data = {k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS}
+                    clean_data = {
+                        k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and k not in IMPORT_CONTROL_FIELDS
+                    }
                     resource_name = clean_data.get("name") or clean_data.get("username") or clean_data.get("hostname") or "unknown"
-
-                    if check_mode:
-                        if self._resource_would_change(manager, module_name, clean_data):
-                            type_result["changed"] += 1
-                            any_changed = True
-                        else:
-                            type_result["ok"] += 1
-                        continue
-
                     try:
-                        changed = self._import_single_resource(manager, module_name, clean_data)
+                        changed = self._import_single_resource(manager, module_name, clean_data, task_vars)
                         if changed:
                             type_result["changed"] += 1
                             any_changed = True
@@ -130,7 +130,7 @@ class ActionModule(BaseResourceActionPlugin):
             # Import hosts and groups nested under inventories
             inventory_list = assets.get("inventory", [])
             if isinstance(inventory_list, list):
-                host_results, group_results = self._import_inventory_children(manager, inventory_list, check_mode, failed_resources)
+                host_results, group_results = self._import_inventory_children(manager, inventory_list, check_mode, failed_resources, task_vars)
                 if host_results["changed"] or host_results["ok"] or host_results["failed"]:
                     results_summary["hosts"] = host_results
                     if host_results["changed"]:
@@ -158,76 +158,38 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _resource_would_change(self, manager, module_name, resource_data):
-        """Compare desired import fields with the current resource for check mode."""
-        try:
-            existing = manager.execute(
-                operation="find",
-                module_name=module_name,
-                ansible_data=dict(resource_data),
-            )
-        except ValueError as exc:
-            if "not found" in str(exc).lower():
-                return True
-            raise
+    def _run_resource_action(self, manager, module_name, resource_data, task_vars):
+        """Run the resource action plugin with this import's shared manager."""
+        resource_task = self._task.copy()
+        resource_task.action = "ansible.platform.%s" % module_name
+        resource_task.args = dict(resource_data)
+        resource_action = self._shared_loader_obj.action_loader.get(
+            resource_task.action,
+            resource_task,
+            self._connection,
+            self._play_context,
+            self._loader,
+            self._templar,
+            self._shared_loader_obj,
+        )
+        resource_action._manager_override = manager
+        resource_action._explicit_fields_to_send = frozenset(resource_data)
+        resource_action._preserve_explicit_nulls_for_update = True
+        action_result = resource_action.run(task_vars=task_vars)
 
-        if not existing or not existing.get("id"):
-            return True
+        if not isinstance(action_result, dict):
+            raise ValueError("Action plugin for %s returned an invalid result" % module_name)
+        if action_result.get("failed"):
+            raise ValueError(action_result.get("msg") or "Action plugin for %s failed" % module_name)
+        if "changed" not in action_result:
+            raise ValueError("Action plugin for %s did not return an explicit changed flag" % module_name)
+        return action_result
 
-        for key, desired in resource_data.items():
-            if key in {"id", "state"} or key.startswith("_"):
-                continue
-            current = existing.get(key)
-            if desired is None:
-                if current is not None:
-                    return True
-            elif desired != current:
-                return True
-        return False
+    def _import_single_resource(self, manager, module_name, resource_data, task_vars):
+        """Import one resource through its action plugin and return changed."""
+        return bool(self._run_resource_action(manager, module_name, resource_data, task_vars)["changed"])
 
-    def _import_single_resource(self, manager, module_name, resource_data):
-        """Import one resource: find → update if exists, create if not.
-
-        Returns True if the resource was changed (created or updated).
-        """
-        try:
-            existing = manager.execute(
-                operation="find",
-                module_name=module_name,
-                ansible_data=dict(resource_data),
-            )
-        except ValueError as exc:
-            if "not found" not in str(exc).lower():
-                raise
-            existing = None
-
-        if existing and existing.get("id"):
-            update_data = dict(resource_data)
-            update_data["id"] = existing["id"]
-            if any(value is None for key, value in update_data.items() if key != "id"):
-                update_data["_platform_enforced"] = True
-            update_result = manager.execute(
-                operation="update",
-                module_name=module_name,
-                ansible_data=update_data,
-            )
-            return self._get_manager_changed(update_result, module_name, "update")
-        else:
-            create_result = manager.execute(
-                operation="create",
-                module_name=module_name,
-                ansible_data=dict(resource_data),
-            )
-            return self._get_manager_changed(create_result, module_name, "create")
-
-    @staticmethod
-    def _get_manager_changed(manager_result, module_name, operation):
-        """Read the explicit changed flag returned by a manager CRUD operation."""
-        if not isinstance(manager_result, dict) or "changed" not in manager_result:
-            raise ValueError("Manager %s operation for %s did not return an explicit changed flag" % (operation, module_name))
-        return bool(manager_result["changed"])
-
-    def _import_inventory_children(self, manager, inventory_list, check_mode, failed_resources):
+    def _import_inventory_children(self, manager, inventory_list, check_mode, failed_resources, task_vars):
         """Import hosts and groups nested under inventory entries."""
         host_results = {"changed": 0, "ok": 0, "failed": 0}
         group_results = {"changed": 0, "ok": 0, "failed": 0}
@@ -242,16 +204,12 @@ class ActionModule(BaseResourceActionPlugin):
                     host_results["failed"] += 1
                     failed_resources.append({"type": "hosts", "name": "[%d]" % index, "error": "Expected a resource dictionary."})
                     continue
-                host_data = {k: v for k, v in host.items() if k not in STRIP_FIELDS and v is not None}
+                host_data = {k: v for k, v in host.items() if k not in STRIP_FIELDS and k not in IMPORT_CONTROL_FIELDS and v is not None}
                 host_data["inventory"] = inv_name
                 host_name = host_data.get("name") or host_data.get("hostname") or "unknown"
 
-                if check_mode:
-                    host_results["changed"] += 1
-                    continue
-
                 try:
-                    changed = self._import_single_resource(manager, "host", host_data)
+                    changed = self._import_single_resource(manager, "host", host_data, task_vars)
                     if changed:
                         host_results["changed"] += 1
                     else:
@@ -266,42 +224,41 @@ class ActionModule(BaseResourceActionPlugin):
                     group_results["failed"] += 1
                     failed_resources.append({"type": "groups", "name": "[%d]" % index, "error": "Expected a resource dictionary."})
                     continue
-                group_data = {k: v for k, v in group.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and v is not None}
+                group_data = {
+                    k: v
+                    for k, v in group.items()
+                    if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and k not in IMPORT_CONTROL_FIELDS and v is not None
+                }
                 group_data["inventory"] = inv_name
                 group_name = group_data.get("name", "unknown")
 
-                if check_mode:
-                    group_results["changed"] += 1
-                    continue
-
                 try:
-                    changed = self._import_single_resource(manager, "group", group_data)
-                    group_records.append((group_data, group, changed))
+                    group_result = self._run_resource_action(manager, "group", group_data, task_vars)
+                    group_id = group_result.get("id") or (group_result.get("group") or {}).get("id")
+                    changed = bool(group_result["changed"])
+                    group_records.append((group_data, group, changed, group_id))
                 except Exception as exc:
                     group_results["failed"] += 1
                     failed_resources.append({"type": "groups", "name": group_name, "error": str(exc)})
 
             # All groups must exist before child-group relationships are resolved.
-            for group_data, group, changed in group_records:
+            for group_data, group, changed, group_id in group_records:
                 association_changed = False
                 if group.get("hosts") is not None or group.get("children") is not None:
                     try:
-                        existing = manager.execute(
-                            operation="find",
-                            module_name="group",
-                            ansible_data=dict(group_data),
-                        )
-                        group_id = existing.get("id") if isinstance(existing, dict) else None
-                        if not group_id:
+                        if not group_id and not check_mode:
                             raise ValueError("Imported group '%s' could not be found for association import" % group_data.get("name", "unknown"))
-                        if group.get("hosts") is not None:
-                            association_changed |= manager.manage_associations(
-                                "groups", group_id, "hosts", group["hosts"], "hosts", "name", service="controller"
-                            )
-                        if group.get("children") is not None:
-                            association_changed |= manager.manage_associations(
-                                "groups", group_id, "children", group["children"], "groups", "name", service="controller"
-                            )
+                        if check_mode:
+                            association_changed = True
+                        else:
+                            if group.get("hosts") is not None:
+                                association_changed |= manager.manage_associations(
+                                    "groups", group_id, "hosts", group["hosts"], "hosts", "name", service="controller"
+                                )
+                            if group.get("children") is not None:
+                                association_changed |= manager.manage_associations(
+                                    "groups", group_id, "children", group["children"], "groups", "name", service="controller"
+                                )
                     except Exception as exc:
                         group_results["failed"] += 1
                         failed_resources.append({"type": "groups", "name": group_data.get("name", "unknown"), "error": str(exc)})

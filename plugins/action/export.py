@@ -74,6 +74,12 @@ STRIP_FIELDS = frozenset(
         "modified_by",
         "user_capabilities",
         "object_roles",
+        # API fields that are not accepted as module inputs.
+        # User organization membership is managed through role assignments,
+        # which are not part of this export's resource set.
+        "organization_ids",
+        # Controller project sync output; it is not a project module option.
+        "scm_revision",
         # Inventory computed fields
         "has_active_failures",
         "has_inventory_sources",
