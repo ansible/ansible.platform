@@ -33,7 +33,7 @@ class TestControllerSettingsAction(unittest.TestCase):
             {"name": None, "value": None, "settings": None},
             {"name": "DEFAULT_JOB_TIMEOUT", "value": "1", "settings": {"DEFAULT_JOB_TIMEOUT": 1}},
         ):
-            action, _ = self._action({"DEFAULT_JOB_TIMEOUT": 0}, validated_params=params)
+            action = self._action({"DEFAULT_JOB_TIMEOUT": 0}, validated_params=params)[0]
             action._task.args = params
             with self.assertRaises(Exception):
                 action._validate_action_input()
