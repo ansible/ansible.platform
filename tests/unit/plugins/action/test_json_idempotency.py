@@ -49,6 +49,11 @@ def test_equivalent_variables_do_not_update_existing_host():
     result = _run_action(action, manager)
 
     assert result["changed"] is False
+    assert result["failed"] is False
+    assert result["id"] == 17
+    assert result["host"] == manager.execute.return_value
+    assert result["name"] == "web-1"
+    assert result["variables"] == result["host"]["variables"]
     manager.execute.assert_called_once()
     assert manager.execute.call_args.kwargs["operation"] == "find"
 
