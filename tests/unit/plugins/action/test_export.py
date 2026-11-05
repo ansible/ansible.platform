@@ -22,11 +22,11 @@ from ansible_collections.ansible.platform.plugins.action.export import (
 )
 
 
-def clean_resource(resource, name_cache):
+def clean_resource(resource, name_cache, resource_type=None):
     """Invoke the production action plugin transformation logic."""
     action = ActionModule.__new__(ActionModule)
     action._display = Mock()
-    return action._clean_resource(resource, name_cache)
+    return action._clean_resource(resource, name_cache, resource_type)
 
 
 class TestCleanResource:
@@ -55,7 +55,7 @@ class TestCleanResource:
         name_cache = {
             "api/controller/v2/inventories/": {42: "Production"},
             "api/controller/v2/projects/": {7: "Demo Project"},
-            "api/gateway/v1/organizations/": {1: "Default"},
+            "api/controller/v2/organizations/": {1: "Default"},
         }
         result = clean_resource(resource, name_cache)
         assert result["inventory"] == "Production"
@@ -103,7 +103,7 @@ class TestCleanResource:
             "api/controller/v2/projects/": {2: "Proj1"},
             "api/controller/v2/execution_environments/": {3: "EE1"},
             "api/controller/v2/credential_types/": {4: "Machine"},
-            "api/gateway/v1/organizations/": {5: "Org1"},
+            "api/controller/v2/organizations/": {5: "Org1"},
         }
         result = clean_resource(resource, name_cache)
         assert result["inventory"] == "Inv1"
@@ -186,7 +186,7 @@ class TestExportImportRoundTrip:
         }
         cache = {
             "api/controller/v2/credential_types/": {1: "Machine"},
-            "api/gateway/v1/organizations/": {1: "Default"},
+            "api/controller/v2/organizations/": {1: "Default"},
         }
         cleaned = clean_resource(raw, cache)
         assert cleaned["credential_type"] == "Machine"
@@ -215,7 +215,7 @@ class TestExportImportRoundTrip:
         cache = {
             "api/controller/v2/inventories/": {42: "Production"},
             "api/controller/v2/projects/": {7: "Demo Project"},
-            "api/gateway/v1/organizations/": {1: "Default"},
+            "api/controller/v2/organizations/": {1: "Default"},
         }
         cleaned = clean_resource(raw, cache)
         assert cleaned["name"] == "Deploy"
@@ -226,11 +226,32 @@ class TestExportImportRoundTrip:
         assert "id" not in cleaned
         assert "url" not in cleaned
 
-    @pytest.mark.parametrize("field", ["organization_ids", "scm_revision"])
-    def test_api_response_only_fields_are_not_exported_as_module_inputs(self, field):
-        cleaned = clean_resource({"name": "Example", field: [1, 2] if field == "organization_ids" else "abc123"}, {})
+    def test_user_organization_ids_export_as_organization_names(self):
+        cleaned = clean_resource(
+            {"username": "alice", "organization_ids": [1, 2]},
+            {"api/gateway/v1/organizations/": {1: "Default", 2: "Engineering"}},
+        )
 
-        assert cleaned == {"name": "Example"}
+        assert cleaned == {"username": "alice", "organizations": ["Default", "Engineering"]}
+
+    def test_organization_fk_uses_the_resource_service_id_space(self):
+        cache = {
+            "api/controller/v2/organizations/": {10: "Controller Org"},
+            "api/gateway/v1/organizations/": {10: "Gateway Org"},
+        }
+
+        controller_resource = clean_resource({"name": "Project", "organization": 10}, cache, "projects")
+        gateway_team = clean_resource({"name": "Team", "organization": 10}, cache, "teams")
+        gateway_user = clean_resource({"username": "alice", "organization_ids": [10]}, cache, "users")
+
+        assert controller_resource["organization"] == "Controller Org"
+        assert gateway_team["organization"] == "Gateway Org"
+        assert gateway_user["organizations"] == ["Gateway Org"]
+
+    def test_project_sync_revision_is_not_exported_as_a_module_input(self):
+        cleaned = clean_resource({"name": "Demo", "scm_revision": "abc123"}, {})
+
+        assert cleaned == {"name": "Demo"}
 
 
 def test_default_environment_is_preserved_and_resolved():
@@ -368,3 +389,17 @@ def test_name_cache_failures_abort_export():
 
     with pytest.raises(RuntimeError, match="cache unavailable"):
         action._build_name_cache(manager, 10)
+
+
+def test_name_cache_loads_gateway_and_controller_organizations():
+    manager = Mock()
+    manager.search_api.return_value = {"results": [{"id": 10, "name": "Org"}]}
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = action._build_name_cache(manager, 10)
+
+    assert "api/controller/v2/organizations/" in cache
+    assert "api/gateway/v1/organizations/" in cache
+    organization_endpoints = {call.kwargs["endpoint"] for call in manager.search_api.call_args_list if "organizations/" in call.kwargs["endpoint"]}
+    assert organization_endpoints == {"api/controller/v2/organizations/", "api/gateway/v1/organizations/"}

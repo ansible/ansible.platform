@@ -140,6 +140,40 @@ def test_job_template_import_preserves_explicit_nulls_without_clearing_omitted_f
     assert update_call["ansible_data"] == {"name": "Ping", "description": None, "id": 42, "_platform_enforced": True}
 
 
+def test_user_import_reconciles_exported_organization_memberships(action):
+    manager = Mock()
+    manager.execute.side_effect = [
+        ValueError("Resource with name=alice not found"),
+        {"id": 7, "username": "alice", "changed": True},
+        ValueError("Resource with name=Organization Member not found"),
+        {"id": 99, "changed": True},
+    ]
+    manager.lookup_resource_id.side_effect = [31, 42]
+    resource_task = MagicMock()
+    resource_task.async_val = 0
+    resource_task.check_mode = False
+    resource_task.args = {}
+    action._task = MagicMock()
+    action._task.copy.return_value = resource_task
+    action._connection = MagicMock()
+    action._connection._shell.tmpdir = "/tmp"
+    action._play_context = MagicMock()
+    action._loader = MagicMock()
+    action._templar = MagicMock()
+    action._shared_loader_obj = plugin_loaders
+
+    result = action._run_resource_action(manager, "user", {"username": "alice", "organizations": ["Default"]}, {})
+
+    assert result["changed"] is True
+    manager.lookup_resource_id.assert_any_call("role_definitions", "name", "Organization Member", service="gateway")
+    manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="gateway")
+    assert manager.execute.call_args_list[3].kwargs == {
+        "operation": "create",
+        "module_name": "role_user_assignment",
+        "ansible_data": {"role_definition": "31", "object_id": 42, "user": "7"},
+    }
+
+
 @pytest.mark.parametrize(
     ("module_name", "resource_data", "association_field"),
     [

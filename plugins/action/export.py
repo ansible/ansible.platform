@@ -17,6 +17,9 @@ __metaclass__ = type
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 
+CONTROLLER_ORGANIZATION_ENDPOINT = "api/controller/v2/organizations/"
+GATEWAY_ORGANIZATION_ENDPOINT = "api/gateway/v1/organizations/"
+
 # Resource types and their API endpoints (in export order).
 # Gateway resources (orgs, users, teams) use api/gateway/v1/.
 # Controller resources use api/controller/v2/.
@@ -36,11 +39,14 @@ EXPORTABLE_RESOURCES = [
     ("workflow_job_templates", "api/controller/v2/workflow_job_templates/", "name"),
     ("schedules", "api/controller/v2/schedules/", "name"),
 ]
+GATEWAY_RESOURCE_TYPES = frozenset({"organizations", "users", "teams"})
 
 # FK fields and the endpoint to resolve them against.
 # (field_name, api_endpoint, identifier_field)
 FK_RESOLUTION_MAP = {
-    "organization": ("api/gateway/v1/organizations/", "name"),
+    # Controller resources store Controller organization IDs. Gateway teams and
+    # user organization_ids are resolved separately through Gateway below.
+    "organization": (CONTROLLER_ORGANIZATION_ENDPOINT, "name"),
     "inventory": ("api/controller/v2/inventories/", "name"),
     "project": ("api/controller/v2/projects/", "name"),
     "credential_type": ("api/controller/v2/credential_types/", "name"),
@@ -74,10 +80,6 @@ STRIP_FIELDS = frozenset(
         "modified_by",
         "user_capabilities",
         "object_roles",
-        # API fields that are not accepted as module inputs.
-        # User organization membership is managed through role assignments,
-        # which are not part of this export's resource set.
-        "organization_ids",
         # Controller project sync output; it is not a project module option.
         "scm_revision",
         # Inventory computed fields
@@ -239,6 +241,9 @@ class ActionModule(BaseResourceActionPlugin):
         endpoints = set()
         for endpoint, id_field in FK_RESOLUTION_MAP.values():
             endpoints.add((endpoint, id_field))
+        # Gateway owns team organization IDs and user organization_ids, while
+        # Controller resources use the Controller organization ID space.
+        endpoints.add((GATEWAY_ORGANIZATION_ENDPOINT, "name"))
 
         for endpoint, id_field in endpoints:
             try:
@@ -256,7 +261,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         return cache
 
-    def _resolve_fk(self, field_name, value, name_cache):
+    def _resolve_fk(self, field_name, value, name_cache, endpoint_override=None):
         """Resolve an FK integer ID to a resource name using the cache."""
         if value is None or not isinstance(value, int):
             return value
@@ -265,7 +270,7 @@ class ActionModule(BaseResourceActionPlugin):
         if not fk_info:
             return value
 
-        endpoint = fk_info[0]
+        endpoint = endpoint_override or fk_info[0]
         endpoint_cache = name_cache.get(endpoint, {})
         resolved = endpoint_cache.get(value)
         if resolved is not None:
@@ -313,20 +318,26 @@ class ActionModule(BaseResourceActionPlugin):
             if resource.get("managed"):
                 continue
 
-            cleaned = self._clean_resource(resource, name_cache)
+            cleaned = self._clean_resource(resource, name_cache, res_type)
             self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
             exported.append(cleaned)
 
         return exported
 
-    def _clean_resource(self, resource, name_cache):
+    def _clean_resource(self, resource, name_cache, resource_type=None):
         """Strip internal fields and resolve FK IDs to names."""
         cleaned = {}
         for key, value in resource.items():
+            if key == "organization_ids":
+                organization_cache = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {})
+                cleaned["organizations"] = [str(organization_cache.get(org_id, org_id)) for org_id in (value or [])]
+                continue
             if key in STRIP_FIELDS:
                 continue
             if key in FK_RESOLUTION_MAP:
-                cleaned[key] = self._resolve_fk(key, value, name_cache)
+                resource_service = "gateway" if resource_type in GATEWAY_RESOURCE_TYPES else "controller"
+                endpoint_override = GATEWAY_ORGANIZATION_ENDPOINT if key == "organization" and resource_service == "gateway" else None
+                cleaned[key] = self._resolve_fk(key, value, name_cache, endpoint_override)
             else:
                 cleaned[key] = value
         return cleaned
