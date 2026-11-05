@@ -10,7 +10,6 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
@@ -24,7 +23,7 @@ from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import AuthenticationError
 from ..platform.retry import RetryConfig, retry_http_request
-from ..platform.types import TransformContext
+from ..platform.types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -1007,43 +1006,16 @@ class PlatformService(BaseAPIClient):
         sorted_ops = self._sort_operations(relevant_ops)
 
         results = {}
-        api_data_dict = asdict(api_data)
         _fields_to_null = fields_to_null or set()
 
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            # For update: include "" (empty string) so enforced can clear fields like email
-            request_data = {}
-            for field in endpoint_op.fields:
-                if field not in api_data_dict:
-                    continue
-                val = api_data_dict[field]
-                if val is None:
-                    # Include as explicit null only for fields declared by the mixin
-                    # as needing to be cleared, or for associations in enforced updates.
-                    if field in _fields_to_null or (
-                        context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
-                    ):
-                        request_data[field] = None
-                    continue
-                request_data[field] = val
-
-            # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
-                request_data = next(iter(request_data.values()))
+            path, request_data = build_endpoint_request(endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null)
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)
                 continue
-
-            path = endpoint_op.path
-            if endpoint_op.path_params:
-                for param in endpoint_op.path_params:
-                    if param in results:
-                        path = path.replace(f"{{{param}}}", str(results[param]))
-                    elif param == "id" and "id" in api_data_dict:
-                        path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
 
             url = self._build_url(path, service=context.service, api_version=context.api_version)
 

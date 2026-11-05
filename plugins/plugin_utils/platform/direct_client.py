@@ -26,7 +26,7 @@ from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError
 from .idempotency import canonical_json_object
 from .retry import RetryConfig
-from .types import TransformContext
+from .types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -1204,36 +1204,19 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.depends_on and endpoint_op.depends_on not in results:
                 continue
             logger.info("DirectHTTPClient: Checking dependencies for %s: %s", endpoint_op, endpoint_op.depends_on)
-            # Build URL
-            url = endpoint_op.path
-            logger.info("DirectHTTPClient: Building URL for %s: %s", endpoint_op, url)
-            if endpoint_op.path_params:
-                # Replace path parameters
-                for param in endpoint_op.path_params:
-                    param_value = results.get("id") or getattr(api_data, "id", None)
-                    if param_value:
-                        url = url.replace(f"{{{param}}}", str(param_value))
-            logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
+            path, request_data = build_endpoint_request(
+                endpoint_op,
+                api_data,
+                context,
+                path_values=results,
+                fields_to_null=fields_to_null,
+                omit_empty_strings=True,
+            )
+            body_fields = list(request_data) if isinstance(request_data, dict) else "flattened body"
+            logger.info("DirectHTTPClient: Built endpoint request path %s with fields %s", path, body_fields)
+            url = path
             url = self._build_url(url, service=context.service, api_version=context.api_version)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
-            # Prepare request data; include "" on update so enforced can clear e.g. email
-            request_data = {}
-            if endpoint_op.fields:
-                for field in endpoint_op.fields:
-                    value = getattr(api_data, field, None)
-                    if value is None:
-                        if field in fields_to_null or (
-                            context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
-                        ):
-                            request_data[field] = None
-                        continue
-                    if value == "" and not (field == "description" and context.operation == "update"):
-                        continue
-                    request_data[field] = value
-
-            # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
-                request_data = next(iter(request_data.values()))
 
             # Skip secondary (dependent) operations that have no data to send.
             # This prevents calling e.g. /users/{id}/organizations/ when organizations is not set.

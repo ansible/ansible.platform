@@ -26,10 +26,11 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_project import AnsibleEdaProject
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_project import (
     EDA_PROJECTS_DETAIL_ENDPOINT,
-    EDA_PROJECTS_SYNC_ENDPOINT,
+    EdaProjectTransformMixin_v1,
     resolve_foreign_key_id,
     supports_project_organization,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _SERVICE = "eda"
 _IMPORT_POLL_INTERVAL = 2  # seconds between import_state polls
@@ -471,13 +472,16 @@ class ActionModule(BaseResourceActionPlugin):
         Raises:
             AnsibleError: If the sync request fails or wait times out.
         """
-        sync_path = EDA_PROJECTS_SYNC_ENDPOINT.format(id=project_id)
+        sync_operation = EdaProjectTransformMixin_v1.get_endpoint_operations()["sync"]
+        if sync_operation.method != "POST":
+            raise AnsibleError("EDA project sync endpoint operation must use POST")
+        sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": project_id})
         self._display.vvv("eda_project: triggering sync for project '%s' (id=%s)" % (name, project_id))
 
         try:
             # retry=False: sync is not idempotent -- retrying a lost response
             # could trigger a duplicate sync.
-            manager.launch_resource(launch_url=sync_path, payload={}, service=_SERVICE, retry=False)
+            manager.launch_resource(launch_url=sync_path, payload=sync_payload, service=_SERVICE, retry=False)
         except Exception as exc:
             raise AnsibleError("Failed to trigger project sync: %s" % exc) from exc
 

@@ -11,7 +11,11 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_project import (
     AnsibleControllerProject,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_project import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_project import (
+    BASE_PATH,
+    ControllerProjectTransformMixin_v2,
+)
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _ASSOC_MAP = {
     "notification_templates_started": ("notification_templates", "name"),
@@ -135,11 +139,11 @@ class ActionModule(BaseResourceActionPlugin):
                     raise ValueError("Project sync finished with status '%s'" % update_result.get("status"))
 
         elif update_project:
-            launch_result = manager.launch_resource(
-                "projects/%d/update" % project_id,
-                {},
-                service=_SERVICE,
-            )
+            sync_operation = ControllerProjectTransformMixin_v2.get_endpoint_operations()["sync"]
+            if sync_operation.method != "POST":
+                raise ValueError("Controller project sync endpoint operation must use POST")
+            sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": project_id})
+            launch_result = manager.launch_resource(sync_path, sync_payload, service=_SERVICE)
 
             if not wait:
                 result["changed"] = True
