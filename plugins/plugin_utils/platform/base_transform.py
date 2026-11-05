@@ -47,11 +47,12 @@ class BaseTransformMixin(ABC):
         if not cls.require_unique_lookup:
             return results[0]
 
+        if len(results) > 1 or list_result.get("count", len(results)) > 1 or list_result.get("next"):
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
+
         matches = [item for item in results if str(item.get(lookup_field)) == str(lookup_value)]
         if not matches:
             raise ValueError(f"Resource with {lookup_field}={lookup_value} not found")
-        if len(matches) > 1 or list_result.get("count", len(results)) > 1 or list_result.get("next"):
-            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
         return matches[0]
 
     def to_ansible(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:

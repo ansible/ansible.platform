@@ -325,6 +325,18 @@ class TestManageAssociations(unittest.TestCase):
         self.assertEqual(self.client._make_request.call_count, 2)
         self.assertEqual(self.client.cache[cache_key], 29)
 
+    def test_delete_404_is_unchanged_and_invalidates_lookup_cache(self):
+        cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
+        self.client.cache[cache_key] = 14
+        self.client._make_request = MagicMock(side_effect=APIError("Resource not found", status_code=404))
+        context = SimpleNamespace(service="controller", api_version="2")
+
+        result = self.client._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
+
+        self.assertEqual(result, {"changed": False, "id": 14})
+        self.assertNotIn(cache_key, self.client.cache)
+        self.client._make_request.assert_called_once()
+
 
 class TestManageSubResource(unittest.TestCase):
     def setUp(self):

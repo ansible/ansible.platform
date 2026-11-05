@@ -673,7 +673,7 @@ class PlatformService(BaseAPIClient):
         # user provided an incompatible field the API will reject it with a clear
         # validation error, which is the correct behaviour.
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
-            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data)
+            candidate_fields = mixin_class.get_fields_to_null_for_update(api_data, context)
             for field in candidate_fields:
                 if field in user_unset_fields:
                     fields_to_null.add(field)
@@ -851,6 +851,8 @@ class PlatformService(BaseAPIClient):
         url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
         response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
+        if response.status_code == 404:
+            return {"changed": False, "id": resource_id}
         response.raise_for_status()
         self._invalidate_resource_lookup_cache(context.service, delete_op.path)
         return {"changed": True, "id": resource_id}
@@ -949,11 +951,20 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
-            logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-            response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
-            response.raise_for_status()
-            list_result = response.json()
+            if getattr(mixin_class, "find_list_requires_all_results", False):
+                list_result = self.search_api(
+                    list_op.path,
+                    query_params,
+                    return_all=True,
+                    max_objects=getattr(mixin_class, "find_list_max_objects", 1000),
+                    service=context.service,
+                )
+            else:
+                url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
+                logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
+                response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
+                response.raise_for_status()
+                list_result = response.json()
 
             api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
 
