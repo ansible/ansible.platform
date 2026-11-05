@@ -1167,7 +1167,15 @@ class BaseResourceActionPlugin(ActionBase):
         return False
 
     def _format_resource_output(self, manager_result: dict, argspec: dict) -> Tuple[dict, dict]:
-        """Return the validated nested resource fields and flat-only extras."""
+        """Format manager output for nested and flat module results.
+
+        Args:
+            manager_result: Resource data returned by the manager.
+            argspec: Validated argument specification for the resource module.
+
+        Returns:
+            Tuple[dict, dict]: Validated resource fields and flat-only extra fields.
+        """
         strip_from_resource = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed"}
         argspec_fields = set(argspec.get("argument_spec", {}).keys())
         argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
