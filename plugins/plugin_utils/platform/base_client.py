@@ -147,6 +147,7 @@ class BaseAPIClient(ABC):
         # hosts include inventory and organization). Only normalize the simple
         # one-separator form; caller filters may have skipped detail lookup.
         if value.count("++") != 1:
+            self._normalize_organization_filter(filters, service)
             return value, filters
 
         resource_name, organization_name = self._parse_controller_named_key(value)
@@ -248,13 +249,20 @@ class BaseAPIClient(ABC):
         if numeric_is_id and str(lookup_value).isdigit():
             return int(lookup_value)
 
-        # A detail lookup has no way to apply additional caller-supplied
-        # filters. Preserve the filtered list lookup when the caller provided
-        # scope explicitly; otherwise let the service parse its named-key form.
-        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
+        # A detail lookup has no way to apply caller-supplied filters. The
+        # composite Controller credential key is an exception when organization
+        # is the sole filter: resolve the key directly, then verify its owner.
+        named_key = str(lookup_value)
+        filters = dict(extra_query_params or {})
+        scoped_composite_credential = (
+            service == "controller" and endpoint == "credentials" and lookup_field == "name" and named_key.count("++") > 1 and set(filters) == {"organization"}
+        )
+        if lookup_field == "name" and "++" in named_key and (not filters or scoped_composite_credential):
+            if scoped_composite_credential:
+                self._normalize_organization_filter(filters, service)
             service_version = self.get_api_version(service)
             self._prepare_resource_lookup(service)
-            named_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/{quote(str(lookup_value), safe='+')}/"
+            named_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/{quote(named_key, safe='+')}/"
             try:
                 named_result = self.search_api(named_path, service=service)
             except APIError as exc:
@@ -263,6 +271,14 @@ class BaseAPIClient(ABC):
             else:
                 named_resource_id = named_result.get("id")
                 if named_resource_id is not None:
+                    if scoped_composite_credential:
+                        actual_organization = self._normalize_composite_value(named_result.get("organization"))
+                        expected_organization = filters["organization"]
+                        if actual_organization != expected_organization:
+                            raise ValueError(
+                                "Credential named key %r resolved to organization %r, not requested organization %r"
+                                % (named_key, actual_organization, expected_organization)
+                            )
                     return named_resource_id
 
         lookup_value, extra_query_params = self._normalize_resource_lookup(endpoint, lookup_field, lookup_value, service, extra_query_params)
