@@ -39,7 +39,9 @@ class BulkHostCreateTransformMixin_v2(BaseTransformMixin):
             if str(organization).strip().isdigit():
                 organization_id = int(str(organization).strip())
             else:
-                organization_id = manager.lookup_resource_id("organizations", "name", str(organization), service="controller")
+                organization_id = manager.lookup_resource_id("organizations", "name", str(organization), service="controller", require_unique=True)
+                if organization_id is None:
+                    raise ValueError("Organization '%s' not found" % organization)
         else:
             organization_id = None
 
@@ -50,6 +52,8 @@ class BulkHostCreateTransformMixin_v2(BaseTransformMixin):
         if organization_id is not None:
             lookup_kwargs["extra_query_params"] = {"organization": organization_id}
         inventory_id = manager.lookup_resource_id("inventories", "name", str(inventory), **lookup_kwargs)
+        if inventory_id is None:
+            raise ValueError("Inventory '%s' not found" % inventory)
 
         hosts = []
         for host in getattr(ansible_instance, "hosts", []):

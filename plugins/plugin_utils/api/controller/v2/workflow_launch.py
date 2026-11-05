@@ -7,17 +7,13 @@ launch fields before calling the SDK launch endpoint.
 
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
-from urllib.parse import quote
 
 from ....platform.base_transform import BaseTransformMixin
-from ....platform.exceptions import APIError
 from ....platform.types import EndpointOperation, TransformContext
 
+WORKFLOW_JOBS_ENDPOINT = "/api/controller/v2/workflow_jobs/{id}/"
 WJT_LIST_ENDPOINT = "/api/controller/v2/workflow_job_templates/"
-WORKFLOW_JOBS_ENDPOINT = "workflow_jobs/{id}"
-WORKFLOW_TEMPLATE_LAUNCH_ENDPOINT = "workflow_job_templates/{id}/launch"
-_ORGANIZATION_LIST_ENDPOINT = "/api/gateway/v1/organizations/"
-_INVENTORY_LIST_ENDPOINT = "/api/controller/v2/inventories/"
+WORKFLOW_TEMPLATE_LAUNCH_ENDPOINT = "/api/controller/v2/workflow_job_templates/{id}/launch/"
 
 
 @dataclass
@@ -46,16 +42,9 @@ def _lookup_resource_id(
     value: Optional[str],
     endpoint: str,
     service: str,
-    named_url_endpoint: str,
-    reject_ambiguous: bool = False,
+    extra_query_params: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
-    """Resolve an Ansible resource reference to an API ID.
-
-    In addition to numeric IDs and names, the legacy modules accept named URL
-    references such as ``Production++``.  The Controller API exposes those as
-    detail paths, so resolve them before falling back to a name-filtered list
-    lookup.
-    """
+    """Resolve a resource reference through the shared client lookup path."""
     if value is None:
         return None
 
@@ -65,35 +54,14 @@ def _lookup_resource_id(
     if value_string.isdigit():
         return int(value_string)
 
-    if "++" in value_string:
-        named_url = f"{named_url_endpoint}{quote(value_string, safe='+')}/"
-        try:
-            named_result = manager.search_api(named_url)
-            if named_result.get("id") is not None:
-                return int(named_result["id"])
-        except APIError as exc:
-            if exc.status_code != 404:
-                raise
-            # Preserve the legacy fallback: if the named URL is not found,
-            # try the value as a literal resource name.
-
-    if reject_ambiguous:
-        response = manager.search_api(named_url_endpoint, query_params={"name": value_string}, return_all=True)
-        results = response.get("results", [])
-        result_count = response.get("count")
-        if not results:
-            raise ValueError("Resource '%s' with name=%s not found" % (endpoint, value_string))
-        if len(results) > 1 or (isinstance(result_count, int) and result_count > 1):
-            resource_label = endpoint[:-3] + "y" if endpoint.endswith("ies") else endpoint.rstrip("s")
-            raise ValueError("More than one %s matched name '%s'" % (resource_label, value_string))
-        resource_id = results[0].get("id")
-        if resource_id is None:
-            raise ValueError("Resource '%s' with name=%s has no ID" % (endpoint, value_string))
-        return int(resource_id)
-
-    if service == "gateway":
-        return manager.lookup_resource_id(endpoint, "name", value_string)
-    return manager.lookup_resource_id(endpoint, "name", value_string, service=service)
+    return manager.lookup_resource_id(
+        endpoint,
+        "name",
+        value_string,
+        service=service,
+        extra_query_params=extra_query_params,
+        require_unique=True,
+    )
 
 
 class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
@@ -112,16 +80,18 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
         skip_tags = getattr(ansible_instance, "skip_tags", None)
         extra_vars = getattr(ansible_instance, "extra_vars", None)
 
+        organization_id = _lookup_resource_id(manager, organization, "organizations", "controller")
+        organization_scope = {"organization": organization_id} if organization_id is not None else None
+
         return APIWorkflowLaunch_v2(
             name=getattr(ansible_instance, "name", None),
-            organization=_lookup_resource_id(manager, organization, "organizations", "gateway", _ORGANIZATION_LIST_ENDPOINT),
+            organization=organization_id,
             inventory=_lookup_resource_id(
                 manager,
                 inventory,
                 "inventories",
                 "controller",
-                _INVENTORY_LIST_ENDPOINT,
-                reject_ambiguous=True,
+                extra_query_params=organization_scope,
             ),
             limit=getattr(ansible_instance, "limit", None) or None,
             job_tags=",".join(tags) if tags else None,

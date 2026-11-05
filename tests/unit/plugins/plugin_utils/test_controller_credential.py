@@ -45,21 +45,32 @@ class TestControllerCredentialTransform(unittest.TestCase):
         m.lookup_resource_id.assert_any_call("credential_types", "name", "Machine", service="controller")
         self.assertEqual(api.credential_type, 42)
 
-    def test_org_fk_default_service(self):
+    def test_org_fk_uses_controller_service(self):
         m = MagicMock()
         m.lookup_resource_id.return_value = 1
         ansible = AnsibleControllerCredential(name="c", credential_type="1", organization="Default")
         ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": m})
         org_call = [c for c in m.lookup_resource_id.call_args_list if c[0][0] == "organizations"][0]
-        self.assertNotIn("controller", str(org_call))
+        self.assertEqual(org_call.kwargs.get("service"), "controller")
 
     def test_user_fk_by_username(self):
         m = MagicMock()
         m.lookup_resource_id.return_value = 5
         ansible = AnsibleControllerCredential(name="c", credential_type="1", user="admin")
         api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": m})
-        m.lookup_resource_id.assert_any_call("users", "username", "admin")
+        m.lookup_resource_id.assert_any_call("users", "username", "admin", service="controller")
         self.assertEqual(api.user, 5)
+
+    def test_team_fk_uses_controller_service_and_organization_scope(self):
+        m = MagicMock()
+        m.lookup_resource_id.side_effect = [900, 31]
+        ansible = AnsibleControllerCredential(name="c", credential_type="1", organization="Default", team="Ops")
+
+        api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": m})
+
+        self.assertEqual(api.organization, 900)
+        self.assertEqual(api.team, 31)
+        m.lookup_resource_id.assert_any_call("teams", "name", "Ops", service="controller", extra_query_params={"organization": 900})
 
     def test_update_with_new_name(self):
         ansible = AnsibleControllerCredential(name="old", credential_type="1", new_name="new")

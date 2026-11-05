@@ -136,7 +136,7 @@ class TestBulkHostCreateTransform:
         assert operation.path == "/api/controller/v2/bulk/host_create/"
         assert operation.method == "POST"
         assert payload == {"inventory": 42, "hosts": [{"name": "host1", "variables": '{"ansible_host": "192.0.2.1"}'}]}
-        assert manager.lookup_resource_id.call_args_list[0].kwargs == {"service": "controller"}
+        assert manager.lookup_resource_id.call_args_list[0].kwargs == {"service": "controller", "require_unique": True}
         assert manager.lookup_resource_id.call_args_list[1].kwargs == {
             "service": "controller",
             "require_unique": True,

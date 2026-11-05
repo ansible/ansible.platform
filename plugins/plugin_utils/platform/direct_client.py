@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -503,88 +503,9 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str,
-        service: str = "gateway",
-        extra_query_params: dict = None,
-        require_unique: bool = False,
-    ):
-        """
-        Resolve a resource name to ID by GET list with filter.
-        Compatible with PlatformService.lookup_resource_id interface.
-        Used by API mixins to resolve FKs (e.g. authenticator name -> id).
-
-        Args:
-            endpoint: API resource endpoint name (e.g. 'authenticators', 'service_clusters')
-            lookup_field: Field to filter on (e.g. 'name')
-            lookup_value: Value to look up
-            service: Service to route the lookup through (e.g. 'gateway', 'controller')
-            extra_query_params: Additional filter params (e.g. {'organization': 42} for org-scoped resources)
-            require_unique: Raise ValueError when the lookup matches multiple resources
-
-        Returns:
-            Resource ID (int) or None
-        """
-        if not lookup_value:
-            return None
-        if str(lookup_value).isdigit():
-            return int(lookup_value)
-
-        # AWX accepts Controller named URLs (for example, organization++inventory)
-        # as a direct resource path. Try that before a potentially ambiguous name query.
-        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
-            svc_version = self.get_api_version(service)
-            self._prepare_resource_lookup(service)
-            named_path = f"/api/{service}/v{svc_version}/{endpoint}/{quote(str(lookup_value), safe='+')}/"
-            try:
-                named_response = self._make_request("GET", self._build_url(named_path), operation="lookup", resource=endpoint)
-            except APIError as exc:
-                if exc.status_code != 404:
-                    raise
-            else:
-                named_resource_id = json.loads(named_response.read()).get("id")
-                if named_resource_id is not None:
-                    return named_resource_id
-
-        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value), extra_query_params)
-        # A cached first match cannot prove that the lookup is unique.
-        if not require_unique and cache_key in self.cache:
-            return self.cache[cache_key]
-
-        svc_version = self.get_api_version(service)
-        self._prepare_resource_lookup(service)
-
-        api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
-        query = {lookup_field: lookup_value}
-        if extra_query_params:
-            query.update(extra_query_params)
-        url = self._build_url(api_path, query)
-
-        response = self._make_request("GET", url, operation="lookup", resource=endpoint)
-
-        response_data = json.loads(response.read())
-
-        results = response_data.get("results", [])
-        if not results:
-            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
-        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
-            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
-
-        rid = results[0].get("id")
-        if rid is not None and not require_unique:
-            self.cache[cache_key] = rid
-        return rid
-
     def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str, extra_query_params: dict = None) -> str:
         """Preserve the direct client's resource-lookup cache key format."""
-        key = f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
-        if extra_query_params:
-            suffix = "&".join(f"{k}={v}" for k, v in sorted(extra_query_params.items()))
-            key = f"{key}:{suffix}"
-        return key
+        return "lookup:" + super()._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
 
     def _prepare_resource_lookup(self, service: str) -> None:
         """Set the Gateway API version header used by direct requests."""
@@ -1336,18 +1257,6 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Return main result
         return results.get("create") or results.get("update") or results.get("get") or results
-
-    def lookup_organization_ids(self, names: list) -> list:
-        """Lookup organization IDs from names (shared helper)."""
-        # TODO: Implement lookup using cache
-        # This should use the cache to avoid repeated lookups
-        pass
-
-    def lookup_organization_names(self, ids: list) -> list:
-        """Lookup organization names from IDs (shared helper)."""
-        # TODO: Implement lookup using cache
-        # This should use the cache to avoid repeated lookups
-        pass
 
     def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:
         """

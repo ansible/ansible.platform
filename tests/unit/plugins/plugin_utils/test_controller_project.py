@@ -53,13 +53,13 @@ class TestControllerProjectTransform(unittest.TestCase):
         self.assertIsNone(api.scm_type)
         self.assertIsNone(api.credential)
 
-    def test_org_lookup_uses_default_service(self):
+    def test_org_lookup_uses_controller_service(self):
         mock_manager = MagicMock()
         mock_manager.lookup_resource_id.return_value = 42
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleControllerProject(name="proj", organization="Default")
         ControllerProjectTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="controller")
 
     def test_credential_lookup_uses_controller_service(self):
         mock_manager = MagicMock()
@@ -149,7 +149,7 @@ class TestControllerProjectTransform(unittest.TestCase):
         mock_manager.lookup_organization_names.return_value = ["Default"]
         mock_manager.search_api.return_value = {"results": []}
         ansible = ControllerProjectTransformMixin_v2.from_api({"name": "proj", "organization": 1, "credential": None}, {"manager": mock_manager})
-        mock_manager.lookup_organization_names.assert_called_once_with([1])
+        mock_manager.lookup_organization_names.assert_called_once_with([1], service="controller")
         self.assertEqual(ansible.organization, "Default")
 
     def test_from_api_resolves_credential_name(self):

@@ -116,7 +116,7 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         """An explicit organization scopes both credential name lookups."""
         context = self._make_context(
             {
-                ("organizations", "Default"): 1,
+                ("organizations", "Default"): 901,
                 ("eda-credentials", "my_target"): 10,
                 ("eda-credentials", "my_source"): 20,
             }
@@ -130,11 +130,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
         api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
 
-        self.assertEqual(api_obj.organization_id, 1)
+        self.assertEqual(api_obj.organization_id, 901)
         credential_calls = [call for call in context.manager.lookup_resource_id.call_args_list if call.args[0] == "eda-credentials"]
         self.assertEqual(len(credential_calls), 2)
         for call in credential_calls:
-            self.assertEqual(call.kwargs["extra_query_params"], {"organization": 1})
+            self.assertEqual(call.kwargs["extra_query_params"], {"organization": 901})
             self.assertTrue(call.kwargs["require_unique"])
 
     def test_from_ansible_data_accepts_named_url_references(self):
@@ -193,11 +193,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         context.manager.lookup_resource_id.assert_not_called()
 
     def test_from_ansible_data_resolves_organization(self):
-        """Organization name resolves via organizations endpoint (gateway service)."""
+        """Organization name resolves via the EDA organizations endpoint."""
         lookup_map = {
             ("eda-credentials", "my_target"): 10,
             ("eda-credentials", "my_source"): 20,
-            ("organizations", "Default"): 1,
+            ("organizations", "Default"): 901,
         }
         context = self._make_context(lookup_map)
 
@@ -210,11 +210,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
         api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
 
-        self.assertEqual(api_obj.organization_id, 1)
-        # Organization lookup uses Gateway and rejects ambiguous names.
+        self.assertEqual(api_obj.organization_id, 901)
+        # Organization lookup uses EDA's service-local ID and rejects ambiguous names.
         org_call = [c for c in context.manager.lookup_resource_id.call_args_list if c.args[0] == "organizations"]
         self.assertEqual(len(org_call), 1)
-        self.assertEqual(org_call[0].kwargs["service"], "gateway")
+        self.assertEqual(org_call[0].kwargs["service"], "eda")
         self.assertTrue(org_call[0].kwargs["require_unique"])
 
     def test_from_ansible_data_optional_fields(self):

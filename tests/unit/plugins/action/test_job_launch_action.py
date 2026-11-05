@@ -59,7 +59,7 @@ class TestJobLaunchAction(unittest.TestCase):
             ("/api/controller/v2/job_templates/1/launch/", {}),
         )
         self.assertEqual(action._client.launch_resource.call_args.kwargs, {"service": "controller", "retry": False})
-        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/", query_params={"name": "Demo"})
+        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/1/")
         action._client.wait_for_completion.assert_not_called()
 
     def test_launch_with_wait_successful(self):
@@ -208,6 +208,37 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(call_payload["inventory"], 10)
         self.assertEqual(call_payload["credentials"], [20])
         self.assertEqual(call_payload["execution_environment"], 30)
+
+    def test_numeric_job_template_id_keeps_organization_scope_for_named_fks(self):
+        action = self._make_action(
+            {
+                "name": "42",
+                "organization": "Default",
+                "inventory": "Prod",
+                "credentials": ["Deploy"],
+                "wait": False,
+            }
+        )
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.side_effect = lambda endpoint, field, value, **kwargs: {
+            ("organizations", "name", "Default"): 9,
+            ("inventories", "name", "Prod"): 10,
+            ("credentials", "name", "Deploy"): 20,
+        }[(endpoint, field, value)]
+        action._client.launch_resource.return_value = {"id": 100, "status": "pending"}
+
+        result = action.run(task_vars={})
+
+        self.assertFalse(result.get("failed", False))
+        self.assertEqual(
+            action._client.lookup_resource_id.call_args_list[1].kwargs,
+            {"service": "controller", "extra_query_params": {"organization": 9}, "require_unique": True},
+        )
+        self.assertEqual(
+            action._client.lookup_resource_id.call_args_list[2].kwargs,
+            {"service": "controller", "extra_query_params": {"organization": 9}, "require_unique": True},
+        )
 
     def test_ambiguous_credential_name_raises(self):
         """Duplicate credential names should raise instead of silently picking the first."""
