@@ -88,6 +88,16 @@ class ActionModule(BaseResourceActionPlugin):
         if not project_id:
             return result
 
+        manager = self._client
+        if not check_mode and state not in ("absent", "exists") and (wait or update_project):
+            try:
+                project_data = self._refresh_project_sync_data(manager, result.get(self.MODULE_NAME) or {}, project_id)
+                result[self.MODULE_NAME] = project_data
+            except Exception as exc:
+                result["failed"] = True
+                result["msg"] = "Failed to refresh project sync metadata: %s" % exc
+                return result
+
         reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
         if check_mode:
             if reconcile_fields or update_project:
@@ -95,7 +105,6 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
@@ -119,15 +128,30 @@ class ActionModule(BaseResourceActionPlugin):
 
         return result
 
-    def _handle_project_sync(self, result, manager, project_id, wait, update_project, interval, timeout):
-        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+    @staticmethod
+    def _refresh_project_sync_data(manager, project_data, project_id):
+        """Refresh raw Controller metadata needed to wait for SCM sync."""
+        refreshed = manager.search_api(
+            "%s/%s/" % (BASE_PATH, project_id),
+            service=_SERVICE,
+        )
+        if not isinstance(refreshed, dict):
+            raise ValueError("Controller project refresh returned a non-object response")
 
+        merged = dict(project_data)
+        for field in ("summary_fields", "scm_revision"):
+            if field in refreshed:
+                merged[field] = refreshed[field]
+        return merged
+
+    def _handle_project_sync(self, result, manager, project_id, wait, update_project, interval, timeout):
         project_data = result.get(self.MODULE_NAME) or {}
-        summary_fields = project_data.get("summary_fields", {})
-        current_update = summary_fields.get("current_update", {})
-        scm_revision_before = project_data.get("scm_revision", "")
+        summary_fields = project_data.get("summary_fields") or {}
+        current_update = summary_fields.get("current_update") or {}
 
         if current_update.get("id"):
+            if update_project and not wait:
+                raise ValueError("Project sync is already running (id=%s); cannot schedule update_project with wait=false" % current_update["id"])
             if wait:
                 update_result = manager.wait_for_completion(
                     "project_updates/%d" % current_update["id"],
@@ -137,40 +161,51 @@ class ActionModule(BaseResourceActionPlugin):
                 )
                 if update_result.get("status") not in ("successful",):
                     raise ValueError("Project sync finished with status '%s'" % update_result.get("status"))
-
+                result[self.MODULE_NAME] = self._refresh_project_sync_data(manager, project_data, project_id)
+            if update_project:
+                self._launch_and_wait_for_project_sync(result, manager, project_id, wait, interval, timeout)
         elif update_project:
-            sync_operation = ControllerProjectTransformMixin_v2.get_endpoint_operations()["sync"]
-            if sync_operation.method != "POST":
-                raise ValueError("Controller project sync endpoint operation must use POST")
-            sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": project_id})
-            launch_result = manager.launch_resource(sync_path, sync_payload, service=_SERVICE)
+            self._launch_and_wait_for_project_sync(result, manager, project_id, wait, interval, timeout)
 
-            if not wait:
-                result["changed"] = True
-                return
+    def _launch_and_wait_for_project_sync(self, result, manager, project_id, wait, interval, timeout):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
-            update_url = launch_result.get("url", "project_updates/%d" % launch_result.get("id", project_id))
-            update_id = launch_result.get("id")
-            if update_id:
-                update_url = "project_updates/%d" % update_id
+        sync_operation = ControllerProjectTransformMixin_v2.get_endpoint_operations()["sync"]
+        if sync_operation.method != "POST":
+            raise ValueError("Controller project sync endpoint operation must use POST")
+        sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": project_id})
+        launch_result = manager.launch_resource(sync_path, sync_payload, service=_SERVICE)
 
-            try:
-                update_result = manager.wait_for_completion(
-                    update_url,
-                    timeout=float(timeout) if timeout is not None else None,
-                    interval=interval,
-                    service=_SERVICE,
-                )
-            except WaitTimeoutError:
-                result["failed"] = True
-                result["msg"] = "Timed out waiting for project sync"
-                return
+        if not wait:
+            result["changed"] = True
+            return
 
-            final_status = update_result.get("status", "")
-            if final_status != "successful":
-                raise ValueError("Project sync finished with status '%s'" % final_status)
+        update_url = launch_result.get("url")
+        update_id = launch_result.get("id") or launch_result.get("project_update")
+        if not update_url and update_id:
+            update_url = "project_updates/%s" % update_id
+        if not update_url:
+            raise ValueError("Project sync launch response did not include a URL or project update identifier")
 
-            if update_result.get("scm_revision", "") != scm_revision_before:
-                result["changed"] = True
-            else:
-                result["changed"] = True
+        try:
+            update_result = manager.wait_for_completion(
+                update_url,
+                timeout=float(timeout) if timeout is not None else None,
+                interval=interval,
+                service=_SERVICE,
+            )
+        except WaitTimeoutError:
+            result["failed"] = True
+            result["msg"] = "Timed out waiting for project sync"
+            return
+
+        final_status = update_result.get("status", "")
+        if final_status != "successful":
+            raise ValueError("Project sync finished with status '%s'" % final_status)
+
+        result["changed"] = True
+        result[self.MODULE_NAME] = self._refresh_project_sync_data(
+            manager,
+            result.get(self.MODULE_NAME) or {},
+            project_id,
+        )
