@@ -42,6 +42,7 @@
         organization: "Default"
         inputs:
           username: testuser
+        update_secrets: false
         state: present
       register: idempotent
 

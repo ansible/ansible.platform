@@ -37,6 +37,26 @@ class TestControllerCredentialTransform(unittest.TestCase):
         self.assertIsNone(api.organization)
         self.assertIsNone(api.inputs)
 
+    def test_update_secrets_false_omits_inputs_on_update(self):
+        ansible = AnsibleControllerCredential(
+            name="Cred",
+            credential_type="1",
+            inputs={"username": "admin"},
+            update_secrets=False,
+        )
+        api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
+        self.assertIsNone(api.inputs)
+
+    def test_update_secrets_true_includes_inputs_on_update(self):
+        ansible = AnsibleControllerCredential(
+            name="Cred",
+            credential_type="1",
+            inputs={"username": "admin"},
+            update_secrets=True,
+        )
+        api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
+        self.assertEqual(api.inputs, {"username": "admin"})
+
     def test_credential_type_fk_resolves(self):
         m = MagicMock()
         m.lookup_resource_id.return_value = 42
