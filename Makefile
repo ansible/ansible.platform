@@ -7,6 +7,10 @@ UID := $(shell id -u)
 ANSIBLE_CONFIG ?= tools/ansible/ansible.cfg
 export ANSIBLE_CONFIG
 
+# Use the configured collection path, with the existing local default as a fallback.
+ANSIBLE_COLLECTIONS_PATH ?= /tmp/collections
+export ANSIBLE_COLLECTIONS_PATH
+
 ## Get the version of python we are working with
 PYTHON_VERSION:
 	@echo "$(subst python,,$(PYTHON))"
@@ -48,11 +52,11 @@ check_action_plugin_invariants:
 
 ## Install the collection locally on your machine
 collection-install:
-	ansible-galaxy collection install . --force
+	ansible-galaxy collection install . --force --collections-path "$(ANSIBLE_COLLECTIONS_PATH)"
 
 ## Run the collection sanity tests
 collection-sanity: collection-install
-	cd /tmp/collections/ansible_collections/ansible/platform && \
+	cd $(ANSIBLE_COLLECTIONS_PATH)/ansible_collections/ansible/platform && \
 	ansible-test sanity
 
 ## Run the collections docs check
@@ -92,14 +96,14 @@ CONNECTION_MODE ?= local
 GATEWAY_HOSTNAME ?= https://localhost:8000
 
 _write_integration_config:
-	@mkdir -p /tmp/collections/ansible_collections/ansible/platform/tests/integration
+	@mkdir -p $(ANSIBLE_COLLECTIONS_PATH)/ansible_collections/ansible/platform/tests/integration
 	@printf 'gateway_hostname: %s\ngateway_password: %s\nconnection_mode: %s\n' \
 		'$(GATEWAY_HOSTNAME)' '$(GATEWAY_PASSWORD)' '$(CONNECTION_MODE)' \
-		> /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
-	@cat /tmp/collections/ansible_collections/ansible/platform/tests/integration/integration_config.yml
+		> $(ANSIBLE_COLLECTIONS_PATH)/ansible_collections/ansible/platform/tests/integration/integration_config.yml
+	@cat $(ANSIBLE_COLLECTIONS_PATH)/ansible_collections/ansible/platform/tests/integration/integration_config.yml
 
 collection-test: collection-install _write_integration_config
-	cd /tmp/collections/ansible_collections/ansible/platform && \
+	cd $(ANSIBLE_COLLECTIONS_PATH)/ansible_collections/ansible/platform && \
 	  ansible-test integration --color yes $(ANSIBLE_TEST_INTEGRATION_VENV) --requirements --coverage --continue-on-error
 
 ## Run integration tests explicitly using connection: local (default ephemeral mode)
@@ -123,10 +127,10 @@ collection-test-all-connections: collection-install
 ## Run a single Molecule scenario (mock tests, no real Gateway needed).
 ## Usage: make molecule-test SCENARIO=role_user_assignment_mock
 ##        make molecule-test SCENARIO=users_mock
-## Runs from inside the scenario directory so molecule finds molecule.yml regardless of version.
+## Run from the extensions directory so Molecule discovers the selected scenario.
 SCENARIO ?= default
-molecule-test:
-	cd extensions/molecule/$(SCENARIO) && molecule test
+molecule-test: collection-install
+	cd extensions && molecule test -s $(SCENARIO)
 
 ## Run all Molecule mock scenarios (starts mock server via default scenario, runs all, tears down).
 molecule-test-all:
