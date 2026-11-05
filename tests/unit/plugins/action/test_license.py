@@ -232,14 +232,12 @@ class TestLicenseAction(unittest.TestCase):
         self.assertEqual(manager.execute.call_count, 2)
 
     def test_present_without_manifest_or_subscription(self):
-        """state=present without manifest or subscription_id fails."""
+        """The shared argument validator requires a license source for state=present."""
         module = _make_module()
-        manager = _make_manager()
+        module._task.args = {"state": "present"}
 
-        result = self._run_with_prepare(module, manager, {"state": "present"})
-
-        self.assertTrue(result["failed"])
-        self.assertIn("manifest", result["msg"])
+        with self.assertRaisesRegex(Exception, "manifest|subscription_id"):
+            module._validate_action_input()
 
     def test_manifest_file_not_found(self):
         """Missing manifest file returns failed result."""

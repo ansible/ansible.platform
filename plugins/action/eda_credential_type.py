@@ -168,7 +168,7 @@ class ActionModule(BaseResourceActionPlugin):
             test_inputs = write_only_data.get("test_inputs")
             test_metadata = write_only_data.get("test_metadata")
             if not isinstance(test_inputs, dict) or not test_inputs:
-                raise AnsibleError("test_inputs must be non-empty when state=test")
+                raise AnsibleError("test_inputs must be provided and non-empty when state=test")
 
             # Find the credential type by name
             try:

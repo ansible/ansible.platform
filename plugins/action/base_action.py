@@ -486,14 +486,18 @@ class BaseResourceActionPlugin(ActionBase):
         preparation path uses the same helper before it creates the manager.
 
         Returns:
-            tuple: The generated argument specification and validated parameters.
+            Tuple[dict, dict]: The generated argument specification and validated parameters.
         """
         doc = self._get_documentation()
         argspec = self._build_argspec_from_docs(doc) if doc else None
         if not argspec:
             raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
 
-        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        # Ansible's required and conditional constraints check whether a key is
+        # present, even when its value is None. None is omitted from resource
+        # payloads below, so treat it as absent during input validation too.
+        validation_args = {key: value for key, value in self._task.args.items() if value is not None}
+        validated_input = self._validate_data(validation_args, argspec, "input")
         return argspec, validated_input.validated_parameters
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:

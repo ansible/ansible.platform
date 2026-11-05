@@ -43,7 +43,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         try:
             # ---- validate input ------------------------------------------------
-            _, validated_params = self._validate_action_input()
+            validated_params = self._validate_action_input()[1]
 
             # ---- manager connection --------------------------------------------
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)

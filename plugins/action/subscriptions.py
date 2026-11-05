@@ -40,7 +40,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            _, validated_params = self._validate_action_input()
+            validated_params = self._validate_action_input()[1]
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 

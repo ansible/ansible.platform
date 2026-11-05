@@ -4,7 +4,6 @@
 """Unit tests for the eda_controller_token action plugin."""
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ansible.plugins.action import ActionBase
@@ -43,16 +42,11 @@ class TestEdaControllerTokenAction(unittest.TestCase):
         return manager
 
     def _run_action(self, action, manager, validated_params):
-        doc = "module: eda_controller_token"
-        argspec = {"argument_spec": {"name": {}, "description": {}, "token": {}, "state": {}}}
-        validation = SimpleNamespace(validated_parameters=validated_params)
+        action._task.args = validated_params.copy()
 
         with patch.object(ActionBase, "run", return_value={}):
-            with patch.object(action, "_get_documentation", return_value=doc):
-                with patch.object(action, "_build_argspec_from_docs", return_value=argspec):
-                    with patch.object(action, "_validate_data", return_value=validation):
-                        with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
-                            return action.run(task_vars={})
+            with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                return action.run(task_vars={})
 
     def test_create_new_token(self):
         """Create token when none exists."""

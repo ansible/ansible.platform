@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - action plugins - validate null values as missing for required options, preserve original task arguments while processing association inputs, and prevent sensitive values from appearing in validation errors (https://issues.redhat.com/browse/AAP-100197).
+...
