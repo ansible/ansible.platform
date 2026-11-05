@@ -6,7 +6,7 @@
 from __future__ import absolute_import, division, print_function
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleJobTemplate
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import JobTemplateTransformMixin_v2
@@ -55,7 +55,7 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
 
     def test_inventory_execution_environment_webhook_credential_resolved_via_controller_service(self):
         manager = MagicMock()
-        manager.lookup_resource_id.side_effect = lambda endpoint, field, value, service=None: {
+        manager.lookup_resource_id.side_effect = lambda endpoint, field, value, service=None, **kwargs: {
             ("inventories", "Local"): 10,
             ("execution_environments", "EE"): 20,
             ("credentials", "Webhook Cred"): 30,
@@ -68,8 +68,8 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
         self.assertEqual(api_data.inventory, 10)
         self.assertEqual(api_data.execution_environment, 20)
         self.assertEqual(api_data.webhook_credential, 30)
-        for call in manager.lookup_resource_id.call_args_list:
-            self.assertEqual(call.kwargs.get("service"), "controller")
+        for lookup_call in manager.lookup_resource_id.call_args_list:
+            self.assertEqual(lookup_call.kwargs.get("service"), "controller")
 
 
 class TestFromAnsibleDataUpdate(unittest.TestCase):
@@ -142,61 +142,36 @@ class TestProjectResolution(unittest.TestCase):
         self.assertEqual(api_data.project, 42)
         manager.lookup_resource_id.assert_called_once_with("projects", "name", "Demo", service="controller")
 
-    def test_project_with_organization_resolves_org_then_scoped_search(self):
+    def test_project_with_organization_uses_shared_scoped_lookup(self):
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 99  # organization id
-        manager.search_api.return_value = {"results": [{"id": 55, "name": "Demo"}]}
         instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
 
         api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
-        manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
-        manager.search_api.assert_called_once_with("/api/controller/v2/projects/", query_params={"name": "Demo", "organization": 99})
-        self.assertEqual(api_data.project, 55)
+        self.assertEqual(
+            manager.lookup_resource_id.call_args_list,
+            [
+                call("organizations", "name", "Default", service="controller"),
+                call("projects", "name", "Demo", service="controller", extra_query_params={"organization": 99}),
+            ],
+        )
+        self.assertEqual(api_data.project, 99)
 
-    def test_project_with_organization_not_found_raises(self):
+    def test_project_lookup_raises_when_shared_lookup_is_ambiguous(self):
         manager = MagicMock()
-        manager.lookup_resource_id.return_value = 99
-        manager.search_api.return_value = {"results": []}
+        manager.lookup_resource_id.side_effect = [99, ValueError("Resource 'projects' with name=Demo matched multiple resources")]
         instance = AnsibleJobTemplate(name="Ping", project="Missing", organization="Default")
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "matched multiple resources"):
             JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
-    def test_project_with_organization_requires_exact_name_match(self):
-        manager = MagicMock()
-        manager.lookup_resource_id.return_value = 99
-        manager.search_api.return_value = {"results": [{"id": 55, "name": "Demo Copy"}]}
-        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
-
-        with self.assertRaisesRegex(ValueError, "not found"):
-            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
-
-    def test_project_with_organization_ambiguous_match_raises(self):
-        manager = MagicMock()
-        manager.lookup_resource_id.return_value = 99
-        manager.search_api.return_value = {"results": [{"id": 55, "name": "Demo"}, {"id": 56, "name": "Demo"}]}
-        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
-
-        with self.assertRaisesRegex(ValueError, "Multiple 'projects' resources"):
-            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
-
-    def test_project_with_organization_without_resolved_scope_raises(self):
+    def test_organization_scope_without_resolved_id_fails_before_project_lookup(self):
         manager = MagicMock()
         manager.lookup_resource_id.return_value = None
         instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
 
-        with self.assertRaisesRegex(ValueError, "without a value for scope field organization"):
-            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
-        manager.search_api.assert_not_called()
-
-    def test_project_with_organization_missing_result_id_raises(self):
-        manager = MagicMock()
-        manager.lookup_resource_id.return_value = 99
-        manager.search_api.return_value = {"results": [{"name": "Demo"}]}
-        instance = AnsibleJobTemplate(name="Ping", project="Demo", organization="Default")
-
-        with self.assertRaisesRegex(ValueError, "has no ID"):
+        with self.assertRaisesRegex(ValueError, "Could not resolve organization"):
             JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
 
 

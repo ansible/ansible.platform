@@ -110,23 +110,14 @@ class ActionModule(BaseResourceActionPlugin):
         if str(name).isdigit():
             return int(name)
 
-        query_params = {"name": name}
-        scope = ""
+        lookup_kwargs: dict = {"service": _SERVICE, "require_unique": True}
         if organization:
             org_id = manager.lookup_resource_id("organizations", "name", organization, service=_SERVICE)
-            query_params["organization"] = org_id
-            scope = " in organization '%s'" % organization
+            if org_id is None:
+                raise AnsibleError("Organization '%s' not found" % organization)
+            lookup_kwargs["extra_query_params"] = {"organization": org_id}
 
-        data = manager.search_api(CONTROLLER_PROJECTS_ENDPOINT, query_params=query_params, return_all=True)
-        matches = [project for project in data.get("results", []) if project.get("name") == name]
-        if not matches:
-            raise AnsibleError("Project '%s' not found%s" % (name, scope))
-        if len(matches) > 1:
-            if organization:
-                raise AnsibleError("Multiple projects named '%s' found in organization '%s'" % (name, organization))
-            raise AnsibleError("Multiple projects named '%s' found; specify organization to disambiguate" % name)
-
-        project_id = matches[0].get("id")
-        if project_id is None:
-            raise AnsibleError("Project '%s' has no ID%s" % (name, scope))
-        return project_id
+        try:
+            return manager.lookup_resource_id("projects", "name", name, **lookup_kwargs)
+        except ValueError as exc:
+            raise AnsibleError(str(exc)) from exc
