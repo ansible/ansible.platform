@@ -23,7 +23,7 @@ from ..platform.base_client import BaseAPIClient
 from ..platform.base_transform import BaseTransformMixin
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
-from ..platform.exceptions import AuthenticationError
+from ..platform.exceptions import APIError, AuthenticationError
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext
 
@@ -181,9 +181,9 @@ class PlatformService(BaseAPIClient):
     def _request_with_auth_recovery(self, method: str, url: str, operation: str, resource: str, **kwargs) -> "requests.Response":
         """Send one request, recovering once from an expired authentication token.
 
-        Unlike :meth:`_make_request`, this helper does not retry transient
-        failures. It is used by SDK endpoint operations that preserve their
-        existing single-attempt behavior while sharing the manager's 401 recovery.
+        This helper does not retry transient failures itself. :meth:`_make_request`
+        wraps it with the shared retry policy, keeping transport and auth recovery
+        separate from retry decisions.
         """
         self.record_activity()
         request_kwargs = kwargs.copy()
@@ -851,10 +851,12 @@ class PlatformService(BaseAPIClient):
 
         url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
-        response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
-        if response.status_code == 404:
-            return {"changed": False, "id": resource_id}
-        response.raise_for_status()
+        try:
+            self._make_request("delete", url, operation="delete", resource=mixin_class.__name__)
+        except APIError as exc:
+            if exc.status_code == 404:
+                return {"changed": False, "id": resource_id}
+            raise
         return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
@@ -890,8 +892,7 @@ class PlatformService(BaseAPIClient):
                 api_data = mixin_class.from_ansible_data(ansible_data, context)
                 payload = {f: getattr(api_data, f) for f in (get_op.fields or []) if getattr(api_data, f, None) is not None}
                 kwargs["json"] = payload
-            response = self._request_with_auth_recovery(method, url, operation="find", resource=mixin_class.__name__, **kwargs)
-            response.raise_for_status()
+            response = self._make_request(method, url, operation="find", resource=mixin_class.__name__, **kwargs)
             api_result = response.json()
             ansible_instance = mixin_class.from_api(api_result, context)
             from dataclasses import asdict
@@ -925,8 +926,7 @@ class PlatformService(BaseAPIClient):
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
             url = self._build_url(get_op.path.replace("{id}", str(resolved_id)), service=context.service, api_version=context.api_version)
-            response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
-            response.raise_for_status()
+            response = self._make_request("get", url, operation="find", resource=mixin_class.__name__)
             api_result = response.json()
 
             # Validate composite-key constraints against the fetched resource.
@@ -962,8 +962,7 @@ class PlatformService(BaseAPIClient):
             else:
                 url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
                 logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-                response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
-                response.raise_for_status()
+                response = self._make_request("get", url, operation="find", resource=mixin_class.__name__)
                 list_result = response.json()
 
             api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
@@ -976,7 +975,7 @@ class PlatformService(BaseAPIClient):
             if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
                 full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])), service=context.service, api_version=context.api_version)
                 logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
-                full_response = self._request_with_auth_recovery("get", full_url, operation="find", resource=mixin_class.__name__)
+                full_response = self._make_request("get", full_url, operation="find", resource=mixin_class.__name__)
                 if full_response.ok:
                     api_result = full_response.json()
 
@@ -1038,14 +1037,19 @@ class PlatformService(BaseAPIClient):
             logger.debug("Calling %s %s", endpoint_op.method, url)
 
             try:
-                response = self._request_with_auth_recovery(
+                # POST operations may create a second resource if a transient
+                # failure occurs after the server has accepted the first request.
+                # Keep them single-attempt; the default retry policy is safe for
+                # reads and idempotent updates/deletes.
+                retry_config = RetryConfig(max_attempts=1) if endpoint_op.method.upper() == "POST" else None
+                response = self._make_request(
                     endpoint_op.method,
                     url,
                     operation=op_name,
                     resource=endpoint_op.path,
+                    retry_config=retry_config,
                     json=request_data,
                 )
-                response.raise_for_status()
 
             except Exception as e:
                 logger.error("API call failed: %s", e)
