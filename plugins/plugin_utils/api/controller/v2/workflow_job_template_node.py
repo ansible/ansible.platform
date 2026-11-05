@@ -91,12 +91,12 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         if identifier is not None:
             api_data["identifier"] = identifier
 
-        # FK resolution: organization name → ID (Gateway-owned, default service)
+        # Resolve the organization in Controller's ID space for this Controller FK.
         organization = getattr(ansible_instance, "organization", None)
         org_id = None
         if organization is not None:
             if manager is not None and not str(organization).strip().isdigit():
-                org_id = manager.lookup_resource_id("organizations", "name", organization)
+                org_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
                 org_id = int(organization) if organization is not None else None
 

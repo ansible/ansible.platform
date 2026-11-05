@@ -12,8 +12,9 @@ from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
 
 __metaclass__ = type
 
@@ -249,8 +250,30 @@ class TestManageAssociations(unittest.TestCase):
         batch_call = self.client.search_api.call_args_list[0]
         self.assertEqual(batch_call.kwargs["query_params"], {"name__in": "label-a,label-b", "organization": 42})
 
+    def test_batch_lookup_rejects_duplicate_names_without_scope(self):
+        self.client.api_versions["controller"] = "2"
+        self.client.search_api.return_value = {
+            "count": 3,
+            "results": [
+                {"id": 7, "name": "shared"},
+                {"id": 8, "name": "shared"},
+                {"id": 9, "name": "other"},
+            ],
+        }
+
+        with self.assertRaisesRegex(ValidationError, "name=shared matched multiple resources"):
+            self.client._lookup_resource_ids("inventories", "name", ["shared", "other"], service="controller")
+
+        self.client.search_api.assert_called_once_with(
+            "/api/controller/v2/inventories/",
+            query_params={"name__in": "shared,other"},
+            return_all=True,
+            max_objects=100000,
+        )
+
     def test_same_name_inventory_lookups_are_scoped_by_organization(self):
-        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         inventories = [
             {"id": 10, "name": "shared", "organization": 1},
@@ -280,7 +303,8 @@ class TestManageAssociations(unittest.TestCase):
         self.assertEqual(query_filters, [{"name": ["shared"], "organization": ["1"]}, {"name": ["shared"], "organization": ["2"]}])
 
     def test_lookup_rejects_ambiguous_name_when_unique_required(self):
-        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.client.cache[cache_key] = 10
@@ -294,7 +318,8 @@ class TestManageAssociations(unittest.TestCase):
         self.assertEqual(self.client.cache[cache_key], 10)
 
     def test_unique_lookup_does_not_cache_result(self):
-        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         response = _http_resp(body={"count": 1, "results": [{"id": 15, "name": "shared"}]})
 
@@ -307,6 +332,7 @@ class TestManageAssociations(unittest.TestCase):
 
     def test_lookup_refreshes_resource_id_after_delete(self):
         self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
         self.client.cache[cache_key] = 14
@@ -319,7 +345,7 @@ class TestManageAssociations(unittest.TestCase):
         context = SimpleNamespace(service="controller", api_version="2")
 
         self.client._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
-        resource_id = self.client.lookup_resource_id("inventories", "name", "recreated", service="controller")
+        resource_id = self.client.lookup_resource_id("inventories", "name", "recreated", service="controller", require_unique=False)
 
         self.assertEqual(resource_id, 29)
         self.assertEqual(self.client._make_request.call_count, 2)

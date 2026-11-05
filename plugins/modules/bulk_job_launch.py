@@ -123,7 +123,7 @@ options:
     inventory:
         description:
             - Inventory name, ID, or named URL to use for all jobs, if prompt for inventory is enabled.
-            - Named URLs use the Controller format, such as C(Default++Demo Inventory).
+            - Named URLs use the Controller format, such as C(Demo Inventory++Default).
         type: str
     limit:
         description:

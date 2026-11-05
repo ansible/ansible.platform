@@ -31,7 +31,7 @@ class TestNotificationTemplateTransform(unittest.TestCase):
         NotificationTemplateTransformMixin_v2.from_ansible_data(
             AnsibleNotificationTemplate(name="n", organization="Default"), {"operation": "create", "manager": m}
         )
-        m.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        m.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
 
     def test_new_name(self):
         api = NotificationTemplateTransformMixin_v2.from_ansible_data(
@@ -48,7 +48,7 @@ class TestNotificationTemplateTransform(unittest.TestCase):
         mock_manager = MagicMock()
         mock_manager.lookup_organization_names.return_value = ["Default"]
         r = NotificationTemplateTransformMixin_v2.from_api({"name": "W", "organization": 5, "notification_type": "webhook"}, {"manager": mock_manager})
-        mock_manager.lookup_organization_names.assert_called_once_with([5])
+        mock_manager.lookup_organization_names.assert_called_once_with([5], service="controller")
         self.assertEqual(r.organization, "Default")
 
     def test_from_api_null_organization(self):

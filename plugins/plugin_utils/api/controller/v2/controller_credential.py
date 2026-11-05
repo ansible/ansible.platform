@@ -59,23 +59,29 @@ class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
                 api_data["credential_type"] = int(credential_type) if credential_type is not None else None
 
         organization = getattr(ansible_instance, "organization", None)
+        organization_id = None
         if organization is not None:
             if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
-                api_data["organization"] = int(organization)
+                organization_id = int(organization)
+            api_data["organization"] = organization_id
+        organization_scope = {"organization": organization_id} if organization_id is not None else None
 
         user = getattr(ansible_instance, "user", None)
         if user is not None:
             if manager is not None and not str(user).strip().isdigit():
-                api_data["user"] = manager.lookup_resource_id("users", "username", user)
+                api_data["user"] = manager.lookup_resource_id("users", "username", user, service="controller")
             else:
                 api_data["user"] = int(user)
 
         team = getattr(ansible_instance, "team", None)
         if team is not None:
             if manager is not None and not str(team).strip().isdigit():
-                api_data["team"] = manager.lookup_resource_id("teams", "name", team)
+                team_lookup_kwargs: Dict[str, Any] = {"service": "controller"}
+                if organization_scope:
+                    team_lookup_kwargs["extra_query_params"] = organization_scope
+                api_data["team"] = manager.lookup_resource_id("teams", "name", team, **team_lookup_kwargs)
             else:
                 api_data["team"] = int(team)
 
