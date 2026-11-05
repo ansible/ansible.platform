@@ -19,7 +19,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
@@ -50,6 +50,13 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_c
 # Ansible correctly wires up the file handler.
 # ---------------------------------------------------------------------------
 display = Display()
+
+
+class ValidatedActionInput(NamedTuple):
+    """Argument specification and validated parameters for an action plugin."""
+
+    argspec: dict
+    validated_params: dict
 
 
 def _manager_process_entry(
@@ -454,7 +461,9 @@ class BaseResourceActionPlugin(ActionBase):
         result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
 
-        argspec, validated_params = self._validate_action_input()
+        validated_input = self._validate_action_input()
+        argspec = validated_input.argspec
+        validated_params = validated_input.validated_params
         manager, facts_to_set = self._get_or_spawn_manager(task_vars)
         self._client = manager
         if facts_to_set:
@@ -478,7 +487,7 @@ class BaseResourceActionPlugin(ActionBase):
             "manager": manager,
         }
 
-    def _validate_action_input(self) -> Tuple[dict, dict]:
+    def _validate_action_input(self) -> ValidatedActionInput:
         """Validate the original task arguments against the module documentation.
 
         This input-only helper lets custom action plugins validate before they
@@ -486,7 +495,7 @@ class BaseResourceActionPlugin(ActionBase):
         preparation path uses the same helper before it creates the manager.
 
         Returns:
-            Tuple[dict, dict]: The generated argument specification and validated parameters.
+            ValidatedActionInput: The generated argument specification and validated parameters.
         """
         doc = self._get_documentation()
         argspec = self._build_argspec_from_docs(doc) if doc else None
@@ -498,7 +507,7 @@ class BaseResourceActionPlugin(ActionBase):
         # payloads below, so treat it as absent during input validation too.
         validation_args = {key: value for key, value in self._task.args.items() if value is not None}
         validated_input = self._validate_data(validation_args, argspec, "input")
-        return argspec, validated_input.validated_parameters
+        return ValidatedActionInput(argspec=argspec, validated_params=validated_input.validated_parameters)
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
