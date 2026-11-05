@@ -8,6 +8,7 @@
     host_filter: "{{ item.host_filter | default(omit) }}"
     variables: "{{ item.variables | default(omit) }}"
     instance_groups: "{{ item.instance_groups | default(omit) }}"
+    input_inventories: "{{ item.input_inventories | default(omit) }}"
     prevent_instance_group_fallback: "{{ item.prevent_instance_group_fallback | default(omit) }}"
     state: "{{ import_controller_state }}"
   loop: "{{ _import_controller_assets.inventory }}"
