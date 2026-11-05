@@ -107,6 +107,13 @@ class TestEdaCredentialAction(unittest.TestCase):
 
     # ---- CRUD Tests (delegated to base class) ----
 
+    def test_legacy_credential_argument_aliases_are_documented(self):
+        """Legacy ansible.eda argument names remain accepted as aliases."""
+        from ansible_collections.ansible.platform.plugins.modules.eda_credential import DOCUMENTATION
+
+        self.assertIn("credential_type_name", DOCUMENTATION)
+        self.assertIn("organization_name", DOCUMENTATION)
+
     def test_create_new_credential(self):
         """Create credential when none exists (base class CRUD)."""
         action = self._make_action()
