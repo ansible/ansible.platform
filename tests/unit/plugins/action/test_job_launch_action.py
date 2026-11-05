@@ -145,8 +145,12 @@ class TestJobLaunchAction(unittest.TestCase):
 
         action.run(task_vars={})
 
-        call_payload = action._client.launch_resource.call_args.args[1]
-        self.assertEqual(call_payload["extra_vars"], '{"key": "val"}')
+        action._client.launch_resource.assert_called_once_with(
+            "/api/controller/v2/job_templates/1/launch/",
+            {"extra_vars": '{"key": "val"}'},
+            service="controller",
+            retry=False,
+        )
 
     def test_tags_joined_as_comma_separated(self):
         action = self._make_action(

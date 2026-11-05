@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Union
 
 from ....ansible_models.ad_hoc_command import AnsibleAdHocCommand
 from ....platform.base_transform import BaseTransformMixin
-from ....platform.types import EndpointOperation, TransformContext
+from ....platform.types import EndpointOperation, TransformContext, build_endpoint_request
 
 AD_HOC_COMMANDS_ENDPOINT = "/api/controller/v2/ad_hoc_commands/"
 AD_HOC_COMMANDS_DETAIL_ENDPOINT = "/api/controller/v2/ad_hoc_commands/{id}/"
@@ -79,8 +79,8 @@ class AdHocCommandTransformMixin_v2(BaseTransformMixin):
     ) -> Dict[str, Any]:
         """Return only populated API request fields in endpoint order."""
         api_data = cls.from_ansible_data(ansible_instance, context)
-        fields = cls.get_endpoint_operations()["create"].fields
-        return {field_name: getattr(api_data, field_name) for field_name in fields if getattr(api_data, field_name) is not None}
+        operation = cls.get_endpoint_operations()["create"]
+        return build_endpoint_request(operation, api_data)[1]
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]) -> AnsibleAdHocCommand:

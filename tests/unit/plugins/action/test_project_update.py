@@ -127,6 +127,12 @@ class TestProjectUpdateAction(unittest.TestCase):
                 self.assertEqual(result["changed"], expected_changed)
                 self.assertEqual(result["id"], 86)
                 self.assertEqual(result["status"], "successful")
+                manager.search_api.assert_called_once_with("/api/controller/v2/projects/42/")
+                manager.launch_resource.assert_called_once_with(
+                    "/api/controller/v2/projects/42/update/",
+                    {},
+                    service="controller",
+                )
 
     @patch.object(ActionModule, "_prepare_action")
     def test_canceled_update_is_failed(self, mock_prepare):
