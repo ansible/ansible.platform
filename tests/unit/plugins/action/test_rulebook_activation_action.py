@@ -100,6 +100,54 @@ class TestRulebookActivationAction(unittest.TestCase):
         manager.direct_request.assert_called_once()
         self.assertIn("enable", manager.direct_request.call_args.args[1])
 
+    def test_enabled_false_does_not_override_explicit_absent_existing(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "enabled": False, "state": "absent", "restart": False},
+            provided_args={"name": "test-activation", "enabled": False, "state": "absent"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.execute.assert_any_call(operation="delete", module_name="rulebook_activation", ansible_data={"id": 42, "name": "test-activation"})
+        manager.direct_request.assert_not_called()
+
+    def test_enabled_false_does_not_create_missing_explicit_absent(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result=None)
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "missing", "enabled": False, "state": "absent", "restart": False},
+            provided_args={"name": "missing", "enabled": False, "state": "absent"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        self.assertEqual(manager.execute.call_count, 1)
+        manager.direct_request.assert_not_called()
+
+    def test_enabled_with_description_updates_existing_activation(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "enabled": True, "state": "present", "description": "updated", "restart": False},
+            provided_args={"name": "test-activation", "enabled": True, "description": "updated"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.execute.assert_any_call(
+            operation="update",
+            module_name="rulebook_activation",
+            ansible_data={"name": "test-activation", "state": "enabled", "description": "updated", "is_enabled": True, "id": 42},
+        )
+
     def test_delete_existing_activation(self):
         """Delete activation when it exists."""
         action = self._make_action()

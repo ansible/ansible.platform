@@ -94,6 +94,24 @@ def test_run_refetches_sync_metadata_before_waiting():
     manager.wait_for_completion.assert_called_once_with("project_updates/86", timeout=None, interval=2.0, service="controller")
 
 
+def test_handle_project_sync_rejects_failed_automatic_sync_after_refresh():
+    module = _make_module()
+    manager = MagicMock()
+    result = {
+        "changed": True,
+        "controller_project": {
+            "id": 42,
+            "scm_type": "git",
+            "summary_fields": {"last_update": {"id": 86, "status": "failed"}},
+        },
+    }
+
+    with pytest.raises(ValueError, match="Automatic project sync finished with status 'failed'"):
+        module._handle_project_sync(result, manager, 42, wait=True, update_project=False, interval=2.0, timeout=None, project_changed=True)
+
+    manager.wait_for_completion.assert_not_called()
+
+
 def test_handle_project_sync_tolerates_null_summary_fields():
     module = _make_module()
     manager = MagicMock()

@@ -53,10 +53,16 @@ class ActionModule(BaseResourceActionPlugin):
         params = prepared["validated_params"]
         enabled = params.pop("enabled", None)
         prepared["resource_data"].pop("enabled", None)
+        self._legacy_enabled_provided = enabled is not None
         if enabled is not None:
-            state = "enabled" if enabled else "disabled"
-            params["state"] = state
-            prepared["resource_data"]["state"] = state
+            mapped_state = "enabled" if enabled else "disabled"
+            explicit_state = self._task.args.get("state")
+            if explicit_state == "absent":
+                mapped_state = "absent"
+            elif explicit_state not in (None, "present", mapped_state):
+                raise AnsibleError("enabled cannot be combined with state=%s" % explicit_state)
+            params["state"] = mapped_state
+            prepared["resource_data"]["state"] = mapped_state
         return prepared
 
     def run(self, tmp: object = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
@@ -95,7 +101,12 @@ class ActionModule(BaseResourceActionPlugin):
                 return self._handle_absent(manager, name, existing, result)
 
             if state in ("enabled", "disabled") and existing:
-                return self._handle_state_transition(manager, state, existing, result)
+                state_result = self._handle_state_transition(manager, state, existing, result)
+                if self._legacy_enabled_provided and self._has_legacy_enabled_update_fields():
+                    state_changed = state_result.get("changed", False)
+                    result = self._handle_create_or_update(manager, params, state, name, new_name, existing, state_result)
+                    result["changed"] = state_changed or result.get("changed", False)
+                return result
 
             return self._handle_create_or_update(manager, params, state, name, new_name, existing, result)
 
@@ -109,6 +120,11 @@ class ActionModule(BaseResourceActionPlugin):
                 result["exception"] = traceback.format_exc()
 
         return result
+
+    def _has_legacy_enabled_update_fields(self) -> bool:
+        """Return whether enabled was combined with explicit CRUD fields."""
+        ignored = {"enabled", "name", "state", "restart"}
+        return any(field not in ignored for field in self._task.args if field in _ANSIBLE_MODEL_FIELDS)
 
     def _find_activation(self, manager: Any, name: Optional[str]) -> Optional[dict]:
         """Find an existing activation by name.
