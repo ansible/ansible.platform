@@ -105,6 +105,83 @@ class TestResourceLookup(unittest.TestCase):
                 call = _request_calls(client)[0]
                 self.assertEqual(urlparse(call.args[1]).path, "/api/controller/v2/organizations/900/")
 
+    def test_lookup_resource_ids_batches_address_values(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 2, "results": [{"id": 21, "address": "peer-a"}, {"id": 22, "address": "peer-b"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(
+                    client.lookup_resource_ids("receptor_addresses", "address", ["peer-a", "peer-b"], service="controller"),
+                    {"peer-a": 21, "peer-b": 22},
+                )
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/receptor_addresses/")
+                self.assertEqual(_request_filters(client, calls[0]), {"address__in": ["peer-a,peer-b"]})
+
+    def test_lookup_resource_ids_rejects_duplicate_matches(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 3, "results": [{"id": 21, "address": "peer-a"}, {"id": 22, "address": "peer-a"}, {"id": 23, "address": "peer-b"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__), self.assertRaisesRegex(ValidationError, "address=peer-a matched multiple resources"):
+                client.lookup_resource_ids("receptor_addresses", "address", ["peer-a", "peer-b"], service="controller")
+
+    def test_lookup_resource_ids_can_batch_numeric_scoped_identifiers_and_report_missing_to_caller(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 2, "results": [{"id": 30, "identifier": "123"}, {"id": 31, "identifier": "child"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                resolved = client.lookup_resource_ids(
+                    "workflow_job_template_nodes",
+                    "identifier",
+                    ["123", "missing", "child"],
+                    service="controller",
+                    extra_query_params={"workflow_job_template": 77},
+                    numeric_is_id=False,
+                    allow_missing=True,
+                )
+                self.assertEqual(resolved, {"123": 30, "child": 31})
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/workflow_job_template_nodes/")
+                self.assertEqual(
+                    _request_filters(client, calls[0]),
+                    {"identifier__in": ["123,missing,child"], "workflow_job_template": ["77"]},
+                )
+
+    def test_lookup_resource_ids_keeps_comma_identifiers_exact_when_missing_is_allowed(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"count": 1, "results": [{"id": 32, "identifier": "node,child"}]}))
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(
+                    client.lookup_resource_ids(
+                        "workflow_job_template_nodes",
+                        "identifier",
+                        ["node,child"],
+                        service="controller",
+                        extra_query_params={"workflow_job_template": 77},
+                        numeric_is_id=False,
+                        allow_missing=True,
+                    ),
+                    {"node,child": 32},
+                )
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(
+                    _request_filters(client, calls[0]),
+                    {"identifier": ["node,child"], "workflow_job_template": ["77"]},
+                )
+
     def test_other_services_keep_their_server_side_named_key_resolution(self):
         for client in (_service(), _direct_client()):
             _set_responses(client, _response(body={"id": 71, "name": "Vault"}))
