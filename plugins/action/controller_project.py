@@ -125,9 +125,14 @@ class ActionModule(BaseResourceActionPlugin):
 
         project_changed = bool(result.get("changed"))
         manager = self._client
-        if not check_mode and state not in ("absent", "exists") and (wait or update_project):
+        project_data = result.get(self.MODULE_NAME) or {}
+        project_scm_type = project_data.get("scm_type")
+        if project_scm_type is None:
+            project_scm_type = self._task.args.get("scm_type")
+        needs_sync_metadata = project_scm_type not in ("", "manual") or update_project
+        if not check_mode and state not in ("absent", "exists") and (wait or update_project) and needs_sync_metadata:
             try:
-                project_data = self._refresh_project_sync_data(manager, result.get(self.MODULE_NAME) or {}, project_id)
+                project_data = self._refresh_project_sync_data(manager, project_data, project_id)
                 result[self.MODULE_NAME] = project_data
             except Exception as exc:
                 result["failed"] = True
