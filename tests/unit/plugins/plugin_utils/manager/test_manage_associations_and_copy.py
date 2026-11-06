@@ -76,15 +76,22 @@ class TestManageAssociations(unittest.TestCase):
         self.svc.get_api_version = MagicMock(return_value="2")
         cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
         self.svc.cache[cache_key] = 14
-        self.svc.session.delete.return_value = _resp()
-        self.svc._make_request.return_value = _resp(json_data={"count": 1, "results": [{"id": 29, "name": "recreated"}]})
+        self.svc._make_request.side_effect = [
+            _resp(),
+            _resp(json_data={"count": 1, "results": [{"id": 29, "name": "recreated"}]}),
+        ]
         context = SimpleNamespace(service="controller", api_version="2")
 
         self.svc._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
         resource_id = self.svc.lookup_resource_id("inventories", "name", "recreated", service="controller", require_unique=False)
 
         self.assertEqual(resource_id, 29)
-        self.svc._make_request.assert_called_once()
+        self.assertEqual(self.svc._make_request.call_count, 2)
+        delete_call, lookup_call = self.svc._make_request.call_args_list
+        self.assertEqual(delete_call.args[0], "delete")
+        self.assertIn("/inventories/14/", delete_call.args[1])
+        self.assertEqual(lookup_call.args[0], "get")
+        self.assertEqual(lookup_call.kwargs["params"], {"name": "recreated"})
         self.assertEqual(self.svc.cache[cache_key], 29)
 
     def test_associates_and_disassociates_to_reconcile(self):
