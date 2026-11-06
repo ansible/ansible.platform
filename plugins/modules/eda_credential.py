@@ -54,12 +54,16 @@ options:
       - The name or ID of the credential type.
       - Required when creating a credential (C(state=present) without C(copy_from)).
     type: str
+    aliases:
+      - credential_type_name
 
   organization:
     description:
       - The name or ID of the organization that owns the credential.
       - Required when creating a credential (C(state=present) without C(copy_from)).
     type: str
+    aliases:
+      - organization_name
 
   inputs:
     description:
