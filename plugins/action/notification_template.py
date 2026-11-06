@@ -33,8 +33,10 @@ class ActionModule(BaseResourceActionPlugin):
     @classmethod
     def _notification_values_could_match(cls, desired, current):
         """Compare notification configuration values with API normalization tolerance."""
-        if current == "$encrypted$" or desired == "$encrypted$":
+        if desired == "$encrypted$":
             return True
+        if current == "$encrypted$":
+            return False
         if isinstance(desired, dict):
             if not isinstance(current, dict):
                 return False

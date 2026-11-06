@@ -112,6 +112,33 @@ def test_handle_project_sync_rejects_failed_automatic_sync_after_refresh():
     manager.wait_for_completion.assert_not_called()
 
 
+def test_handle_project_sync_ignores_prior_failed_sync():
+    module = _make_module()
+    manager = MagicMock()
+    result = {
+        "changed": True,
+        "controller_project": {
+            "id": 42,
+            "scm_type": "git",
+            "summary_fields": {"last_update": {"id": 86, "status": "failed"}},
+        },
+    }
+
+    module._handle_project_sync(
+        result,
+        manager,
+        42,
+        wait=True,
+        update_project=False,
+        interval=2.0,
+        timeout=None,
+        project_changed=True,
+        project_sync_before_update_id=86,
+    )
+
+    manager.wait_for_completion.assert_not_called()
+
+
 def test_handle_project_sync_tolerates_null_summary_fields():
     module = _make_module()
     manager = MagicMock()

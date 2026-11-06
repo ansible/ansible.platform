@@ -33,6 +33,37 @@ class ActionModule(BaseResourceActionPlugin):
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from", "wait", "update_project", "interval"} | set(_ASSOC_MAP))
 
+    def _prepare_action(self, tmp=None, task_vars=None):
+        prepared = super()._prepare_action(tmp, task_vars)
+        self._project_sync_before_update_id = None
+        params = prepared["validated_params"]
+        if params.get("wait", True) is False or params.get("state", "present") in ("absent", "exists"):
+            return prepared
+
+        name = params.get("name")
+        if name is None or str(name).strip().isdigit():
+            return prepared
+
+        manager = prepared["manager"]
+        query_params = {"name": name}
+        organization = params.get("organization")
+        if organization is not None:
+            if str(organization).strip().isdigit():
+                query_params["organization"] = int(organization)
+            else:
+                query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization, service=_SERVICE)
+        try:
+            existing = manager.search_api(BASE_PATH, query_params=query_params).get("results", [])
+            if len(existing) == 1:
+                summary_fields = existing[0].get("summary_fields") or {}
+                current_update = summary_fields.get("current_update") or {}
+                last_update = summary_fields.get("last_update") or {}
+                self._project_sync_before_update_id = current_update.get("id") or last_update.get("id")
+        except Exception:
+            # The normal CRUD path remains responsible for reporting lookup/API errors.
+            self._project_sync_before_update_id = None
+        return prepared
+
     def _resolve_lookup(self, resource, resource_data, validated_params):
         organization = getattr(resource, "organization", None)
         if organization is not None and str(organization).strip().isdigit():
@@ -126,7 +157,17 @@ class ActionModule(BaseResourceActionPlugin):
         # --- Project sync / update logic ---
         if state not in ("absent", "exists"):
             try:
-                self._handle_project_sync(result, manager, project_id, wait, update_project, interval, timeout, project_changed)
+                self._handle_project_sync(
+                    result,
+                    manager,
+                    project_id,
+                    wait,
+                    update_project,
+                    interval,
+                    timeout,
+                    project_changed,
+                    getattr(self, "_project_sync_before_update_id", None),
+                )
             except Exception as exc:
                 result["failed"] = True
                 result["msg"] = "Project sync failed: %s" % exc
@@ -149,7 +190,9 @@ class ActionModule(BaseResourceActionPlugin):
                 merged[field] = refreshed[field]
         return merged
 
-    def _handle_project_sync(self, result, manager, project_id, wait, update_project, interval, timeout, project_changed=False):
+    def _handle_project_sync(
+        self, result, manager, project_id, wait, update_project, interval, timeout, project_changed=False, project_sync_before_update_id=None
+    ):
         project_data = result.get(self.MODULE_NAME) or {}
         summary_fields = project_data.get("summary_fields") or {}
         current_update = summary_fields.get("current_update") or {}
@@ -174,7 +217,7 @@ class ActionModule(BaseResourceActionPlugin):
         elif wait and project_changed and project_data.get("scm_type") not in (None, "", "manual"):
             last_update = summary_fields.get("last_update") or {}
             last_update_status = last_update.get("status")
-            if last_update.get("id") and last_update_status in ("failed", "error", "canceled"):
+            if last_update.get("id") and last_update.get("id") != project_sync_before_update_id and last_update_status in ("failed", "error", "canceled"):
                 raise ValueError("Automatic project sync finished with status '%s'" % last_update_status)
 
     def _launch_and_wait_for_project_sync(self, result, manager, project_id, wait, interval, timeout):
