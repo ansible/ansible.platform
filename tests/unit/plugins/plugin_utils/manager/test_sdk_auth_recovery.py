@@ -162,3 +162,42 @@ class TestSDKAuthRecovery(TestCase):
             self.service._execute_operations(operations, _FakeLicense(manifest="encoded"), self.context, required_for="create")
 
         self.service.session.post.assert_called_once()
+
+    def test_execute_operations_preserves_api_error_when_adding_response_body(self):
+        original_error = APIError(
+            "API request failed",
+            operation="create",
+            resource="license",
+            details={"status_code": 503, "response_body": '{"detail": "service unavailable"}'},
+            status_code=503,
+        )
+        original_error.retryable = True
+        operations = {
+            "create": EndpointOperation(path="config/", method="POST", fields=["manifest"], required_for="create", order=1),
+        }
+
+        with patch.object(self.service, "_make_request", side_effect=original_error):
+            with self.assertRaises(APIError) as raised:
+                self.service._execute_operations(operations, _FakeLicense(manifest="encoded"), self.context, required_for="create")
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertTrue(raised.exception.retryable)
+        self.assertEqual(raised.exception.operation, "create")
+        self.assertEqual(raised.exception.resource, "license")
+        self.assertEqual(raised.exception.details["status_code"], 503)
+        self.assertIn("service unavailable", str(raised.exception))
+        self.assertIs(raised.exception.__cause__, original_error)
+
+    def test_execute_operations_keeps_non_api_exception_handling(self):
+        original_error = RuntimeError("request failed")
+        original_error.response = MagicMock(text='{"detail": "service unavailable"}')
+        operations = {
+            "create": EndpointOperation(path="config/", method="POST", fields=["manifest"], required_for="create", order=1),
+        }
+
+        with patch.object(self.service, "_make_request", side_effect=original_error):
+            with self.assertRaises(ValueError) as raised:
+                self.service._execute_operations(operations, _FakeLicense(manifest="encoded"), self.context, required_for="create")
+
+        self.assertIn("service unavailable", str(raised.exception))
+        self.assertIs(raised.exception.__cause__, original_error)

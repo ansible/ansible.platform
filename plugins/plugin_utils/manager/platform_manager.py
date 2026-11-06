@@ -1046,6 +1046,19 @@ class PlatformService(BaseAPIClient):
                 if body_formatted:
                     logger.error("Response body: %s", body_formatted)
                     if body_formatted not in str(e):
+                        if isinstance(e, APIError):
+                            details = dict(e.details or {})
+                            details.setdefault("response_body", body_formatted)
+                            enriched_error = APIError(
+                                message=f"{e.message}\nResponse body: {body_formatted}",
+                                operation=e.operation,
+                                resource=e.resource,
+                                details=details,
+                                status_code=e.status_code,
+                                response_body=e.response_body,
+                            )
+                            enriched_error.retryable = e.retryable
+                            raise enriched_error from e
                         raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
