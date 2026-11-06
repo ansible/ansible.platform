@@ -264,19 +264,10 @@ class TestWaitCommand(unittest.TestCase):
         self.assertEqual(result["msg"], "timeout must be 0 or greater")
         manager.wait_for_completion.assert_not_called()
 
-    @patch.object(ActionModule, "_prepare_action")
-    def test_missing_command_id(self, mock_prepare):
+    def test_missing_command_id_is_rejected_by_shared_validation(self):
         module = _make_module(args={})
-        mock_prepare.return_value = {
-            "result": {},
-            "validated_params": {"command_id": None, "interval": 2.0, "timeout": None},
-            "manager": MagicMock(),
-        }
-
-        result = module.run(task_vars={})
-
-        self.assertTrue(result["failed"])
-        self.assertIn("command_id is required", result["msg"])
+        with self.assertRaisesRegex(Exception, "command_id"):
+            module._validate_action_input()
 
     @patch.object(ActionModule, "_prepare_action")
     def test_command_not_found(self, mock_prepare):

@@ -18,7 +18,7 @@ class ActionModule(BaseResourceActionPlugin):
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")
 
-        instances = self._task.args.pop("instances", None)
+        instances = self._task.args.get("instances")
 
         result = super().run(tmp, task_vars)
         if result.get("failed"):

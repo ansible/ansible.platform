@@ -128,9 +128,6 @@ class ActionModule(BaseResourceActionPlugin):
             name = validated_params.get("name")
             requested_settings = validated_params.get("settings")
             has_name = name is not None
-            has_settings = requested_settings is not None
-            if has_name == has_settings:
-                raise ValueError("Exactly one of 'name' or 'settings' must be provided")
             if has_name and validated_params.get("value") is None:
                 raise ValueError("value is required when name is provided")
             if has_name:

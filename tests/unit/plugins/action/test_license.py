@@ -232,14 +232,30 @@ class TestLicenseAction(unittest.TestCase):
         self.assertEqual(manager.execute.call_count, 2)
 
     def test_present_without_manifest_or_subscription(self):
-        """state=present without manifest or subscription_id fails."""
+        """The shared argument validator requires a license source for state=present."""
+        module = _make_module()
+        module._task.args = {"state": "present"}
+
+        with self.assertRaisesRegex(Exception, "manifest|subscription_id"):
+            module._validate_action_input()
+
+    def test_present_with_empty_manifest_and_subscription_fails(self):
+        """Empty license source values fail without calling a license handler."""
         module = _make_module()
         manager = _make_manager()
 
-        result = self._run_with_prepare(module, manager, {"state": "present"})
+        result = self._run_with_prepare(module, manager, {"state": "present", "manifest": "", "subscription_id": ""})
 
-        self.assertTrue(result["failed"])
-        self.assertIn("manifest", result["msg"])
+        self.assertEqual(
+            result,
+            {
+                "changed": False,
+                "failed": True,
+                "msg": "Either manifest or subscription_id must be non-empty when state=present",
+            },
+        )
+        manager.execute.assert_not_called()
+        manager.post_resource.assert_not_called()
 
     def test_manifest_file_not_found(self):
         """Missing manifest file returns failed result."""

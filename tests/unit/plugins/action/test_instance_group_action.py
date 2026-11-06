@@ -110,7 +110,7 @@ class TestInstanceGroupAssociations(unittest.TestCase):
         action._client.manage_associations.assert_not_called()
 
     @patch.object(BaseResourceActionPlugin, "run")
-    def test_instances_field_popped_before_super(self, mock_super_run):
+    def test_instances_argument_is_preserved(self, mock_super_run):
         mock_super_run.return_value = {
             "changed": True,
             "failed": False,
@@ -128,7 +128,7 @@ class TestInstanceGroupAssociations(unittest.TestCase):
 
         action.run(task_vars={})
 
-        self.assertNotIn("instances", action._task.args)
+        self.assertEqual(action._task.args["instances"], ["node1.example.com"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_failed_crud_skips_instances(self, mock_super_run):

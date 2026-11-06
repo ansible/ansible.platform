@@ -31,7 +31,7 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+        association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
 
         result = super().run(tmp, task_vars)
 

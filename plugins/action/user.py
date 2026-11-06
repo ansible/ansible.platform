@@ -26,9 +26,10 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleUser
     LOOKUP_FIELD = "username"
 
-    # Popped before _should_update — password is excluded from comparison
-    # because the API always returns "$encrypted$" (not the plaintext value).
-    _WRITE_ONLY_FIELDS = frozenset({"update_secrets", "password"})
+    # These fields are removed from the resource payload. Password is excluded
+    # from comparison because the API returns "$encrypted$", not plaintext.
+    _WRITE_ONLY_FIELDS = frozenset({"update_secrets", "password", "is_platform_auditor"})
+    _NO_LOG_FIELDS = frozenset({"password"})
 
     # Deprecated argspec fields: emit a warning and strip before processing.
     _DEPRECATED_FIELDS = {
@@ -295,13 +296,6 @@ class ActionModule(BaseResourceActionPlugin):
         # Capture custom association inputs before the base CRUD flow processes args.
         is_platform_auditor_desired = self._task.args.get("is_platform_auditor")
         organizations = self._task.args.get("organizations")
-
-        # Remove is_platform_auditor from the task args before the base run()
-        # processes them.  The field is read-only/computed from role assignments;
-        # PATCHing the user object directly has no effect on the API side.
-        # We manage auditor status below via role_user_assignment CRUD.
-        if "is_platform_auditor" in self._task.args:
-            self._task.args.pop("is_platform_auditor")
 
         result = super().run(tmp, task_vars)
 
