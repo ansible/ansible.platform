@@ -213,6 +213,13 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
+            "list": EndpointOperation(
+                path=CONTROLLER_JOB_TEMPLATES_ENDPOINT,
+                method="GET",
+                fields=[],
+                required_for="find",
+                order=1,
+            ),
             "launch": EndpointOperation(
                 path=CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
                 method="POST",
