@@ -36,6 +36,24 @@ class TestRPCWrappers(unittest.TestCase):
         self.assertEqual(result, client.service_proxy.lookup_resource_id.return_value)
         client.service_proxy.lookup_resource_id.assert_called_once_with("organizations", "name", "123", "controller", {}, True, False)
 
+    def test_lookup_resource_ids_passes_scope_and_matching_options_to_service(self):
+        client = _rpc_client()
+
+        result = client.lookup_resource_ids(
+            "workflow_job_template_nodes",
+            "identifier",
+            ["123", "child"],
+            service="controller",
+            extra_query_params={"workflow_job_template": 77},
+            numeric_is_id=False,
+            allow_missing=True,
+        )
+
+        self.assertEqual(result, client.service_proxy.lookup_resource_ids.return_value)
+        client.service_proxy.lookup_resource_ids.assert_called_once_with(
+            "workflow_job_template_nodes", "identifier", ["123", "child"], "controller", {"workflow_job_template": 77}, False, True
+        )
+
     def test_manage_associations_delegates_to_service_proxy(self):
         client = _rpc_client()
         client.service_proxy.manage_associations.return_value = True

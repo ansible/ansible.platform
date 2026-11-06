@@ -105,6 +105,101 @@ class TestResourceLookup(unittest.TestCase):
                 call = _request_calls(client)[0]
                 self.assertEqual(urlparse(call.args[1]).path, "/api/controller/v2/organizations/900/")
 
+    def test_lookup_resource_ids_batches_address_values(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 2, "results": [{"id": 21, "address": "peer-a"}, {"id": 22, "address": "peer-b"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(
+                    client.lookup_resource_ids("receptor_addresses", "address", ["peer-a", "peer-b"], service="controller"),
+                    {"peer-a": 21, "peer-b": 22},
+                )
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/receptor_addresses/")
+                self.assertEqual(_request_filters(client, calls[0]), {"address__in": ["peer-a,peer-b"]})
+
+    def test_lookup_resource_ids_rejects_duplicate_matches(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 3, "results": [{"id": 21, "address": "peer-a"}, {"id": 22, "address": "peer-a"}, {"id": 23, "address": "peer-b"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__), self.assertRaisesRegex(ValidationError, "address=peer-a matched multiple resources"):
+                client.lookup_resource_ids("receptor_addresses", "address", ["peer-a", "peer-b"], service="controller")
+
+    def test_lookup_resource_ids_can_batch_numeric_scoped_identifiers_and_report_missing_to_caller(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                _response(body={"count": 2, "results": [{"id": 30, "identifier": "123"}, {"id": 31, "identifier": "child"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                resolved = client.lookup_resource_ids(
+                    "workflow_job_template_nodes",
+                    "identifier",
+                    ["123", "missing", "child"],
+                    service="controller",
+                    extra_query_params={"workflow_job_template": 77},
+                    numeric_is_id=False,
+                    allow_missing=True,
+                )
+                self.assertEqual(resolved, {"123": 30, "child": 31})
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(urlparse(calls[0].args[1]).path, "/api/controller/v2/workflow_job_template_nodes/")
+                self.assertEqual(
+                    _request_filters(client, calls[0]),
+                    {"identifier__in": ["123,missing,child"], "workflow_job_template": ["77"]},
+                )
+
+    def test_lookup_resource_ids_preserves_zero_when_numeric_ids_are_names(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"count": 1, "results": [{"id": 32, "identifier": "0"}]}))
+
+            with self.subTest(client=type(client).__name__):
+                resolved = client.lookup_resource_ids(
+                    "workflow_job_template_nodes",
+                    "identifier",
+                    [0],
+                    service="controller",
+                    numeric_is_id=False,
+                    allow_missing=True,
+                )
+                self.assertEqual(resolved, {"0": 32})
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(_request_filters(client, calls[0]), {"identifier__in": ["0"]})
+
+    def test_lookup_resource_ids_keeps_comma_identifiers_exact_when_missing_is_allowed(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"count": 1, "results": [{"id": 32, "identifier": "node,child"}]}))
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(
+                    client.lookup_resource_ids(
+                        "workflow_job_template_nodes",
+                        "identifier",
+                        ["node,child"],
+                        service="controller",
+                        extra_query_params={"workflow_job_template": 77},
+                        numeric_is_id=False,
+                        allow_missing=True,
+                    ),
+                    {"node,child": 32},
+                )
+                calls = _request_calls(client)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(
+                    _request_filters(client, calls[0]),
+                    {"identifier": ["node,child"], "workflow_job_template": ["77"]},
+                )
+
     def test_other_services_keep_their_server_side_named_key_resolution(self):
         for client in (_service(), _direct_client()):
             _set_responses(client, _response(body={"id": 71, "name": "Vault"}))
@@ -183,6 +278,49 @@ class TestResourceLookup(unittest.TestCase):
                         urlparse(calls[0].args[1]).path,
                         f"/api/controller/v2/{endpoint}/{named_key.replace(' ', '%20')}/",
                     )
+
+    def test_lookup_resource_ids_omits_missing_named_key_when_allowed(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                APIError("Named URL not found", status_code=404),
+                _response(body={"count": 1, "results": [{"id": 900, "name": "Default"}]}),
+                _response(body={"count": 0, "results": []}),
+            )
+
+            with self.subTest(client=type(client).__name__):
+                self.assertEqual(
+                    client.lookup_resource_ids("inventories", "name", ["Missing++Default"], service="controller", allow_missing=True),
+                    {},
+                )
+                self.assertEqual(len(_request_calls(client)), 3)
+
+    def test_lookup_resource_ids_still_rejects_duplicate_named_key_matches_when_allowed(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(
+                client,
+                APIError("Named URL not found", status_code=404),
+                _response(body={"count": 1, "results": [{"id": 900, "name": "Default"}]}),
+                _response(body={"count": 2, "results": [{"id": 71, "name": "Shared"}, {"id": 72, "name": "Shared"}]}),
+            )
+
+            with self.subTest(client=type(client).__name__), self.assertRaisesRegex(ValueError, "matched multiple resources"):
+                client.lookup_resource_ids("inventories", "name", ["Shared++Default"], service="controller", allow_missing=True)
+
+    def test_lookup_resource_ids_still_rejects_named_key_scope_mismatch_when_allowed(self):
+        named_key = "test_cred++Machine+ssh++"
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"id": 42, "name": "test_cred", "organization": 11}))
+
+            with self.subTest(client=type(client).__name__), self.assertRaisesRegex(ValueError, "not requested organization 10"):
+                client.lookup_resource_ids(
+                    "credentials",
+                    "name",
+                    [named_key],
+                    service="controller",
+                    extra_query_params={"organization": 10},
+                    allow_missing=True,
+                )
 
     def test_credential_named_url_preserves_named_key_separators(self):
         named_key = "test_cred++Machine+ssh++"
