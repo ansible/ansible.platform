@@ -2,5 +2,5 @@
 bugfixes:
   - resource updates - skip unnecessary PATCH requests when transformed JSON object fields have equivalent dictionary and JSON string values.
   - application - omit Gateway's masked ``client_secret`` placeholder from lookup and idempotent results while preserving the secret returned on create.
-  - resource actions - use validated output parameters and retain the argument-spec filter when output validation fails.
+  - resource actions - validate returned fields without adding absent defaults, preserving API types for JSON objects and selector IDs.
 ...

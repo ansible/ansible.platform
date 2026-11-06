@@ -301,6 +301,10 @@ class BaseResourceActionPlugin(ActionBase):
     # contract treats both representations as the same object.
     _JSON_OBJECT_FIELDS: frozenset = frozenset()
 
+    # Result fields whose API types intentionally differ from their input
+    # argument types. These retain the manager's API-normalized values.
+    _PRESERVE_OUTPUT_FIELDS: frozenset = frozenset()
+
     _AUTH_PARAMS = frozenset(
         {
             "gateway_hostname",
@@ -1214,9 +1218,12 @@ class BaseResourceActionPlugin(ActionBase):
                 argspec,
                 "output",
             )
-            validated_output = validation_result.validated_parameters
+            validated_output = {k: v for k, v in validation_result.validated_parameters.items() if k in filtered}
             if "id" in filtered:
                 validated_output["id"] = filtered["id"]
+            for field in self._JSON_OBJECT_FIELDS | self._PRESERVE_OUTPUT_FIELDS:
+                if field in filtered:
+                    validated_output[field] = filtered[field]
         except Exception:
             validated_output = filtered.copy()
 
