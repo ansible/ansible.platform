@@ -17,6 +17,7 @@ __metaclass__ = type
 
 from typing import Optional
 
+from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_cancel import AnsibleJobCancel
 
@@ -42,6 +43,9 @@ class ActionModule(BaseResourceActionPlugin):
 
             job_id = validated_params.get("job_id")
             fail_if_not_running = validated_params.get("fail_if_not_running", False)
+
+            if job_id <= 0:
+                raise AnsibleError("job_id must be a positive integer")
 
             # Check mode: report would-change without touching the API
             if self._task.check_mode:
