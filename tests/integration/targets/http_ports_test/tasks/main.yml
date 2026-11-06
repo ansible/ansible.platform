@@ -1,4 +1,8 @@
 ---
+- name: Skip HTTP ports test for non-http-persistent modes
+  ansible.builtin.meta: end_host
+  when: connection_mode | default('local') != 'http-persistent'
+
 - name: Generate a test ID
   ansible.builtin.set_fact:
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
