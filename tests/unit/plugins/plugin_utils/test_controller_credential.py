@@ -97,6 +97,26 @@ class TestControllerCredentialTransform(unittest.TestCase):
         api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.name, "new")
 
+    def test_update_secrets_false_omits_inputs(self):
+        ansible = AnsibleControllerCredential(
+            name="Cred",
+            credential_type="1",
+            inputs={"username": "admin", "password": "secret"},
+            update_secrets=False,
+        )
+        api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
+        self.assertIsNone(api.inputs)
+
+    def test_create_includes_inputs_when_update_secrets_false(self):
+        ansible = AnsibleControllerCredential(
+            name="Cred",
+            credential_type="1",
+            inputs={"username": "admin", "password": "secret"},
+            update_secrets=False,
+        )
+        api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.inputs, {"username": "admin", "password": "secret"})
+
     def test_from_api_returns_ansible_instance(self):
         api_data = {"id": 99, "name": "Cred", "credential_type": 5, "organization": 1, "user": None, "team": None}
         ansible = ControllerCredentialTransformMixin_v2.from_api(api_data, {})

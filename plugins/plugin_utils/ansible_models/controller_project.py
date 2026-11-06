@@ -6,7 +6,7 @@ Field names and types remain stable across API versions.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -39,3 +39,5 @@ class AnsibleControllerProject:
 
     # Read-only fields (populated from API responses)
     id: Optional[int] = None
+    scm_revision: Optional[str] = None
+    summary_fields: Optional[Dict[str, Any]] = None

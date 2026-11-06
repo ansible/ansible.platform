@@ -46,6 +46,13 @@ options:
     required: true
     type: str
 
+  organization:
+    description:
+      - Organization name or ID used to scope inventory and source project lookups.
+      - The organization is not sent as an inventory source field because it is
+        inherited from the associated inventory.
+    type: str
+
   source:
     description:
       - The source type for this inventory source.

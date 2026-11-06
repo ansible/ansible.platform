@@ -43,6 +43,8 @@ class APIControllerProject_v2(BaseTransformMixin):
 
     # Read-only fields from API
     id: Optional[int] = None
+    scm_revision: Optional[str] = None
+    summary_fields: Optional[Dict[str, Any]] = None
 
 
 class ControllerProjectTransformMixin_v2(BaseTransformMixin):
@@ -293,4 +295,6 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
             organization=organization,
             signature_validation_credential=sig_cred,
             id=api_data.get("id"),
+            scm_revision=api_data.get("scm_revision"),
+            summary_fields=api_data.get("summary_fields"),
         )
