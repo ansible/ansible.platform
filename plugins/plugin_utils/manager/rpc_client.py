@@ -228,10 +228,6 @@ class ManagerRPCClient:
         """DELETE an endpoint via the manager process. See PlatformService.delete_resource()."""
         return self.service_proxy.delete_resource(endpoint, service)
 
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
-        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
-
     def direct_request(self, method: str, path: str, data=None, retry_config: Optional[Any] = None) -> dict:
         """Make a raw authenticated HTTP request via the manager process."""
         return self.service_proxy.direct_request(method, path, data, retry_config)

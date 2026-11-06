@@ -772,23 +772,6 @@ class BaseAPIClient(ABC):
         """
         return [self.lookup_resource_id("organizations", "name", name, service=service, require_unique=True) for name in names]
 
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """
-        Create hosts in bulk via the Controller bulk/host_create endpoint.
-
-        Args:
-            inventory_id: Numeric ID of the target inventory
-            hosts: List of host dicts (name, description, enabled, variables, instance_id)
-            service: Service name (default: controller)
-
-        Returns:
-            API response dict
-
-        Raises:
-            ValueError: If the API returns a non-201 status
-        """
-        raise NotImplementedError
-
     def lookup_organization_names(self, ids: list, service: str = "gateway") -> list:
         """
         Lookup organization names from IDs (shared helper).

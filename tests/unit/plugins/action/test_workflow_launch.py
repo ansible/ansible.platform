@@ -300,7 +300,7 @@ class TestWorkflowLaunchActionModule:
         assert result["job_info"]["id"] == 42
         assert result.get("failed") is not True
         mock_manager.wait_for_completion.assert_called_once_with(
-            "workflow_jobs/42",
+            "/api/controller/v2/workflow_jobs/42/",
             timeout=600.0,
             interval=2.0,
             service="controller",
@@ -340,7 +340,7 @@ class TestWorkflowLaunchActionModule:
         assert result["status"] == "failed"
         assert result["id"] == 42
         mock_manager.wait_for_completion.assert_called_once_with(
-            "workflow_jobs/42",
+            "/api/controller/v2/workflow_jobs/42/",
             timeout=-1,
             interval=2.0,
             service="controller",
