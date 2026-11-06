@@ -44,8 +44,8 @@ class ActionModule(BaseResourceActionPlugin):
             job_id = validated_params.get("job_id")
             fail_if_not_running = validated_params.get("fail_if_not_running", False)
 
-            if not job_id:
-                raise AnsibleError("job_id is required")
+            if job_id <= 0:
+                raise AnsibleError("job_id must be a positive integer")
 
             # Check mode: report would-change without touching the API
             if self._task.check_mode:

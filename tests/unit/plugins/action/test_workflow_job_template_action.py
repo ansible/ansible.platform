@@ -216,7 +216,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         action._client.manage_sub_resource.assert_not_called()
 
     @patch.object(BaseResourceActionPlugin, "run")
-    def test_fields_popped_before_super(self, mock_super_run):
+    def test_control_and_association_arguments_are_preserved(self, mock_super_run):
         mock_super_run.return_value = {
             "changed": True,
             "failed": False,
@@ -239,7 +239,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         action.run(task_vars={})
 
         for field in ("labels", "survey_spec", "copy_from", "notification_templates_started"):
-            self.assertNotIn(field, action._task.args)
+            self.assertIn(field, action._task.args)
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_failed_crud_skips_associations(self, mock_super_run):

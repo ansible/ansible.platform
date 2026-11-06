@@ -26,10 +26,9 @@ class ActionModule(BaseResourceActionPlugin):
     """Action plugin for eda_controller_token module."""
 
     MODULE_NAME = "eda_controller_token"
-    # Not consumed by run() (Shape 6 bypasses base class), kept for documentation.
-    MODEL_CLASS = AnsibleEdaControllerToken
     _WRITE_ONLY_FIELDS = frozenset({"token"})
     _NO_LOG_FIELDS = frozenset({"token"})
+    _REQUIRED_IF = [["state", "present", ["description", "token"]]]
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -40,15 +39,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            validated_params = self._validate_action_input().validated_params
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
@@ -56,19 +47,10 @@ class ActionModule(BaseResourceActionPlugin):
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
 
-            validated_params = validated_input.validated_parameters
             state = validated_params.get("state", "present")
             name = validated_params.get("name")
             description = validated_params.get("description")
             token_value = validated_params.get("token")
-
-            if state == "present":
-                from ansible.errors import AnsibleError
-
-                if description is None:
-                    raise AnsibleError("Parameter 'description' is required when state is 'present'")
-                if token_value is None:
-                    raise AnsibleError("Parameter 'token' is required when state is 'present'")
 
             # Find existing token by name
             existing = None
@@ -80,8 +62,8 @@ class ActionModule(BaseResourceActionPlugin):
                 )
                 if find_result and find_result.get("id"):
                     existing = find_result
-            except ValueError as e:
-                if "not found" not in str(e).lower() and "404" not in str(e):
+            except Exception as e:
+                if not self._is_resource_not_found(e):
                     raise
 
             if state == "absent":

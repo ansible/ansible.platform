@@ -6,7 +6,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.role_user_assignment import AnsibleRoleUserAssignment
 
@@ -15,17 +14,32 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "role_user_assignment"
     MODEL_CLASS = AnsibleRoleUserAssignment
     LOOKUP_FIELD = "id"
+    _WRITE_ONLY_FIELDS = frozenset({"object_ids"})
+    _PRESERVE_RESULT_ID_FIELDS = frozenset({"object_id"})
+    _MUTUALLY_EXCLUSIVE = [
+        ["object_id", "object_ids"],
+        ["object_id", "object_ansible_id"],
+        ["object_ids", "object_ansible_id"],
+        ["user", "user_ansible_id"],
+    ]
 
     def run(self, tmp=None, task_vars=None):
         """
         Custom run() for role_user_assignment.
 
         Supports three object-selection modes:
-        - object_id (scalar): standard single-object path via _run_standard().
+        - object_id/object_ansible_id (scalar): standard path via the base class,
+          except state=exists, which shares the multi-object result contract.
         - object_ids (list): iterate, resolving each entry -> object_id, then
           idempotent create/delete per object.
-        - Neither: system-wide assignment, single-object path.
+        - Neither: system-wide assignment, single-object path via the base class.
         """
+        task_args = self._task.args
+        state = task_args.get("state", "present")
+        has_scalar_selector = task_args.get("object_id") is not None or bool(task_args.get("object_ansible_id"))
+        if not task_args.get("object_ids") and not (state == "exists" and has_scalar_selector):
+            return super().run(tmp, task_vars)
+
         if task_vars is None:
             task_vars = {}
         self._task_vars = task_vars
@@ -34,12 +48,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         try:
             # ---- validate input ------------------------------------------------
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-            validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-            validated_params = validated_input.validated_parameters
+            validated_params = self._validate_action_input().validated_params
 
             # ---- manager connection --------------------------------------------
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
@@ -49,14 +58,15 @@ class ActionModule(BaseResourceActionPlugin):
 
             state = validated_params.get("state", "present")
             object_ids_raw = validated_params.get("object_ids") or []
-
-            if not object_ids_raw:
-                # ---- single-object path ---------------------------------------
-                return self._run_standard(result, manager, argspec, validated_params, state)
+            if state == "exists" and not object_ids_raw:
+                if validated_params.get("object_id") is not None:
+                    object_ids_raw = [{"object_id": validated_params["object_id"]}]
+                elif validated_params.get("object_ansible_id"):
+                    object_ids_raw = [{"object_ansible_id": validated_params["object_ansible_id"]}]
 
             # ---- multi-object path: iterate over object_ids ------------------
             # Base data (role + user, shared across all assignments)
-            _skip = self._AUTH_PARAMS | {"object_ids", "state", "object_id"}
+            _skip = self._AUTH_PARAMS | {"object_ids", "state", "object_id", "object_ansible_id"}
             base_data = {k: v for k, v in validated_params.items() if v is not None and k not in _skip}
 
             all_changed = False
@@ -67,7 +77,10 @@ class ActionModule(BaseResourceActionPlugin):
                 # from_ansible_data's existing FK resolver handles str->int
                 # resolution (via role_definition-type-aware endpoint probing).
                 per_obj = dict(base_data)
-                per_obj["object_id"] = raw_oid
+                if isinstance(raw_oid, dict):
+                    per_obj.update(raw_oid)
+                else:
+                    per_obj["object_id"] = raw_oid
 
                 if state == "present":
                     # Idempotency: find existing assignment
@@ -80,8 +93,9 @@ class ActionModule(BaseResourceActionPlugin):
                         if find_result and find_result.get("id"):
                             assignments.append(find_result)
                             continue  # already exists — no change
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                            raise
 
                     # Create
                     mgr_result = manager.execute(
@@ -106,8 +120,9 @@ class ActionModule(BaseResourceActionPlugin):
                                 ansible_data={"id": find_result["id"]},
                             )
                             all_changed = True
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                            raise
 
                 elif state == "exists":
                     # Check existence without modifying; collect found assignments
@@ -119,18 +134,26 @@ class ActionModule(BaseResourceActionPlugin):
                         )
                         if find_result and find_result.get("id"):
                             assignments.append(find_result)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
+                            raise
 
             # ---- build clean result -------------------------------------------
             _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
 
-            # For state=exists: fail (without setting MODULE_NAME key) if nothing
-            # was found — mirrors the single-object path's "not found" behaviour
-            # so that `failed_when: false` + `result.role_user_assignment is not defined`
-            # idiom works identically for both scalar and list object selectors.
+            # A state=exists miss fails for both scalar and list selectors. Keep
+            # a stable empty resource mapping so callers can inspect the result.
             if state == "exists" and not assignments:
-                raise ValueError("No %s found matching the given criteria" % self.MODULE_NAME)
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": True,
+                        "exists": False,
+                        self.MODULE_NAME: {},
+                        "msg": "No %s found matching the given criteria" % self.MODULE_NAME,
+                    }
+                )
+                return result
 
             primary = assignments[0] if assignments else {}
             clean = {k: v for k, v in primary.items() if k not in _strip}
@@ -145,6 +168,8 @@ class ActionModule(BaseResourceActionPlugin):
                     **clean,
                 }
             )
+            if state == "exists":
+                result["exists"] = True
             if len(assignments) > 1:
                 result["assignments"] = [{k: v for k, v in a.items() if k not in _strip} for a in assignments]
 
@@ -156,100 +181,5 @@ class ActionModule(BaseResourceActionPlugin):
             result["msg"] = str(exc)
             if self._display.verbosity >= 3:
                 result["exception"] = _tb.format_exc()
-
-        return result
-
-    # ------------------------------------------------------------------
-    def _run_standard(self, result, manager, argspec, validated_params, state):
-        """Single-object / system-wide path: standard present/absent logic."""
-        from dataclasses import asdict
-
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS and k != "object_ids"}
-        try:
-            resource = self.MODEL_CLASS(**resource_data)
-        except TypeError as exc:
-            result["failed"] = True
-            result["msg"] = str(exc)
-            return result
-
-        operation = self._detect_operation(validated_params)
-
-        _strip = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed", "object_ids", "assignments"}
-
-        if state == "present" and operation == "create":
-            try:
-                find_result = manager.execute(
-                    operation="find",
-                    module_name=self.MODULE_NAME,
-                    ansible_data=resource_data,
-                )
-                if find_result and find_result.get("id"):
-                    if not self._should_update(resource_data, find_result):
-                        clean = {k: v for k, v in find_result.items() if k not in _strip}
-                        result.update(
-                            {
-                                "changed": False,
-                                "failed": False,
-                                self.MODULE_NAME: clean,
-                                # Flat top-level keys kept for backward compatibility with
-                                # playbooks written against <=2.6.
-                                **clean,
-                            }
-                        )
-                        return result
-                    operation = "update"
-                    resource.id = find_result["id"]
-            except Exception:
-                pass
-
-        if operation == "delete" and not getattr(resource, "id", None):
-            try:
-                find_result = manager.execute(
-                    operation="find",
-                    module_name=self.MODULE_NAME,
-                    ansible_data=resource_data,
-                )
-                if find_result and find_result.get("id"):
-                    resource.id = find_result["id"]
-                else:
-                    result.update(
-                        {
-                            "changed": False,
-                            "failed": False,
-                            self.MODULE_NAME: {"state": "absent"},
-                        }
-                    )
-                    return result
-            except Exception:
-                result.update(
-                    {
-                        "changed": False,
-                        "failed": False,
-                        self.MODULE_NAME: {"state": "absent"},
-                    }
-                )
-                return result
-
-        ansible_data = asdict(resource)
-        manager_result = manager.execute(
-            operation=operation,
-            module_name=self.MODULE_NAME,
-            ansible_data=ansible_data,
-        )
-
-        clean = {k: v for k, v in manager_result.items() if k not in _strip}
-        result.update(
-            {
-                "changed": manager_result.get("changed", False),
-                "failed": False,
-                self.MODULE_NAME: clean,
-                # Flat top-level keys kept for backward compatibility with
-                # playbooks written against <=2.6.
-                # Not spread for delete operations (clean would only have state=absent).
-                **(clean if operation != "delete" else {}),
-            }
-        )
-        if operation == "delete":
-            result[self.MODULE_NAME]["state"] = "absent"
 
         return result

@@ -25,7 +25,6 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebo
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
-_SERVICE = "eda"
 # Copy is a non-idempotent POST: retrying a lost response could create a
 # duplicate activation, so it disables the manager's default retries.
 _NO_RETRY = RetryConfig(max_attempts=1)
@@ -35,7 +34,6 @@ class ActionModule(BaseResourceActionPlugin):
     """Action plugin for rulebook_activation_copy module."""
 
     MODULE_NAME = "rulebook_activation_copy"
-    MODEL_CLASS = AnsibleRulebookActivationCopy
 
     def run(self, tmp: object = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
         """Copy an existing rulebook activation.
@@ -55,13 +53,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            params = self._validate_action_input().validated_params
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
@@ -69,12 +61,8 @@ class ActionModule(BaseResourceActionPlugin):
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
 
-            params = validated_input.validated_parameters
             name = params.get("name")
             copy_from = params.get("copy_from")
-
-            if not copy_from:
-                raise AnsibleError("Parameter 'copy_from' is required for rulebook_activation_copy")
 
             # Find source activation by name
             existing = self._find_source_activation(manager, copy_from)
@@ -136,7 +124,7 @@ class ActionModule(BaseResourceActionPlugin):
             )
             if find_result and find_result.get("id"):
                 return find_result
-        except (ValueError, Exception) as exc:
-            if "not found" not in str(exc).lower() and "404" not in str(exc):
+        except Exception as exc:
+            if not self._is_resource_not_found(exc):
                 raise
         return None

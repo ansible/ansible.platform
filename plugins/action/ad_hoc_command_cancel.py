@@ -47,8 +47,6 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 1.0)
             timeout = validated_params.get("timeout", 0)
 
-            if not command_id:
-                raise AnsibleError("command_id is required")
             if interval <= 0:
                 raise AnsibleError("interval must be greater than 0")
             if timeout < 0:

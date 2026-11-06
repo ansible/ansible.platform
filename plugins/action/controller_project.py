@@ -45,12 +45,12 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        copy_from = self._task.args.pop("copy_from", None)
-        association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+        copy_from = self._task.args.get("copy_from")
+        association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
 
-        wait = self._task.args.pop("wait", True)
-        update_project = self._task.args.pop("update_project", False)
-        interval = self._task.args.pop("interval", 2.0)
+        wait = self._task.args.get("wait", True)
+        update_project = self._task.args.get("update_project", False)
+        interval = self._task.args.get("interval", 2.0)
 
         name = self._task.args.get("name")
         organization = self._task.args.get("organization")
@@ -60,6 +60,10 @@ class ActionModule(BaseResourceActionPlugin):
 
         copied = False
         if copy_from and state not in ("absent", "exists") and not check_mode:
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             try:
                 super(BaseResourceActionPlugin, self).run(tmp, task_vars)
                 self._task_vars = task_vars

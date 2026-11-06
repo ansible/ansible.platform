@@ -22,6 +22,7 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "license"
     MODEL_CLASS = AnsibleLicense
     _MUTUALLY_EXCLUSIVE = [["manifest", "subscription_id"]]
+    _REQUIRED_IF = [["state", "present", ["manifest", "subscription_id"], True]]
 
     def run(self, tmp=None, task_vars=None):
         result = {}
@@ -39,13 +40,21 @@ class ActionModule(BaseResourceActionPlugin):
             if state == "absent":
                 return self._handle_absent(manager, result)
 
+            if not manifest_path and not subscription_id:
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": True,
+                        "msg": "Either manifest or subscription_id must be non-empty when state=present",
+                    }
+                )
+                return result
+
             if manifest_path:
                 return self._handle_manifest(manager, result, manifest_path, force)
 
             if subscription_id:
                 return self._handle_subscription(manager, result, subscription_id, force)
-
-            result.update({"changed": False, "failed": True, "msg": "One of 'manifest' or 'subscription_id' is required when state=present"})
 
         except Exception as e:
             import traceback
