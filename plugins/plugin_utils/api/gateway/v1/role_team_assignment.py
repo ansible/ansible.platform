@@ -59,6 +59,7 @@ def _search_results(payload):
 
 
 def _matches_org(item, org_id):
+    """Return True if the item's organization field matches *org_id*."""
     for key in ("organization_id", "organization"):
         value = item.get(key)
         if value is None:
@@ -90,7 +91,67 @@ def _resolve_organization_id(manager, organization, service):
     return _result_id(results[0], organization, "organizations")
 
 
+def _team_org_label(item):
+    """Return a human-readable organization label for a team result item."""
+    summary = (item.get("summary_fields") or {}).get("organization") or {}
+    if summary.get("name"):
+        return summary["name"]
+    org = item.get("organization")
+    if isinstance(org, dict):
+        return org.get("name") or org.get("id")
+    return org
+
+
+class TeamNotFoundError(ValueError):
+    """Raised when no team matches a name lookup (zero results)."""
+
+
+def resolve_team_id(manager, team, organization=None):
+    """Resolve a receiving-team name/ID, optionally scoped by organization.
+
+    Team names are not globally unique across Gateway organizations. Without an
+    organization, a name must match exactly one team; otherwise raise instead of
+    picking an arbitrary ``results[0]`` (AAP-92255).
+    """
+    if team is None or team == "":
+        return None
+    if str(team).isdigit():
+        return str(team)
+
+    if organization:
+        org_id = _resolve_organization_id(manager, organization, "gateway")
+        payload = manager.search_api("teams", query_params={"name": team, "organization": org_id}, return_all=True)
+        results = [result for result in _search_results(payload) if result.get("name") == team and _matches_org(result, org_id)]
+        if len(results) == 0:
+            raise TeamNotFoundError(
+                "Team named '%s' not found in organization '%s'. Pass the team's numeric ID or team_ansible_id to skip name lookup." % (team, organization)
+            )
+        if len(results) != 1:
+            raise ValueError(
+                "Expected exactly one team named '%s' in organization '%s', got %s. "
+                "Pass the team's numeric ID or team_ansible_id to skip name lookup." % (team, organization, len(results))
+            )
+        return str(_result_id(results[0], team, "teams"))
+
+    payload = manager.search_api("teams", query_params={"name": team}, return_all=True)
+    results = [result for result in _search_results(payload) if result.get("name") == team]
+    if not results:
+        raise TeamNotFoundError("Team named '%s' not found. Pass organization= to scope the lookup, or use the team's numeric ID / team_ansible_id." % team)
+    if len(results) > 1:
+        orgs = [_team_org_label(result) for result in results]
+        raise ValueError(
+            "Multiple teams named '%s' found across organizations %s. "
+            "Set organization= to disambiguate, or pass the team's numeric ID / team_ansible_id." % (team, orgs)
+        )
+    return str(_result_id(results[0], team, "teams"))
+
+
+# Backward-compatible private alias (tests / older call sites)
+_resolve_team_id = resolve_team_id
+
+
 def _resolve_named_object_id(manager, obj):
+    """Resolve an assignment_objects entry's name to a numeric object ID."""
     obj_type = obj["type"]
     name = obj["name"]
     organization = obj.get("organization")
@@ -128,6 +189,10 @@ def _resolve_named_object_id(manager, obj):
         if len(results) != 1:
             raise ValueError("Expected exactly one team named '%s' in organization '%s', got %s" % (name, organization, len(results)))
         return str(_result_id(results[0], name, "teams"))
+
+    # Unscoped gateway team *object* lookup: refuse arbitrary first-match.
+    if obj_type == "teams":
+        return resolve_team_id(manager, name, organization=None)
 
     return str(manager.lookup_resource_id(lookup_path, "name", name))
 
@@ -188,10 +253,10 @@ class RoleTeamAssignmentTransformMixin_v1(BaseTransformMixin):
             api_data["role_definition"] = str(role_definition)
 
         team = _get("team")
+        organization = _get("organization")
         if team is not None and manager:
-            resolved = _resolve_fk(manager, "teams", "name", team)
-            if resolved is not None:
-                api_data["team"] = str(resolved)
+            # organization is lookup-only (not an API field on role_team_assignments)
+            api_data["team"] = resolve_team_id(manager, team, organization)
         elif team is not None:
             api_data["team"] = str(team)
 
