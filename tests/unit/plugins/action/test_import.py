@@ -205,6 +205,11 @@ def test_import_runs_association_resource_actions(module_name, resource_data, as
     manager = Mock()
     manager.execute.side_effect = [ValueError("Resource with name=Example not found"), {"id": 42, "name": resource_data["name"], "changed": True}]
     manager.manage_associations.return_value = True
+    if module_name == "controller_project":
+        manager.search_api.side_effect = [
+            {"results": []},
+            {"id": 42, "name": resource_data["name"], "scm_type": resource_data["scm_type"]},
+        ]
 
     resource_task = MagicMock()
     resource_task.async_val = 0
