@@ -34,6 +34,39 @@ class BaseTransformMixin(ABC):
     require_unique_lookup = False
 
     @classmethod
+    def to_operation_payload(
+        cls,
+        api_data: Any,
+        operation: Any,
+        *,
+        include_null_fields: Optional[set] = None,
+        omit_empty: bool = False,
+        preserve_empty_fields: Optional[set] = None,
+    ) -> dict:
+        """Build an API body using the fields declared by an endpoint operation.
+
+        This keeps custom action requests and the generic CRUD executor aligned
+        with the same endpoint contract.
+        """
+        values = asdict(api_data) if hasattr(api_data, "__dataclass_fields__") else api_data
+        include_null_fields = include_null_fields or set()
+        preserve_empty_fields = preserve_empty_fields or set()
+        payload = {}
+        for field_name in operation.fields or []:
+            if field_name not in values:
+                continue
+            value = values[field_name]
+            if value is None and field_name not in include_null_fields:
+                continue
+            if value == "" and omit_empty and field_name not in preserve_empty_fields:
+                continue
+            payload[field_name] = value
+
+        if getattr(operation, "flatten_body", False) and len(payload) == 1:
+            return next(iter(payload.values()))
+        return payload
+
+    @classmethod
     def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
         """Select the resource returned by a list-based find operation.
 

@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Union
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
-WORKFLOW_JOBS_ENDPOINT = "/api/controller/v2/workflow_jobs/"
+WORKFLOW_JOBS_ENDPOINT = "/api/controller/v2/workflow_jobs/{id}/"
 WJT_LIST_ENDPOINT = "/api/controller/v2/workflow_job_templates/"
 WJT_LAUNCH_ENDPOINT = "/api/controller/v2/workflow_job_templates/{id}/launch/"
 _LAUNCH_FIELDS = ["inventory", "limit", "job_tags", "skip_tags", "scm_branch", "extra_vars"]
@@ -104,20 +104,12 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
-        """Define the lookup and launch operations for workflow templates."""
+        """Declare template lookup, launch, and workflow-job wait endpoints."""
         return {
             "list": EndpointOperation(
                 path=WJT_LIST_ENDPOINT,
                 method="GET",
                 fields=[],
-                required_for="find",
-                order=1,
-            ),
-            "get": EndpointOperation(
-                path="/api/controller/v2/workflow_job_templates/{id}/",
-                method="GET",
-                fields=[],
-                path_params=["id"],
                 required_for="find",
                 order=1,
             ),
@@ -127,6 +119,14 @@ class WorkflowLaunchTransformMixin_v2(BaseTransformMixin):
                 fields=_LAUNCH_FIELDS,
                 path_params=["id"],
                 required_for="launch",
+                order=1,
+            ),
+            "workflow_job": EndpointOperation(
+                path=WORKFLOW_JOBS_ENDPOINT,
+                method="GET",
+                fields=[],
+                path_params=["id"],
+                required_for="wait",
                 order=1,
             ),
         }

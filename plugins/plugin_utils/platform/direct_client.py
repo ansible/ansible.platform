@@ -23,7 +23,7 @@ from ansible.module_utils.urls import ConnectionError, Request, SSLValidationErr
 from .base_client import BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
-from .exceptions import APIError, AuthenticationError
+from .exceptions import APIError, AuthenticationError, format_error_response_body
 from .idempotency import canonical_json_object
 from .retry import RetryConfig
 from .types import TransformContext, build_endpoint_request
@@ -698,16 +698,6 @@ class DirectHTTPClient(BaseAPIClient):
         self._make_request("DELETE", url, operation="delete_resource", resource="config")
         return {}
 
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
-        self._ensure_authenticated()
-        url = self._build_url("/bulk/host_create/", service=service)
-        payload = {"inventory": inventory_id, "hosts": hosts}
-        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
-        response_body = response.read()
-        response_data = json.loads(response_body) if response_body else {}
-        return response_data
-
     def search_api(
         self,
         endpoint: str,
@@ -1243,6 +1233,9 @@ class DirectHTTPClient(BaseAPIClient):
                 elif hasattr(e, "response") and e.response is not None:
                     status = getattr(e.response, "status", getattr(e.response, "code", "unknown"))
                     logger.error("Response status: %s", status)
+                body_formatted = format_error_response_body(e)
+                if body_formatted and body_formatted not in str(e):
+                    raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
             # Store result - Ansible's Request response uses .read() to get body

@@ -77,7 +77,7 @@ class AdHocCommandTransformMixin_v2(BaseTransformMixin):
         ansible_instance: AnsibleAdHocCommand,
         context: Union[TransformContext, Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Return only populated API request fields in endpoint order."""
+        """Return only populated API request fields declared by the create operation."""
         api_data = cls.from_ansible_data(ansible_instance, context)
         operation = cls.get_endpoint_operations()["create"]
         return build_endpoint_request(operation, api_data)[1]

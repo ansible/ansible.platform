@@ -26,13 +26,13 @@ class TestEventStreamFind(unittest.TestCase):
         service.cache = {}
         response = MagicMock()
         response.json.return_value = {"count": 2, "results": [{"id": 1}]}
-        service._request_with_auth_recovery = MagicMock(return_value=response)
+        service._make_request = MagicMock(return_value=response)
         context = TransformContext(manager=service, session=service.session, cache={}, api_version="1", service="eda", operation="find")
 
         with self.assertRaisesRegex(ValueError, "matched multiple resources"):
             service._find_resource(AnsibleEventStream(name="same", organization_name="7"), EventStreamTransformMixin_v1, context)
 
-        request_url = service._request_with_auth_recovery.call_args.args[1]
+        request_url = service._make_request.call_args.args[1]
         self.assertIn("organization_id=7", request_url)
 
     def test_direct_client_rejects_multiple_matches(self):

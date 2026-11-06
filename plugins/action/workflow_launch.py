@@ -140,8 +140,9 @@ class ActionModule(BaseResourceActionPlugin):
                 # The legacy module waited indefinitely when timeout was omitted.
                 # The SDK uses negative timeout values for an unbounded wait.
                 wait_timeout = -1.0 if not timeout else float(timeout)
+                wait_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["workflow_job"]
                 job_result = manager.wait_for_completion(
-                    f"workflow_jobs/{workflow_job_id}",
+                    wait_operation.path.format(id=workflow_job_id),
                     timeout=wait_timeout,
                     interval=interval,
                     service="controller",

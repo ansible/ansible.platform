@@ -22,7 +22,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
         action = self._make_action()
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 42
-        manager.bulk_host_create.return_value = {"id": 1}
+        manager.launch_resource.return_value = {"created": 2}
 
         hosts = [
             {"name": "host1.example.com", "description": "First"},
@@ -42,14 +42,18 @@ class TestBulkHostCreateAction(unittest.TestCase):
 
         self.assertTrue(result["changed"])
         self.assertFalse(result.get("failed", False))
-        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "My Inventory", service="controller", extra_query_params=None)
-        manager.bulk_host_create.assert_called_once_with(
-            inventory_id=42,
-            hosts=[
-                {"name": "host1.example.com", "description": "First"},
-                {"name": "host2.example.com"},
-            ],
+        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "My Inventory", service="controller", require_unique=True)
+        manager.launch_resource.assert_called_once_with(
+            "/api/controller/v2/bulk/host_create/",
+            {
+                "inventory": 42,
+                "hosts": [
+                    {"name": "host1.example.com", "description": "First"},
+                    {"name": "host2.example.com"},
+                ],
+            },
             service="controller",
+            retry=False,
         )
 
     def test_check_mode_validates_inventory(self):
@@ -74,7 +78,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertIn("Would create 1 host(s)", result["msg"])
         manager.lookup_resource_id.assert_called_once()
-        manager.bulk_host_create.assert_not_called()
+        manager.launch_resource.assert_not_called()
 
     def test_check_mode_fails_on_bad_inventory(self):
         action = self._make_action(check_mode=True)
@@ -101,7 +105,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
         action = self._make_action()
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 10
-        manager.bulk_host_create.return_value = {}
+        manager.launch_resource.return_value = {}
 
         hosts = [
             {"name": "h1", "variables": {"ansible_host": "1.2.3.4", "foo": "bar"}},
@@ -119,8 +123,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
         with patch.object(action, "_prepare_action", return_value=prepared):
             action.run(task_vars={})
 
-        call_args = manager.bulk_host_create.call_args
-        submitted_hosts = call_args.kwargs["hosts"]
+        submitted_hosts = manager.launch_resource.call_args.args[1]["hosts"]
         self.assertIsInstance(submitted_hosts[0]["variables"], str)
         self.assertIn("ansible_host", submitted_hosts[0]["variables"])
         self.assertNotIn("variables", submitted_hosts[1])
@@ -129,7 +132,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
         action = self._make_action()
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 99
-        manager.bulk_host_create.return_value = {}
+        manager.launch_resource.return_value = {}
 
         hosts = [{"name": "h1"}]
         prepared = {
@@ -145,13 +148,13 @@ class TestBulkHostCreateAction(unittest.TestCase):
             result = action.run(task_vars={})
 
         self.assertFalse(result.get("failed", False))
-        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "99", service="controller", extra_query_params=None)
+        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "99", service="controller", require_unique=True)
 
     def test_api_error_reported(self):
         action = self._make_action()
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 42
-        manager.bulk_host_create.side_effect = ValueError("Bulk host create failed (HTTP 400): bad request")
+        manager.launch_resource.side_effect = ValueError("Bulk host create failed (HTTP 400): bad request")
 
         hosts = [{"name": "h1"}]
         prepared = {
