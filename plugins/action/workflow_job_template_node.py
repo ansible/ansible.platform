@@ -41,14 +41,22 @@ class ActionModule(BaseResourceActionPlugin):
         are treated as identifiers, not database IDs, because node
         identifiers can legitimately be numeric strings like ``"123"``.
         """
-        resolved = []
+        resolved = manager.lookup_resource_ids(
+            "workflow_job_template_nodes",
+            "identifier",
+            identifiers,
+            service=_SERVICE,
+            extra_query_params={"workflow_job_template": workflow_id},
+            numeric_is_id=False,
+            allow_missing=True,
+        )
+        node_ids = []
         for ident in identifiers:
-            data = manager.search_api(f"{BASE_PATH}/?identifier={ident}&workflow_job_template={workflow_id}")
-            nodes = data.get("results", [])
-            if not nodes:
+            key = str(ident)
+            if key not in resolved:
                 raise ValueError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
-            resolved.append(nodes[0]["id"])
-        return resolved
+            node_ids.append(resolved[key])
+        return node_ids
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
