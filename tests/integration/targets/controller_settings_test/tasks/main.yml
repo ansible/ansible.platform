@@ -1,4 +1,8 @@
 ---
+- name: Skip Controller settings test for non-http-persistent modes
+  ansible.builtin.meta: end_host
+  when: connection_mode | default('local') != 'http-persistent'
+
 # Integration coverage for ansible.platform.controller_settings.
 # Controller settings are global, so this test toggles a non-secret boolean and
 # restores its original value in an always block.
