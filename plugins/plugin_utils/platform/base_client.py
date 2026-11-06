@@ -318,7 +318,7 @@ class BaseAPIClient(ABC):
         lookup_filters = dict(extra_query_params or {})
         if service == "controller" and endpoint != "organizations":
             self._normalize_organization_filter(lookup_filters, service)
-        input_values = list(dict.fromkeys(str(value) for value in lookup_values if value))
+        input_values = list(dict.fromkeys(str(value) for value in lookup_values if value or (isinstance(value, int) and not isinstance(value, bool))))
         resolved = {}
 
         def lookup_one(value):
@@ -329,14 +329,20 @@ class BaseAPIClient(ABC):
 
         named_values = [value for value in input_values if lookup_field == "name" and endpoint != "organizations" and "++" in value]
         for value in named_values:
-            resolved[value] = self.lookup_resource_id(
-                endpoint,
-                lookup_field,
-                value,
-                service=service,
-                extra_query_params=lookup_filters,
-                require_unique=True,
-            )
+            try:
+                resolved[value] = self.lookup_resource_id(
+                    endpoint,
+                    lookup_field,
+                    value,
+                    service=service,
+                    extra_query_params=lookup_filters,
+                    require_unique=True,
+                )
+            except ValueError as exc:
+                not_found_prefix = "Resource '%s' with %s=" % (endpoint, lookup_field)
+                if allow_missing and str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found"):
+                    continue
+                raise
 
         values = [value for value in input_values if (not numeric_is_id or not value.isdigit()) and value not in named_values]
         uncached = values
