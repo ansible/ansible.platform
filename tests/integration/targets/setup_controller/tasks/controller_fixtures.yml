@@ -1,0 +1,143 @@
+---
+# Read-only Controller fixtures shared by controller integration targets.
+#
+# ansible-test starts each target as a separate play, so a normal set_fact is
+# not shared between targets.  Cache only stable IDs in /tmp instead.  The
+# cache is scoped to the Gateway hostname and is intentionally limited to
+# pre-seeded, read-only resources; tests must continue to create and clean up
+# resources that they mutate.
+
+- name: Derive the shared Controller fixture cache path
+  ansible.builtin.set_fact:
+    controller_fixture_cache_path: >-
+      /tmp/ansible-platform-controller-fixtures-v1-{{ gateway_hostname | hash('sha1') }}.json
+
+- name: Check for a cached Controller fixture manifest
+  ansible.builtin.stat:
+    path: "{{ controller_fixture_cache_path }}"
+  delegate_to: localhost
+  register: controller_fixture_cache_stat
+
+- name: Initialize an empty Controller fixture manifest
+  ansible.builtin.set_fact:
+    controller_fixtures: {}
+  when: not controller_fixture_cache_stat.stat.exists
+
+- name: Load the cached Controller fixture manifest
+  ansible.builtin.slurp:
+    src: "{{ controller_fixture_cache_path }}"
+  delegate_to: localhost
+  register: controller_fixture_cache_content
+  when: controller_fixture_cache_stat.stat.exists
+
+- name: Expose cached Controller fixture IDs
+  ansible.builtin.set_fact:
+    controller_fixtures: "{{ controller_fixture_cache_content.content | b64decode | from_json }}"
+  when: controller_fixture_cache_stat.stat.exists
+
+- name: Query the default Controller organization
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  delegate_to: localhost
+  register: controller_default_organization_response
+  failed_when: false
+  when: not controller_fixture_cache_stat.stat.exists
+
+- name: Query the Demo Inventory
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/inventories/?name=Demo+Inventory"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  delegate_to: localhost
+  register: controller_demo_inventory_response
+  failed_when: false
+  when: not controller_fixture_cache_stat.stat.exists
+
+- name: Query the Demo Job Template
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/job_templates/?name=Demo+Job+Template"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  delegate_to: localhost
+  register: controller_demo_job_template_response
+  failed_when: false
+  when: not controller_fixture_cache_stat.stat.exists
+
+- name: Query the Machine credential type
+  ansible.builtin.uri:
+    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
+    method: GET
+    user: "{{ gateway_username }}"
+    password: "{{ gateway_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ gateway_validate_certs | bool }}"
+    status_code: [200]
+  delegate_to: localhost
+  register: controller_machine_credential_type_response
+  failed_when: false
+  when: not controller_fixture_cache_stat.stat.exists
+
+- name: Build the shared Controller fixture manifest
+  ansible.builtin.set_fact:
+    controller_fixtures:
+      default_organization_id: "{{ controller_default_organization_response.json.results[0].id }}"
+      demo_inventory_id: "{{ controller_demo_inventory_response.json.results[0].id }}"
+      demo_job_template_id: "{{ controller_demo_job_template_response.json.results[0].id }}"
+      machine_credential_type_id: "{{ controller_machine_credential_type_response.json.results[0].id }}"
+  when:
+    - not controller_fixture_cache_stat.stat.exists
+    - controller_default_organization_response is successful
+    - controller_default_organization_response.json.results | default([]) | length > 0
+    - controller_demo_inventory_response is successful
+    - controller_demo_inventory_response.json.results | default([]) | length > 0
+    - controller_demo_job_template_response is successful
+    - controller_demo_job_template_response.json.results | default([]) | length > 0
+    - controller_machine_credential_type_response is successful
+    - controller_machine_credential_type_response.json.results | default([]) | length > 0
+
+- name: Persist the shared Controller fixture manifest
+  ansible.builtin.copy:
+    content: "{{ controller_fixtures | to_nice_json }}\n"
+    dest: "{{ controller_fixture_cache_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  when:
+    - controller_fixture_cache_stat.stat.exists is false
+    - controller_fixtures is defined
+    - controller_fixtures.default_organization_id is defined
+
+- name: Expose the default Controller organization ID
+  ansible.builtin.set_fact:
+    controller_default_organization_id: "{{ controller_fixtures.default_organization_id }}"
+  when: controller_fixtures.get("default_organization_id") is not none
+
+- name: Expose the Demo Inventory ID
+  ansible.builtin.set_fact:
+    controller_demo_inventory_id: "{{ controller_fixtures.demo_inventory_id }}"
+  when: controller_fixtures.get("demo_inventory_id") is not none
+
+- name: Expose the Demo Job Template ID
+  ansible.builtin.set_fact:
+    controller_demo_job_template_id: "{{ controller_fixtures.demo_job_template_id }}"
+  when: controller_fixtures.get("demo_job_template_id") is not none
+
+- name: Expose the Machine credential type ID
+  ansible.builtin.set_fact:
+    controller_machine_credential_type_id: "{{ controller_fixtures.machine_credential_type_id }}"
+  when: controller_fixtures.get("machine_credential_type_id") is not none
+
+...
