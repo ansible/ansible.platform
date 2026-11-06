@@ -503,12 +503,12 @@ class TestEdaCredentialInputSourceEnforcedUpdate(unittest.TestCase):
         response.raise_for_status.return_value = None
         service._find_resource = MagicMock(return_value=self.current)
         service._build_url = MagicMock(return_value="https://gateway.example/api/eda/v1/credential-input-sources/42/")
-        service._request_with_auth_recovery = MagicMock(return_value=response)
+        service._make_request = MagicMock(return_value=response)
         self.context.manager = service
 
         service._update_resource(self.resource, EdaCredentialInputSourceTransformMixin_v1, self.context)
 
-        request_data = service._request_with_auth_recovery.call_args.kwargs["json"]
+        request_data = service._make_request.call_args.kwargs["json"]
         self.assertEqual(request_data, {"description": None, "metadata": None})
 
     def test_direct_client_patch_includes_explicit_nulls(self):

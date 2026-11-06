@@ -76,7 +76,7 @@ class TestControllerSettingsTransformMixin(unittest.TestCase):
         response = MagicMock()
         response.json.return_value = {"DEFAULT_JOB_TIMEOUT": 3600}
         response.raise_for_status.return_value = None
-        service._request_with_auth_recovery = MagicMock(return_value=response)
+        service._make_request = MagicMock(return_value=response)
 
         context = TransformContext(
             manager=service,
@@ -92,7 +92,7 @@ class TestControllerSettingsTransformMixin(unittest.TestCase):
             context,
         )
 
-        service._request_with_auth_recovery.assert_called_once_with(
+        service._make_request.assert_called_once_with(
             "GET",
             "https://controller.example.com/api/controller/v2/settings/all/",
             operation="find",

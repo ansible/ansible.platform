@@ -198,8 +198,8 @@ class ActionModule(BaseResourceActionPlugin):
                 )
                 return result
 
-            # Build the request from the transform's test endpoint declaration.
             test_operation = EdaCredentialTypeTransformMixin_v1.get_endpoint_operations()["test"]
+            # Build the request from the transform's test endpoint declaration.
             test_request = EdaCredentialTypeTransformMixin_v1.to_test_request(credential_type_id, test_inputs, test_metadata)
             test_url, test_payload = build_endpoint_request(test_operation, test_request)
             if test_operation.method != "POST":
