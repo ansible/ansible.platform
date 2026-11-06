@@ -36,15 +36,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Could not load DOCUMENTATION for settings module")
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            validated_params = self._validate_action_input().validated_params
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
@@ -52,7 +44,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
 
-            validated_params = validated_input.validated_parameters
             desired_settings = validated_params.get("settings", {}) or {}
 
             # GET current settings via manager.execute('find')

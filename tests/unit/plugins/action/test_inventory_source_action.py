@@ -121,7 +121,7 @@ class TestInventorySourceAssociations(unittest.TestCase):
         action._client.manage_associations.assert_not_called()
 
     @patch.object(BaseResourceActionPlugin, "run")
-    def test_notification_fields_popped_before_super(self, mock_super_run):
+    def test_notification_fields_are_preserved(self, mock_super_run):
         mock_super_run.return_value = {
             "changed": True,
             "failed": False,
@@ -140,7 +140,7 @@ class TestInventorySourceAssociations(unittest.TestCase):
 
         action.run(task_vars={})
 
-        self.assertNotIn("notification_templates_started", action._task.args)
+        self.assertEqual(action._task.args["notification_templates_started"], ["Slack"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_failed_crud_skips_associations(self, mock_super_run):

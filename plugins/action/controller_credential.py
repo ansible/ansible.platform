@@ -22,6 +22,7 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from", "inputs"})
+    _NO_LOG_FIELDS = frozenset({"inputs"})
     # update_secrets controls whether write-only credential inputs are sent on
     # update; it is not an API field and must not participate in idempotency.
     _ANSIBLE_DIRECTIVES = BaseResourceActionPlugin._ANSIBLE_DIRECTIVES | frozenset({"update_secrets"})
@@ -75,13 +76,17 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        copy_from = self._task.args.pop("copy_from", None)
+        copy_from = self._task.args.get("copy_from")
         name = self._task.args.get("name")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
 
         copied = False
         if copy_from and state not in ("absent", "exists") and not check_mode:
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             try:
                 super(BaseResourceActionPlugin, self).run(tmp, task_vars)
                 self._task_vars = task_vars

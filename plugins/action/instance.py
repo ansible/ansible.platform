@@ -21,18 +21,15 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        cap_adj = self._task.args.get("capacity_adjustment")
-        if cap_adj is not None:
-            try:
-                self._task.args["capacity_adjustment"] = float(cap_adj)
-            except (ValueError, TypeError):
-                pass
-
-        peers = self._task.args.pop("peers", None)
+        peers = self._task.args.get("peers")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
 
         if state in ("absent", "deleted"):
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             self._task.args["state"] = "exists"
             result = super().run(tmp, task_vars)
             if result.get("failed"):

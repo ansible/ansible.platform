@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.authenticator_user import ActionModule as AuthenticatorUserAction
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.action.role_team_assignment import ActionModule as RoleTeamAssignmentAction
+from ansible_collections.ansible.platform.plugins.action.role_user_assignment import ActionModule as RoleUserAssignmentAction
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.authenticator_user import AnsibleAuthenticatorUser
 
 
@@ -170,6 +172,58 @@ class TestActionPreparation(unittest.TestCase):
         self.assertIn("503 Service Unavailable", result["msg"])
         manager.execute.assert_called_once_with(operation="find", module_name="example", ansible_data={"name": "resource", "value": 3})
 
+    def test_role_team_assignment_preserves_scalar_object_id_in_results(self):
+        action = RoleTeamAssignmentAction.__new__(RoleTeamAssignmentAction)
+        action._task = MagicMock()
+        action._task.args = {}
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager_result = {"id": 1, "role_definition": "5", "team": "7", "object_id": 202, "changed": True}
+        manager.execute.side_effect = [{}, manager_result]
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"role_definition": {}, "team": {}, "object_id": {}}},
+            "validated_params": {"role_definition": "5", "team": "7", "object_id": 202, "state": "present"},
+            "resource_data": {"role_definition": "5", "team": "7", "object_id": 202},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_validate_data", return_value=manager_result):
+                result = action.run(task_vars={})
+
+        self.assertEqual(result["role_team_assignment"]["object_id"], 202)
+        self.assertEqual(result["object_id"], 202)
+
+    def test_role_user_assignment_preserves_scalar_object_id_in_results(self):
+        action = RoleUserAssignmentAction.__new__(RoleUserAssignmentAction)
+        action._task = MagicMock()
+        action._task.args = {}
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager_result = {"id": 1, "role_definition": "5", "user": "alice", "object_id": 202, "changed": True}
+        manager.execute.side_effect = [{}, manager_result]
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"role_definition": {}, "user": {}, "object_id": {}}},
+            "validated_params": {"role_definition": "5", "user": "alice", "object_id": 202, "state": "present"},
+            "resource_data": {"role_definition": "5", "user": "alice", "object_id": 202},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_validate_data", return_value=manager_result):
+                result = action.run(task_vars={})
+
+        self.assertEqual(result["role_user_assignment"]["object_id"], 202)
+        self.assertEqual(result["object_id"], 202)
+
     def test_prepare_action_rejects_missing_documentation(self):
         action = self._make_action()
 
@@ -186,6 +240,119 @@ class TestActionPreparation(unittest.TestCase):
 
         self.assertTrue(result["failed"])
         self.assertEqual(result["msg"], "invalid documentation")
+
+
+class TestRoleTeamAssignmentMultiObject(unittest.TestCase):
+    def _action(self, assignment_objects, manager):
+        action = RoleTeamAssignmentAction.__new__(RoleTeamAssignmentAction)
+        action._task = MagicMock()
+        action._task.args = {"assignment_objects": assignment_objects}
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        prepared = {
+            "result": {},
+            "validated_params": {
+                "role_definition": "404",
+                "team": "7",
+                "state": "absent",
+                "assignment_objects": assignment_objects,
+            },
+            "manager": manager,
+        }
+        return action, prepared
+
+    def test_deleted_numeric_role_does_not_block_object_id_cleanup(self):
+        assignment_objects = [{"object_id": 202}]
+        action, prepared = self._action(assignment_objects, MagicMock())
+
+        def execute(**kwargs):
+            if kwargs["operation"] == "find":
+                return {"id": 11, "object_id": "202"}
+            return {}
+
+        prepared["manager"].execute.side_effect = execute
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=prepared["validated_params"])):
+                with patch.object(action, "_get_or_spawn_manager", return_value=(prepared["manager"], None)):
+                    result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["changed"])
+        self.assertEqual(
+            [call.kwargs["module_name"] for call in prepared["manager"].execute.call_args_list],
+            ["role_team_assignment", "role_team_assignment"],
+        )
+
+    def test_name_type_selector_preserves_role_lookup_errors(self):
+        assignment_objects = [{"name": "target", "type": "organizations"}]
+        action, prepared = self._action(assignment_objects, MagicMock())
+        prepared["manager"].execute.side_effect = ValueError("503 Service Unavailable")
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=prepared["validated_params"])):
+                with patch.object(action, "_get_or_spawn_manager", return_value=(prepared["manager"], None)):
+                    result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("503 Service Unavailable", result["msg"])
+        prepared["manager"].execute.assert_called_once_with(
+            operation="find",
+            module_name="role_definition",
+            ansible_data={"name": "404"},
+        )
+
+    def test_name_type_selector_keeps_content_type_validation(self):
+        assignment_objects = [{"name": "target", "type": "teams"}]
+        action, prepared = self._action(assignment_objects, MagicMock())
+        prepared["manager"].execute.return_value = {"content_type": "shared.organization"}
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=prepared["validated_params"])):
+                with patch.object(action, "_get_or_spawn_manager", return_value=(prepared["manager"], None)):
+                    result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("requires type 'organizations'", result["msg"])
+        prepared["manager"].execute.assert_called_once_with(
+            operation="find",
+            module_name="role_definition",
+            ansible_data={"name": "404"},
+        )
+
+
+class TestRoleUserAssignmentExistsMiss(unittest.TestCase):
+    def test_scalar_and_list_selector_misses_share_failure_result(self):
+        selectors = (
+            {"object_id": 202},
+            {"object_ansible_id": "object-uuid"},
+            {"object_ids": [202]},
+        )
+        expected = {
+            "changed": False,
+            "failed": True,
+            "exists": False,
+            "role_user_assignment": {},
+            "msg": "No role_user_assignment found matching the given criteria",
+        }
+
+        for selector in selectors:
+            with self.subTest(selector=selector):
+                action = RoleUserAssignmentAction.__new__(RoleUserAssignmentAction)
+                action._task = MagicMock()
+                action._task.args = dict(selector, state="exists")
+                action._display = MagicMock()
+                action._display.verbosity = 0
+                manager = MagicMock()
+                manager.execute.return_value = {}
+                validated_params = dict(selector, role_definition="5", user="alice", state="exists")
+
+                with patch.object(ActionBase, "run", return_value={}):
+                    with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=validated_params)):
+                        with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                            result = action.run(task_vars={})
+
+                self.assertEqual(result, expected)
 
 
 class TestAuthenticatorUserLookup(unittest.TestCase):

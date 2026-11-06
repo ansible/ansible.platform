@@ -45,7 +45,6 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
             resource_data = prepared["resource_data"] or prepared["validated_params"]
             launch = AnsibleWorkflowLaunch(**resource_data)
-
             if not launch.name:
                 raise AnsibleError("name is required")
 
