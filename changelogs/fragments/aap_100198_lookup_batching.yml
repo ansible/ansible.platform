@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - lookup - Batch instance peer and workflow-node identifier lookups to reduce API requests (https://issues.redhat.com/browse/AAP-100198).
+...
