@@ -137,6 +137,27 @@ class ManagerRPCClient:
         """Resolve organization names to IDs through the manager process."""
         return self.service_proxy.lookup_organization_ids(organization_names, service)
 
+    def lookup_resource_ids(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_values: list,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        numeric_is_id: bool = True,
+        allow_missing: bool = False,
+    ) -> dict:
+        """Resolve multiple resource references through the manager process."""
+        return self.service_proxy.lookup_resource_ids(
+            endpoint,
+            lookup_field,
+            lookup_values,
+            service,
+            extra_query_params or {},
+            numeric_is_id,
+            allow_missing,
+        )
+
     def lookup_organization_names(self, organization_ids: list, service: str = "gateway") -> list:
         """Resolve organization IDs to names via the manager process."""
         return self.service_proxy.lookup_organization_names(organization_ids, service)

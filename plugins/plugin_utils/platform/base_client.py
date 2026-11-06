@@ -311,31 +311,46 @@ class BaseAPIClient(ABC):
         lookup_values: list,
         service: str = "gateway",
         extra_query_params: dict = None,
+        numeric_is_id: bool = True,
+        allow_missing: bool = False,
     ) -> dict:
-        """Resolve several names with bounded ``__in`` queries where possible."""
+        """Resolve several values with bounded ``__in`` queries where possible."""
         lookup_filters = dict(extra_query_params or {})
         if service == "controller" and endpoint != "organizations":
             self._normalize_organization_filter(lookup_filters, service)
-        input_values = list(dict.fromkeys(str(value) for value in lookup_values if value))
+        input_values = list(dict.fromkeys(str(value) for value in lookup_values if value or (isinstance(value, int) and not isinstance(value, bool))))
         resolved = {}
+
+        def lookup_one(value):
+            lookup_kwargs = {"service": service, "extra_query_params": lookup_filters}
+            if not numeric_is_id:
+                lookup_kwargs["numeric_is_id"] = False
+            return self.lookup_resource_id(endpoint, lookup_field, value, **lookup_kwargs)
+
         named_values = [value for value in input_values if lookup_field == "name" and endpoint != "organizations" and "++" in value]
         for value in named_values:
-            resolved[value] = self.lookup_resource_id(
-                endpoint,
-                lookup_field,
-                value,
-                service=service,
-                extra_query_params=lookup_filters,
-                require_unique=True,
-            )
+            try:
+                resolved[value] = self.lookup_resource_id(
+                    endpoint,
+                    lookup_field,
+                    value,
+                    service=service,
+                    extra_query_params=lookup_filters,
+                    require_unique=True,
+                )
+            except ValueError as exc:
+                not_found_prefix = "Resource '%s' with %s=" % (endpoint, lookup_field)
+                if allow_missing and str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found"):
+                    continue
+                raise
 
-        values = [value for value in input_values if not value.isdigit() and value not in named_values]
+        values = [value for value in input_values if (not numeric_is_id or not value.isdigit()) and value not in named_values]
         uncached = values
 
         if not uncached:
             return resolved
-        if len(uncached) == 1:
-            resolved[uncached[0]] = self.lookup_resource_id(endpoint, lookup_field, uncached[0], service=service, extra_query_params=lookup_filters)
+        if len(uncached) == 1 and not allow_missing:
+            resolved[uncached[0]] = lookup_one(uncached[0])
             return resolved
 
         service_version = self.get_api_version(service)
@@ -364,17 +379,34 @@ class BaseAPIClient(ABC):
             for value in batch_values:
                 matches = matches_by_value.get(value, [])
                 if not matches:
+                    if allow_missing:
+                        continue
                     raise ValidationError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
                 if len(matches) > 1:
                     raise ValidationError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, value))
                 resolved[value] = matches[0].get("id")
+
+        def resolve_exact(value):
+            query = {lookup_field: value}
+            if lookup_filters:
+                query.update(lookup_filters)
+            data = self.search_api(api_path, query_params=query, return_all=True, max_objects=100000)
+            matches = [result for result in data.get("results", []) if str(result.get(lookup_field)) == value]
+            if not matches:
+                return
+            if len(matches) > 1:
+                raise ValidationError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, value))
+            resolved[value] = matches[0].get("id")
 
         batch_values = []
         for value in uncached:
             if "," in value:
                 resolve_batch(batch_values)
                 batch_values = []
-                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service, extra_query_params=lookup_filters)
+                if allow_missing:
+                    resolve_exact(value)
+                else:
+                    resolved[value] = lookup_one(value)
                 continue
 
             candidate = batch_values + [value]
@@ -394,10 +426,46 @@ class BaseAPIClient(ABC):
             single_url_length = len(self._build_url(api_path, single_query).encode("utf-8"))
             if single_url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
                 batch_values = [value]
+            elif allow_missing:
+                resolve_exact(value)
             else:
-                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service, extra_query_params=lookup_filters)
+                resolved[value] = lookup_one(value)
         resolve_batch(batch_values)
         return resolved
+
+    def lookup_resource_ids(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_values: list,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        numeric_is_id: bool = True,
+        allow_missing: bool = False,
+    ) -> dict:
+        """Resolve multiple resource references through bounded list queries.
+
+        Args:
+            endpoint: API endpoint name.
+            lookup_field: Field to match for each value.
+            lookup_values: Values to resolve.
+            service: API service owning the endpoint.
+            extra_query_params: Additional filters that scope every lookup.
+            numeric_is_id: Treat all-digit values as IDs and omit them from lookup.
+            allow_missing: Return matches found without raising for missing values.
+
+        Returns:
+            A mapping from normalized lookup values to resource IDs.
+        """
+        return self._lookup_resource_ids(
+            endpoint,
+            lookup_field,
+            lookup_values,
+            service=service,
+            extra_query_params=extra_query_params,
+            numeric_is_id=numeric_is_id,
+            allow_missing=allow_missing,
+        )
 
     def _ansible_tls_kwargs(self, verify=None):
         """Map TLS verify setting to Ansible Request validate_certs/ca_path kwargs."""
