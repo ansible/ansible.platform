@@ -1224,9 +1224,7 @@ class BaseResourceActionPlugin(ActionBase):
         validated_output = {
             k: v
             for k, v in validated_output.items()
-            if k not in strip_from_resource
-            and not k.startswith("new_")
-            and not (k.endswith("_id") and k != "id" and k not in self._PRESERVE_RESULT_ID_FIELDS)
+            if k not in strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id" and k not in self._PRESERVE_RESULT_ID_FIELDS)
         }
         for field in self._SPACE_SEPARATED_LIST_FIELDS:
             if field in validated_output and isinstance(validated_output[field], str):
