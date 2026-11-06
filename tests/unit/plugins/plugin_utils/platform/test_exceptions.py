@@ -4,7 +4,8 @@
 """Tests for structured platform error classification."""
 
 import requests
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, classify_exception
+import pytest
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, classify_exception, format_error_response_body
 
 
 def test_http_error_preserves_status_code_for_action_plugins():
@@ -29,3 +30,18 @@ def test_http_error_without_response_returns_api_error_with_no_status():
     assert isinstance(classified, APIError)
     assert classified.status_code is None
     assert classified.details["status_code"] is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"detail": "x" * 1100},
+        ["x" * 1100],
+        '{"detail": "' + "x" * 1100 + '"}',
+    ],
+)
+def test_format_error_response_body_caps_stringified_json_values(body):
+    error = Exception("request failed")
+    error.details = {"response_body": body}
+
+    assert len(format_error_response_body(error)) == 1000

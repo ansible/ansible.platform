@@ -24,13 +24,12 @@ def format_error_response_body(exception: Exception) -> str:
 
     if isinstance(body, bytes):
         body = body.decode("utf-8", errors="replace")
-    if isinstance(body, (dict, list)):
-        return str(body)
 
     try:
-        return str(json.loads(body))
+        body = str(json.loads(body))
     except (TypeError, ValueError):
-        return str(body)[:1000]
+        body = str(body)
+    return body[:1000]
 
 
 class PlatformError(Exception):
