@@ -32,6 +32,28 @@ def action_module():
 class TestWorkflowLaunchActionModule:
     """Tests for workflow_launch action plugin."""
 
+    @pytest.mark.parametrize("resource_data", [{}, {"wait": False}, {"name": ""}])
+    def test_missing_name_fails_before_remote_requests(self, action_module, resource_data):
+        mock_manager = MagicMock()
+
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {},
+                "resource_data": resource_data,
+                "manager": mock_manager,
+                "argspec": {},
+                "write_only_data": {},
+            }
+            result = action_module.run(task_vars={})
+
+        assert result["failed"] is True
+        assert result["msg"] == "name is required"
+        mock_manager.search_api.assert_not_called()
+        mock_manager.lookup_resource_id.assert_not_called()
+        mock_manager.launch_resource.assert_not_called()
+        mock_manager.wait_for_completion.assert_not_called()
+
     def test_module_name(self, action_module):
         assert action_module.MODULE_NAME == "workflow_launch"
 

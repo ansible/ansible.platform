@@ -114,8 +114,8 @@ class ActionModule(BaseResourceActionPlugin):
                 service=_SERVICE,
                 require_unique=True,
             )
-        except ValueError as exc:
-            if "not found" in str(exc).lower():
+        except Exception as exc:
+            if self._is_resource_not_found(exc):
                 return None
             raise
 
@@ -133,11 +133,7 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             return manager.execute(operation="find", module_name=self.MODULE_NAME, ansible_data=find_data)
         except Exception as exc:
-            response = getattr(exc, "response", None)
-            details = getattr(exc, "details", None)
-            status_code = details.get("status_code") if isinstance(details, dict) else None
-            status_code = status_code or getattr(response, "status_code", None) or getattr(exc, "status_code", None)
-            if (isinstance(exc, ValueError) and ("not found" in str(exc).lower() or "404" in str(exc))) or status_code == 404:
+            if self._is_resource_not_found(exc):
                 return None
             raise
 

@@ -19,7 +19,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
@@ -50,6 +50,13 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_c
 # Ansible correctly wires up the file handler.
 # ---------------------------------------------------------------------------
 display = Display()
+
+
+class ValidatedActionInput(NamedTuple):
+    """Argument specification and validated parameters for an action plugin."""
+
+    argspec: dict
+    validated_params: dict
 
 
 def _manager_process_entry(
@@ -253,6 +260,10 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override with module-specific fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
 
+    # Selector IDs that are user-visible response fields. Other ``*_id`` fields
+    # are stripped from final output because they are internal resolved FKs.
+    _PRESERVE_RESULT_ID_FIELDS: frozenset = frozenset()
+
     # Fields the API stores as space-separated strings but argument_spec declares as list.
     # Conversion is applied in the output layer only so the internal update path is unaffected.
     # Subclasses override with module-specific fields.
@@ -454,19 +465,15 @@ class BaseResourceActionPlugin(ActionBase):
         result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
 
-        doc = self._get_documentation()
-        argspec = self._build_argspec_from_docs(doc) if doc else None
-        if not argspec:
-            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        validated_input = self._validate_action_input()
+        argspec = validated_input.argspec
+        validated_params = validated_input.validated_params
         manager, facts_to_set = self._get_or_spawn_manager(task_vars)
         self._client = manager
         if facts_to_set:
             result["ansible_facts"] = facts_to_set
             result["_ansible_facts_cacheable"] = True
 
-        validated_params = validated_input.validated_parameters
         resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
 
         for field, (msg, version) in self._DEPRECATED_FIELDS.items():
@@ -483,6 +490,28 @@ class BaseResourceActionPlugin(ActionBase):
             "write_only_data": write_only_data,
             "manager": manager,
         }
+
+    def _validate_action_input(self) -> ValidatedActionInput:
+        """Validate the original task arguments against the module documentation.
+
+        This input-only helper lets custom action plugins validate before they
+        extract control fields or perform a preparatory API request. The shared
+        preparation path uses the same helper before it creates the manager.
+
+        Returns:
+            ValidatedActionInput: The generated argument specification and validated parameters.
+        """
+        doc = self._get_documentation()
+        argspec = self._build_argspec_from_docs(doc) if doc else None
+        if not argspec:
+            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
+
+        # Ansible's required and conditional constraints check whether a key is
+        # present, even when its value is None. None is omitted from resource
+        # payloads below, so treat it as absent during input validation too.
+        validation_args = {key: value for key, value in self._task.args.items() if value is not None}
+        validated_input = self._validate_data(validation_args, argspec, "input")
+        return ValidatedActionInput(argspec=argspec, validated_params=validated_input.validated_parameters)
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
@@ -1406,7 +1435,9 @@ class BaseResourceActionPlugin(ActionBase):
             validated_output = {
                 k: v
                 for k, v in validated_output.items()
-                if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
+                if k not in _strip_from_resource
+                and not k.startswith("new_")
+                and not (k.endswith("_id") and k != "id" and k not in self._PRESERVE_RESULT_ID_FIELDS)
             }
 
             # Output-layer type conversion: space-separated API strings - lists.

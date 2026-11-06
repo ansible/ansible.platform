@@ -32,8 +32,9 @@ class ActionModule(BaseResourceActionPlugin):
     # test_inputs and test_metadata are only used with state=test and must
     # be stripped before the base class builds MODEL_CLASS for CRUD states.
     _WRITE_ONLY_FIELDS = frozenset({"test_inputs", "test_metadata"})
-    _NO_LOG_FIELDS = frozenset({"test_inputs"})
+    _NO_LOG_FIELDS = frozenset({"test_inputs", "test_metadata"})
     _RENAME_IDENTITY_FIELDS = ("inputs", "injectors")
+    _REQUIRED_IF = [["state", "test", ["test_inputs"]]]
 
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
         """Find credential types by name and recognize verified completed renames.
@@ -166,7 +167,7 @@ class ActionModule(BaseResourceActionPlugin):
             name = validated_params.get("name")
             test_inputs = write_only_data.get("test_inputs")
             test_metadata = write_only_data.get("test_metadata")
-            if not test_inputs:
+            if not isinstance(test_inputs, dict) or not test_inputs:
                 raise AnsibleError("test_inputs must be provided and non-empty when state=test")
 
             # Find the credential type by name
@@ -176,8 +177,8 @@ class ActionModule(BaseResourceActionPlugin):
                     module_name=self.MODULE_NAME,
                     ansible_data={"name": name},
                 )
-            except (ValueError, Exception) as e:
-                if "not found" in str(e).lower() or "404" in str(e):
+            except Exception as e:
+                if self._is_resource_not_found(e):
                     raise AnsibleError("Credential type '%s' not found, cannot test" % name) from e
                 raise
 

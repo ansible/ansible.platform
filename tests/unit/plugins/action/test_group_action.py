@@ -170,7 +170,7 @@ class TestGroupAssociations(unittest.TestCase):
         action._client.manage_associations.assert_not_called()
 
     @patch.object(BaseResourceActionPlugin, "run")
-    def test_fields_popped_before_super(self, mock_super_run):
+    def test_association_arguments_are_preserved(self, mock_super_run):
         mock_super_run.return_value = {
             "changed": True,
             "failed": False,
@@ -192,10 +192,10 @@ class TestGroupAssociations(unittest.TestCase):
 
         action.run(task_vars={})
 
-        self.assertNotIn("hosts", action._task.args)
-        self.assertNotIn("children", action._task.args)
-        self.assertNotIn("preserve_existing_hosts", action._task.args)
-        self.assertNotIn("preserve_existing_children", action._task.args)
+        self.assertEqual(action._task.args["hosts"], ["web1"])
+        self.assertEqual(action._task.args["children"], ["east"])
+        self.assertTrue(action._task.args["preserve_existing_hosts"])
+        self.assertFalse(action._task.args["preserve_existing_children"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_failed_crud_skips_associations(self, mock_super_run):
