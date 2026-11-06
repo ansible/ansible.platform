@@ -76,11 +76,34 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
 
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
 
+        # Organization is a lookup-only compatibility parameter. Controller
+        # inventory sources inherit their organization from the inventory, so
+        # it must not be included in the inventory source payload. When an
+        # inventory or source project is provided by name, however, use the
+        # organization to disambiguate resources with duplicate names.
+        organization = getattr(ansible_instance, "organization", None)
+        organization_id = None
+        if organization is not None:
+            if str(organization).strip().isdigit():
+                organization_id = int(organization)
+            elif manager is not None:
+                organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
+            else:
+                raise ValueError("Cannot resolve organization name without a Controller manager")
+        organization_scope = {"organization": organization_id} if organization_id is not None else None
+
         # FK resolution: inventory name → ID (Controller-owned)
         inventory = getattr(ansible_instance, "inventory", None)
         if inventory is not None:
             if manager is not None and not str(inventory).strip().isdigit():
-                api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
+                api_data["inventory"] = manager.lookup_resource_id(
+                    "inventories",
+                    "name",
+                    inventory,
+                    service="controller",
+                    extra_query_params=organization_scope,
+                    require_unique=True,
+                )
             else:
                 api_data["inventory"] = int(inventory) if inventory is not None else None
 
@@ -104,7 +127,14 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         source_project = getattr(ansible_instance, "source_project", None)
         if source_project is not None:
             if manager is not None and not str(source_project).strip().isdigit():
-                api_data["source_project"] = manager.lookup_resource_id("projects", "name", source_project, service="controller")
+                api_data["source_project"] = manager.lookup_resource_id(
+                    "projects",
+                    "name",
+                    source_project,
+                    service="controller",
+                    extra_query_params=organization_scope,
+                    require_unique=True,
+                )
             else:
                 api_data["source_project"] = int(source_project)
 
@@ -257,9 +287,17 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         def _str_or_none(val):
             return str(val) if val is not None else None
 
+        organization = api_data.get("organization")
+        summary_fields = api_data.get("summary_fields")
+        if organization is None and isinstance(summary_fields, dict):
+            organization = summary_fields.get("organization")
+        if isinstance(organization, dict):
+            organization = organization.get("id")
+
         return AnsibleInventorySource(
             name=api_data.get("name", ""),
             inventory=_str_or_none(api_data.get("inventory")),
+            organization=_str_or_none(organization),
             description=api_data.get("description"),
             source=api_data.get("source"),
             source_path=api_data.get("source_path"),

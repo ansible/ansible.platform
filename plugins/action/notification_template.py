@@ -30,6 +30,36 @@ class ActionModule(BaseResourceActionPlugin):
                 resource.organization = names[0]
                 resource_data["organization"] = names[0]
 
+    @classmethod
+    def _notification_values_could_match(cls, desired, current):
+        """Compare notification configuration values with API normalization tolerance."""
+        if desired == "$encrypted$":
+            return True
+        if current == "$encrypted$":
+            return False
+        if isinstance(desired, dict):
+            if not isinstance(current, dict):
+                return False
+            return all(key in current and cls._notification_values_could_match(value, current[key]) for key, value in desired.items())
+        if isinstance(desired, list):
+            return (
+                isinstance(current, list)
+                and len(desired) == len(current)
+                and all(cls._notification_values_could_match(expected, actual) for expected, actual in zip(desired, current))
+            )
+        return desired == current or str(desired) == str(current)
+
+    def _should_update(self, desired_data, current_data):
+        desired_configuration = desired_data.get("notification_configuration")
+        desired_without_configuration = dict(desired_data)
+        desired_without_configuration.pop("notification_configuration", None)
+
+        if super()._should_update(desired_without_configuration, current_data):
+            return True
+        if desired_configuration is None:
+            return False
+        return not self._notification_values_could_match(desired_configuration, current_data.get("notification_configuration"))
+
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
