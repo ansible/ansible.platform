@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
-from ..platform.exceptions import APIError, AuthenticationError, format_error_response_body
+from ..platform.exceptions import APIError, AuthenticationError, PlatformError, format_error_response_body
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext, build_endpoint_request
 
@@ -1059,6 +1059,8 @@ class PlatformService(BaseAPIClient):
                             )
                             enriched_error.retryable = e.retryable
                             raise enriched_error from e
+                        if isinstance(e, PlatformError):
+                            raise
                         raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 

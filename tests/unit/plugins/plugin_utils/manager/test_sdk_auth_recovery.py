@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import EndpointOperation, TransformContext
 
@@ -201,3 +201,23 @@ class TestSDKAuthRecovery(TestCase):
 
         self.assertIn("service unavailable", str(raised.exception))
         self.assertIs(raised.exception.__cause__, original_error)
+
+    def test_execute_operations_preserves_non_api_platform_error_when_adding_response_body(self):
+        original_error = ValidationError(
+            "Invalid request",
+            operation="create",
+            resource="license",
+            details={"response_body": '{"detail": "invalid manifest"}'},
+            invalid_fields=["manifest"],
+        )
+        operations = {
+            "create": EndpointOperation(path="config/", method="POST", fields=["manifest"], required_for="create", order=1),
+        }
+
+        with patch.object(self.service, "_make_request", side_effect=original_error):
+            with self.assertRaises(ValidationError) as raised:
+                self.service._execute_operations(operations, _FakeLicense(manifest="encoded"), self.context, required_for="create")
+
+        self.assertIs(raised.exception, original_error)
+        self.assertEqual(raised.exception.details, {"response_body": '{"detail": "invalid manifest"}'})
+        self.assertEqual(raised.exception.invalid_fields, ["manifest"])
