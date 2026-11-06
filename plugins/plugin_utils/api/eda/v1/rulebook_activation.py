@@ -28,6 +28,13 @@ ACTIVATION_DISABLE_ENDPOINT = "/api/eda/v1/activations/{id}/disable/"
 _EDA_SERVICE = "eda"
 
 
+def _plain_string(value):
+    """Return a plain string without Ansible's unsafe text wrapper."""
+    if isinstance(value, str):
+        return str.__str__(value)
+    return str(value)
+
+
 def _resolve_fk_required(manager, endpoint, lookup_field, value, resource_label, service="eda"):
     """Resolve a name to an ID, raising ValueError if not found or ambiguous.
 
@@ -110,6 +117,8 @@ def _process_event_streams(manager, event_streams, rulebook_id):
 
         source_index = event.get("source_index")
         source_name = event.get("source_name")
+        if source_name is not None:
+            source_name = _plain_string(source_name)
 
         if source_index is not None and source_name is not None:
             raise ValueError("source_index and source_name options are mutually exclusive")
@@ -131,6 +140,7 @@ def _process_event_streams(manager, event_streams, rulebook_id):
         event_stream_name = event.get("event_stream")
         if not event_stream_name:
             raise ValueError("You must specify an event stream name")
+        event_stream_name = _plain_string(event_stream_name)
 
         event_stream_id = _resolve_fk_required(manager, "event-streams", "name", event_stream_name, "Event stream")
         source_mapping["event_stream_name"] = event_stream_name

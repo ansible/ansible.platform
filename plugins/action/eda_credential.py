@@ -52,6 +52,9 @@ class ActionModule(BaseResourceActionPlugin):
         """
         prepared = super()._prepare_action(tmp, task_vars)
         params = prepared["validated_params"]
+        for alias in ("credential_type_name", "organization_name"):
+            params.pop(alias, None)
+            prepared["resource_data"].pop(alias, None)
         self._inputs_provided = params.get("inputs") is not None
         self._update_secrets = params.get("update_secrets", False)
         return prepared

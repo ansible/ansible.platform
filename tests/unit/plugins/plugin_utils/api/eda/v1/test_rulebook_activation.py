@@ -6,6 +6,7 @@
 import unittest
 from unittest.mock import MagicMock
 
+from ansible.utils.unsafe_proxy import AnsibleUnsafeText
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.rulebook_activation import AnsibleRulebookActivation
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation import RulebookActivationTransformMixin_v1
 
@@ -37,6 +38,22 @@ class TestRulebookActivationTransform(unittest.TestCase):
         self.assertEqual(api.extra_var, "answer: 42")
         self.assertEqual(api.awx_token_id, 13)
         self.assertIn("event_stream_id: 41", api.source_mappings)
+        self.assertIn("source_name: source", api.source_mappings)
+
+    def test_event_stream_names_are_serialized_as_plain_strings(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 41
+        manager.search_api.return_value = {"results": [{"name": "source", "rulebook_hash": "hash"}]}
+        activation = AnsibleRulebookActivation(
+            name="activation",
+            event_streams=[{"event_stream": AnsibleUnsafeText("stream"), "source_name": AnsibleUnsafeText("source")}],
+            rulebook_id=7,
+        )
+
+        api = RulebookActivationTransformMixin_v1.from_ansible_data(activation, {"manager": manager, "operation": "update"})
+
+        self.assertNotIn("!!python/object", api.source_mappings)
+        self.assertIn("event_stream_name: stream", api.source_mappings)
         self.assertIn("source_name: source", api.source_mappings)
 
     def test_from_api_exposes_mutable_fields_for_idempotency_comparison(self):
