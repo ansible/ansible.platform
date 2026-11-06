@@ -118,6 +118,18 @@ class TestControllerProjectTransform(unittest.TestCase):
         api = ControllerProjectTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.name, "keep")
 
+    def test_from_api_preserves_sync_metadata(self):
+        ansible = ControllerProjectTransformMixin_v2.from_api(
+            {
+                "name": "proj",
+                "scm_revision": "abc123",
+                "summary_fields": {"current_update": {"id": 42}},
+            },
+            {},
+        )
+        self.assertEqual(ansible.scm_revision, "abc123")
+        self.assertEqual(ansible.summary_fields, {"current_update": {"id": 42}})
+
     def test_from_api_returns_ansible_instance(self):
         api_data = {
             "id": 99,
