@@ -47,6 +47,18 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "rulebook_activation"
     MODEL_CLASS = AnsibleRulebookActivation
 
+    def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
+        """Normalize the legacy enabled parameter to the platform state model."""
+        prepared = super()._prepare_action(tmp, task_vars)
+        params = prepared["validated_params"]
+        enabled = params.pop("enabled", None)
+        prepared["resource_data"].pop("enabled", None)
+        if enabled is not None:
+            state = "enabled" if enabled else "disabled"
+            params["state"] = state
+            prepared["resource_data"]["state"] = state
+        return prepared
+
     def run(self, tmp: object = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
         """Execute rulebook activation management.
 

@@ -72,6 +72,7 @@ class TestRulebookActivationAction(unittest.TestCase):
                 "rule_engine_credential_id": {},
                 "restart_on_project_update": {"type": "bool", "default": False},
                 "state": {"default": "present"},
+                "enabled": {"type": "bool"},
             }
         }
         validation = SimpleNamespace(validated_parameters=validated_params)
@@ -83,6 +84,21 @@ class TestRulebookActivationAction(unittest.TestCase):
                     with patch.object(action, "_validate_data", return_value=validation):
                         with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
                             return action.run(task_vars={})
+
+    def test_legacy_enabled_maps_to_state(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": False})
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "enabled": True, "state": "present", "restart": False},
+            provided_args={"name": "test-activation", "enabled": True},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.direct_request.assert_called_once()
+        self.assertIn("enable", manager.direct_request.call_args.args[1])
 
     def test_delete_existing_activation(self):
         """Delete activation when it exists."""
