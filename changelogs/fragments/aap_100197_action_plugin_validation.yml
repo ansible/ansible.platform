@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - action plugins - validate null values as missing for required options, reject empty license sources, preserve role-assignment object IDs in scalar results, allow numeric-selector cleanup when role definitions are missing, preserve original task arguments while processing association inputs, and prevent sensitive values from appearing in validation errors (https://issues.redhat.com/browse/AAP-100197).
+...

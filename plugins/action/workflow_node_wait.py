@@ -48,10 +48,6 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 1.0)
             timeout = validated_params.get("timeout", 10)
 
-            if not workflow_job_id:
-                raise AnsibleError("workflow_job_id is required")
-            if not name:
-                raise AnsibleError("name is required")
             if interval <= 0:
                 raise AnsibleError("interval must be greater than 0")
 
