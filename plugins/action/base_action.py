@@ -1209,17 +1209,16 @@ class BaseResourceActionPlugin(ActionBase):
         argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
         filtered = {k: v for k, v in manager_result.items() if k in argspec_resource_fields}
         try:
-            validated_output = self._validate_data(
+            validation_result = self._validate_data(
                 {k: v for k, v in filtered.items() if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},
                 argspec,
                 "output",
             )
+            validated_output = validation_result.validated_parameters
             if "id" in filtered:
                 validated_output["id"] = filtered["id"]
         except Exception:
-            validated_output = {k: v for k, v in manager_result.items() if k not in strip_from_resource}
-            if "id" in manager_result:
-                validated_output["id"] = manager_result["id"]
+            validated_output = filtered.copy()
 
         validated_output = {
             k: v
