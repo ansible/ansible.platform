@@ -1,0 +1,10 @@
+---
+- name: Create or update labels
+  ansible.platform.label:
+    name: "{{ item.name }}"
+    organization: "{{ item.organization }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.labels }}"
+  loop_control:
+    label: "{{ item.name }}"
+...

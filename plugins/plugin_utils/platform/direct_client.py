@@ -999,14 +999,14 @@ class DirectHTTPClient(BaseAPIClient):
         # lookup and deletion (or already absent by ID) is a no-op.
         try:
             self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
-        except APIError as exc:
-            if exc.status_code == 404:
-                return {"changed": False, "id": resource_id}
-            raise
-        except HTTPError as exc:
-            if exc.code == 404:
-                return {"changed": False, "id": resource_id}
-            raise
+        except (APIError, HTTPError) as exc:
+            status_code = exc.status_code if isinstance(exc, APIError) else exc.code
+            if status_code != 404:
+                raise
+            self._invalidate_resource_lookup_cache(context.service, delete_op.path)
+            return {"changed": False, "id": resource_id}
+
+        self._invalidate_resource_lookup_cache(context.service, delete_op.path)
 
         return {"changed": True, "deleted": True}
 
@@ -1219,6 +1219,9 @@ class DirectHTTPClient(BaseAPIClient):
                     operation=op_name,
                     resource=endpoint_op.path.split("/")[-2] if "/" in endpoint_op.path else "unknown",
                 )
+
+                if endpoint_op.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                    self._invalidate_resource_lookup_cache(context.service, endpoint_op.path)
 
             except Exception as e:
                 logger.error("DirectHTTPClient: API call failed: %s", e)

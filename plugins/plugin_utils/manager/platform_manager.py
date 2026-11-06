@@ -855,6 +855,7 @@ class PlatformService(BaseAPIClient):
             if exc.status_code == 404:
                 return {"changed": False, "id": resource_id}
             raise
+        self._invalidate_resource_lookup_cache(context.service, delete_op.path)
         return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
@@ -1034,6 +1035,9 @@ class PlatformService(BaseAPIClient):
                     retry_config=retry_config,
                     json=request_data,
                 )
+
+                if endpoint_op.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                    self._invalidate_resource_lookup_cache(context.service, endpoint_op.path)
 
             except Exception as e:
                 logger.error("API call failed: %s", e)

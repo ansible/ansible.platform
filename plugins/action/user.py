@@ -204,6 +204,79 @@ class ActionModule(BaseResourceActionPlugin):
             result["failed"] = True
             result["msg"] = "Failed to manage platform auditor role assignment: %s" % str(exc)
 
+    def _handle_organization_memberships(self, result: dict, organizations: list) -> None:
+        """Ensure the user has the Organization Member role in each requested organization.
+
+        Gateway represents organization membership as an Organization Member role
+        assignment. This keeps the legacy ``organizations`` input useful for import
+        while using the supported role-assignment API.
+        """
+        if not organizations:
+            return
+
+        manager = self._client
+        if manager is None:
+            result["failed"] = True
+            result["msg"] = "A manager is required to reconcile user organization memberships"
+            return
+
+        try:
+            role_definition_id = manager.lookup_resource_id("role_definitions", "name", "Organization Member", service="gateway")
+            if role_definition_id is None:
+                raise ValueError("The Gateway 'Organization Member' role definition was not found")
+
+            organization_ids = []
+            seen_ids = set()
+            for organization in organizations:
+                organization_id = manager.lookup_resource_id("organizations", "name", str(organization), service="gateway")
+                if organization_id is None:
+                    raise ValueError("Organization '%s' was not found" % organization)
+                organization_id = int(organization_id)
+                if organization_id not in seen_ids:
+                    seen_ids.add(organization_id)
+                    organization_ids.append(organization_id)
+
+            user_data = result.get("user") or {}
+            user_id = result.get("id") or user_data.get("id")
+            if not user_id:
+                if self._task.check_mode:
+                    result["changed"] = bool(organization_ids) or result.get("changed", False)
+                    return
+                raise ValueError("The user ID is unavailable; cannot assign organization memberships")
+
+            for organization_id in organization_ids:
+                assignment_data = {
+                    "role_definition": str(role_definition_id),
+                    "object_id": organization_id,
+                    "user": str(user_id),
+                }
+                try:
+                    assignment = manager.execute(
+                        operation="find",
+                        module_name="role_user_assignment",
+                        ansible_data=assignment_data,
+                    )
+                    if assignment and assignment.get("id"):
+                        continue
+                except Exception as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
+
+                if self._task.check_mode:
+                    result["changed"] = True
+                    continue
+
+                manager.execute(
+                    operation="create",
+                    module_name="role_user_assignment",
+                    ansible_data=assignment_data,
+                )
+                result["changed"] = True
+
+        except Exception as exc:
+            result["failed"] = True
+            result["msg"] = "Failed to reconcile user organization memberships: %s" % exc
+
     def run(self, tmp: object = None, task_vars: dict = None) -> dict:
         """Run the user action plugin.
 
@@ -220,8 +293,9 @@ class ActionModule(BaseResourceActionPlugin):
         Returns:
             dict: Result dict with ``changed``, ``failed``, and user resource fields.
         """
-        # Capture the desired auditor state *before* super().run() processes args.
+        # Capture custom association inputs before the base CRUD flow processes args.
         is_platform_auditor_desired = self._task.args.get("is_platform_auditor")
+        organizations = self._task.args.get("organizations")
 
         result = super().run(tmp, task_vars)
 
@@ -233,5 +307,10 @@ class ActionModule(BaseResourceActionPlugin):
             state = self._task.args.get("state", "present")
             if state not in ("absent", "deleted"):
                 self._handle_platform_auditor(result, bool(is_platform_auditor_desired))
+
+        if organizations is not None:
+            state = self._task.args.get("state", "present")
+            if state not in ("absent", "deleted", "exists"):
+                self._handle_organization_memberships(result, organizations)
 
         return result

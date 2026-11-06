@@ -9,6 +9,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 
@@ -68,6 +69,30 @@ class TestManageAssociations(unittest.TestCase):
         cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.assertEqual(result, 15)
         self.assertNotIn(cache_key, self.svc.cache)
+
+    def test_lookup_refreshes_resource_id_after_delete(self):
+        self.svc.lookup_resource_id = PlatformService.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.search_api = PlatformService.search_api.__get__(self.svc, PlatformService)
+        self.svc.get_api_version = MagicMock(return_value="2")
+        cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
+        self.svc.cache[cache_key] = 14
+        self.svc._make_request.side_effect = [
+            _resp(),
+            _resp(json_data={"count": 1, "results": [{"id": 29, "name": "recreated"}]}),
+        ]
+        context = SimpleNamespace(service="controller", api_version="2")
+
+        self.svc._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
+        resource_id = self.svc.lookup_resource_id("inventories", "name", "recreated", service="controller", require_unique=False)
+
+        self.assertEqual(resource_id, 29)
+        self.assertEqual(self.svc._make_request.call_count, 2)
+        delete_call, lookup_call = self.svc._make_request.call_args_list
+        self.assertEqual(delete_call.args[0], "delete")
+        self.assertIn("/inventories/14/", delete_call.args[1])
+        self.assertEqual(lookup_call.args[0], "get")
+        self.assertEqual(lookup_call.kwargs["params"], {"name": "recreated"})
+        self.assertEqual(self.svc.cache[cache_key], 29)
 
     def test_associates_and_disassociates_to_reconcile(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
