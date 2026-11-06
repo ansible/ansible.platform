@@ -4,10 +4,12 @@
 """Unit tests for the inventory_source action plugin (Pattern C associations)."""
 
 import unittest
+from dataclasses import asdict
 from unittest.mock import MagicMock, patch
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.inventory_source import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory_source import InventorySourceTransformMixin_v2
 
 
 class TestInventorySourceAssociations(unittest.TestCase):
@@ -228,6 +230,26 @@ class TestInventorySourceAssociations(unittest.TestCase):
 
         call = action._client.manage_associations.call_args
         self.assertEqual(call.args[1], 55)
+
+
+class TestInventorySourceIdempotency(unittest.TestCase):
+    def test_organization_scope_is_idempotent_for_name_and_id(self):
+        current = InventorySourceTransformMixin_v2.from_api(
+            {
+                "id": 30,
+                "name": "test",
+                "inventory": 1,
+                "source": "ec2",
+                "summary_fields": {"organization": {"id": 1, "name": "Default"}},
+            },
+            {},
+        )
+        action = ActionModule.__new__(ActionModule)
+
+        for organization in ("Default", "1"):
+            with self.subTest(organization=organization):
+                desired = {"name": "test", "inventory": "1", "organization": organization}
+                self.assertFalse(action._should_update(desired, asdict(current)))
 
 
 if __name__ == "__main__":
