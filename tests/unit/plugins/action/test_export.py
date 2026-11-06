@@ -78,6 +78,15 @@ class TestCleanResource:
         result = clean_resource(resource, {})
         assert result == resource
 
+    def test_normalizes_yaml_and_json_variables_to_dictionaries(self):
+        yaml_result = clean_resource({"name": "Inventory", "variables": "ansible_host: 10.0.1.10"}, {}, "inventory")
+        json_result = clean_resource({"name": "Inventory", "variables": '{"env": "test"}'}, {}, "inventory")
+        empty_result = clean_resource({"name": "Inventory", "variables": ""}, {}, "inventory")
+
+        assert yaml_result["variables"] == {"ansible_host": "10.0.1.10"}
+        assert json_result["variables"] == {"env": "test"}
+        assert empty_result["variables"] == {}
+
     def test_handles_null_fk_fields(self):
         resource = {"name": "Test", "organization": None, "inventory": None}
         result = clean_resource(resource, {})
@@ -152,6 +161,23 @@ class TestHostGroupFieldFilter:
         filtered = {k: v for k, v in raw.items() if k in HOST_EXPORT_FIELDS and v is not None}
         assert "variables" not in filtered
         assert "description" not in filtered
+
+    def test_inventory_export_normalizes_inline_host_and_group_variables(self):
+        manager = Mock()
+        manager.search_api.side_effect = [
+            {"results": [{"name": "host1", "variables": "ansible_host: 10.0.1.10"}]},
+            {"results": [{"name": "group1", "variables": ""}]},
+            {"results": []},
+            {"results": []},
+        ]
+        action = ActionModule.__new__(ActionModule)
+        action._display = Mock()
+        exported = {"name": "Inventory"}
+
+        action._fetch_associations(manager, "inventory", {"id": 1}, exported, {}, "api/controller/v2/inventories/", 10)
+
+        assert exported["hosts"][0]["variables"] == {"ansible_host": "10.0.1.10"}
+        assert exported["groups"][0]["variables"] == {}
 
 
 class TestExportImportRoundTrip:

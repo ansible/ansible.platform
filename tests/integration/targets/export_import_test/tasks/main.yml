@@ -107,6 +107,8 @@
         name: "{{ name_prefix }}-Inventory"
         organization: "{{ controller_organization }}"
         description: "Test inventory"
+        variables:
+          inventory_var: inventory_value
       register: test_inv
 
     - name: Create test host
@@ -124,6 +126,8 @@
         inventory: "{{ name_prefix }}-Inventory"
         hosts:
           - "{{ name_prefix }}-Host1"
+        variables:
+          group_var: group_value
       register: test_group
 
     - name: Create test inventory source
@@ -299,6 +303,9 @@
           - inv_export.assets.inventory[0].name == name_prefix ~ '-Inventory'
           - inv_export.assets.inventory[0].hosts | length >= 1
           - inv_export.assets.inventory[0].groups | length >= 1
+          - inv_export.assets.inventory[0].variables is mapping
+          - inv_export.assets.inventory[0].hosts[0].variables is mapping
+          - inv_export.assets.inventory[0].groups[0].variables is mapping
 
     - name: Verify exported inventory FK resolved to name
       ansible.builtin.assert:

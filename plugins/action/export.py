@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import yaml
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 
 CONTROLLER_ORGANIZATION_ENDPOINT = "api/controller/v2/organizations/"
@@ -338,9 +339,26 @@ class ActionModule(BaseResourceActionPlugin):
                 resource_service = "gateway" if resource_type in GATEWAY_RESOURCE_TYPES else "controller"
                 endpoint_override = GATEWAY_ORGANIZATION_ENDPOINT if key == "organization" and resource_service == "gateway" else None
                 cleaned[key] = self._resolve_fk(key, value, name_cache, endpoint_override)
+            elif key == "variables":
+                cleaned[key] = self._normalize_variables(value)
             else:
                 cleaned[key] = value
         return cleaned
+
+    @staticmethod
+    def _normalize_variables(value):
+        """Convert Controller's YAML-encoded variables to module input form."""
+        if not isinstance(value, str):
+            return value
+        if not value.strip():
+            return {}
+        try:
+            parsed = yaml.safe_load(value)
+        except yaml.YAMLError:
+            return value
+        if parsed is None:
+            return {}
+        return parsed if isinstance(parsed, dict) else value
 
     def _fetch_associations(self, manager, res_type, raw_resource, cleaned, name_cache, base_endpoint, max_objects):
         """Fetch and inline association sub-endpoints for a resource."""
@@ -382,11 +400,17 @@ class ActionModule(BaseResourceActionPlugin):
                     results = response.get("results", [])
                     if results:
                         if assoc_key == "hosts":
-                            cleaned[assoc_key] = [{k: v for k, v in r.items() if k in HOST_EXPORT_FIELDS and v is not None} for r in results]
+                            hosts = [{k: v for k, v in r.items() if k in HOST_EXPORT_FIELDS and v is not None} for r in results]
+                            for host in hosts:
+                                if "variables" in host:
+                                    host["variables"] = self._normalize_variables(host["variables"])
+                            cleaned[assoc_key] = hosts
                         elif assoc_key == "groups":
                             objects = []
                             for r in results:
                                 group_data = {k: v for k, v in r.items() if k in GROUP_EXPORT_FIELDS and v is not None}
+                                if "variables" in group_data:
+                                    group_data["variables"] = self._normalize_variables(group_data["variables"])
                                 self._fetch_associations(manager, "group", r, group_data, name_cache, "api/controller/v2/groups/", max_objects)
                                 objects.append(group_data)
                             cleaned[assoc_key] = objects
