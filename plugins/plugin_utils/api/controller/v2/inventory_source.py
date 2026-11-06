@@ -84,10 +84,12 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         organization = getattr(ansible_instance, "organization", None)
         organization_id = None
         if organization is not None:
-            if manager is not None and not str(organization).strip().isdigit():
+            if str(organization).strip().isdigit():
+                organization_id = int(organization)
+            elif manager is not None:
                 organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
-                organization_id = int(organization)
+                raise ValueError("Cannot resolve organization name without a Controller manager")
         organization_scope = {"organization": organization_id} if organization_id is not None else None
 
         # FK resolution: inventory name → ID (Controller-owned)

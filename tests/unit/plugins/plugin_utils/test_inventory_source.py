@@ -97,6 +97,12 @@ class TestInventorySourceTransform(unittest.TestCase):
         )
         self.assertEqual(api.inventory, 42)
 
+    def test_non_numeric_organization_requires_manager(self):
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="ec2", organization="E2E Org")
+
+        with self.assertRaisesRegex(ValueError, "organization"):
+            InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+
     def test_fk_lookups_are_scoped_by_organization(self):
         mock_manager = MagicMock()
 
