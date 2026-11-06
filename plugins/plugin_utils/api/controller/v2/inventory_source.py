@@ -85,7 +85,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         organization_id = None
         if organization is not None:
             if manager is not None and not str(organization).strip().isdigit():
-                organization_id = manager.lookup_resource_id("organizations", "name", organization)
+                organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
             else:
                 organization_id = int(organization)
         organization_scope = {"organization": organization_id} if organization_id is not None else None
@@ -285,9 +285,17 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
         def _str_or_none(val):
             return str(val) if val is not None else None
 
+        organization = api_data.get("organization")
+        summary_fields = api_data.get("summary_fields")
+        if organization is None and isinstance(summary_fields, dict):
+            organization = summary_fields.get("organization")
+        if isinstance(organization, dict):
+            organization = organization.get("id")
+
         return AnsibleInventorySource(
             name=api_data.get("name", ""),
             inventory=_str_or_none(api_data.get("inventory")),
+            organization=_str_or_none(organization),
             description=api_data.get("description"),
             source=api_data.get("source"),
             source_path=api_data.get("source_path"),

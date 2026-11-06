@@ -121,7 +121,7 @@ class TestInventorySourceTransform(unittest.TestCase):
 
         self.assertEqual(api.inventory, 42)
         self.assertEqual(api.source_project, 15)
-        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "E2E Org")
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "E2E Org", service="controller")
         mock_manager.lookup_resource_id.assert_any_call(
             "inventories",
             "name",
@@ -194,6 +194,7 @@ class TestInventorySourceTransform(unittest.TestCase):
         api_data = {
             "id": 99,
             "name": "ec2-src",
+            "summary_fields": {"organization": {"id": 1, "name": "Default"}},
             "description": "EC2 source",
             "inventory": 5,
             "source": "ec2",
@@ -208,6 +209,7 @@ class TestInventorySourceTransform(unittest.TestCase):
         self.assertIsInstance(ansible, AnsibleInventorySource)
         self.assertEqual(ansible.id, 99)
         self.assertEqual(ansible.name, "ec2-src")
+        self.assertEqual(ansible.organization, "1")
         self.assertEqual(ansible.inventory, "5")
         self.assertEqual(ansible.credential, "10")
         self.assertEqual(ansible.execution_environment, "3")
