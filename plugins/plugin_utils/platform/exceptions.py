@@ -26,10 +26,9 @@ def format_error_response_body(exception: Exception) -> str:
         body = body.decode("utf-8", errors="replace")
 
     try:
-        body = str(json.loads(body))
+        return str(json.loads(body))
     except (TypeError, ValueError):
-        body = str(body)
-    return body[:1000]
+        return str(body)
 
 
 class PlatformError(Exception):

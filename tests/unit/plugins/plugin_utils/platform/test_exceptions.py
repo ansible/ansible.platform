@@ -3,8 +3,8 @@
 
 """Tests for structured platform error classification."""
 
-import requests
 import pytest
+import requests
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, classify_exception, format_error_response_body
 
 
@@ -38,10 +38,15 @@ def test_http_error_without_response_returns_api_error_with_no_status():
         {"detail": "x" * 1100},
         ["x" * 1100],
         '{"detail": "' + "x" * 1100 + '"}',
+        b'{"detail": "' + b"x" * 1100 + b'"}',
+        "x" * 1100,
     ],
 )
-def test_format_error_response_body_caps_stringified_json_values(body):
+def test_format_error_response_body_preserves_long_values_after_string_conversion(body):
     error = Exception("request failed")
     error.details = {"response_body": body}
 
-    assert len(format_error_response_body(error)) == 1000
+    formatted_body = format_error_response_body(error)
+
+    assert len(formatted_body) > 1000
+    assert "x" * 1100 in formatted_body
