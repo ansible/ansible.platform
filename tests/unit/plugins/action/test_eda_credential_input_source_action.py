@@ -440,6 +440,29 @@ class TestEdaCredentialInputSourceActionPlugin(unittest.TestCase):
 
         self.assertFalse(action._should_update({"organization_name": "Default"}, {"organization_name": None}))
 
+    def test_output_preserves_integer_credential_ids(self):
+        """Output IDs stay integers although input options accept names as strings."""
+        action = ActionModule.__new__(ActionModule)
+        action._display = MagicMock()
+        argspec = {
+            "argument_spec": {
+                "input_field_name": {"type": "str"},
+                "target_credential": {"type": "str"},
+                "source_credential": {"type": "str"},
+            }
+        }
+        manager_result = {
+            "id": 42,
+            "input_field_name": "password",
+            "target_credential": 1,
+            "source_credential": 2,
+        }
+
+        resource_output, flat_extras = action._format_resource_output(manager_result, argspec)
+
+        self.assertEqual(resource_output, manager_result)
+        self.assertEqual(flat_extras, {})
+
     def test_same_metadata_with_different_mapping_type_and_key_order_is_idempotent(self):
         """Tagged task dictionaries compare structurally with API dictionaries."""
 

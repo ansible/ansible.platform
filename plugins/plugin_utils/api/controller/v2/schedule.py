@@ -44,6 +44,8 @@ class APISchedule_v2(BaseTransformMixin):
 class ScheduleTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for Schedule API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"extra_data"})
+
     @classmethod
     def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APISchedule_v2":
         api_data: Dict[str, Any] = {}

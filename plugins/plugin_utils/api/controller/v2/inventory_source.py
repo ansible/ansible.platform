@@ -51,6 +51,8 @@ class APIInventorySource_v2(BaseTransformMixin):
 class InventorySourceTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for InventorySource API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"source_vars"})
+
     @classmethod
     def from_ansible_data(
         cls,

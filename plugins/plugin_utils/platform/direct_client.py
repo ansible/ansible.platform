@@ -24,6 +24,7 @@ from .base_client import BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError, format_error_response_body
+from .idempotency import canonical_json_object
 from .retry import RetryConfig
 from .types import TransformContext, build_endpoint_request
 
@@ -939,12 +940,17 @@ class DirectHTTPClient(BaseAPIClient):
         update_op = operations.get("update")
         if update_op and update_op.fields and current_data:
             would_update = {}
+            json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
             for field in update_op.fields:
                 value = getattr(api_data, field, None)
                 if value is not None:
                     would_update[field] = value
             needs_update = any(
-                str(current_data.get(f)) != str(would_update[f])
+                (
+                    canonical_json_object(current_data.get(f)) != canonical_json_object(would_update[f])
+                    if f in json_object_fields
+                    else str(current_data.get(f)) != str(would_update[f])
+                )
                 for f in would_update
                 if f not in _skip_for_idempotency
                 # Skip encrypted/write-only fields: the API returns "$encrypted$"

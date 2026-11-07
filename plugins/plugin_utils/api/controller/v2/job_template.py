@@ -125,6 +125,8 @@ class APIJobTemplate_v2(BaseTransformMixin):
 class JobTemplateTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for JobTemplate API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"extra_vars"})
+
     @classmethod
     def get_update_value_from_current_data(cls, field: str, current_data: Dict[str, Any]) -> Any:
         """Use raw API IDs when the manager preserves related fields for a PATCH."""

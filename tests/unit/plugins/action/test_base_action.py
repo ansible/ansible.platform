@@ -36,6 +36,11 @@ class OverrideResourceAction(ExampleAction):
         return Resource(name=resource_data["name"], value=resource_data.get("value", 0) + 1)
 
 
+class OutputFormattingAction(ExampleAction):
+    _EXTRA_RETURN_FIELDS = frozenset({"client_id"})
+    _SPACE_SEPARATED_LIST_FIELDS = frozenset({"labels"})
+
+
 class TestActionPreparation(unittest.TestCase):
     def _make_action(self):
         action = ExampleAction.__new__(ExampleAction)
@@ -119,6 +124,42 @@ class TestActionPreparation(unittest.TestCase):
         self.assertEqual(prepared["result"]["ansible_facts"], {"platform": "fact"})
         self.assertEqual(prepared["result"]["deprecations"][0]["version"], "2.0.0")
 
+    def test_format_resource_output_uses_validated_parameters_and_preserves_flat_extras(self):
+        action = OutputFormattingAction.__new__(OutputFormattingAction)
+        argspec = {"argument_spec": {"name": {}, "labels": {}}}
+        manager_result = {
+            "id": 7,
+            "name": "raw-name",
+            "labels": "raw labels",
+            "client_id": "client-123",
+            "unexpected": "discarded",
+        }
+        validation_result = SimpleNamespace(validated_parameters={"name": "normalized-name", "labels": "one two"})
+
+        with patch.object(action, "_validate_data", return_value=validation_result):
+            resource_output, flat_extras = action._format_resource_output(manager_result, argspec)
+
+        self.assertEqual(resource_output, {"id": 7, "name": "normalized-name", "labels": ["one", "two"]})
+        self.assertEqual(flat_extras, {"client_id": "client-123"})
+
+    def test_format_resource_output_fallback_keeps_argspec_filter_and_conversions(self):
+        action = OutputFormattingAction.__new__(OutputFormattingAction)
+        argspec = {"argument_spec": {"name": {}, "labels": {}}}
+        manager_result = {
+            "id": 7,
+            "name": "raw-name",
+            "labels": "one two",
+            "client_id": "client-123",
+            "unexpected": "discarded",
+            "changed": True,
+        }
+
+        with patch.object(action, "_validate_data", side_effect=ValueError("output validation failed")):
+            resource_output, flat_extras = action._format_resource_output(manager_result, argspec)
+
+        self.assertEqual(resource_output, {"id": 7, "name": "raw-name", "labels": ["one", "two"]})
+        self.assertEqual(flat_extras, {"client_id": "client-123"})
+
     def test_run_dispatches_to_build_resource_override(self):
         action = OverrideResourceAction.__new__(OverrideResourceAction)
         action._task = MagicMock()
@@ -192,7 +233,7 @@ class TestActionPreparation(unittest.TestCase):
         }
 
         with patch.object(action, "_prepare_action", return_value=prepared):
-            with patch.object(action, "_validate_data", return_value=manager_result):
+            with patch.object(action, "_validate_data", return_value=SimpleNamespace(validated_parameters=manager_result)):
                 result = action.run(task_vars={})
 
         self.assertEqual(result["role_team_assignment"]["object_id"], 202)
@@ -218,7 +259,7 @@ class TestActionPreparation(unittest.TestCase):
         }
 
         with patch.object(action, "_prepare_action", return_value=prepared):
-            with patch.object(action, "_validate_data", return_value=manager_result):
+            with patch.object(action, "_validate_data", return_value=SimpleNamespace(validated_parameters=manager_result)):
                 result = action.run(task_vars={})
 
         self.assertEqual(result["role_user_assignment"]["object_id"], 202)

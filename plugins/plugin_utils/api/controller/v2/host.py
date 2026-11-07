@@ -35,6 +35,8 @@ class APIHost_v2(BaseTransformMixin):
 class HostTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for Host API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"variables"})
+
     @classmethod
     def from_ansible_data(
         cls,
