@@ -31,6 +31,8 @@ class APIControllerCredential_v2(BaseTransformMixin):
 class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for ControllerCredential API v2."""
 
+    require_unique_lookup = True
+
     @classmethod
     def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIControllerCredential_v2":
         api_data: Dict[str, Any] = {}
@@ -131,6 +133,16 @@ class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
     @classmethod
     def get_lookup_field(cls) -> str:
         return "name"
+
+    @classmethod
+    def get_find_list_query_params(cls, api_data: APIControllerCredential_v2) -> Dict[str, Any]:
+        """Scope credential identity by its type and supplied owner."""
+        params = {}
+        for field in ("credential_type", "organization", "user", "team"):
+            value = getattr(api_data, field, None)
+            if value is not None:
+                params[field] = value
+        return params
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]):

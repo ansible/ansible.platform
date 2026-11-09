@@ -133,6 +133,23 @@ class TestControllerCredentialTransform(unittest.TestCase):
     def test_lookup_field(self):
         self.assertEqual(ControllerCredentialTransformMixin_v2.get_lookup_field(), "name")
 
+    def test_find_query_params_include_credential_type_and_owner_scope(self):
+        cases = (
+            ("organization", "20", {"credential_type": 2, "organization": 20}),
+            ("user", "30", {"credential_type": 2, "user": 30}),
+            ("team", "40", {"credential_type": 2, "team": 40}),
+        )
+
+        for owner_field, owner_value, expected in cases:
+            with self.subTest(owner=owner_field):
+                ansible = AnsibleControllerCredential(name="Shared", credential_type="2", **{owner_field: owner_value})
+                api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "find"})
+
+                self.assertEqual(ControllerCredentialTransformMixin_v2.get_find_list_query_params(api), expected)
+
+    def test_find_requires_a_unique_match_within_scope(self):
+        self.assertTrue(ControllerCredentialTransformMixin_v2.require_unique_lookup)
+
     def test_id_passthrough(self):
         ansible = AnsibleControllerCredential(name="c", credential_type="1", id=99)
         api = ControllerCredentialTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
