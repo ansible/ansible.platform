@@ -77,8 +77,9 @@ class TestBuildEndpointRequest(unittest.TestCase):
         )
         context = TransformContext(manager=None, session=None, cache={}, api_version="2", service="controller", operation="create")
 
-        _, payload = build_endpoint_request(operation, {"description": "", "limit": ""}, context)
+        path, payload = build_endpoint_request(operation, {"description": "", "limit": ""}, context)
 
+        self.assertEqual(path, "/api/controller/v2/job_templates/")
         self.assertEqual(payload, {"description": "", "limit": ""})
 
 
