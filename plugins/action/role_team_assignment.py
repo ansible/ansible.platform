@@ -76,6 +76,7 @@ class ActionModule(BaseResourceActionPlugin):
                 result["_ansible_facts_cacheable"] = True
 
             state = validated_params.get("state", "present")
+            check_mode = getattr(self._task, "check_mode", False)
             assignment_objects_raw = validated_params.get("assignment_objects") or []
 
             role_def_name = validated_params.get("role_definition", "")
@@ -170,6 +171,10 @@ class ActionModule(BaseResourceActionPlugin):
                     except Exception as exc:
                         if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                             raise
+                    if check_mode:
+                        all_changed = True
+                        assignments.append(_humanise({"id": None, **per_obj}, obj))
+                        continue
                     mgr_result = manager.execute(operation="create", module_name=self.MODULE_NAME, ansible_data=per_obj)
                     all_changed = True
                     assignments.append(_humanise(mgr_result, obj))
@@ -182,9 +187,10 @@ class ActionModule(BaseResourceActionPlugin):
                             raise
                         find_result = None
                     if find_result and find_result.get("id"):
-                        delete_payload = dict(per_obj)
-                        delete_payload["id"] = find_result["id"]
-                        manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
+                        if not check_mode:
+                            delete_payload = dict(per_obj)
+                            delete_payload["id"] = find_result["id"]
+                            manager.execute(operation="delete", module_name=self.MODULE_NAME, ansible_data=delete_payload)
                         all_changed = True
                         assignments.append(_humanise(find_result, obj))
 
