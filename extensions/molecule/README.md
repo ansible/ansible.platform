@@ -17,6 +17,7 @@ This directory holds Molecule scenarios for the ansible.platform collection.
 - **controller_ping_mock/** – Routing/plumbing check: confirms the mock server serves the **Controller API prefix** (`/api/controller/vN/`, used by ported `awx_collection`/Controller resources) alongside the existing `/api/gateway/vN/` prefix. No ansible.platform module is exercised and no state is created; this exists so future Controller resource mock scenarios have a prefix to register against.
 - **job_template_mock/** – Exercises Controller job template create, update, associations, survey, copy, check mode, and cleanup against the mock API in all three connection modes. The `molecule (mock)` CI workflow discovers it automatically.
 - **workflow_node_wait_mock/** – Exercises workflow-node discovery and polls the separate related job from `running` to `successful`, including check mode, against the mock Controller API.
+- **subscriptions_mock/** – Exercises the read-only subscriptions module against the mock Controller API through the local `DirectHTTPClient` and persistent `PlatformService` modes. The mock validates the credential POST body and returns a filterable subscription list; no Red Hat account is required.
 
 ## Gateway configuration
 

@@ -125,6 +125,15 @@ class ActionModule(BaseResourceActionPlugin):
             # _should_update controls whether a PATCH/POST happens at all;
             # once here, always include the password.
             ansible_data["password"] = password
+            if operation == "update":
+                raw_update_secrets = validated_params.get("update_secrets", True)
+                update_secrets = raw_update_secrets if isinstance(raw_update_secrets, bool) else str(raw_update_secrets).lower() not in ("false", "no", "0")
+                if update_secrets:
+                    # The API returns only an encrypted placeholder, so the
+                    # client's generic idempotency check cannot compare it to
+                    # the new plaintext password. Preserve the action plugin's
+                    # explicit request to reset the secret through the client.
+                    ansible_data["_platform_force_update"] = True
 
     def _handle_platform_auditor(self, result: dict, is_platform_auditor_desired: bool) -> None:
         """Manage the Platform Auditor role assignment for a user.
