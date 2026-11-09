@@ -1010,9 +1010,7 @@ class PlatformService(BaseAPIClient):
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            path, request_data = build_endpoint_request(
-                endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null
-            )
+            path, request_data = build_endpoint_request(endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null)
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)
