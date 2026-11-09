@@ -57,6 +57,7 @@ class ActionModule(BaseResourceActionPlugin):
                 result["_ansible_facts_cacheable"] = True
 
             state = validated_params.get("state", "present")
+            check_mode = getattr(self._task, "check_mode", False)
             object_ids_raw = validated_params.get("object_ids") or []
             if state == "exists" and not object_ids_raw:
                 if validated_params.get("object_id") is not None:
@@ -97,6 +98,11 @@ class ActionModule(BaseResourceActionPlugin):
                         if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                             raise
 
+                    if check_mode:
+                        all_changed = True
+                        assignments.append({"id": None, **per_obj})
+                        continue
+
                     # Create
                     mgr_result = manager.execute(
                         operation="create",
@@ -114,6 +120,9 @@ class ActionModule(BaseResourceActionPlugin):
                             ansible_data=per_obj,
                         )
                         if find_result and find_result.get("id"):
+                            if check_mode:
+                                all_changed = True
+                                continue
                             manager.execute(
                                 operation="delete",
                                 module_name=self.MODULE_NAME,
