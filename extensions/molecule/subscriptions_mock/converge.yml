@@ -1,0 +1,84 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/health"
+        method: GET
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      vars:
+        ansible_connection: local
+
+    - name: Ensure manager state directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+      vars:
+        ansible_connection: local
+
+    - name: Keep the manager alive across Molecule phases
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+      vars:
+        ansible_connection: local
+
+- name: Exercise subscriptions through the local DirectHTTPClient
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
+    subscriptions_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
+    invalid_subscriptions_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
+    gateway_validate_certs: false
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+  tasks:
+    - name: Query subscriptions and filter the public module result
+      ansible.platform.subscriptions:
+        username: mock-subscription-user
+        password: "{{ subscriptions_password }}"
+        filters:
+          product_name: "Ansible Automation Platform"
+      register: subscriptions_result
+
+    - name: Assert the public module result and read-only status
+      ansible.builtin.assert:
+        that:
+          - subscriptions_result is not changed
+          - subscriptions_result.failed is false
+          - subscriptions_result.subscriptions | length == 1
+          - subscriptions_result.subscriptions[0].id == 8001
+          - subscriptions_result.subscriptions[0].support_level == 'Premium'
+
+    - name: Query subscriptions with rejected credentials
+      ansible.platform.subscriptions:
+        username: invalid-subscription-user
+        password: "{{ invalid_subscriptions_password }}"
+      register: rejected_result
+      ignore_errors: true
+
+    - name: Assert the API error is returned through the module contract
+      ansible.builtin.assert:
+        that:
+          - rejected_result is failed
+          - rejected_result.msg is defined
+...
