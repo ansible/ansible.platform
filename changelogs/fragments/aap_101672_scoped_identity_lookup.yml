@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - lookup - Scope Controller credential identity to its type and owner, and fail closed when RoleUserAssignment selectors cannot be resolved (https://issues.redhat.com/browse/AAP-101672).
+...
