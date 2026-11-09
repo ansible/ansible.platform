@@ -1292,9 +1292,13 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 }
                 client_credentials = {
                     "subscriptions_client_id": "mock-subscription-client",
-                    "subscriptions_client_secret": "mock-subscription-secret",
                 }
-                if payload not in (username_credentials, client_credentials):
+                is_client_credentials = (
+                    payload.get("subscriptions_client_id") == client_credentials["subscriptions_client_id"]
+                    and bool(payload.get("subscriptions_client_secret"))
+                    and set(payload) == {"subscriptions_client_id", "subscriptions_client_secret"}
+                )
+                if payload != username_credentials and not is_client_credentials:
                     self._send_json(400, {"detail": "Unexpected mock subscription credentials"})
                     return
                 self._send_json(

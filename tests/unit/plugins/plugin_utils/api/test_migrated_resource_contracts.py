@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import threading
 import unittest
+import uuid
 from unittest.mock import MagicMock
 from urllib.parse import urlencode
 
@@ -20,6 +21,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader i
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry
 
 BASE_URL = "https://gateway.example"
+CONTRACT_TOKEN = uuid.uuid4().hex
 
 # Each fixture deliberately supplies only the fields needed to make one
 # representative create request observable at the HTTP boundary.
@@ -61,8 +63,8 @@ CREATE_CONTRACTS = (
     (
         "eda_controller_token",
         "/api/eda/v1/users/me/awx-tokens/",
-        {"name": "Contract Resource", "token": "contract-token"},
-        {"name": "Contract Resource", "token": "contract-token"},
+        {"name": "Contract Resource", "token": CONTRACT_TOKEN},
+        {"name": "Contract Resource", "token": CONTRACT_TOKEN},
     ),
     ("eda_credential", "/api/eda/v1/eda-credentials/", {"name": "Contract Resource"}, {"name": "Contract Resource"}),
     (
@@ -261,7 +263,9 @@ class TestMigratedDeleteRequestContracts(unittest.TestCase):
     """Delete operations use each migrated resource's public API endpoint."""
 
     def test_delete_sends_expected_method_and_path(self):
-        for module_name, _, ansible_data, _ in CREATE_CONTRACTS:
+        for contract in CREATE_CONTRACTS:
+            module_name = contract[0]
+            ansible_data = contract[2]
             if module_name not in DELETE_PATHS:
                 continue
             for client_mode in ("direct", "persistent"):
@@ -313,7 +317,9 @@ class TestMigratedRequestErrors(unittest.TestCase):
     """API failures remain visible through both public client execute APIs."""
 
     def test_create_propagates_api_error(self):
-        for module_name, _, ansible_data, _ in CREATE_CONTRACTS:
+        for contract in CREATE_CONTRACTS:
+            module_name = contract[0]
+            ansible_data = contract[2]
             for client_mode in ("direct", "persistent"):
                 with self.subTest(module=module_name, client=client_mode):
                     client = _client(client_mode)
@@ -326,7 +332,7 @@ class TestMigratedRequestErrors(unittest.TestCase):
                     self.assertIs(raised.exception, error)
 
     def test_delete_treats_missing_resource_as_noop_and_propagates_other_errors(self):
-        create_fixtures = {module_name: ansible_data for module_name, _, ansible_data, _ in CREATE_CONTRACTS}
+        create_fixtures = {contract[0]: contract[2] for contract in CREATE_CONTRACTS}
         for module_name in DELETE_PATHS:
             for client_mode in ("direct", "persistent"):
                 with self.subTest(module=module_name, client=client_mode, status=404):
@@ -349,8 +355,9 @@ class TestMigratedRequestErrors(unittest.TestCase):
 
     def test_update_and_custom_endpoints_propagate_api_errors(self):
         for client_mode in ("direct", "persistent"):
-            fixtures = {module_name: (ansible_data, response_body) for module_name, _, ansible_data, response_body in CREATE_CONTRACTS}
-            for module_name, (changes, _) in UPDATE_CHANGE_CONTRACTS.items():
+            fixtures = {contract[0]: (contract[2], contract[3]) for contract in CREATE_CONTRACTS}
+            for module_name, update_contract in UPDATE_CHANGE_CONTRACTS.items():
+                changes = update_contract[0]
                 ansible_data, response_body = fixtures[module_name]
                 current = {"id": 42, **response_body}
                 for field in ("name", "input_field_name", "hostname", "identifier"):
@@ -568,6 +575,7 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
 
     def test_explicit_force_update_patches_write_only_password_in_both_clients(self):
         api_resource = {"id": 42, "username": "contract-user", "password": "$encrypted$"}
+        test_password = uuid.uuid4().hex
         for client_mode in ("direct", "persistent"):
             with self.subTest(client=client_mode):
                 client = _client(client_mode)
@@ -586,7 +594,7 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                     {
                         "id": 42,
                         "username": "contract-user",
-                        "password": "ResetPass123!",
+                        "password": test_password,
                         "_platform_force_update": True,
                     },
                 )
@@ -594,7 +602,7 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                 patch_calls = [call for call in client._make_request.call_args_list if call.args[0].upper() == "PATCH"]
                 self.assertEqual(len(patch_calls), 1)
                 self.assertEqual(patch_calls[0].args[1], BASE_URL + "/api/gateway/v1/users/42/")
-                self.assertEqual(patch_calls[0].kwargs["json"], {"password": "ResetPass123!"})
+                self.assertEqual(patch_calls[0].kwargs["json"], {"password": test_password})
 
 
 class TestMigratedActionRequestContracts(unittest.TestCase):
