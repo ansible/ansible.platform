@@ -700,7 +700,8 @@ class PlatformService(BaseAPIClient):
 
             current_values = {field: _current_value(field) for field in set(would_update) | fields_to_null}
             needs_update = any(
-                (
+                current_values[field] is None
+                or (
                     canonical_json_object(current_values[field]) != canonical_json_object(would_update[field])
                     if field in json_object_fields
                     else str(current_values[field]) != str(would_update[field])

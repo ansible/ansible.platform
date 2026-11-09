@@ -179,6 +179,12 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def get_fields_to_null_for_update(cls, api_data, context=None) -> frozenset:
+        if isinstance(context, TransformContext):
+            include_nulls = context.include_nulls_for_update
+        else:
+            include_nulls = (context or {}).get("include_nulls_for_update", False)
+        if not include_nulls:
+            return frozenset()
         return frozenset({"inventory", "execution_environment"})
 
     @classmethod
@@ -199,18 +205,18 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
 
     @classmethod
     def get_idempotency_value_from_current_data(cls, field, current_data, context):
-        """Resolve returned foreign-key names back to API IDs for comparison."""
+        """Use the API's foreign-key ID for comparison after names are returned to Ansible."""
         value = current_data.get(field)
         endpoint = _FK_ENDPOINTS.get(field)
         if endpoint is None or value is None:
             return value
-        if str(value).strip().isdigit():
+        api_data = context.current_api_data if isinstance(context, TransformContext) else context.get("current_api_data", {})
+        api_value = api_data.get(field) if api_data else None
+        if api_value is not None:
+            return api_value
+        if str(value).strip().isdecimal():
             return int(value)
-        try:
-            manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
-            return manager.lookup_resource_id(endpoint, "name", value, service="controller", require_unique=True)
-        except Exception:
-            return value
+        return value
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
@@ -310,6 +316,11 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         context: Union[TransformContext, Dict[str, Any]],
     ):
         from ....ansible_models.workflow_job_template_node import AnsibleWorkflowJobTemplateNode
+
+        if isinstance(context, TransformContext):
+            context.current_api_data = dict(api_data)
+        else:
+            context["current_api_data"] = dict(api_data)
 
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
         summary_fields = api_data.get("summary_fields", {})

@@ -248,13 +248,17 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
             value = current_data.get("organization_name")
             return cls.resolve_reference_id(manager, "organizations", value, service="eda") if value is not None else None
         if field == "eda_credential_id":
+            api_data = context.current_api_data if isinstance(context, TransformContext) else context.get("current_api_data", {})
+            credential = api_data.get("eda_credential") if api_data else None
+            credential_id = credential.get("id") if isinstance(credential, dict) else None
+            if credential_id is None and api_data:
+                credential_id = api_data.get("eda_credential_id")
+            if credential_id is not None:
+                return credential_id
             value = current_data.get("credential_name")
-            if value is None:
-                return None
-            organization_name = current_data.get("organization_name")
-            organization_id = cls.resolve_reference_id(manager, "organizations", organization_name, service="eda") if organization_name is not None else None
-            scope = {"organization": organization_id} if organization_id is not None else None
-            return cls.resolve_reference_id(manager, "eda-credentials", value, service="eda", extra_query_params=scope)
+            if value is not None and str(value).strip().isdecimal():
+                return int(value)
+            return value
         return current_data.get(field)
 
     @classmethod
@@ -266,10 +270,15 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
         """Transform from API format to Ansible format.
 
         Handles the reverse field renames: test_mode -> forward_events (inverted),
-        additional_data_headers -> headers.  Resolves FK integer IDs back to
-        names for idempotent comparison.
+        additional_data_headers -> headers. Resolves FK IDs to names for the
+        Ansible result and retains the raw API fields for update comparisons.
         """
         from ....ansible_models.event_stream import AnsibleEventStream
+
+        if isinstance(context, TransformContext):
+            context.current_api_data = dict(api_data)
+        else:
+            context["current_api_data"] = dict(api_data)
 
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
 

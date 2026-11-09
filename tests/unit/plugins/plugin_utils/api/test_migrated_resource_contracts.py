@@ -194,8 +194,6 @@ UPDATE_CHANGE_CONTRACTS = {
             "identifier": "Updated Node",
             "workflow_job_template": 1,
             "unified_job_template": 2,
-            "inventory": None,
-            "execution_environment": None,
         },
     ),
 }
@@ -502,18 +500,29 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                     api_resource.setdefault(field, ansible_data[field])
             if module_name == "workflow_job_template_node":
                 api_resource["summary_fields"] = {
-                    "workflow_job_template": {"name": "1"},
-                    "unified_job_template": {"name": "2"},
+                    "workflow_job_template": {"id": 1, "name": "Contract Workflow"},
+                    "unified_job_template": {"id": 2, "name": "Contract Job Template"},
                 }
+            if module_name == "event_stream":
+                api_resource["eda_credential"] = {"id": 1, "name": "Contract Credential"}
+                api_resource["organization"] = {"id": 1, "name": "Contract Organization"}
 
             for client_mode in ("direct", "persistent"):
                 with self.subTest(module=module_name, client=client_mode):
                     client = _client(client_mode)
+                    if module_name == "workflow_job_template_node":
+                        client.lookup_resource_id = MagicMock()
+                    elif module_name == "event_stream":
+                        client.lookup_resource_id = MagicMock(return_value=1)
 
                     client._make_request.side_effect = _update_responder(client_mode, api_resource)
                     result = client.execute("update", module_name, dict(ansible_data, id=42))
 
                     self.assertFalse(any(call.args[0].upper() == "PATCH" for call in client._make_request.call_args_list))
+                    if module_name == "workflow_job_template_node":
+                        client.lookup_resource_id.assert_not_called()
+                    elif module_name == "event_stream":
+                        self.assertNotIn("eda-credentials", [call.args[0] for call in client.lookup_resource_id.call_args_list])
                     self.assertIs(result["changed"], False)
 
     def test_real_changes_send_expected_patch_body_in_both_clients(self):
@@ -525,9 +534,13 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                 if field in ansible_data:
                     api_resource.setdefault(field, ansible_data[field])
             if module_name == "workflow_job_template_node":
+                api_resource["inventory"] = 3
+                api_resource["execution_environment"] = 4
                 api_resource["summary_fields"] = {
-                    "workflow_job_template": {"name": "1"},
-                    "unified_job_template": {"name": "2"},
+                    "workflow_job_template": {"id": 1, "name": "Contract Workflow"},
+                    "unified_job_template": {"id": 2, "name": "Contract Job Template"},
+                    "inventory": {"id": 3, "name": "Contract Inventory"},
+                    "execution_environment": {"id": 4, "name": "Contract Execution Environment"},
                 }
 
             for client_mode in ("direct", "persistent"):
@@ -570,6 +583,47 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                 self.assertEqual(patch_request.args[0].upper(), "PATCH")
                 self.assertEqual(patch_request.args[1], BASE_URL + "/api/controller/v2/projects/42/")
                 self.assertEqual(patch_request.kwargs["json"], {"name": "Contract Resource", "description": "Updated description"})
+                self.assertIs(result["changed"], True)
+
+    def test_literal_none_updates_field_missing_from_current_resource(self):
+        current = {"id": 42, "name": "Contract Resource", "description": None}
+        updated = {"id": 42, "name": "Contract Resource", "description": "None"}
+
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client._make_request.side_effect = _update_responder(client_mode, current, patch_response=updated)
+
+                result = client.execute(
+                    "update",
+                    "controller_project",
+                    {"id": 42, "name": "Contract Resource", "description": "None"},
+                )
+
+                patch_calls = [call for call in client._make_request.call_args_list if call.args[0].upper() == "PATCH"]
+                self.assertEqual(len(patch_calls), 1)
+                self.assertEqual(patch_calls[0].kwargs["json"], {"name": "Contract Resource", "description": "None"})
+                self.assertIs(result["changed"], True)
+                self.assertEqual(result["description"], "None")
+
+    def test_explicit_empty_scm_branch_is_sent_to_clear_stored_value(self):
+        current = {"id": 42, "name": "Contract Workflow", "scm_branch": "main"}
+        updated = {"id": 42, "name": "Contract Workflow", "scm_branch": ""}
+
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client._make_request.side_effect = _update_responder(client_mode, current, patch_response=updated)
+
+                result = client.execute(
+                    "update",
+                    "workflow_job_template",
+                    {"id": 42, "name": "Contract Workflow", "scm_branch": ""},
+                )
+
+                patch_calls = [call for call in client._make_request.call_args_list if call.args[0].upper() == "PATCH"]
+                self.assertEqual(len(patch_calls), 1)
+                self.assertEqual(patch_calls[0].kwargs["json"], {"name": "Contract Workflow", "scm_branch": ""})
                 self.assertIs(result["changed"], True)
 
     def test_explicit_force_update_patches_write_only_password_in_both_clients(self):

@@ -1285,7 +1285,11 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
         # ---- Controller config (license) ----
         if service == "controller" and resource == "config":
             if path == "/api/controller/v2/config/subscriptions/" and self.command == "POST":
-                payload = self._parse_json_body()
+                try:
+                    payload = self._parse_json_body()
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                    return
                 username_credentials = {
                     "subscriptions_username": "mock-subscription-user",
                     "subscriptions_password": "mock-subscription-password",

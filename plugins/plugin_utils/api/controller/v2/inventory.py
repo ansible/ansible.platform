@@ -153,7 +153,7 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
         value = current_data.get(field)
         if field != "organization" or value is None:
             return value
-        if str(value).strip().isdigit():
+        if str(value).strip().isdecimal():
             return int(value)
         try:
             manager = context.manager if isinstance(context, TransformContext) else context.get("manager")

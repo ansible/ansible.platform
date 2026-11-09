@@ -18,6 +18,28 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types im
 class TestEventStreamFind(unittest.TestCase):
     """Both client paths reject duplicate matches instead of selecting one."""
 
+    def test_idempotency_uses_returned_credential_id_without_name_lookup(self):
+        manager = MagicMock()
+        context = TransformContext(manager=manager, session=MagicMock(), cache={}, api_version="1", service="eda", operation="update")
+        current = EventStreamTransformMixin_v1.from_api(
+            {
+                "id": 42,
+                "name": "stream",
+                "eda_credential": {"id": 7, "name": "Events Credential"},
+                "organization": {"id": 3, "name": "Events"},
+            },
+            context,
+        )
+
+        value = EventStreamTransformMixin_v1.get_idempotency_value_from_current_data(
+            "eda_credential_id",
+            {"credential_name": current.credential_name, "organization_name": current.organization_name},
+            context,
+        )
+
+        self.assertEqual(value, 7)
+        manager.lookup_resource_id.assert_not_called()
+
     def test_platform_service_rejects_multiple_matches(self):
         service = PlatformService.__new__(PlatformService)
         service.base_url = "https://gateway.example"

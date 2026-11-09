@@ -79,6 +79,8 @@ class TransformContext:
             for optional fields so the API can clear them (enforced state only; present must not send nulls).
         force_update: When True, skip idempotency short-circuiting for an intentional update such as
             resetting a write-only secret that the API represents with an encrypted placeholder.
+        current_api_data: Raw API resource currently being transformed, used by idempotency checks
+            that need server-side foreign-key IDs after public fields are converted to names.
     """
 
     manager: "PlatformService"
@@ -89,6 +91,7 @@ class TransformContext:
     operation: Optional[str] = None
     include_nulls_for_update: bool = False
     force_update: bool = False
+    current_api_data: Optional[Dict[str, Any]] = None
 
 
 def build_endpoint_request(
@@ -113,8 +116,9 @@ def build_endpoint_request(
         path_values: Optional values from prior operations. These override
             values on ``api_data`` when resolving path parameters.
         fields_to_null: Fields that must be sent as explicit nulls.
-        omit_empty_strings: Preserve the direct client behavior of omitting
-            empty strings, except for update descriptions.
+        omit_empty_strings: Omit empty strings outside updates. Update
+            transformations include only explicitly provided empty strings,
+            while omitted fields remain ``None``.
 
     Returns:
         A tuple of the resolved endpoint path and request body.
@@ -148,7 +152,7 @@ def build_endpoint_request(
             if field in null_fields or (operation_name == "update" and include_nulls_for_update and field in {"organization", "credential"}):
                 request_data[field] = None
             continue
-        if omit_empty_strings and value == "" and not (field == "description" and operation_name == "update"):
+        if omit_empty_strings and value == "" and operation_name != "update":
             continue
         request_data[field] = value
 

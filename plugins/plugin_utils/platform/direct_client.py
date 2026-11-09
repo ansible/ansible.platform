@@ -956,7 +956,8 @@ class DirectHTTPClient(BaseAPIClient):
 
             current_values = {field: _current_value(field) for field in set(would_update) | fields_to_null}
             needs_update = any(
-                (
+                current_values[f] is None
+                or (
                     canonical_json_object(current_values[f]) != canonical_json_object(would_update[f])
                     if f in json_object_fields
                     else str(current_values[f]) != str(would_update[f])
