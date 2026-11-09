@@ -145,7 +145,7 @@ class TestInventoryTransform(unittest.TestCase):
             {"manager": mock_manager},
         )
 
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "²", service="controller")
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "²", service="controller", numeric_is_id=False)
         self.assertEqual(value, 42)
 
     def test_from_api_preserves_missing_organization_as_empty_string(self):

@@ -1290,16 +1290,20 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 except ValueError as e:
                     self._send_json(400, {"detail": str(e)})
                     return
+                if not isinstance(payload, dict):
+                    self._send_json(400, {"detail": "Expected a JSON object"})
+                    return
                 username_credentials = {
                     "subscriptions_username": "mock-subscription-user",
                     "subscriptions_password": "mock-subscription-password",
                 }
                 client_credentials = {
                     "subscriptions_client_id": "mock-subscription-client",
+                    "subscriptions_client_secret": "mock-subscription-secret",
                 }
                 is_client_credentials = (
                     payload.get("subscriptions_client_id") == client_credentials["subscriptions_client_id"]
-                    and bool(payload.get("subscriptions_client_secret"))
+                    and payload.get("subscriptions_client_secret") == client_credentials["subscriptions_client_secret"]
                     and set(payload) == {"subscriptions_client_id", "subscriptions_client_secret"}
                 )
                 if payload != username_credentials and not is_client_credentials:

@@ -245,6 +245,13 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
         if field == "additional_data_headers":
             return current_data.get("headers")
         if field == "organization_id":
+            api_data = context.current_api_data if isinstance(context, TransformContext) else context.get("current_api_data", {})
+            organization = api_data.get("organization") if api_data else None
+            organization_id = organization.get("id") if isinstance(organization, dict) else None
+            if organization_id is None and api_data:
+                organization_id = api_data.get("organization_id")
+            if organization_id is not None:
+                return organization_id
             value = current_data.get("organization_name")
             return cls.resolve_reference_id(manager, "organizations", value, service="eda") if value is not None else None
         if field == "eda_credential_id":

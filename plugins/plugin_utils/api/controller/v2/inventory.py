@@ -157,7 +157,7 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
             return int(value)
         try:
             manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
-            return manager.lookup_resource_id("organizations", "name", value, service="controller")
+            return manager.lookup_resource_id("organizations", "name", value, service="controller", numeric_is_id=False)
         except Exception:
             return value
 

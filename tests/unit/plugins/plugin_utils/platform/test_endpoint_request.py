@@ -57,14 +57,14 @@ class TestBuildEndpointRequest(unittest.TestCase):
 
         path, payload = build_endpoint_request(
             operation,
-            {"id": 3, "description": "", "name": None, "scm_branch": "", "limit": None},
+            {"id": 3, "description": "", "name": "", "scm_branch": "", "limit": ""},
             context,
             omit_empty_strings=True,
         )
 
         self.assertEqual(
             {"path": path, "payload": payload},
-            {"path": "/api/controller/v2/workflow_job_templates/3/", "payload": {"description": "", "scm_branch": ""}},
+            {"path": "/api/controller/v2/workflow_job_templates/3/", "payload": {"description": "", "scm_branch": "", "limit": ""}},
         )
 
 

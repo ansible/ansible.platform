@@ -151,7 +151,7 @@ def build_endpoint_request(
             if field in null_fields or (operation_name == "update" and include_nulls_for_update and field in {"organization", "credential"}):
                 request_data[field] = None
             continue
-        if omit_empty_strings and value == "" and not (operation_name == "update" and field in {"description", "scm_branch"}):
+        if omit_empty_strings and value == "" and not (operation_name == "update" and field in {"description", "scm_branch", "limit"}):
             continue
         request_data[field] = value
 

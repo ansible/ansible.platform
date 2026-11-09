@@ -87,6 +87,8 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
             "workflow_job_template": 5,
             "unified_job_template": 10,
             "all_parents_must_converge": False,
+            "scm_branch": "",
+            "limit": "",
         }
         ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api(api_data, {})
         self.assertIsInstance(ansible, AnsibleWorkflowJobTemplateNode)
@@ -95,6 +97,8 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         self.assertEqual(ansible.workflow_job_template, "5")
         self.assertEqual(ansible.unified_job_template, "10")
         self.assertIs(ansible.all_parents_must_converge, False)
+        self.assertEqual(ansible.scm_branch, "")
+        self.assertEqual(ansible.limit, "")
 
     def test_from_api_handles_missing_fields(self):
         ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api({"identifier": "n1", "workflow_job_template": 1}, {})

@@ -490,6 +490,39 @@ class TestMigratedRequestErrors(unittest.TestCase):
 class TestMigratedUpdateIdempotency(unittest.TestCase):
     """Unchanged resources skip PATCH; actual changes send it in both modes."""
 
+    def test_empty_workflow_node_scm_branch_and_limit_are_idempotent_in_both_clients(self):
+        current = {
+            "id": 42,
+            "identifier": "Contract Node",
+            "workflow_job_template": 1,
+            "unified_job_template": 2,
+            "scm_branch": "",
+            "limit": "",
+            "summary_fields": {
+                "workflow_job_template": {"id": 1, "name": "Contract Workflow"},
+                "unified_job_template": {"id": 2, "name": "Contract Job Template"},
+            },
+        }
+        ansible_data = {
+            "id": 42,
+            "identifier": "Contract Node",
+            "workflow_job_template": "1",
+            "unified_job_template": "2",
+            "scm_branch": "",
+            "limit": "",
+        }
+
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client.lookup_resource_id = MagicMock()
+                client._make_request.side_effect = _update_responder(client_mode, current)
+
+                result = client.execute("update", "workflow_job_template_node", ansible_data)
+
+                self.assertFalse(any(call.args[0].upper() == "PATCH" for call in client._make_request.call_args_list))
+                self.assertIs(result["changed"], False)
+
     def test_unchanged_crud_resources_skip_patch_in_both_clients(self):
         for module_name, _endpoint, ansible_data, response_body in CREATE_CONTRACTS:
             if module_name not in DELETE_PATHS or module_name == "eda_controller_token":
