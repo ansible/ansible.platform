@@ -154,6 +154,19 @@ class TestInventoryTransform(unittest.TestCase):
         mock_manager.lookup_organization_names.assert_called_once_with([5], service="controller")
         self.assertEqual(ansible.organization, "Default")
 
+    def test_idempotency_resolves_unicode_digit_organization_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+
+        value = InventoryTransformMixin_v2.get_idempotency_value_from_current_data(
+            "organization",
+            {"organization": "²"},
+            {"manager": mock_manager},
+        )
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "²", service="controller", numeric_is_id=False)
+        self.assertEqual(value, 42)
+
     def test_from_api_preserves_missing_organization_as_empty_string(self):
         mock_manager = MagicMock()
 

@@ -1,0 +1,10 @@
+---
+- name: Cleanup subscriptions mock scenario
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Report that subscription queries created no resources
+      ansible.builtin.debug:
+        msg: "subscriptions is read-only; no cleanup is required"
+...
