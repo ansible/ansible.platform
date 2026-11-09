@@ -116,9 +116,8 @@ def build_endpoint_request(
         path_values: Optional values from prior operations. These override
             values on ``api_data`` when resolving path parameters.
         fields_to_null: Fields that must be sent as explicit nulls.
-        omit_empty_strings: Omit empty strings outside updates. Update
-            transformations include only explicitly provided empty strings,
-            while omitted fields remain ``None``.
+        omit_empty_strings: Omit empty strings outside updates, except update
+            fields that support clearing. Omitted fields remain ``None``.
 
     Returns:
         A tuple of the resolved endpoint path and request body.
@@ -152,7 +151,7 @@ def build_endpoint_request(
             if field in null_fields or (operation_name == "update" and include_nulls_for_update and field in {"organization", "credential"}):
                 request_data[field] = None
             continue
-        if omit_empty_strings and value == "" and operation_name != "update":
+        if omit_empty_strings and value == "" and not (operation_name == "update" and field in {"description", "scm_branch"}):
             continue
         request_data[field] = value
 
