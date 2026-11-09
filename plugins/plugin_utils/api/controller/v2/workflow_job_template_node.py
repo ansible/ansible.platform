@@ -198,6 +198,21 @@ class WorkflowJobTemplateNodeTransformMixin_v2(BaseTransformMixin):
         return current_dict.get(field)
 
     @classmethod
+    def get_idempotency_value_from_current_data(cls, field, current_data, context):
+        """Resolve returned foreign-key names back to API IDs for comparison."""
+        value = current_data.get(field)
+        endpoint = _FK_ENDPOINTS.get(field)
+        if endpoint is None or value is None:
+            return value
+        if str(value).strip().isdigit():
+            return int(value)
+        try:
+            manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
+            return manager.lookup_resource_id(endpoint, "name", value, service="controller", require_unique=True)
+        except Exception:
+            return value
+
+    @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
         return {
             "create": EndpointOperation(

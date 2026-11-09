@@ -1,0 +1,35 @@
+---
+- name: Exercise subscriptions through the persistent PlatformService
+  hosts: localhost
+  connection: ansible.platform.http
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: mock
+    gateway_password: testpass
+    gateway_validate_certs: false
+    ansible_platform_use_persistent_connection: true
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs }}"
+  tasks:
+    - name: Query subscriptions using client credentials
+      ansible.platform.subscriptions:
+        client_id: mock-subscription-client
+        client_secret: mock-subscription-secret
+        filters:
+          product_name: "Ansible Automation Platform"
+      register: subscriptions_result
+
+    - name: Assert persistent-client public module result
+      ansible.builtin.assert:
+        that:
+          - subscriptions_result is not changed
+          - subscriptions_result.failed is false
+          - subscriptions_result.subscriptions | length == 1
+          - subscriptions_result.subscriptions[0].id == 8001
+          - subscriptions_result.subscriptions[0].product_name == 'Ansible Automation Platform'
+...

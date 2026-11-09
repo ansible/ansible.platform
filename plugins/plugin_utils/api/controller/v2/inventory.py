@@ -147,6 +147,20 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
                 pass
         return {}
 
+    @staticmethod
+    def get_idempotency_value_from_current_data(field: str, current_data: Dict[str, Any], context: TransformContext):
+        """Resolve the returned organization name back to its API ID for comparison."""
+        value = current_data.get(field)
+        if field != "organization" or value is None:
+            return value
+        if str(value).strip().isdigit():
+            return int(value)
+        try:
+            manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
+            return manager.lookup_resource_id("organizations", "name", value, service="controller")
+        except Exception:
+            return value
+
     @classmethod
     def from_api(
         cls,

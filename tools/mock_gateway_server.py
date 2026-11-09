@@ -1284,6 +1284,27 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         # ---- Controller config (license) ----
         if service == "controller" and resource == "config":
+            if path == "/api/controller/v2/config/subscriptions/" and self.command == "POST":
+                payload = self._parse_json_body()
+                username_credentials = {
+                    "subscriptions_username": "mock-subscription-user",
+                    "subscriptions_password": "mock-subscription-password",
+                }
+                client_credentials = {
+                    "subscriptions_client_id": "mock-subscription-client",
+                    "subscriptions_client_secret": "mock-subscription-secret",
+                }
+                if payload not in (username_credentials, client_credentials):
+                    self._send_json(400, {"detail": "Unexpected mock subscription credentials"})
+                    return
+                self._send_json(
+                    200,
+                    [
+                        {"id": 8001, "product_name": "Ansible Automation Platform", "support_level": "Premium"},
+                        {"id": 8002, "product_name": "Other Product", "support_level": "Self-Support"},
+                    ],
+                )
+                return
             if self.command == "GET":
                 self._send_json(200, self.server._license_config)
                 return

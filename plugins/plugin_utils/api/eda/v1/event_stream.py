@@ -236,6 +236,28 @@ class EventStreamTransformMixin_v1(BaseTransformMixin):
         return str(fk_id)
 
     @classmethod
+    def get_idempotency_value_from_current_data(cls, field: str, current_data: Dict[str, Any], context: TransformContext):
+        """Map the Ansible representation back to API fields for update comparison."""
+        manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
+        if field == "test_mode":
+            forward_events = current_data.get("forward_events")
+            return not forward_events if forward_events is not None else None
+        if field == "additional_data_headers":
+            return current_data.get("headers")
+        if field == "organization_id":
+            value = current_data.get("organization_name")
+            return cls.resolve_reference_id(manager, "organizations", value, service="eda") if value is not None else None
+        if field == "eda_credential_id":
+            value = current_data.get("credential_name")
+            if value is None:
+                return None
+            organization_name = current_data.get("organization_name")
+            organization_id = cls.resolve_reference_id(manager, "organizations", organization_name, service="eda") if organization_name is not None else None
+            scope = {"organization": organization_id} if organization_id is not None else None
+            return cls.resolve_reference_id(manager, "eda-credentials", value, service="eda", extra_query_params=scope)
+        return current_data.get(field)
+
+    @classmethod
     def from_api(
         cls,
         api_data: Dict[str, Any],
