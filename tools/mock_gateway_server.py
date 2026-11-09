@@ -1293,20 +1293,19 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 if not isinstance(payload, dict):
                     self._send_json(400, {"detail": "Expected a JSON object"})
                     return
-                username_credentials = {
-                    "subscriptions_username": "mock-subscription-user",
-                    "subscriptions_password": "mock-subscription-password",
-                }
-                client_credentials = {
-                    "subscriptions_client_id": "mock-subscription-client",
-                    "subscriptions_client_secret": "mock-subscription-secret",
-                }
+                username_credentials = (
+                    payload.get("subscriptions_username") == "mock-subscription-user"
+                    and isinstance(payload.get("subscriptions_password"), str)
+                    and bool(payload["subscriptions_password"])
+                    and set(payload) == {"subscriptions_username", "subscriptions_password"}
+                )
                 is_client_credentials = (
-                    payload.get("subscriptions_client_id") == client_credentials["subscriptions_client_id"]
-                    and payload.get("subscriptions_client_secret") == client_credentials["subscriptions_client_secret"]
+                    payload.get("subscriptions_client_id") == "mock-subscription-client"
+                    and isinstance(payload.get("subscriptions_client_secret"), str)
+                    and bool(payload["subscriptions_client_secret"])
                     and set(payload) == {"subscriptions_client_id", "subscriptions_client_secret"}
                 )
-                if payload != username_credentials and not is_client_credentials:
+                if not username_credentials and not is_client_credentials:
                     self._send_json(400, {"detail": "Unexpected mock subscription credentials"})
                     return
                 self._send_json(

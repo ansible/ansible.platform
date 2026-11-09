@@ -6,7 +6,8 @@
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: mock
-    gateway_password: testpass
+    gateway_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
+    subscriptions_client_secret: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
   module_defaults:
@@ -19,7 +20,7 @@
     - name: Query subscriptions using client credentials
       ansible.platform.subscriptions:
         client_id: mock-subscription-client
-        client_secret: mock-subscription-secret
+        client_secret: "{{ subscriptions_client_secret }}"
         filters:
           product_name: "Ansible Automation Platform"
       register: subscriptions_result

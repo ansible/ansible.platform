@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import unittest
+import uuid
 from unittest.mock import MagicMock
 
 from tools.mock_gateway_server import MockGatewayHandler
@@ -41,10 +42,10 @@ class TestMockSubscriptionsRequest(unittest.TestCase):
 
         handler._send_json.assert_called_once_with(400, {"detail": "Invalid JSON"})
 
-    def test_client_credentials_require_the_fixture_secret_and_exact_keys(self):
+    def test_client_credentials_require_a_nonempty_secret_and_exact_keys(self):
         valid_credentials = {
             "subscriptions_client_id": "mock-subscription-client",
-            "subscriptions_client_secret": "mock-subscription-secret",
+            "subscriptions_client_secret": uuid.uuid4().hex,
         }
         handler = self._handler(valid_credentials)
 
@@ -53,8 +54,32 @@ class TestMockSubscriptionsRequest(unittest.TestCase):
         self.assertEqual(handler._send_json.call_args.args[0], 200)
 
         invalid_payloads = (
-            {**valid_credentials, "subscriptions_client_secret": "wrong-secret"},
+            {**valid_credentials, "subscriptions_client_secret": ""},
             {**valid_credentials, "subscriptions_client_secret": True},
+            {**valid_credentials, "unexpected": "extra"},
+        )
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                handler = self._handler(payload)
+
+                handler._route()
+
+                handler._send_json.assert_called_once_with(400, {"detail": "Unexpected mock subscription credentials"})
+
+    def test_username_credentials_require_a_valid_user_a_nonempty_password_and_exact_keys(self):
+        valid_credentials = {
+            "subscriptions_username": "mock-subscription-user",
+            "subscriptions_password": uuid.uuid4().hex,
+        }
+        handler = self._handler(valid_credentials)
+
+        handler._route()
+
+        self.assertEqual(handler._send_json.call_args.args[0], 200)
+
+        invalid_payloads = (
+            {**valid_credentials, "subscriptions_username": "invalid-subscription-user"},
+            {**valid_credentials, "subscriptions_password": ""},
             {**valid_credentials, "unexpected": "extra"},
         )
         for payload in invalid_payloads:

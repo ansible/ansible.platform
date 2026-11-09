@@ -41,7 +41,9 @@
   vars:
     gateway_hostname: "http://127.0.0.1:8000"
     gateway_username: mock
-    gateway_password: testpass
+    gateway_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
+    subscriptions_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
+    invalid_subscriptions_password: "{{ lookup('ansible.builtin.password', '/dev/null', length=32) }}"
     gateway_validate_certs: false
   module_defaults:
     group/ansible.platform.controller:
@@ -53,7 +55,7 @@
     - name: Query subscriptions and filter the public module result
       ansible.platform.subscriptions:
         username: mock-subscription-user
-        password: mock-subscription-password
+        password: "{{ subscriptions_password }}"
         filters:
           product_name: "Ansible Automation Platform"
       register: subscriptions_result
@@ -70,7 +72,7 @@
     - name: Query subscriptions with rejected credentials
       ansible.platform.subscriptions:
         username: invalid-subscription-user
-        password: invalid-subscription-password
+        password: "{{ invalid_subscriptions_password }}"
       register: rejected_result
       ignore_errors: true
 
