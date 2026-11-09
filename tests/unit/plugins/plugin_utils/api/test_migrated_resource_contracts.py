@@ -135,7 +135,7 @@ DELETE_PATHS = {
 }
 
 FIND_QUERY_PARAMETERS = {
-    "controller_credential": {"name": "Contract Resource"},
+    "controller_credential": {"name": "Contract Resource", "credential_type": 1},
     "controller_credential_type": {"name": "Contract Resource"},
     "controller_project": {"name": "Contract Resource"},
     "credential_input_source": {"input_field_name": "password", "target_credential": 1},
