@@ -839,6 +839,7 @@ class DirectHTTPClient(BaseAPIClient):
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        force_update = ansible_data_dict.pop("_platform_force_update", False)
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -852,6 +853,7 @@ class DirectHTTPClient(BaseAPIClient):
             service=service,
             operation=operation,
             include_nulls_for_update=include_nulls,
+            force_update=force_update,
         )
 
         # Execute operation (shared CRUD logic)
@@ -938,7 +940,7 @@ class DirectHTTPClient(BaseAPIClient):
         # must be excluded from the comparison.
         _skip_for_idempotency = {"modified", "created", "url", "state"}
         update_op = operations.get("update")
-        if update_op and update_op.fields and current_data:
+        if update_op and update_op.fields and current_data and not context.force_update:
             would_update = {}
             json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
             get_idempotency_value = getattr(mixin_class, "get_idempotency_value_from_current_data", None)

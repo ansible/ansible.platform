@@ -566,6 +566,36 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                 self.assertEqual(request.kwargs["json"], {"name": "Contract Resource", "description": "Updated description"})
                 self.assertIs(result["changed"], True)
 
+    def test_explicit_force_update_patches_write_only_password_in_both_clients(self):
+        api_resource = {"id": 42, "username": "contract-user", "password": "$encrypted$"}
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+
+                def respond(method, url, **kwargs):
+                    if method.upper() == "PATCH":
+                        return _response(api_resource, direct=client_mode == "direct")
+                    if client_mode == "direct":
+                        return _response({"count": 1, "results": [api_resource]}, direct=True)
+                    return _response(api_resource, direct=False)
+
+                client._make_request.side_effect = respond
+                client.execute(
+                    "update",
+                    "user",
+                    {
+                        "id": 42,
+                        "username": "contract-user",
+                        "password": "ResetPass123!",
+                        "_platform_force_update": True,
+                    },
+                )
+
+                patch_calls = [call for call in client._make_request.call_args_list if call.args[0].upper() == "PATCH"]
+                self.assertEqual(len(patch_calls), 1)
+                self.assertEqual(patch_calls[0].args[1], BASE_URL + "/api/gateway/v1/users/42/")
+                self.assertEqual(patch_calls[0].kwargs["json"], {"password": "ResetPass123!"})
+
 
 class TestMigratedActionRequestContracts(unittest.TestCase):
     """Custom launch and cancellation endpoints match migrated module contracts."""

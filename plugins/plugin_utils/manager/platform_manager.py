@@ -530,6 +530,7 @@ class PlatformService(BaseAPIClient):
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        force_update = ansible_data_dict.pop("_platform_force_update", False)
 
         service = self.registry.get_service_for_module(module_name)
         if not service:
@@ -546,6 +547,7 @@ class PlatformService(BaseAPIClient):
             service=service,
             operation=operation,
             include_nulls_for_update=include_nulls,
+            force_update=force_update,
         )
 
         try:
@@ -682,7 +684,7 @@ class PlatformService(BaseAPIClient):
         # Avoid issuing PATCH when every requested update field already matches
         # the current resource. Keep this aligned with DirectHTTPClient so the
         # two supported client modes have the same idempotency contract.
-        if update_op and update_op.fields and current_data:
+        if update_op and update_op.fields and current_data and not context.force_update:
             would_update = {}
             json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
             get_idempotency_value = getattr(mixin_class, "get_idempotency_value_from_current_data", None)

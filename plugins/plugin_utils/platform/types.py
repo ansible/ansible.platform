@@ -77,6 +77,8 @@ class TransformContext:
         operation: Optional operation name ('create', 'update', etc.).
         include_nulls_for_update: When True and operation is 'update', transforms include null
             for optional fields so the API can clear them (enforced state only; present must not send nulls).
+        force_update: When True, skip idempotency short-circuiting for an intentional update such as
+            resetting a write-only secret that the API represents with an encrypted placeholder.
     """
 
     manager: "PlatformService"
@@ -86,6 +88,7 @@ class TransformContext:
     service: str = "gateway"
     operation: Optional[str] = None
     include_nulls_for_update: bool = False
+    force_update: bool = False
 
 
 def build_endpoint_request(
