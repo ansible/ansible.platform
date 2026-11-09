@@ -202,11 +202,20 @@ UPDATE_CHANGE_CONTRACTS = {
 
 
 def _response(body: dict, direct: bool):
-    response = MagicMock()
     encoded = json.dumps(body).encode("utf-8")
-    response.read.return_value = encoded
-    response.content = encoded
-    response.json.return_value = body
+    if direct:
+        response = MagicMock(spec=["read", "status", "code"])
+        response.read.return_value = encoded
+        response.status = 200
+        response.code = 200
+    else:
+        response = MagicMock(spec=["json", "content", "status_code", "ok", "headers", "text", "raise_for_status"])
+        response.content = encoded
+        response.status_code = 200
+        response.ok = True
+        response.headers = {"Content-Type": "application/json"}
+        response.text = encoded.decode("utf-8")
+        response.json.return_value = body
     return response
 
 
@@ -236,6 +245,27 @@ def _client(client_mode: str):
     client.cache = {}
     client._make_request = MagicMock(return_value=response)
     return client
+
+
+def _update_responder(client_mode: str, current: dict, patch_response: dict | None = None, patch_error: APIError | None = None):
+    """Return an API stub for update lookups, relationship lookups, and PATCH."""
+
+    def respond(method, url, **kwargs):
+        path = url.removeprefix(BASE_URL)
+        params = kwargs.get("params") or {}
+        if method.upper() == "PATCH":
+            if patch_error is not None:
+                raise patch_error
+            return _response(patch_response or current, direct=client_mode == "direct")
+        if "/organizations/1/" in path or "/workflow_job_templates/1/" in path:
+            return _response({"id": 1, "name": "1"}, direct=client_mode == "direct")
+        if ("/organizations/" in path or "/eda-credentials/" in path) and ("id=1" in path or params.get("id") == 1):
+            return _response({"count": 1, "results": [{"id": 1, "name": "1"}]}, direct=client_mode == "direct")
+        if client_mode == "direct":
+            return _response({"count": 1, "results": [current]}, direct=True)
+        return _response(current, direct=False)
+
+    return respond
 
 
 class TestMigratedCreateRequestContracts(unittest.TestCase):
@@ -312,6 +342,42 @@ class TestMigratedFindRequestContracts(unittest.TestCase):
                         self.assertEqual(request.kwargs["params"], query)
                     self.assertEqual(result["id"], 42)
 
+    def test_event_stream_response_is_transformed_into_module_fields(self):
+        api_resource = {
+            "id": 42,
+            "name": "Contract Resource",
+            "eda_credential": {"id": 7, "name": "Event Credential"},
+            "organization": {"id": 9, "name": "Events"},
+            "test_mode": False,
+            "additional_data_headers": '{"X-Contract": "present"}',
+            "uuid": "4cf8d9dd-2137-4890-b21c-60084d9e5ed5",
+        }
+        response_data = {"count": 1, "results": [api_resource]}
+
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client._make_request.return_value = _response(response_data, direct=client_mode == "direct")
+
+                result = client.execute("find", "event_stream", {"name": "Contract Resource"})
+
+                request = client._make_request.call_args
+                self.assertEqual(request.args[0].upper(), "GET")
+                self.assertEqual(request.args[1], BASE_URL + "/api/eda/v1/event-streams/?name=Contract+Resource")
+                result_fields = ("id", "name", "credential_name", "organization_name", "forward_events", "headers", "uuid")
+                self.assertEqual(
+                    {key: result[key] for key in result_fields},
+                    {
+                        "id": 42,
+                        "name": "Contract Resource",
+                        "credential_name": "Event Credential",
+                        "organization_name": "Events",
+                        "forward_events": True,
+                        "headers": '{"X-Contract": "present"}',
+                        "uuid": "4cf8d9dd-2137-4890-b21c-60084d9e5ed5",
+                    },
+                )
+
 
 class TestMigratedRequestErrors(unittest.TestCase):
     """API failures remain visible through both public client execute APIs."""
@@ -353,7 +419,7 @@ class TestMigratedRequestErrors(unittest.TestCase):
 
                     self.assertIs(raised.exception, error)
 
-    def test_update_and_custom_endpoints_propagate_api_errors(self):
+    def test_update_errors_propagate_for_all_updateable_resources(self):
         for client_mode in ("direct", "persistent"):
             fixtures = {contract[0]: (contract[2], contract[3]) for contract in CREATE_CONTRACTS}
             for module_name, update_contract in UPDATE_CHANGE_CONTRACTS.items():
@@ -372,33 +438,23 @@ class TestMigratedRequestErrors(unittest.TestCase):
                 with self.subTest(module=module_name, client=client_mode, operation="update"):
                     client = _client(client_mode)
                     error = APIError("Update failed", status_code=500)
-
-                    def fail_patch(method, url, **kwargs):
-                        path = url.removeprefix(BASE_URL)
-                        params = kwargs.get("params") or {}
-                        if method.upper() == "PATCH":
-                            raise error
-                        if "/organizations/1/" in path or "/workflow_job_templates/1/" in path:
-                            return _response({"id": 1, "name": "1"}, direct=client_mode == "direct")
-                        if ("/organizations/" in path or "/eda-credentials/" in path) and ("id=1" in path or params.get("id") == 1):
-                            return _response({"count": 1, "results": [{"id": 1, "name": "1"}]}, direct=client_mode == "direct")
-                        if client_mode == "direct":
-                            return _response({"count": 1, "results": [current]}, direct=True)
-                        return _response(current, direct=False)
-
-                    client._make_request.side_effect = fail_patch
+                    client._make_request.side_effect = _update_responder(client_mode, current, patch_error=error)
 
                     with self.assertRaises(APIError) as raised:
                         client.execute("update", module_name, {**ansible_data, **changes, "id": 42})
 
                     self.assertIs(raised.exception, error)
 
-            error_cases = (
-                ("launch", lambda client: client.launch_resource("/api/controller/v2/job_templates/42/launch/", {}, service="controller")),
-                ("wait", lambda client: client.wait_for_completion("/jobs/42/", timeout=1, interval=0.01, service="controller")),
-                ("search", lambda client: client.search_api("jobs", service="controller")),
-                ("direct_request", lambda client: client.direct_request("POST", "/api/controller/v2/workflow_approvals/77/approve/")),
-            )
+    def test_custom_endpoint_errors_propagate(self):
+        error_cases = (
+            ("launch", lambda client: client.launch_resource("/api/controller/v2/job_templates/42/launch/", {}, service="controller")),
+            ("wait", lambda client: client.wait_for_completion("/jobs/42/", timeout=1, interval=0.01, service="controller")),
+            ("search", lambda client: client.search_api("jobs", service="controller")),
+            ("direct_request", lambda client: client.direct_request("POST", "/api/controller/v2/workflow_approvals/77/approve/")),
+            ("cancel", lambda client: client.cancel_resource(42, "jobs", service="controller")),
+            ("post_resource", lambda client: client.post_resource("/api/controller/v2/config/attach/", {}, service="controller")),
+        )
+        for client_mode in ("direct", "persistent"):
             for operation, call in error_cases:
                 with self.subTest(client=client_mode, operation=operation):
                     client = _client(client_mode)
@@ -410,6 +466,8 @@ class TestMigratedRequestErrors(unittest.TestCase):
 
                     self.assertIs(raised.exception, error)
 
+    def test_cancel_treats_not_running_as_unchanged(self):
+        for client_mode in ("direct", "persistent"):
             with self.subTest(client=client_mode, operation="cancel_not_running"):
                 client = _client(client_mode)
                 client._make_request.side_effect = APIError("Not running", status_code=405)
@@ -418,20 +476,8 @@ class TestMigratedRequestErrors(unittest.TestCase):
 
                 self.assertEqual(result, {"changed": False, "id": 42, "status": "already finished"})
 
-            for operation, call in (
-                ("cancel", lambda client: client.cancel_resource(42, "jobs", service="controller")),
-                ("post_resource", lambda client: client.post_resource("/api/controller/v2/config/attach/", {}, service="controller")),
-            ):
-                with self.subTest(client=client_mode, operation=operation):
-                    client = _client(client_mode)
-                    error = APIError(f"{operation} failed", status_code=500)
-                    client._make_request.side_effect = error
-
-                    with self.assertRaises(APIError) as raised:
-                        call(client)
-
-                    self.assertIs(raised.exception, error)
-
+    def test_settings_update_propagates_api_error(self):
+        for client_mode in ("direct", "persistent"):
             with self.subTest(client=client_mode, operation="settings_update"):
                 client = _client(client_mode)
                 error = APIError("Settings update failed", status_code=500)
@@ -447,7 +493,7 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
     """Unchanged resources skip PATCH; actual changes send it in both modes."""
 
     def test_unchanged_crud_resources_skip_patch_in_both_clients(self):
-        for module_name, endpoint, ansible_data, response_body in CREATE_CONTRACTS:
+        for module_name, _endpoint, ansible_data, response_body in CREATE_CONTRACTS:
             if module_name not in DELETE_PATHS or module_name == "eda_controller_token":
                 continue
             api_resource = {"id": 42, **response_body}
@@ -464,22 +510,7 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                 with self.subTest(module=module_name, client=client_mode):
                     client = _client(client_mode)
 
-                    def respond(method, url, **kwargs):
-                        path = url.removeprefix(BASE_URL)
-                        params = kwargs.get("params") or {}
-                        if "/organizations/1/" in path:
-                            return _response({"id": 1, "name": "1"}, direct=client_mode == "direct")
-                        if "/organizations/" in path and ("id=1" in path or params.get("id") == 1):
-                            return _response({"count": 1, "results": [{"id": 1, "name": "1"}]}, direct=client_mode == "direct")
-                        if "/eda-credentials/" in path and ("id=1" in path or params.get("id") == 1):
-                            return _response({"count": 1, "results": [{"id": 1, "name": "1"}]}, direct=client_mode == "direct")
-                        if "/workflow_job_templates/1/" in path:
-                            return _response({"id": 1, "name": "1"}, direct=client_mode == "direct")
-                        if client_mode == "direct":
-                            return _response({"count": 1, "results": [api_resource]}, direct=True)
-                        return _response(api_resource, direct=False)
-
-                    client._make_request.side_effect = respond
+                    client._make_request.side_effect = _update_responder(client_mode, api_resource)
                     result = client.execute("update", module_name, dict(ansible_data, id=42))
 
                     self.assertFalse(any(call.args[0].upper() == "PATCH" for call in client._make_request.call_args_list))
@@ -503,74 +534,42 @@ class TestMigratedUpdateIdempotency(unittest.TestCase):
                 with self.subTest(module=module_name, client=client_mode):
                     client = _client(client_mode)
 
-                    def respond(method, url, **kwargs):
-                        path = url.removeprefix(BASE_URL)
-                        params = kwargs.get("params") or {}
-                        if "/organizations/1/" in path or "/workflow_job_templates/1/" in path:
-                            return _response({"id": 1, "name": "1"}, direct=client_mode == "direct")
-                        if ("/organizations/" in path or "/eda-credentials/" in path) and ("id=1" in path or params.get("id") == 1):
-                            return _response({"count": 1, "results": [{"id": 1, "name": "1"}]}, direct=client_mode == "direct")
-                        if method.upper() == "PATCH":
-                            return _response({**api_resource, **expected_body}, direct=client_mode == "direct")
-                        if client_mode == "direct":
-                            return _response({"count": 1, "results": [api_resource]}, direct=True)
-                        return _response(api_resource, direct=False)
-
-                    client._make_request.side_effect = respond
+                    client._make_request.side_effect = _update_responder(
+                        client_mode,
+                        api_resource,
+                        patch_response={**api_resource, **expected_body},
+                    )
                     update_data = {**ansible_data, **changes, "id": 42}
                     result = client.execute("update", module_name, update_data)
 
                     patch_calls = [call for call in client._make_request.call_args_list if call.args[0].upper() == "PATCH"]
                     self.assertEqual(len(patch_calls), 1)
-                    self.assertEqual(patch_calls[0].args[1], BASE_URL + endpoint.replace("/", "/", 1).rstrip("/") + "/42/")
+                    self.assertEqual(patch_calls[0].args[1], BASE_URL + endpoint.rstrip("/") + "/42/")
                     self.assertEqual(patch_calls[0].kwargs["json"], expected_body)
                     self.assertIs(result["changed"], True)
 
-    def test_project_update_skips_unchanged_state_and_patches_changes(self):
+    def test_project_description_update_uses_expected_lookup_and_patch_contract(self):
         current = {"id": 42, "name": "Contract Resource", "description": "Current description"}
         changed = {**current, "description": "Updated description"}
         for client_mode in ("direct", "persistent"):
-            with self.subTest(client=client_mode, state="unchanged"):
+            with self.subTest(client=client_mode):
                 client = _client(client_mode)
-                existing = {"count": 1, "results": [current]} if client_mode == "direct" else current
-                client._make_request.return_value = _response(existing, direct=client_mode == "direct")
+                client._make_request.side_effect = _update_responder(client_mode, current, patch_response=changed)
 
-                result = client.execute(
-                    "update",
-                    "controller_project",
-                    {"id": 42, "name": "Contract Resource", "description": "Current description"},
-                )
+                result = client.execute("update", "controller_project", {"id": 42, "name": "Contract Resource", "description": "Updated description"})
 
-                client._make_request.assert_called_once()
-                request = client._make_request.call_args
-                self.assertEqual(request.args[0].upper(), "GET")
+                self.assertEqual(client._make_request.call_count, 2)
+                find_request, patch_request = client._make_request.call_args_list
+                self.assertEqual(find_request.args[0].upper(), "GET")
                 expected_find_url = (
                     BASE_URL + "/api/controller/v2/projects/?name=Contract+Resource"
                     if client_mode == "direct"
                     else BASE_URL + "/api/controller/v2/projects/42/"
                 )
-                self.assertEqual(request.args[1], expected_find_url)
-                self.assertIs(result["changed"], False)
-
-            with self.subTest(client=client_mode, state="changed"):
-                client = _client(client_mode)
-                existing = {"count": 1, "results": [current]} if client_mode == "direct" else current
-                client._make_request.side_effect = [
-                    _response(existing, direct=client_mode == "direct"),
-                    _response(changed, direct=client_mode == "direct"),
-                ]
-
-                result = client.execute(
-                    "update",
-                    "controller_project",
-                    {"id": 42, "name": "Contract Resource", "description": "Updated description"},
-                )
-
-                self.assertEqual(client._make_request.call_count, 2)
-                request = client._make_request.call_args_list[1]
-                self.assertEqual(request.args[0].upper(), "PATCH")
-                self.assertEqual(request.args[1], BASE_URL + "/api/controller/v2/projects/42/")
-                self.assertEqual(request.kwargs["json"], {"name": "Contract Resource", "description": "Updated description"})
+                self.assertEqual(find_request.args[1], expected_find_url)
+                self.assertEqual(patch_request.args[0].upper(), "PATCH")
+                self.assertEqual(patch_request.args[1], BASE_URL + "/api/controller/v2/projects/42/")
+                self.assertEqual(patch_request.kwargs["json"], {"name": "Contract Resource", "description": "Updated description"})
                 self.assertIs(result["changed"], True)
 
     def test_explicit_force_update_patches_write_only_password_in_both_clients(self):
