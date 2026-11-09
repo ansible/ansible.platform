@@ -927,6 +927,14 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
+        update_op = operations.get("update")
+        if update_op and current_data:
+            for field in update_op.required_fields:
+                current_value = current_data.get(field)
+                if hasattr(mixin_class, "get_update_value_from_current_data"):
+                    current_value = mixin_class.get_update_value_from_current_data(field, current_data)
+                if getattr(api_data, field, None) is None and current_value is not None:
+                    setattr(api_data, field, current_value)
 
         fields_to_null = set()
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
@@ -937,7 +945,6 @@ class DirectHTTPClient(BaseAPIClient):
         # Timestamps (modified, created, url) change on every PATCH so they
         # must be excluded from the comparison.
         _skip_for_idempotency = {"modified", "created", "url", "state"}
-        update_op = operations.get("update")
         if update_op and update_op.fields and current_data:
             would_update = {}
             json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
@@ -1200,7 +1207,6 @@ class DirectHTTPClient(BaseAPIClient):
                 context,
                 path_values=results,
                 fields_to_null=fields_to_null,
-                omit_empty_strings=True,
             )
             body_fields = list(request_data) if isinstance(request_data, dict) else "flattened body"
             logger.info("DirectHTTPClient: Built endpoint request path %s with fields %s", path, body_fields)

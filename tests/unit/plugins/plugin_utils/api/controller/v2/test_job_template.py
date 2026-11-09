@@ -73,17 +73,16 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
 
 
 class TestFromAnsibleDataUpdate(unittest.TestCase):
-    def test_omitted_foreign_keys_keep_api_wire_types_on_update(self):
+    def test_omitted_foreign_keys_are_omitted_on_update(self):
         manager = MagicMock()
-        manager.search_api.return_value = {"inventory": 10, "project": 20, "extra_vars": '{"answer": 42}'}
         instance = AnsibleJobTemplate(name="Ping", id=5, survey_enabled=True)
 
         api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("update", manager))
 
-        self.assertEqual(api_data.inventory, 10)
-        self.assertEqual(api_data.project, 20)
-        self.assertEqual(api_data.extra_vars, '{"answer": 42}')
-        manager.search_api.assert_called_once_with("/api/controller/v2/job_templates/5/")
+        self.assertIsNone(api_data.inventory)
+        self.assertIsNone(api_data.project)
+        self.assertIsNone(api_data.extra_vars)
+        manager.search_api.assert_not_called()
 
     def test_new_name_is_sent_as_name(self):
         manager = MagicMock()

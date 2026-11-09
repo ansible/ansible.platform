@@ -644,12 +644,11 @@ class PlatformService(BaseAPIClient):
                 if getattr(api_data, field, None) is None:
                     user_unset_fields.add(field)
 
-        # For update, some APIs require all required fields in the PATCH body (e.g. http_port
-        # requires "number"). Merge current resource values for any update-operation field
-        # that is missing/None in api_data so the request body is valid.
+        # Restore only fields that the endpoint requires in every PATCH. Other
+        # omitted fields stay out of the request and retain their stored values.
         if update_op and current_data:
             current_dict = current_data if isinstance(current_data, dict) else current_data
-            for field in getattr(update_op, "fields", []) or []:
+            for field in update_op.required_fields:
                 current_value = current_dict.get(field)
                 if hasattr(mixin_class, "get_update_value_from_current_data"):
                     current_value = mixin_class.get_update_value_from_current_data(field, current_dict)
@@ -1011,7 +1010,9 @@ class PlatformService(BaseAPIClient):
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            path, request_data = build_endpoint_request(endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null)
+            path, request_data = build_endpoint_request(
+                endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null
+            )
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)

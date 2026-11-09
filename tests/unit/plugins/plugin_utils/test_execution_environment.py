@@ -220,10 +220,10 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
             {"name": "ee", "image": "quay.io/example/ee", "description": "", "organization": None, "credential": None},
         )
 
-    def test_platform_service_partial_update_preserves_associations_after_merge(self):
+    def test_platform_service_partial_update_omits_unset_associations(self):
         self.assertEqual(
             self._update_payload(enforced=False),
-            {"name": "ee", "image": "quay.io/example/ee", "organization": 5, "credential": 9},
+            {"name": "ee", "image": "quay.io/example/ee"},
         )
 
 

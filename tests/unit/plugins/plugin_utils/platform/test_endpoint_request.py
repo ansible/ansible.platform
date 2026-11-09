@@ -46,18 +46,40 @@ class TestBuildEndpointRequest(unittest.TestCase):
 
         self.assertEqual({"path": path, "payload": payload}, {"path": "/api/controller/v2/hosts/5/", "payload": {"name": None}})
 
-    def test_omits_empty_strings_when_requested_except_update_description(self):
-        operation = EndpointOperation(path="/api/eda/v1/credentials/{id}/", method="PATCH", fields=["description", "name"], path_params=["id"])
+    def test_preserves_explicit_empty_strings_on_update(self):
+        operation = EndpointOperation(
+            path="/api/controller/v2/job_templates/{id}/",
+            method="PATCH",
+            fields=["description", "scm_branch", "limit", "name"],
+            path_params=["id"],
+        )
         context = TransformContext(manager=None, session=None, cache={}, api_version="1", service="eda", operation="update")
 
         path, payload = build_endpoint_request(
             operation,
-            {"id": 3, "description": "", "name": ""},
+            {"id": 3, "description": "", "scm_branch": "", "limit": "", "name": ""},
             context,
-            omit_empty_strings=True,
         )
 
-        self.assertEqual({"path": path, "payload": payload}, {"path": "/api/eda/v1/credentials/3/", "payload": {"description": ""}})
+        self.assertEqual(
+            {"path": path, "payload": payload},
+            {
+                "path": "/api/controller/v2/job_templates/3/",
+                "payload": {"description": "", "scm_branch": "", "limit": "", "name": ""},
+            },
+        )
+
+    def test_preserves_explicit_empty_strings_on_create(self):
+        operation = EndpointOperation(
+            path="/api/controller/v2/job_templates/",
+            method="POST",
+            fields=["description", "limit"],
+        )
+        context = TransformContext(manager=None, session=None, cache={}, api_version="2", service="controller", operation="create")
+
+        _, payload = build_endpoint_request(operation, {"description": "", "limit": ""}, context)
+
+        self.assertEqual(payload, {"description": "", "limit": ""})
 
 
 if __name__ == "__main__":
