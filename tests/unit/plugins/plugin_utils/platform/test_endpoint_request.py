@@ -46,18 +46,26 @@ class TestBuildEndpointRequest(unittest.TestCase):
 
         self.assertEqual({"path": path, "payload": payload}, {"path": "/api/controller/v2/hosts/5/", "payload": {"name": None}})
 
-    def test_omits_empty_strings_when_requested_except_update_description(self):
-        operation = EndpointOperation(path="/api/eda/v1/credentials/{id}/", method="PATCH", fields=["description", "name"], path_params=["id"])
-        context = TransformContext(manager=None, session=None, cache={}, api_version="1", service="eda", operation="update")
+    def test_update_preserves_explicit_empty_strings_and_omits_missing_values(self):
+        operation = EndpointOperation(
+            path="/api/controller/v2/workflow_job_templates/{id}/",
+            method="PATCH",
+            fields=["description", "name", "scm_branch", "limit"],
+            path_params=["id"],
+        )
+        context = TransformContext(manager=None, session=None, cache={}, api_version="2", service="controller", operation="update")
 
         path, payload = build_endpoint_request(
             operation,
-            {"id": 3, "description": "", "name": ""},
+            {"id": 3, "description": "", "name": "", "scm_branch": "", "limit": ""},
             context,
             omit_empty_strings=True,
         )
 
-        self.assertEqual({"path": path, "payload": payload}, {"path": "/api/eda/v1/credentials/3/", "payload": {"description": ""}})
+        self.assertEqual(
+            {"path": path, "payload": payload},
+            {"path": "/api/controller/v2/workflow_job_templates/3/", "payload": {"description": "", "scm_branch": "", "limit": ""}},
+        )
 
 
 if __name__ == "__main__":

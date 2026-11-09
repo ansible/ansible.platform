@@ -839,6 +839,7 @@ class DirectHTTPClient(BaseAPIClient):
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        force_update = ansible_data_dict.pop("_platform_force_update", False)
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -852,6 +853,7 @@ class DirectHTTPClient(BaseAPIClient):
             service=service,
             operation=operation,
             include_nulls_for_update=include_nulls,
+            force_update=force_update,
         )
 
         # Execute operation (shared CRUD logic)
@@ -938,18 +940,27 @@ class DirectHTTPClient(BaseAPIClient):
         # must be excluded from the comparison.
         _skip_for_idempotency = {"modified", "created", "url", "state"}
         update_op = operations.get("update")
-        if update_op and update_op.fields and current_data:
+        if update_op and update_op.fields and current_data and not context.force_update:
             would_update = {}
             json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
+            get_idempotency_value = getattr(mixin_class, "get_idempotency_value_from_current_data", None)
             for field in update_op.fields:
                 value = getattr(api_data, field, None)
                 if value is not None:
                     would_update[field] = value
+
+            def _current_value(field):
+                if get_idempotency_value:
+                    return get_idempotency_value(field, current_data, context)
+                return current_data.get(field)
+
+            current_values = {field: _current_value(field) for field in set(would_update) | fields_to_null}
             needs_update = any(
-                (
-                    canonical_json_object(current_data.get(f)) != canonical_json_object(would_update[f])
+                current_values[f] is None
+                or (
+                    canonical_json_object(current_values[f]) != canonical_json_object(would_update[f])
                     if f in json_object_fields
-                    else str(current_data.get(f)) != str(would_update[f])
+                    else str(current_values[f]) != str(would_update[f])
                 )
                 for f in would_update
                 if f not in _skip_for_idempotency
@@ -958,10 +969,10 @@ class DirectHTTPClient(BaseAPIClient):
                 # can never be meaningfully compared to the plaintext desired value,
                 # so we always treat them as already correct and skip the PATCH for
                 # that field — same logic as AAPModule.fields_could_be_same().
-                and current_data.get(f) != "$encrypted$"
+                and current_values[f] != "$encrypted$"
             )
             if not needs_update:
-                needs_update = any(current_data.get(field) is not None for field in fields_to_null)
+                needs_update = any(current_values[field] is not None for field in fields_to_null)
             if not needs_update:
                 # Nothing to change — return current state with changed=False
                 result = dict(current_data)
@@ -1014,7 +1025,7 @@ class DirectHTTPClient(BaseAPIClient):
 
         self._invalidate_resource_lookup_cache(context.service, delete_op.path)
 
-        return {"changed": True, "deleted": True}
+        return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Find resource by lookup field.
