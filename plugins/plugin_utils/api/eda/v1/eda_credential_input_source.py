@@ -79,6 +79,7 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
 
     find_list_requires_all_results = True
     find_list_max_objects = 100000
+    full_resource_lookup = True
 
     @classmethod
     def resolve_reference_id(

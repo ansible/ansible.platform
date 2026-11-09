@@ -28,6 +28,19 @@ class TestHttpPortRenamePayload(unittest.TestCase):
                 self.assertEqual(patch_call.kwargs["json"]["number"], 8443)
                 self.assertTrue(result["changed"])
 
+    def test_name_only_update_fails_without_current_number_in_both_client_modes(self):
+        current_resource = {"id": 17, "name": "old-port", "use_https": False, "is_api_port": False}
+
+        for client_mode, client_class in (("direct", DirectHTTPClient), ("persistent", PlatformService)):
+            with self.subTest(client_mode=client_mode):
+                client = self._client(client_class, current_resource, current_resource)
+
+                with self.assertRaisesRegex(ValueError, "required update field.*number"):
+                    client.execute("update", "http_port", {"id": 17, "name": "old-port", "new_name": "new-port"})
+
+                patch_calls = [call for call in client._make_request.call_args_list if call.args[0].upper() == "PATCH"]
+                self.assertEqual(patch_calls, [])
+
     @staticmethod
     def _client(client_class, current_resource, renamed_resource):
         client = client_class.__new__(client_class)

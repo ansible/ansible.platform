@@ -646,14 +646,21 @@ class PlatformService(BaseAPIClient):
 
         # Restore only fields that the endpoint requires in every PATCH. Other
         # omitted fields stay out of the request and retain their stored values.
-        if update_op and current_data:
-            current_dict = current_data if isinstance(current_data, dict) else current_data
+        missing_required_fields = []
+        if update_op:
+            current_dict = current_data if isinstance(current_data, dict) else {}
             for field in update_op.required_fields:
-                current_value = current_dict.get(field)
-                if hasattr(mixin_class, "get_update_value_from_current_data"):
+                current_value = current_dict.get(field) if current_data else None
+                if current_data and hasattr(mixin_class, "get_update_value_from_current_data"):
                     current_value = mixin_class.get_update_value_from_current_data(field, current_dict)
-                if getattr(api_data, field, None) is None and current_value is not None:
-                    setattr(api_data, field, current_value)
+                if getattr(api_data, field, None) is None:
+                    if current_value is None:
+                        missing_required_fields.append(field)
+                    else:
+                        setattr(api_data, field, current_value)
+        if missing_required_fields:
+            missing = ", ".join(sorted(missing_required_fields))
+            raise ValueError("Cannot update resource: required update field(s) unavailable from task and current resource data: %s" % missing)
 
         # Enforced updates must clear omitted organization and credential
         # associations after the merge restores values from the current resource.
