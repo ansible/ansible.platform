@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >-
+    ``role_user_assignment`` and ``role_team_assignment`` - honor check mode for
+    multi-object assignments by reporting predicted changes without creating or
+    deleting assignments (https://issues.redhat.com/browse/AAP-101673).
+...
