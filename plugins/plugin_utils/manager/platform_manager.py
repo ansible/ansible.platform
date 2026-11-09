@@ -22,6 +22,7 @@ from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
 from ..platform.exceptions import APIError, AuthenticationError, PlatformError, format_error_response_body
+from ..platform.idempotency import canonical_json_object
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext, build_endpoint_request
 
@@ -529,6 +530,7 @@ class PlatformService(BaseAPIClient):
 
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        force_update = ansible_data_dict.pop("_platform_force_update", False)
 
         service = self.registry.get_service_for_module(module_name)
         if not service:
@@ -545,6 +547,7 @@ class PlatformService(BaseAPIClient):
             service=service,
             operation=operation,
             include_nulls_for_update=include_nulls,
+            force_update=force_update,
         )
 
         try:
@@ -683,6 +686,41 @@ class PlatformService(BaseAPIClient):
                 if field in user_unset_fields:
                     fields_to_null.add(field)
                     setattr(api_data, field, None)  # keep api_data consistent
+
+        # Avoid issuing PATCH when every requested update field already matches
+        # the current resource. Keep this aligned with DirectHTTPClient so the
+        # two supported client modes have the same idempotency contract.
+        if update_op and update_op.fields and current_data and not context.force_update:
+            would_update = {}
+            json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
+            get_idempotency_value = getattr(mixin_class, "get_idempotency_value_from_current_data", None)
+            for field in update_op.fields:
+                value = getattr(api_data, field, None)
+                if value is not None:
+                    would_update[field] = value
+
+            def _current_value(field):
+                if get_idempotency_value:
+                    return get_idempotency_value(field, current_data, context)
+                return current_data.get(field)
+
+            current_values = {field: _current_value(field) for field in set(would_update) | fields_to_null}
+            needs_update = any(
+                current_values[field] is None
+                or (
+                    canonical_json_object(current_values[field]) != canonical_json_object(would_update[field])
+                    if field in json_object_fields
+                    else str(current_values[field]) != str(would_update[field])
+                )
+                for field in would_update
+                if field not in {"modified", "created", "url", "state"} and current_values[field] != "$encrypted$"
+            )
+            if not needs_update:
+                needs_update = any(current_values[field] is not None for field in fields_to_null)
+            if not needs_update:
+                result = dict(current_data)
+                result["changed"] = False
+                return result
 
         api_result = self._execute_operations(operations, api_data, context, required_for="update", fields_to_null=fields_to_null)
 
@@ -1017,7 +1055,14 @@ class PlatformService(BaseAPIClient):
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            path, request_data = build_endpoint_request(endpoint_op, api_data, context, path_values=results, fields_to_null=_fields_to_null)
+            path, request_data = build_endpoint_request(
+                endpoint_op,
+                api_data,
+                context,
+                path_values=results,
+                fields_to_null=_fields_to_null,
+                omit_empty_strings=True,
+            )
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)

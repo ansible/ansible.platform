@@ -46,41 +46,39 @@ class TestBuildEndpointRequest(unittest.TestCase):
 
         self.assertEqual({"path": path, "payload": payload}, {"path": "/api/controller/v2/hosts/5/", "payload": {"name": None}})
 
-    def test_preserves_explicit_empty_strings_on_update(self):
+    def test_update_preserves_explicit_empty_strings_and_omits_missing_values(self):
         operation = EndpointOperation(
-            path="/api/controller/v2/job_templates/{id}/",
+            path="/api/controller/v2/workflow_job_templates/{id}/",
             method="PATCH",
-            fields=["description", "scm_branch", "limit", "name"],
+            fields=["description", "name", "scm_branch", "limit", "credential"],
             path_params=["id"],
         )
-        context = TransformContext(manager=None, session=None, cache={}, api_version="1", service="eda", operation="update")
+        context = TransformContext(manager=None, session=None, cache={}, api_version="2", service="controller", operation="update")
 
         path, payload = build_endpoint_request(
             operation,
-            {"id": 3, "description": "", "scm_branch": "", "limit": "", "name": ""},
+            {"id": 3, "description": "", "name": "", "scm_branch": "", "limit": "", "credential": None},
             context,
+            omit_empty_strings=True,
         )
 
         self.assertEqual(
             {"path": path, "payload": payload},
-            {
-                "path": "/api/controller/v2/job_templates/3/",
-                "payload": {"description": "", "scm_branch": "", "limit": "", "name": ""},
-            },
+            {"path": "/api/controller/v2/workflow_job_templates/3/", "payload": {"description": "", "name": "", "scm_branch": "", "limit": ""}},
         )
 
-    def test_preserves_explicit_empty_strings_on_create(self):
+    def test_omits_empty_strings_on_create_when_requested(self):
         operation = EndpointOperation(
-            path="/api/controller/v2/job_templates/",
+            path="/api/controller/v2/workflow_job_templates/",
             method="POST",
             fields=["description", "limit"],
         )
         context = TransformContext(manager=None, session=None, cache={}, api_version="2", service="controller", operation="create")
 
-        path, payload = build_endpoint_request(operation, {"description": "", "limit": ""}, context)
+        path, payload = build_endpoint_request(operation, {"description": "", "limit": ""}, context, omit_empty_strings=True)
 
-        self.assertEqual(path, "/api/controller/v2/job_templates/")
-        self.assertEqual(payload, {"description": "", "limit": ""})
+        self.assertEqual(path, "/api/controller/v2/workflow_job_templates/")
+        self.assertEqual(payload, {})
 
 
 if __name__ == "__main__":

@@ -1284,6 +1284,38 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         # ---- Controller config (license) ----
         if service == "controller" and resource == "config":
+            if path == "/api/controller/v2/config/subscriptions/" and self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                    return
+                if not isinstance(payload, dict):
+                    self._send_json(400, {"detail": "Expected a JSON object"})
+                    return
+                username_credentials = (
+                    payload.get("subscriptions_username") == "mock-subscription-user"
+                    and isinstance(payload.get("subscriptions_password"), str)
+                    and bool(payload["subscriptions_password"])
+                    and set(payload) == {"subscriptions_username", "subscriptions_password"}
+                )
+                is_client_credentials = (
+                    payload.get("subscriptions_client_id") == "mock-subscription-client"
+                    and isinstance(payload.get("subscriptions_client_secret"), str)
+                    and bool(payload["subscriptions_client_secret"])
+                    and set(payload) == {"subscriptions_client_id", "subscriptions_client_secret"}
+                )
+                if not username_credentials and not is_client_credentials:
+                    self._send_json(400, {"detail": "Unexpected mock subscription credentials"})
+                    return
+                self._send_json(
+                    200,
+                    [
+                        {"id": 8001, "product_name": "Ansible Automation Platform", "support_level": "Premium"},
+                        {"id": 8002, "product_name": "Other Product", "support_level": "Self-Support"},
+                    ],
+                )
+                return
             if self.command == "GET":
                 self._send_json(200, self.server._license_config)
                 return

@@ -80,6 +80,10 @@ class TransformContext:
         operation: Optional operation name ('create', 'update', etc.).
         include_nulls_for_update: When True and operation is 'update', transforms include null
             for optional fields so the API can clear them (enforced state only; present must not send nulls).
+        force_update: When True, skip idempotency short-circuiting for an intentional update such as
+            resetting a write-only secret that the API represents with an encrypted placeholder.
+        current_api_data: Raw API resource currently being transformed, used by idempotency checks
+            that need server-side foreign-key IDs after public fields are converted to names.
     """
 
     manager: "PlatformService"
@@ -89,6 +93,8 @@ class TransformContext:
     service: str = "gateway"
     operation: Optional[str] = None
     include_nulls_for_update: bool = False
+    force_update: bool = False
+    current_api_data: Optional[Dict[str, Any]] = None
 
 
 def build_endpoint_request(
@@ -98,6 +104,7 @@ def build_endpoint_request(
     *,
     path_values: Optional[Dict[str, Any]] = None,
     fields_to_null: Optional[Set[str]] = None,
+    omit_empty_strings: bool = False,
 ) -> tuple[str, Any]:
     """Build an endpoint path and body from API data and operation metadata.
 
@@ -112,6 +119,8 @@ def build_endpoint_request(
         path_values: Optional values from prior operations. These override
             values on ``api_data`` when resolving path parameters.
         fields_to_null: Fields that must be sent as explicit nulls.
+        omit_empty_strings: Omit empty strings outside updates. Explicit update
+            values, including empty strings, are retained.
 
     Returns:
         A tuple of the resolved endpoint path and request body.
@@ -144,6 +153,8 @@ def build_endpoint_request(
         if value is None:
             if field in null_fields or (operation_name == "update" and include_nulls_for_update and field in {"organization", "credential"}):
                 request_data[field] = None
+            continue
+        if omit_empty_strings and value == "" and operation_name != "update":
             continue
         request_data[field] = value
 
