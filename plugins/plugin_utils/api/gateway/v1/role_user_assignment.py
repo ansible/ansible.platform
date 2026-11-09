@@ -4,34 +4,31 @@ API v1 RoleUserAssignment dataclass and transform mixin.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
-logger = logging.getLogger(__name__)
-
 
 def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
-    """Resolve a name or id to an integer id.
-
-    Returns the integer ID, or None if resolution fails.
-    Exceptions are logged but not re-raised so callers can decide how to handle.
-    """
+    """Resolve a name or id to an integer ID, failing if a supplied name is missing."""
     if value is None:
         return None
     if str(value).isdigit():
         return int(value)
-    try:
-        result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
-        if result is None:
-            logger.debug("_resolve_fk: lookup_resource_id returned None for %s=%s in endpoint '%s'", lookup_field, value, endpoint)
-        return result
-    except Exception as exc:
-        logger.debug("_resolve_fk: Failed to resolve %s=%s in endpoint '%s': %s: %s", lookup_field, value, endpoint, type(exc).__name__, exc)
-        return None
+    if manager is None:
+        raise ValueError("Cannot resolve %s %r to an ID without an API client" % (lookup_field, value))
+    result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
+    if result is None:
+        raise ValueError("Resource '%s' %s=%s not found" % (endpoint, lookup_field, value))
+    return result
+
+
+def _is_resource_not_found(exc: ValueError) -> bool:
+    """Return whether an FK lookup failed only because that resource was absent."""
+    message = str(exc)
+    return message.startswith("Resource '") and message.endswith(" not found")
 
 
 @dataclass
@@ -65,21 +62,17 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
 
         # Resolve role_definition name -> id
         role_definition = getattr(ansible_instance, "role_definition", None)
-        if role_definition is not None and manager:
+        if role_definition is not None:
             resolved = _resolve_fk(manager, "role_definitions", "name", role_definition)
             if resolved is not None:
                 api_data["role_definition"] = resolved
-        elif role_definition is not None and str(role_definition).isdigit():
-            api_data["role_definition"] = int(role_definition)
 
         # Resolve user name -> id
         user = getattr(ansible_instance, "user", None)
-        if user is not None and manager:
+        if user is not None:
             resolved = _resolve_fk(manager, "users", "username", user)
             if resolved is not None:
                 api_data["user"] = resolved
-        elif user is not None and str(user).isdigit():
-            api_data["user"] = int(user)
 
         user_ansible_id = getattr(ansible_instance, "user_ansible_id", None)
         if user_ansible_id is not None:
@@ -106,7 +99,12 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
 
                 resolved = None
                 for endpoint in _entity_candidates:
-                    resolved = _resolve_fk(manager, endpoint, "name", object_id)
+                    try:
+                        resolved = _resolve_fk(manager, endpoint, "name", object_id)
+                    except ValueError as exc:
+                        if _is_resource_not_found(exc):
+                            continue
+                        raise
                     if resolved is not None:
                         api_data["object_id"] = resolved
                         break
