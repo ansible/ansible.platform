@@ -1225,6 +1225,7 @@ class DirectHTTPClient(BaseAPIClient):
                 context,
                 path_values=results,
                 fields_to_null=fields_to_null,
+                omit_empty_strings=True,
             )
             body_fields = list(request_data) if isinstance(request_data, dict) else "flattened body"
             logger.info("DirectHTTPClient: Built endpoint request path %s with fields %s", path, body_fields)
