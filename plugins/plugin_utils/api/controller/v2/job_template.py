@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
+from .execution_environment import lookup_execution_environment_id
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +193,7 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
 
         execution_environment = getattr(ansible_instance, "execution_environment", None)
         if execution_environment is not None:
-            api_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", execution_environment, **lookup_kwargs)
+            api_data["execution_environment"] = lookup_execution_environment_id(manager, execution_environment, organization_id, service=service)
 
         webhook_credential = getattr(ansible_instance, "webhook_credential", None)
         if webhook_credential is not None:
