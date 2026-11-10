@@ -1248,6 +1248,12 @@ class BaseResourceActionPlugin(ActionBase):
         argspec_fields = set(argspec.get("argument_spec", {}).keys())
         argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
         filtered = {k: v for k, v in manager_result.items() if k in argspec_resource_fields}
+        # The API returns these URI lists as whitespace-separated strings. Split
+        # them before Ansible's list validator can treat URI commas as separators.
+        for field in self._SPACE_SEPARATED_LIST_FIELDS:
+            value = filtered.get(field)
+            if isinstance(value, str):
+                filtered[field] = value.split() if value.strip() else None
         try:
             validation_result = self._validate_data(
                 {k: v for k, v in filtered.items() if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},

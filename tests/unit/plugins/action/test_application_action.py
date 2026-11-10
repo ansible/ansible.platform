@@ -1,7 +1,6 @@
 """Tests for application action result formatting."""
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ansible_collections.ansible.platform.plugins.action.application import ActionModule
@@ -20,8 +19,8 @@ class TestApplicationActionOutput(unittest.TestCase):
                 manager.execute.return_value = {
                     "id": 7,
                     "name": "example",
-                    "redirect_uris": "https://one.example/callback https://two.example/callback",
-                    "post_logout_redirect_uris": "https://one.example/logout https://two.example/logout",
+                    "redirect_uris": "https://one.example/callback?scope=read,write https://two.example/callback",
+                    "post_logout_redirect_uris": "https://one.example/logout?state=a,b https://two.example/logout",
                 }
                 prepared = {
                     "result": {},
@@ -38,21 +37,12 @@ class TestApplicationActionOutput(unittest.TestCase):
                     "manager": manager,
                 }
 
-                def validate_output(data, _argspec, _direction):
-                    # Ansible validation coerces the API string into a one-element list.
-                    normalized = dict(data)
-                    for field in ("redirect_uris", "post_logout_redirect_uris"):
-                        if field in normalized and isinstance(normalized[field], str):
-                            normalized[field] = [normalized[field]]
-                    return SimpleNamespace(validated_parameters=normalized)
-
                 with patch.object(action, "_prepare_action", return_value=prepared):
                     with patch.object(action, "_should_update", return_value=False):
-                        with patch.object(action, "_validate_data", side_effect=validate_output):
-                            result = action.run(task_vars={})
+                        result = action.run(task_vars={})
 
-                redirect_uris = ["https://one.example/callback", "https://two.example/callback"]
-                post_logout_uris = ["https://one.example/logout", "https://two.example/logout"]
+                redirect_uris = ["https://one.example/callback?scope=read,write", "https://two.example/callback"]
+                post_logout_uris = ["https://one.example/logout?state=a,b", "https://two.example/logout"]
                 self.assertFalse(result["changed"])
                 self.assertEqual(result["redirect_uris"], redirect_uris)
                 self.assertEqual(result["post_logout_redirect_uris"], post_logout_uris)
