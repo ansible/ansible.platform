@@ -13,3 +13,4 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "host"
     MODEL_CLASS = AnsibleHost
     _JSON_OBJECT_FIELDS = frozenset({"variables"})
+    _PRESERVE_RESULT_ID_FIELDS = frozenset({"instance_id"})

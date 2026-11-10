@@ -1248,6 +1248,12 @@ class BaseResourceActionPlugin(ActionBase):
         argspec_fields = set(argspec.get("argument_spec", {}).keys())
         argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
         filtered = {k: v for k, v in manager_result.items() if k in argspec_resource_fields}
+        # The API returns these URI lists as whitespace-separated strings. Split
+        # them before Ansible's list validator can treat URI commas as separators.
+        for field in self._SPACE_SEPARATED_LIST_FIELDS:
+            value = filtered.get(field)
+            if isinstance(value, str):
+                filtered[field] = value.split() if value.strip() else None
         try:
             validation_result = self._validate_data(
                 {k: v for k, v in filtered.items() if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},
@@ -1269,8 +1275,12 @@ class BaseResourceActionPlugin(ActionBase):
             if k not in strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id" and k not in self._PRESERVE_RESULT_ID_FIELDS)
         }
         for field in self._SPACE_SEPARATED_LIST_FIELDS:
-            if field in validated_output and isinstance(validated_output[field], str):
-                value = validated_output[field]
+            value = validated_output.get(field)
+            if isinstance(value, list):
+                match value:
+                    case [single_value] if isinstance(single_value, str):
+                        value = single_value
+            if isinstance(value, str):
                 validated_output[field] = value.split() if value.strip() else None
 
         extra_flat = {k: manager_result[k] for k in self._EXTRA_RETURN_FIELDS if k in manager_result and manager_result[k] is not None}
@@ -1357,7 +1367,7 @@ class BaseResourceActionPlugin(ActionBase):
                                     **extra_flat,
                                     "changed": False,
                                     "failed": False,
-                                    self.MODULE_NAME: find_result,
+                                    self.MODULE_NAME: flat_fields,
                                     "id": find_result.get("id"),
                                 }
                             )
@@ -1430,7 +1440,7 @@ class BaseResourceActionPlugin(ActionBase):
                                 **extra_flat,
                                 "changed": False,
                                 "failed": False,
-                                self.MODULE_NAME: find_result,
+                                self.MODULE_NAME: flat_fields,
                             }
                         )
                         return result

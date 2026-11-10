@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.authenticator_user import ActionModule as AuthenticatorUserAction
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.action.host import ActionModule as HostAction
 from ansible_collections.ansible.platform.plugins.action.role_team_assignment import ActionModule as RoleTeamAssignmentAction
 from ansible_collections.ansible.platform.plugins.action.role_user_assignment import ActionModule as RoleUserAssignmentAction
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.authenticator_user import AnsibleAuthenticatorUser
@@ -159,6 +160,29 @@ class TestActionPreparation(unittest.TestCase):
 
         self.assertEqual(resource_output, {"id": 7, "name": "raw-name", "labels": ["one", "two"]})
         self.assertEqual(flat_extras, {"client_id": "client-123"})
+
+    def test_unchanged_host_result_preserves_instance_id(self):
+        action = HostAction.__new__(HostAction)
+        action._task = MagicMock()
+        action._display = MagicMock()
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 7, "name": "host-a", "inventory": 3, "instance_id": "i-abc123"}
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {"type": "str"}, "inventory": {"type": "str"}, "instance_id": {"type": "str"}}},
+            "validated_params": {"name": "host-a", "inventory": "3", "state": "present"},
+            "resource_data": {"name": "host-a", "inventory": "3"},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_should_update", return_value=False):
+                result = action.run(task_vars={})
+
+        self.assertFalse(result["changed"])
+        self.assertEqual(result["instance_id"], "i-abc123")
+        self.assertEqual(result["host"]["instance_id"], "i-abc123")
 
     def test_run_dispatches_to_build_resource_override(self):
         action = OverrideResourceAction.__new__(OverrideResourceAction)

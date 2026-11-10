@@ -65,10 +65,13 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
         organization = getattr(ansible_instance, "organization", None)
         if organization is not None:
             manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
-            if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization, service="controller")
+            organization_value = str(organization).strip()
+            if organization_value.isascii() and organization_value.isdecimal():
+                api_data["organization"] = int(organization_value)
             else:
-                api_data["organization"] = int(organization) if organization is not None else None
+                if manager is None:
+                    raise ValueError("Cannot resolve organization name without a manager")
+                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization, service="controller", numeric_is_id=False)
 
         for field in ("description", "kind", "host_filter", "prevent_instance_group_fallback"):
             val = getattr(ansible_instance, field, None)
