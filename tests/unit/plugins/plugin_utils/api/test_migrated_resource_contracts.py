@@ -324,7 +324,13 @@ class TestMigratedFindRequestContracts(unittest.TestCase):
             for client_mode in ("direct", "persistent"):
                 with self.subTest(module=module_name, client=client_mode):
                     client = _client(client_mode)
-                    client._make_request.return_value = _response(response_data, direct=client_mode == "direct")
+                    if module_name == "eda_credential_input_source":
+                        client._make_request.side_effect = [
+                            _response(response_data, direct=client_mode == "direct"),
+                            _response(api_resource, direct=client_mode == "direct"),
+                        ]
+                    else:
+                        client._make_request.return_value = _response(response_data, direct=client_mode == "direct")
 
                     result = client.execute("find", module_name, dict(ansible_data))
 

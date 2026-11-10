@@ -13,7 +13,6 @@ import time
 from json import dumps, loads
 
 from ansible.module_utils.basic import AnsibleModule, env_fallback
-from ansible.module_utils.six import string_types
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 
 # For Later
@@ -148,7 +147,7 @@ class AAPModule(AnsibleModule):
                     self.oauth_token = self.params.get("gateway_token")["token"]
                 else:
                     self.fail_json(msg="The provided dict in gateway_token did not properly contain the token entry")
-            elif isinstance(token_param, string_types):
+            elif isinstance(token_param, str):
                 self.oauth_token = self.params.get("gateway_token")
             else:
                 error_msg = "The provided gateway_token type was not valid ({0}). Valid options are str or dict.".format(type(token_param).__name__)
