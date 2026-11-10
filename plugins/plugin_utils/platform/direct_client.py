@@ -929,6 +929,21 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
+        update_op = operations.get("update")
+        missing_required_fields = []
+        if update_op:
+            for field in update_op.required_fields:
+                current_value = current_data.get(field) if current_data else None
+                if current_data and hasattr(mixin_class, "get_update_value_from_current_data"):
+                    current_value = mixin_class.get_update_value_from_current_data(field, current_data)
+                if getattr(api_data, field, None) is None:
+                    if current_value is None:
+                        missing_required_fields.append(field)
+                    else:
+                        setattr(api_data, field, current_value)
+        if missing_required_fields:
+            missing = ", ".join(sorted(missing_required_fields))
+            raise ValueError("Cannot update resource: required update field(s) unavailable from task and current resource data: %s" % missing)
 
         fields_to_null = set()
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
@@ -939,7 +954,6 @@ class DirectHTTPClient(BaseAPIClient):
         # Timestamps (modified, created, url) change on every PATCH so they
         # must be excluded from the comparison.
         _skip_for_idempotency = {"modified", "created", "url", "state"}
-        update_op = operations.get("update")
         if update_op and update_op.fields and current_data and not context.force_update:
             would_update = {}
             json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())

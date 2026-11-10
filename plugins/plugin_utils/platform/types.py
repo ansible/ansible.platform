@@ -5,6 +5,7 @@ the framework.
 """
 
 from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ class EndpointOperation:
             ('create', 'update', 'delete', or None for always)
         depends_on: Optional name of operation this depends on
         order: Execution order (lower runs first)
+        required_fields: Update fields that must be included even when not explicitly set
 
     Examples:
         >>> # Main create operation
@@ -59,6 +61,7 @@ class EndpointOperation:
     depends_on: Optional[str] = None
     order: int = 0
     flatten_body: bool = False  # If True, send dict field value as the body directly (for singletons)
+    required_fields: Set[str] = dataclass_field(default_factory=set)
 
 
 @dataclass
@@ -116,8 +119,8 @@ def build_endpoint_request(
         path_values: Optional values from prior operations. These override
             values on ``api_data`` when resolving path parameters.
         fields_to_null: Fields that must be sent as explicit nulls.
-        omit_empty_strings: Omit empty strings outside updates, except update
-            fields that support clearing. Omitted fields remain ``None``.
+        omit_empty_strings: Omit empty strings outside updates. Explicit update
+            values, including empty strings, are retained.
 
     Returns:
         A tuple of the resolved endpoint path and request body.
@@ -151,7 +154,7 @@ def build_endpoint_request(
             if field in null_fields or (operation_name == "update" and include_nulls_for_update and field in {"organization", "credential"}):
                 request_data[field] = None
             continue
-        if omit_empty_strings and value == "" and not (operation_name == "update" and field in {"description", "scm_branch", "limit"}):
+        if omit_empty_strings and value == "" and operation_name != "update":
             continue
         request_data[field] = value
 

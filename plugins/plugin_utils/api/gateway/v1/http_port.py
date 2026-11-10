@@ -92,6 +92,7 @@ class HttpPortTransformMixin_v1(BaseTransformMixin):
                 path_params=["id"],
                 required_for="update",
                 order=1,
+                required_fields={"number"},
             ),
             "delete": EndpointOperation(
                 path="/api/gateway/v1/http_ports/{id}/", method="DELETE", fields=[], path_params=["id"], required_for="delete", order=1
