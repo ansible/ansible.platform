@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - application - return space-separated redirect URI values as separate list items.
+  - inventory - resolve Unicode digit organization names as names instead of parsing them as IDs.
+...

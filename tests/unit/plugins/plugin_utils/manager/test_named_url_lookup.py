@@ -7,6 +7,8 @@ import unittest
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
+from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory import AnsibleInventory
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
@@ -95,6 +97,17 @@ class TestResourceLookup(unittest.TestCase):
             with self.subTest(client=type(client).__name__):
                 self.assertEqual(_lookup(client, value="123", numeric_is_id=False), 71)
                 self.assertEqual(_request_filters(client, _request_calls(client)[0]), {"name": ["123"]})
+
+    def test_inventory_organization_named_with_unicode_digit_resolves_for_both_clients(self):
+        for client in (_service(), _direct_client()):
+            _set_responses(client, _response(body={"count": 1, "results": [{"id": 42, "name": "²"}]}))
+            ansible = AnsibleInventory(name="inv", organization="²")
+
+            with self.subTest(client=type(client).__name__):
+                api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": client})
+
+                self.assertEqual(api.organization, 42)
+                self.assertEqual(_request_filters(client, _request_calls(client)[0]), {"name": ["²"]})
 
     def test_organization_name_lookup_uses_requested_service(self):
         for client in (_service(), _direct_client()):

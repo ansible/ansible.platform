@@ -64,12 +64,41 @@ class TestInventoryTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventory(name="inv", organization="Default")
         api = InventoryTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller", numeric_is_id=False)
         self.assertEqual(api.organization, 42)
 
     def test_create_with_org_id_skips_lookup(self):
         ansible = AnsibleInventory(name="inv", organization="42")
         api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+        self.assertEqual(api.organization, 42)
+
+    def test_create_with_signed_numeric_organization_name_resolves_via_manager(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+        ansible = AnsibleInventory(name="inv", organization="+42")
+
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "+42", service="controller", numeric_is_id=False)
+        self.assertEqual(api.organization, 42)
+
+    def test_create_with_unicode_digit_name_resolves_organization(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+        ansible = AnsibleInventory(name="inv", organization="²")
+
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "²", service="controller", numeric_is_id=False)
+        self.assertEqual(api.organization, 42)
+
+    def test_create_with_numeric_organization_id_does_not_lookup(self):
+        mock_manager = MagicMock()
+        ansible = AnsibleInventory(name="inv", organization="42")
+
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_not_called()
         self.assertEqual(api.organization, 42)
 
     def test_org_lookup_uses_controller_service(self):
