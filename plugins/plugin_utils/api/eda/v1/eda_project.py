@@ -128,6 +128,11 @@ class APIEdaProject_v1(BaseTransformMixin):
 class EdaProjectTransformMixin_v1(BaseTransformMixin):
     """Transform mixin for EDA Project API v1."""
 
+    # Project name filters can return partial matches across multiple pages.
+    # Use the shared pagination path before applying exact-name selection.
+    find_list_requires_all_results = True
+    find_list_max_objects = 100000
+
     @classmethod
     def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APIEdaProject_v1":
         """Create API instance from Ansible dataclass.

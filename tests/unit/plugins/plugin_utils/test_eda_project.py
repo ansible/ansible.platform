@@ -48,6 +48,10 @@ class TestEdaProjectTransform(unittest.TestCase):
     def test_project_find_list_does_not_send_unsupported_organization_filter(self):
         self.assertEqual(EdaProjectTransformMixin_v1.get_find_list_query_params({"organization_id": 901}), {})
 
+    def test_project_find_uses_all_paginated_results(self):
+        self.assertTrue(EdaProjectTransformMixin_v1.find_list_requires_all_results)
+        self.assertEqual(EdaProjectTransformMixin_v1.find_list_max_objects, 100000)
+
     def test_select_find_result_prefers_exact_name_from_partial_matches(self):
         result = EdaProjectTransformMixin_v1.select_find_result(
             {
