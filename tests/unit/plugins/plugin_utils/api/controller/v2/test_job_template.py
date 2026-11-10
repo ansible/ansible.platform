@@ -71,6 +71,62 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
         for lookup_call in manager.lookup_resource_id.call_args_list:
             self.assertEqual(lookup_call.kwargs.get("service"), "controller")
 
+    def test_execution_environment_lookup_prefers_organization_match_over_global(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {
+            "results": [
+                {"id": 20, "name": "Shared EE", "organization": None},
+                {"id": 21, "name": "Shared EE", "organization": {"id": 9}},
+            ]
+        }
+        instance = AnsibleJobTemplate(name="Ping", organization="9", execution_environment="Shared EE")
+
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
+        self.assertEqual(api_data.execution_environment, 21)
+        manager.search_api.assert_called_once_with(
+            "execution_environments",
+            query_params={"name": "Shared EE"},
+            return_all=True,
+            service="controller",
+        )
+
+    def test_execution_environment_lookup_falls_back_to_global(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {"results": [{"id": 20, "name": "Shared EE", "organization": None}]}
+        instance = AnsibleJobTemplate(name="Ping", organization="9", execution_environment="Shared EE")
+
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
+        self.assertEqual(api_data.execution_environment, 20)
+
+    def test_ambiguous_execution_environments_in_organization_fail_clearly(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {
+            "results": [
+                {"id": 21, "name": "Shared EE", "organization": 9},
+                {"id": 22, "name": "Shared EE", "organization": 9},
+                {"id": 20, "name": "Shared EE", "organization": None},
+            ]
+        }
+        instance = AnsibleJobTemplate(name="Ping", organization="9", execution_environment="Shared EE")
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources in organization 9"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
+    def test_ambiguous_global_execution_environments_fail_clearly(self):
+        manager = MagicMock()
+        manager.search_api.return_value = {
+            "results": [
+                {"id": 20, "name": "Shared EE", "organization": None},
+                {"id": 23, "name": "Shared EE", "organization": None},
+            ]
+        }
+        instance = AnsibleJobTemplate(name="Ping", organization="9", execution_environment="Shared EE")
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources in global scope"):
+            JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
 
 class TestFromAnsibleDataUpdate(unittest.TestCase):
     def test_omitted_foreign_keys_are_omitted_on_update(self):

@@ -200,6 +200,7 @@ class TestJobLaunchAction(unittest.TestCase):
             ("credentials", "name", "AWS"): 20,
             ("execution_environments", "name", "My EE"): 30,
         }.get((ep, field, val), 999)
+        action._client.search_api.return_value = {"organization": None}
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
@@ -212,6 +213,74 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(call_payload["inventory"], 10)
         self.assertEqual(call_payload["credentials"], [20])
         self.assertEqual(call_payload["execution_environment"], 30)
+
+    def test_execution_environment_lookup_prefers_organization_then_falls_back_to_global(self):
+        scenarios = (
+            (
+                [
+                    {"id": 20, "name": "Shared EE", "organization": None},
+                    {"id": 21, "name": "Shared EE", "organization": {"id": 9}},
+                ],
+                21,
+            ),
+            ([{"id": 20, "name": "Shared EE", "organization": None}], 20),
+        )
+
+        for environments, expected_id in scenarios:
+            with self.subTest(expected_id=expected_id):
+                action = self._make_action(
+                    {
+                        "name": "Demo",
+                        "execution_environment": "Shared EE",
+                        "wait": False,
+                    }
+                )
+                self._patch_prepare(action)
+                action._client.lookup_resource_id.return_value = 42
+                action._client.search_api.side_effect = [{"organization": 9}, {"results": environments}]
+                action._client.launch_resource.return_value = {"id": 77, "status": "pending"}
+
+                result = action.run(task_vars={})
+
+                self.assertFalse(result.get("failed", False))
+                self.assertEqual(action._client.launch_resource.call_args.args[1]["execution_environment"], expected_id)
+                self.assertEqual(
+                    action._client.search_api.call_args_list[1].kwargs,
+                    {
+                        "query_params": {"name": "Shared EE"},
+                        "return_all": True,
+                        "service": "controller",
+                    },
+                )
+                self.assertEqual(action._client.search_api.call_args_list[1].args, ("execution_environments",))
+                action._client.lookup_resource_id.assert_called_once_with("job_templates", "name", "Demo", service="controller", require_unique=True)
+
+    def test_ambiguous_scoped_execution_environments_fail_before_launch(self):
+        action = self._make_action(
+            {
+                "name": "Demo",
+                "execution_environment": "Shared EE",
+                "wait": False,
+            }
+        )
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 42
+        action._client.search_api.side_effect = [
+            {"organization": 9},
+            {
+                "results": [
+                    {"id": 21, "name": "Shared EE", "organization": 9},
+                    {"id": 22, "name": "Shared EE", "organization": 9},
+                    {"id": 20, "name": "Shared EE", "organization": None},
+                ]
+            },
+        ]
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("matched multiple resources in organization 9", result["msg"])
+        action._client.launch_resource.assert_not_called()
 
     def test_numeric_job_template_id_keeps_organization_scope_for_named_fks(self):
         action = self._make_action(
