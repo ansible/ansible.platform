@@ -46,6 +46,15 @@ class TestEdaCredentialTypeDirectClientPayload(unittest.TestCase):
             ("/api/eda/v1/credential-types/42/test/", {"inputs": {"username": "demo"}}),
         )
 
+    def test_test_operation_omits_missing_inputs_like_the_legacy_action(self):
+        test_request = EdaCredentialTypeTransformMixin_v1.to_test_request(42, None)
+        operation = EdaCredentialTypeTransformMixin_v1.get_endpoint_operations()["test"]
+
+        self.assertEqual(
+            build_endpoint_request(operation, test_request),
+            ("/api/eda/v1/credential-types/42/test/", {}),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

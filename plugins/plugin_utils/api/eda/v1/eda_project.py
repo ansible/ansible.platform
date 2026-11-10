@@ -248,6 +248,17 @@ class EdaProjectTransformMixin_v1(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
+        """Select the exact project name from the API's name-filtered results."""
+        results = list_result.get("results", [])
+        matches = [item for item in results if str(item.get(lookup_field)) == str(lookup_value)]
+        if not matches:
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} not found")
+        if len(matches) > 1:
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
+        return matches[0]
+
+    @classmethod
     def get_find_list_query_params(cls, api_data) -> Dict[str, Any]:
         """Use the EDA project list contract, which looks projects up by name."""
         return {}

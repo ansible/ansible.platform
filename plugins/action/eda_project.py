@@ -106,27 +106,7 @@ class ActionModule(BaseResourceActionPlugin):
             find_data = {"id": int(str(name).strip()), "name": str(name)}
             return self._execute_find(manager, find_data)
 
-        try:
-            project_id = manager.lookup_resource_id(
-                "projects",
-                "name",
-                str(name),
-                service=_SERVICE,
-                require_unique=True,
-            )
-        except Exception as exc:
-            if self._is_resource_not_found(exc):
-                return None
-            raise
-
-        if project_id is None:
-            return None
-        # The ID came from the organization-scoped list lookup above. Avoid
-        # repeating the organization constraint on the detail GET: some EDA
-        # project responses omit organization_id, which makes generic
-        # composite-key validation reject a correctly scoped result.
-        find_data = {"id": project_id, "name": str(name)}
-        return self._execute_find(manager, find_data)
+        return self._execute_find(manager, {"name": str(name)})
 
     def _execute_find(self, manager: Any, find_data: dict) -> Optional[dict]:
         """Return a project found by ID, treating only missing resources as absent."""
@@ -189,10 +169,12 @@ class ActionModule(BaseResourceActionPlugin):
 
     def _should_update(self, desired_data, current_data):
         """Compare EDA foreign keys by ID so names and numeric IDs are equivalent."""
-        if desired_data.get("new_name"):
-            return True
-
+        new_name = desired_data.get("new_name")
         comparable_data = dict(desired_data)
+        if new_name and str(new_name) != str(current_data.get("name")):
+            return True
+        if new_name:
+            comparable_data.pop("new_name", None)
         manager = getattr(self, "_client", None)
         fk_fields = {
             "credential": ("eda-credentials", "eda"),

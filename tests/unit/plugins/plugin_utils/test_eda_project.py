@@ -48,6 +48,29 @@ class TestEdaProjectTransform(unittest.TestCase):
     def test_project_find_list_does_not_send_unsupported_organization_filter(self):
         self.assertEqual(EdaProjectTransformMixin_v1.get_find_list_query_params({"organization_id": 901}), {})
 
+    def test_select_find_result_prefers_exact_name_from_partial_matches(self):
+        result = EdaProjectTransformMixin_v1.select_find_result(
+            {
+                "count": 2,
+                "results": [
+                    {"id": 1, "name": "my-project_test_partial"},
+                    {"id": 2, "name": "my-project"},
+                ],
+            },
+            "name",
+            "my-project",
+        )
+
+        self.assertEqual(result["id"], 2)
+
+    def test_select_find_result_rejects_missing_exact_name(self):
+        with self.assertRaisesRegex(ValueError, "name=my-project not found"):
+            EdaProjectTransformMixin_v1.select_find_result(
+                {"count": 1, "results": [{"id": 1, "name": "my-project_test_partial"}]},
+                "name",
+                "my-project",
+            )
+
     def test_from_api_hydrates_credential_and_organization_names(self):
         manager = MagicMock()
         manager.lookup_organization_names.return_value = ["Default"]

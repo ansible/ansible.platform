@@ -1164,7 +1164,7 @@ class BaseResourceActionPlugin(ActionBase):
           desired is a non-numeric str (a name) and current is a digit str
           (an int FK that from_api converted to str), the comparison is
           skipped — e.g. authenticator='my-auth' vs '3100'.
-        - new_name: always triggers an update (it's a rename operation).
+        - new_name: triggers an update only when it differs from the current name.
         - Dict/list fields are compared structurally, regardless of concrete
           container subclass.
         - Resource-specific JSON object fields compare dictionaries and JSON
@@ -1172,7 +1172,8 @@ class BaseResourceActionPlugin(ActionBase):
         - Explicit nulls are ignored by default; composite import actions can
           opt in to treating a null as a change when the current value is set.
         """
-        if desired_data.get("new_name"):
+        new_name = desired_data.get("new_name")
+        if new_name and str(new_name) != str(current_data.get("name")):
             return True
 
         skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS | self._WRITE_ONLY_FIELDS
