@@ -221,7 +221,7 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
         )
 
     def test_platform_service_partial_update_omits_unset_associations(self):
-        service, _ = self._update_payload(enforced=False, current_image="quay.io/example/old-ee")
+        service = self._update_payload(enforced=False, current_image="quay.io/example/old-ee")[0]
 
         self.assertEqual(service._make_request.call_args.kwargs["json"], {"name": "ee", "image": "quay.io/example/ee"})
 
