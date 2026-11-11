@@ -10,6 +10,7 @@ __metaclass__ = type
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.schedule import AnsibleSchedule
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.schedule import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
 
 _ASSOC_MAP = {
     "credentials": ("credentials", "name"),
@@ -53,10 +54,19 @@ class ActionModule(BaseResourceActionPlugin):
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(
-                    BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=self._task.check_mode
-                ):
-                    changed = True
+                if desired is None:
+                    continue
+                try:
+                    if manager.manage_associations(
+                        BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=self._task.check_mode
+                    ):
+                        changed = True
+                except (ValueError, ValidationError) as exc:
+                    not_found_prefix = "Resource '%s' with %s=" % (lookup_endpoint, lookup_field)
+                    if self._task.check_mode and str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found"):
+                        changed = True
+                    else:
+                        raise
         except Exception as exc:
             result["failed"] = True
             result["msg"] = "Failed to reconcile associations: %s" % exc

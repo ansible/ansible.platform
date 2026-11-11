@@ -7,6 +7,7 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.action.inventory import ActionModule as InventoryAction
 from ansible_collections.ansible.platform.plugins.action.inventory_source import ActionModule as InventorySourceAction
 from ansible_collections.ansible.platform.plugins.action.schedule import ActionModule as ScheduleAction
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
 
 
 @pytest.mark.parametrize(
@@ -45,3 +46,47 @@ def test_read_only_state_does_not_reconcile_associations(action_type):
 
     assert result["changed"] is False
     action._client.manage_associations.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("error_type", [ValueError, ValidationError])
+def test_schedule_missing_association_is_a_potential_change_only_in_check_mode(check_mode, error_type):
+    """Allow missing dry-run dependencies while still comparing other associations."""
+    action = ScheduleAction.__new__(ScheduleAction)
+    action._task = MagicMock()
+    action._task.args = {"name": "Weekly", "credentials": ["Missing"], "labels": ["Existing"], "instance_groups": []}
+    action._task.check_mode = check_mode
+    action._client = MagicMock()
+    action._client.manage_associations.side_effect = [error_type("Resource 'credentials' with name=Missing not found"), False, False]
+    with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "id": 7}):
+        result = action.run(task_vars={})
+
+    assert result.get("failed", False) is not check_mode
+    assert result["changed"] is check_mode
+    calls = action._client.manage_associations.call_args_list
+    assert [call.args[2] for call in calls] == (["credentials", "labels", "instance_groups"] if check_mode else ["credentials"])
+    assert all(call.kwargs["check_mode"] is check_mode for call in calls)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("Resource 'credentials' with name=Duplicate matched multiple resources; provide additional filters"),
+        RuntimeError("Connection failed"),
+        ValidationError("Resource 'schedules' with name=Weekly not found"),
+    ],
+)
+def test_schedule_check_mode_preserves_other_association_errors(error):
+    """Keep ambiguity, connectivity, and unrelated missing-resource errors visible."""
+    action = ScheduleAction.__new__(ScheduleAction)
+    action._task = MagicMock()
+    action._task.args = {"name": "Weekly", "credentials": ["resource"]}
+    action._task.check_mode = True
+    action._client = MagicMock()
+    action._client.manage_associations.side_effect = error
+    with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "id": 7}):
+        result = action.run(task_vars={})
+
+    assert result["failed"]
+    assert not result["changed"]
+    assert str(error) in result["msg"]
