@@ -21,6 +21,7 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential_type import AnsibleEdaCredentialType
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_type import EdaCredentialTypeTransformMixin_v1
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import format_error_response_body
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
@@ -34,7 +35,6 @@ class ActionModule(BaseResourceActionPlugin):
     _WRITE_ONLY_FIELDS = frozenset({"test_inputs", "test_metadata"})
     _NO_LOG_FIELDS = frozenset({"test_inputs", "test_metadata"})
     _RENAME_IDENTITY_FIELDS = ("inputs", "injectors")
-    _REQUIRED_IF = [["state", "test", ["test_inputs"]]]
 
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
         """Find credential types by name and recognize verified completed renames.
@@ -165,10 +165,11 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
 
             name = validated_params.get("name")
-            test_inputs = write_only_data.get("test_inputs")
+            # Legacy ansible.eda behavior lets the API validate omitted or
+            # empty test inputs after resolving the credential type.  Keep
+            # that order so missing inputs do not mask a not-found error.
+            test_inputs = write_only_data.get("test_inputs") or None
             test_metadata = write_only_data.get("test_metadata")
-            if not isinstance(test_inputs, dict) or not test_inputs:
-                raise AnsibleError("test_inputs must be provided and non-empty when state=test")
 
             # Find the credential type by name
             try:
@@ -188,12 +189,17 @@ class ActionModule(BaseResourceActionPlugin):
             credential_type_id = find_result["id"]
 
             if self._task.check_mode:
+                test_result = {
+                    "success": True,
+                    "message": "Check mode - test would be performed",
+                    "details": {"check_mode": True},
+                }
                 result.update(
                     {
                         "changed": False,
                         "failed": False,
                         self.MODULE_NAME: find_result,
-                        "test_result": {"msg": "check mode, test not executed"},
+                        "test_result": test_result,
                     }
                 )
                 return result
@@ -234,7 +240,11 @@ class ActionModule(BaseResourceActionPlugin):
 
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
-            result["msg"] = str(e)
+            error_message = str(e)
+            response_body = format_error_response_body(e)
+            if response_body and response_body not in error_message:
+                error_message = "%s: %s" % (error_message, response_body)
+            result["msg"] = error_message
             if self._display.verbosity >= 3:
                 result["exception"] = traceback.format_exc()
 

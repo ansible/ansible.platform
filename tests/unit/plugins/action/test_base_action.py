@@ -100,6 +100,28 @@ class TestActionPreparation(unittest.TestCase):
 
         return result, manager
 
+    def test_should_update_repeated_rename_is_idempotent(self):
+        """A rename to the current name does not force another update."""
+        action = self._make_action()
+
+        self.assertFalse(
+            action._should_update(
+                {"name": "resource", "new_name": "resource", "value": 3},
+                {"name": "resource", "value": 3},
+            )
+        )
+
+    def test_should_update_detects_changed_rename(self):
+        """A rename to a different name still forces an update."""
+        action = self._make_action()
+
+        self.assertTrue(
+            action._should_update(
+                {"name": "resource", "new_name": "renamed-resource", "value": 3},
+                {"name": "resource", "value": 3},
+            )
+        )
+
     def test_prepare_action_reuses_documentation_validation_and_manager(self):
         action = self._make_action()
         manager = MagicMock()

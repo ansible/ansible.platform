@@ -92,6 +92,22 @@ class TestEdaProjectAction(unittest.TestCase):
                         with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
                             return action.run(task_vars={})
 
+    def test_project_lookup_uses_exact_name_find(self):
+        """Use the SDK find path so partial API matches do not get reused."""
+        action = self._make_action()
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 100, "name": "my-project"}
+
+        result = action._find_project(manager, "my-project")
+
+        self.assertEqual(result, {"id": 100, "name": "my-project"})
+        manager.lookup_resource_id.assert_not_called()
+        manager.execute.assert_called_once_with(
+            operation="find",
+            module_name="eda_project",
+            ansible_data={"name": "my-project"},
+        )
+
     # ---- Create tests ----
 
     def test_create_new_project(self):
@@ -121,9 +137,9 @@ class TestEdaProjectAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 100)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
-        self.assertEqual(calls, ["create"])
+        self.assertEqual(calls, ["find", "create"])
         manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="eda", require_unique=True)
-        manager.lookup_resource_id.assert_any_call("projects", "name", "my-project", service="eda", require_unique=True)
+        self.assertEqual(manager.lookup_resource_id.call_count, 1)
 
     def test_create_without_url_fails(self):
         """Creating a project without url raises an error."""
@@ -252,6 +268,19 @@ class TestEdaProjectAction(unittest.TestCase):
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertIn("update", calls)
 
+    def test_repeated_rename_is_idempotent(self):
+        """Do not update when new_name already matches the current name."""
+        action = self._make_action()
+        action._client = MagicMock()
+        action._resolved_fk_ids = {}
+
+        self.assertFalse(
+            action._should_update(
+                {"name": "my-project_new", "new_name": "my-project_new", "description": "same desc"},
+                {"name": "my-project_new", "description": "same desc"},
+            )
+        )
+
     def test_no_update_when_idempotent(self):
         """No update when existing project matches desired state."""
         action = self._make_action()
@@ -362,7 +391,7 @@ class TestEdaProjectAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
-        manager.lookup_resource_id.assert_called_once_with("projects", "name", "my-project", service="eda", require_unique=True)
+        manager.lookup_resource_id.assert_not_called()
         manager.search_api.assert_called_once_with("config", service="eda")
         self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find", "delete"])
 
@@ -453,8 +482,8 @@ class TestEdaProjectAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
-        manager.lookup_resource_id.assert_called_once_with("projects", "name", "my-project", service="eda", require_unique=True)
-        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["create"])
+        manager.lookup_resource_id.assert_not_called()
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find", "create"])
 
     def test_comparison_ignores_organization_when_endpoint_is_unsupported(self):
         action = self._make_action()

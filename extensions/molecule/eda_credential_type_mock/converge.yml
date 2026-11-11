@@ -207,7 +207,9 @@
       ansible.builtin.assert:
         that:
           - test_check_mode_result is not changed
-          - "'check mode' in test_check_mode_result.test_result.msg"
+          - test_check_mode_result.test_result.success
+          - test_check_mode_result.test_result.message == "Check mode - test would be performed"
+          - test_check_mode_result.test_result.details.check_mode
 
     - name: Delete the credential type
       ansible.platform.eda_credential_type:
