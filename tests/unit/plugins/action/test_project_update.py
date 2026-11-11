@@ -146,8 +146,25 @@ class TestProjectUpdateAction(unittest.TestCase):
                 )
 
     @patch.object(ActionModule, "_prepare_action")
+    def test_negative_timeout_fails_before_api_calls(self, mock_prepare):
+        for check_mode in (False, True):
+            for wait in (False, True):
+                for timeout in (-1, -5):
+                    with self.subTest(check_mode=check_mode, wait=wait, timeout=timeout):
+                        manager = MagicMock()
+                        mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=wait, timeout=timeout)
+
+                        result = _make_module(check_mode=check_mode).run(task_vars={})
+
+                        self.assertEqual(result, {"changed": False, "failed": True, "msg": "timeout must be 0 or greater"})
+                        manager.lookup_resource_id.assert_not_called()
+                        manager.search_api.assert_not_called()
+                        manager.launch_resource.assert_not_called()
+                        manager.wait_for_completion.assert_not_called()
+
+    @patch.object(ActionModule, "_prepare_action")
     def test_wait_maps_unlimited_and_explicit_timeouts(self, mock_prepare):
-        for timeout, expected in ((None, -1), (0, -1), (-5, -5.0), (30, 30.0)):
+        for timeout, expected in ((None, -1.0), (0, -1.0), (30, 30.0)):
             with self.subTest(timeout=timeout):
                 manager = MagicMock()
                 manager.lookup_resource_id.return_value = 42
@@ -160,6 +177,7 @@ class TestProjectUpdateAction(unittest.TestCase):
 
                 self.assertFalse(result["failed"])
                 self.assertEqual(manager.wait_for_completion.call_args.kwargs["timeout"], expected)
+                self.assertIsInstance(manager.wait_for_completion.call_args.kwargs["timeout"], float)
 
     @patch.object(ActionModule, "_prepare_action")
     def test_canceled_update_is_failed(self, mock_prepare):

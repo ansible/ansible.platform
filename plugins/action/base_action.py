@@ -359,6 +359,19 @@ class BaseResourceActionPlugin(ActionBase):
         """
 
     @staticmethod
+    def _set_job_timing(result: dict, job_data: dict) -> None:
+        """Populate Controller timing fields with Ansible's boolean finished flag.
+
+        Args:
+            result: Action result to update in place.
+            job_data: Controller job response containing timing fields.
+        """
+        for field in ("elapsed", "started"):
+            result[field] = job_data.get(field)
+        result["finished"] = bool(job_data.get("finished"))
+        result["finished_at"] = job_data.get("finished")
+
+    @staticmethod
     def _is_resource_not_found(exc: Exception) -> bool:
         """Return whether a find error represents an ordinary missing resource.
 

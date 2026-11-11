@@ -56,6 +56,7 @@ options:
       - Maximum seconds to wait before aborting (client-side).
       - Only used when C(wait=true).
       - When omitted or zero, wait indefinitely for the update to complete.
+      - Negative values are not supported.
     type: int
 
 seealso:
