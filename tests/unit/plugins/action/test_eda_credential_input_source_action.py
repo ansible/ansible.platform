@@ -327,6 +327,26 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
                 self.assertEqual(current.metadata, desired["metadata"])
                 self.assertFalse(action._should_update(desired, vars(current)))
 
+    def test_description_comparison_skips_equal_empty_value_and_keeps_changed_value(self):
+        """An empty stored description is compared as a value, not as missing data."""
+        action = ActionModule.__new__(ActionModule)
+        desired = {
+            "input_field_name": "password",
+            "target_credential": "target",
+            "source_credential": "source",
+            "description": "",
+        }
+        current = {
+            "input_field_name": "password",
+            "target_credential": 10,
+            "source_credential": 20,
+            "description": "",
+        }
+
+        self.assertFalse(action._should_update(desired, current))
+        desired["description"] = "Updated description"
+        self.assertTrue(action._should_update(desired, current))
+
     def test_from_api_missing_optional_fields(self):
         """from_api handles missing optional fields gracefully."""
         context = self._make_context()

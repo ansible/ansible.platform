@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    resource updates - preserve explicitly supplied empty-string values in PATCH
+    requests and include Controller-required fields in PATCH payloads where the
+    API requires them (https://issues.redhat.com/browse/AAP-101676;
+    https://github.com/ansible/ansible.platform/pull/386).
+...

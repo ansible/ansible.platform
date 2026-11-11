@@ -205,9 +205,9 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
         service._execute_operations(self._operation(), self._api_data(self._context(False)), self._context(False), required_for="update")
         self.assertEqual(service._make_request.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
 
-    def _update_payload(self, enforced):
+    def _update_payload(self, enforced, current_image="quay.io/example/ee"):
         service = self._platform_service()
-        service._find_resource = MagicMock(return_value={"id": 12, "name": "ee", "image": "quay.io/example/ee", "organization": 5, "credential": 9})
+        service._find_resource = MagicMock(return_value={"id": 12, "name": "ee", "image": current_image, "organization": 5, "credential": 9})
         desired = AnsibleExecutionEnvironment(name="ee", image="quay.io/example/ee", id=12)
 
         result = service._update_resource(desired, ExecutionEnvironmentTransformMixin_v2, self._context(enforced))
@@ -219,6 +219,11 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
             self._update_payload(enforced=True)[0]._make_request.call_args.kwargs["json"],
             {"name": "ee", "image": "quay.io/example/ee", "description": "", "organization": None, "credential": None},
         )
+
+    def test_platform_service_partial_update_omits_unset_associations(self):
+        service = self._update_payload(enforced=False, current_image="quay.io/example/old-ee")[0]
+
+        self.assertEqual(service._make_request.call_args.kwargs["json"], {"name": "ee", "image": "quay.io/example/ee"})
 
     def test_platform_service_partial_update_skips_unchanged_resource(self):
         service, result = self._update_payload(enforced=False)
