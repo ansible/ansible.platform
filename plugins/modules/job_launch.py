@@ -152,8 +152,10 @@ options:
 
   timeout:
     description:
-      - Maximum seconds to wait before aborting (client-side).
-      - Only used when wait is true.
+      - Maximum time in seconds to wait for the job to finish.
+      - If omitted or set to C(0), wait indefinitely.
+      - Only used when C(wait=true).
+      - Reaching this timeout stops waiting but does not cancel the remote job.
     type: int
 
 seealso:

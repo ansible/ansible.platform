@@ -50,6 +50,11 @@ options:
       - Name or ID of the unified job template to schedule.
     type: str
 
+  organization:
+    description:
+      - Organization name or ID used to scope unified job template lookup.
+    type: str
+
   enabled:
     description:
       - Enables processing of this schedule.

@@ -52,22 +52,31 @@ class ActionModule(BaseResourceActionPlugin):
         wait = params.pop("wait", False)
         interval = params.pop("interval", 2.0)
         raw_timeout = params.pop("timeout", None)
-        # timeout=0 means "wait indefinitely" (legacy AWX behavior);
-        # the shared waiter treats negative values as no-timeout.
-        if raw_timeout is not None:
-            timeout = -1.0 if float(raw_timeout) == 0 else float(raw_timeout)
-        else:
-            timeout = None
-
-        if self._task.check_mode:
-            result.update({"changed": True, "failed": False, "msg": "Job launch skipped (check mode)"})
-            return result
+        # Legacy AWX treats an omitted timeout or timeout=0 as no limit.
+        # The shared waiter treats negative values as no-timeout and zero as
+        # an immediate timeout.
+        timeout = -1.0 if raw_timeout is None or float(raw_timeout) == 0 else float(raw_timeout)
 
         try:
             model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}
             ansible_obj = AnsibleJobLaunch(**{k: v for k, v in params.items() if v is not None and k not in self._AUTH_PARAMS and k in model_fields})
             context = {"manager": manager, "operation": "launch"}
             api_data = JobLaunchTransformMixin_v2.from_ansible_data(ansible_obj, context)
+            prompt_errors = self._validate_launch_prompts(manager, api_data.job_template_id, params)
+            if prompt_errors:
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": True,
+                        "msg": "Parameters specified which can not be passed into job template, see errors for details",
+                        "errors": prompt_errors,
+                    }
+                )
+                return result
+            if self._task.check_mode:
+                result.update({"changed": True, "failed": False, "msg": "Job launch skipped (check mode)"})
+                return result
+
             launch_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["launch"]
             if launch_operation.method != "POST":
                 raise AnsibleError("Job launch endpoint operation must use POST")
@@ -144,3 +153,41 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
         return result
+
+    @staticmethod
+    def _validate_launch_prompts(manager, job_template_id, params):
+        """Reject launch overrides that the selected job template does not prompt for."""
+        checks = {
+            "scm_branch": "ask_scm_branch_on_launch",
+            "diff_mode": "ask_diff_mode_on_launch",
+            "limit": "ask_limit_on_launch",
+            "tags": "ask_tags_on_launch",
+            "skip_tags": "ask_skip_tags_on_launch",
+            "job_type": "ask_job_type_on_launch",
+            "verbosity": "ask_verbosity_on_launch",
+            "inventory": "ask_inventory_on_launch",
+            "credentials": "ask_credential_on_launch",
+            "execution_environment": "ask_execution_environment_on_launch",
+            "forks": "ask_forks_on_launch",
+            "instance_groups": "ask_instance_groups_on_launch",
+            "labels": "ask_labels_on_launch",
+            "job_slice_count": "ask_job_slice_count_on_launch",
+            "job_timeout": "ask_timeout_on_launch",
+        }
+        param_errors = []
+        requested_fields = [field for field in checks if params.get(field) is not None]
+        check_extra_vars = params.get("extra_vars") is not None
+        if not requested_fields and not check_extra_vars:
+            return param_errors
+
+        detail_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["get_job_template"]
+        template_path = detail_operation.path.format(id=job_template_id)
+        template = manager.search_api(template_path, service="controller")
+        for field in requested_fields:
+            if not template.get(checks[field]):
+                param_errors.append("The field %s was specified but the job template does not allow for it to be overridden" % field)
+
+        if check_extra_vars and not (template.get("ask_variables_on_launch") or template.get("survey_enabled")):
+            param_errors.append("The field extra_vars was specified but the job template does not allow for it to be overridden")
+
+        return param_errors

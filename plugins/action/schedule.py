@@ -27,6 +27,11 @@ class ActionModule(BaseResourceActionPlugin):
 
     _WRITE_ONLY_FIELDS = frozenset(_ASSOC_MAP)
 
+    def _should_update(self, desired_data, current_data):
+        """Compare schedule fields, excluding organization used only to scope template lookup."""
+        desired_data = {key: value for key, value in desired_data.items() if key != "organization"}
+        return super()._should_update(desired_data, current_data)
+
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}

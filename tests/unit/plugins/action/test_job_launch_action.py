@@ -91,6 +91,82 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertIs(result["finished"], True)
         self.assertEqual(result["finished_at"], "2026-11-11T10:00:03Z")
 
+        action._client.wait_for_completion.assert_called_once_with(
+            "/api/controller/v2/jobs/42/",
+            timeout=-1.0,
+            interval=1.0,
+            service="controller",
+        )
+
+    def test_launch_with_zero_timeout_waits_indefinitely(self):
+        action = self._make_action({"name": "Demo", "wait": True, "timeout": 0, "interval": 1.0})
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 1
+        action._client.launch_resource.return_value = {"id": 42, "status": "pending"}
+        action._client.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+
+        action.run(task_vars={})
+
+        assert action._client.wait_for_completion.call_args.kwargs["timeout"] == -1.0
+
+    def test_disallowed_prompt_override_fails_before_launch(self):
+        action = self._make_action({"name": "Demo", "limit": "web", "wait": False})
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 42
+        action._client.search_api.side_effect = [
+            {"organization": {"id": 9}},
+            {"ask_limit_on_launch": False},
+        ]
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(
+            result["msg"],
+            "Parameters specified which can not be passed into job template, see errors for details",
+        )
+        self.assertEqual(
+            result["errors"],
+            ["The field limit was specified but the job template does not allow for it to be overridden"],
+        )
+        action._client.launch_resource.assert_not_called()
+
+    def test_supplied_prompt_overrides_are_rejected_in_check_and_live_mode(self):
+        cases = (
+            ("diff_mode", False, "ask_diff_mode_on_launch"),
+            ("verbosity", 0, "ask_verbosity_on_launch"),
+            ("tags", [], "ask_tags_on_launch"),
+            ("extra_vars", {}, "ask_variables_on_launch"),
+            ("execution_environment", "Default", "ask_execution_environment_on_launch"),
+            ("forks", 0, "ask_forks_on_launch"),
+            ("instance_groups", [], "ask_instance_groups_on_launch"),
+            ("labels", [], "ask_labels_on_launch"),
+            ("job_slice_count", 0, "ask_job_slice_count_on_launch"),
+            ("job_timeout", 0, "ask_timeout_on_launch"),
+        )
+
+        for check_mode in (False, True):
+            for field, value, prompt in cases:
+                with self.subTest(check_mode=check_mode, field=field):
+                    action = self._make_action({"name": "Demo", field: value, "wait": False}, check_mode=check_mode)
+                    self._patch_prepare(action)
+                    action._client.lookup_resource_id.return_value = 42
+                    template = {prompt: False}
+                    if field == "extra_vars":
+                        template["survey_enabled"] = False
+                    action._client.search_api.side_effect = [{"organization": None}, template]
+
+                    result = action.run(task_vars={})
+
+                    self.assertTrue(result["failed"])
+                    self.assertFalse(result["changed"])
+                    self.assertEqual(
+                        result["errors"],
+                        [f"The field {field} was specified but the job template does not allow for it to be overridden"],
+                    )
+                    action._client.launch_resource.assert_not_called()
+
     def test_launch_with_wait_failed_job(self):
         action = self._make_action({"name": "Demo", "wait": True, "interval": 1.0})
         self._patch_prepare(action)
@@ -211,7 +287,14 @@ class TestJobLaunchAction(unittest.TestCase):
             ("credentials", "name", "AWS"): 20,
             ("execution_environments", "name", "My EE"): 30,
         }.get((ep, field, val), 999)
-        action._client.search_api.return_value = {"organization": None}
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {
+                "ask_inventory_on_launch": True,
+                "ask_credential_on_launch": True,
+                "ask_execution_environment_on_launch": True,
+            },
+        ]
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
@@ -248,7 +331,11 @@ class TestJobLaunchAction(unittest.TestCase):
                 )
                 self._patch_prepare(action)
                 action._client.lookup_resource_id.return_value = 42
-                action._client.search_api.side_effect = [{"organization": 9}, {"results": environments}]
+                action._client.search_api.side_effect = [
+                    {"organization": 9},
+                    {"results": environments},
+                    {"ask_execution_environment_on_launch": True},
+                ]
                 action._client.launch_resource.return_value = {"id": 77, "status": "pending"}
 
                 result = action.run(task_vars={})

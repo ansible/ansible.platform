@@ -120,3 +120,44 @@ def test_sync_request_uses_declared_endpoint_operation(action_module):
         service="controller",
         retry=False,
     )
+
+
+@pytest.mark.parametrize("timeout", [None, 0])
+def test_wait_without_timeout_preserves_legacy_indefinite_wait(action_module, timeout):
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": [{"id": 23}]}
+    manager.launch_resource.return_value = {"id": 55, "status": "pending", "url": "/api/controller/v2/inventory_updates/55/"}
+    manager.wait_for_completion.return_value = {"id": 55, "status": "successful", "elapsed": 12.5, "started": "start", "finished": "finish"}
+    action_module._task.check_mode = False
+    prepared = {
+        "result": {},
+        "validated_params": {"name": "AWS Source", "inventory": "10", "wait": True, "timeout": timeout},
+        "manager": manager,
+    }
+
+    with patch.object(action_module, "_prepare_action", return_value=prepared):
+        result = action_module.run(task_vars={})
+
+    assert manager.wait_for_completion.call_args.kwargs["timeout"] == -1.0
+    assert result["elapsed"] == 12.5
+    assert result["started"] == "start"
+    assert result["finished"] == "finish"
+
+
+def test_wait_failure_preserves_job_data(action_module):
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": [{"id": 23}]}
+    manager.launch_resource.return_value = {"id": 55, "status": "pending", "url": "/api/controller/v2/inventory_updates/55/"}
+    manager.wait_for_completion.return_value = {"id": 55, "status": "failed", "failed": True, "elapsed": 3.0}
+    action_module._task.check_mode = False
+    prepared = {
+        "result": {},
+        "validated_params": {"name": "AWS Source", "inventory": "10", "wait": True},
+        "manager": manager,
+    }
+
+    with patch.object(action_module, "_prepare_action", return_value=prepared):
+        result = action_module.run(task_vars={})
+
+    assert result["failed"] is True
+    assert result["job_data"] == manager.wait_for_completion.return_value

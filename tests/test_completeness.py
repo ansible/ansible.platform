@@ -71,6 +71,7 @@ controller_no_api_parameter_ok = {
     "controller_credential_type": [],
     "controller_project": ["wait", "update_project", "interval"],
     "inventory_source": ["organization"],
+    "schedule": ["organization"],
     "workflow_job_template_node": ["organization"],
     "ad_hoc_command": ["wait", "interval", "timeout"],
     # These are client-side inputs for the dynamic settings/all singleton,

@@ -70,18 +70,33 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
+            # Legacy AWX waits indefinitely when timeout is omitted or zero.
+            # The shared waiter uses None for its one-hour default and zero
+            # for an immediate timeout.
+            wait_timeout = -1.0 if timeout is None or float(timeout) == 0 else float(timeout)
             wait_result = manager.wait_for_completion(
                 job_url,
-                timeout=float(timeout) if timeout is not None else None,
+                timeout=wait_timeout,
                 interval=float(interval),
                 service=_SERVICE,
             )
             final_status = wait_result.get("status", "unknown")
-            failed = final_status in ("failed", "error", "canceled")
+            failed = wait_result.get("failed", False) or final_status in ("failed", "error", "canceled")
 
-            result.update({"changed": True, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
+            result.update(
+                {
+                    "changed": True,
+                    "failed": failed,
+                    "id": wait_result.get("id", job_id),
+                    "status": final_status,
+                    "elapsed": wait_result.get("elapsed"),
+                    "started": wait_result.get("started"),
+                    "finished": wait_result.get("finished"),
+                }
+            )
             if failed:
                 result["msg"] = "Inventory source update %s finished with status: %s" % (job_id, final_status)
+                result["job_data"] = wait_result
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
             result.update(
@@ -91,6 +106,9 @@ class ActionModule(BaseResourceActionPlugin):
                     "msg": str(exc),
                     "id": lr.get("id", job_id),
                     "status": lr.get("status", "unknown"),
+                    "elapsed": lr.get("elapsed"),
+                    "started": lr.get("started"),
+                    "finished": lr.get("finished"),
                 }
             )
         except Exception as exc:
