@@ -1188,6 +1188,7 @@ class PlatformService(BaseAPIClient):
         service: str = "gateway",
         extra_query_params: dict = None,
         preserve_existing: bool = False,
+        check_mode: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -1197,6 +1198,7 @@ class PlatformService(BaseAPIClient):
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
         current associations, and associates/disassociates to reconcile. Set
         preserve_existing=True to retain already-associated items.
+        Set check_mode=True to predict changes without modifying associations.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -1221,6 +1223,9 @@ class PlatformService(BaseAPIClient):
         if preserve_existing:
             desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
+
+        if check_mode:
+            return desired_ids != current_ids
 
         changed = False
         for rid in desired_ids - current_ids:

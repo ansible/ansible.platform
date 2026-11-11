@@ -157,7 +157,10 @@ options:
         type: float
     timeout:
         description:
-            - Maximum time in seconds to wait for the bulk job to finish. If omitted, wait indefinitely.
+            - Maximum time in seconds to wait for the bulk job to finish.
+            - If omitted or set to C(0), wait indefinitely.
+            - Only used when O(wait=true).
+            - A client-side timeout stops waiting without canceling the remote job.
             - Must be 0 or greater.
         type: int
 seealso:

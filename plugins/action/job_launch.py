@@ -27,6 +27,14 @@ class ActionModule(BaseResourceActionPlugin):
     _WRITE_ONLY_FIELDS = _ACTION_ONLY_FIELDS
     _NO_LOG_FIELDS = frozenset({"credential_passwords"})
 
+    @staticmethod
+    def _set_job_timing(result, job_data):
+        """Populate Controller timing fields with Ansible's boolean finished flag."""
+        for field in ("elapsed", "started"):
+            result[field] = job_data.get(field)
+        result["finished"] = bool(job_data.get("finished"))
+        result["finished_at"] = job_data.get("finished")
+
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
@@ -99,6 +107,7 @@ class ActionModule(BaseResourceActionPlugin):
                 service="controller",
             )
             final_status = wait_result.get("status", "unknown")
+            self._set_job_timing(result, wait_result)
             failed = final_status in ("failed", "error", "canceled")
             result.update(
                 {
@@ -109,9 +118,11 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
             if failed:
+                result["job_data"] = wait_result
                 result["msg"] = f"Job {job_id} finished with status: {final_status}"
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._set_job_timing(result, lr)
             result.update(
                 {
                     "changed": True,

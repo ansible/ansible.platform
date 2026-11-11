@@ -91,6 +91,30 @@
         state: present
       register: test_ig
 
+    - name: Predict an inventory association change
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Renamed"
+        organization: Default
+        instance_groups: ["{{ name_prefix }}-IG"]
+      check_mode: true
+      register: planned_ig
+
+    - name: Read associations after the dry run
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/inventories/{{ created_inv.id }}/instance_groups/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: dry_run_ig
+      delegate_to: localhost
+
+    - name: Assert the dry run predicts a change without applying it
+      ansible.builtin.assert:
+        that:
+          - planned_ig is changed
+          - dry_run_ig.json.count == 0
+
     - name: Associate instance group with inventory
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Renamed"
@@ -117,6 +141,18 @@
         that:
           - ig_assoc_idem is not changed
 
+    - name: Check unchanged associations in check mode
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Renamed"
+        organization: Default
+        instance_groups: ["{{ name_prefix }}-IG"]
+      check_mode: true
+      register: unchanged_ig
+
+    - name: Assert association check mode is idempotent
+      ansible.builtin.assert:
+        that: unchanged_ig is not changed
+
     # -- Copy (clone) tests --
 
     - name: Copy the inventory
@@ -130,6 +166,7 @@
     - name: Assert copy changed
       ansible.builtin.assert:
         that:
+          - cloned_inv.copied
           - cloned_inv is changed
           - cloned_inv.inventory.name == (name_prefix ~ '-Cloned')
 

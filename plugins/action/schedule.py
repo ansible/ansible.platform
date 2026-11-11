@@ -43,18 +43,14 @@ class ActionModule(BaseResourceActionPlugin):
         if not sched_id:
             return result
 
-        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
-        if self._task.check_mode:
-            if reconcile_fields:
-                result["changed"] = True
-            return result
-
         try:
             manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                if desired is not None and manager.manage_associations(
+                    BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=self._task.check_mode
+                ):
                     changed = True
         except Exception as exc:
             result["failed"] = True

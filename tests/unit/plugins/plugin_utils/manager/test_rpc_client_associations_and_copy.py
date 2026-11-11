@@ -59,7 +59,7 @@ class TestRPCWrappers(unittest.TestCase):
         client.service_proxy.manage_associations.return_value = True
 
         result = client.manage_associations(
-            "/api/controller/v2/job_templates", 42, "credentials", ["a"], "credentials", "name", "controller", preserve_existing=True
+            "/api/controller/v2/job_templates", 42, "credentials", ["a"], "credentials", "name", "controller", preserve_existing=True, check_mode=True
         )
 
         self.assertTrue(result)
@@ -72,6 +72,7 @@ class TestRPCWrappers(unittest.TestCase):
             "name",
             "controller",
             {},
+            True,
             True,
         )
 

@@ -173,6 +173,7 @@ class ManagerRPCClient:
         service: str = "gateway",
         extra_query_params: dict = None,
         preserve_existing: bool = False,
+        check_mode: bool = False,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
         return self.service_proxy.manage_associations(
@@ -185,6 +186,7 @@ class ManagerRPCClient:
             service,
             extra_query_params or {},
             preserve_existing,
+            check_mode,
         )
 
     def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:

@@ -19,6 +19,14 @@ _SERVICE = "controller"
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "project_update"
 
+    @staticmethod
+    def _set_update_timing(result, job_data):
+        """Return Controller timing fields using Ansible's boolean finished flag."""
+        for field in ("elapsed", "started"):
+            result[field] = job_data.get(field)
+        result["finished"] = bool(job_data.get("finished"))
+        result["finished_at"] = job_data.get("finished")
+
     def run(self, tmp=None, task_vars=None):
         prepared = self._prepare_action(tmp, task_vars)
         result = prepared["result"]
@@ -74,7 +82,7 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             wait_result = manager.wait_for_completion(
                 job_url,
-                timeout=float(timeout) if timeout is not None else None,
+                timeout=float(timeout) if timeout else -1,
                 interval=float(interval),
                 service=_SERVICE,
             )
@@ -85,10 +93,13 @@ class ActionModule(BaseResourceActionPlugin):
             changed = scm_revision_new != scm_revision_original
 
             result.update({"changed": changed, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
+            self._set_update_timing(result, wait_result)
             if failed:
+                result["job_data"] = wait_result
                 result["msg"] = "Project update %s finished with status: %s" % (job_id, final_status)
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._set_update_timing(result, lr)
             result.update(
                 {
                     "changed": True,

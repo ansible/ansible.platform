@@ -53,8 +53,8 @@ class ActionModule(BaseResourceActionPlugin):
             if wait and (interval is None or interval <= 0):
                 raise AnsibleError("interval must be greater than 0")
 
-            # The legacy launch action waited indefinitely when timeout was omitted.
-            wait_timeout = float(timeout) if timeout is not None else -1.0
+            # Legacy launches wait indefinitely when timeout is omitted or zero.
+            wait_timeout = -1.0 if timeout is None or timeout == 0 else float(timeout)
 
             if self._task.check_mode:
                 # Resolve named foreign keys without submitting the launch request.

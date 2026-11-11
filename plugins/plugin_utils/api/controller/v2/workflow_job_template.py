@@ -96,7 +96,7 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: inventory (Controller-owned)
         inventory = getattr(ansible_instance, "inventory", None)
-        if inventory is not None:
+        if inventory is not None and op not in ("find", "delete"):
             if manager is not None and not str(inventory).strip().isdigit():
                 api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, **lookup_kwargs)
             else:
@@ -104,7 +104,7 @@ class WorkflowJobTemplateTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: webhook_credential (Controller-owned)
         webhook_credential = getattr(ansible_instance, "webhook_credential", None)
-        if webhook_credential is not None:
+        if webhook_credential is not None and op not in ("find", "delete"):
             if manager is not None and not str(webhook_credential).strip().isdigit():
                 api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, **lookup_kwargs)
             else:

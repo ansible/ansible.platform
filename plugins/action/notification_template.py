@@ -104,6 +104,8 @@ class ActionModule(BaseResourceActionPlugin):
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
+        if copy_from:
+            result["copied"] = copied
         if copied:
             result["changed"] = True
         return result

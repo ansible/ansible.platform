@@ -91,6 +91,30 @@
         that:
           - updated_is is changed
 
+    - name: Predict a notification association change
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "{{ test_inventory_name }}"
+        notification_templates_success: ["{{ test_notification_template.json.name }}"]
+      check_mode: true
+      register: planned_notification
+
+    - name: Read notification associations after check mode
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/inventory_sources/{{ created_is.id }}/notification_templates_success/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: dry_run_notifications
+      delegate_to: localhost
+
+    - name: Assert notification check mode predicts without writing
+      ansible.builtin.assert:
+        that:
+          - planned_notification is changed
+          - dry_run_notifications.json.count == 0
+
     - name: Associate a notification template with inventory sync success
       ansible.platform.inventory_source:
         name: "{{ name_prefix }}-Test"
@@ -140,6 +164,18 @@
         that:
           - idempotent_association is not changed
 
+    - name: Check unchanged notification associations in check mode
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "{{ test_inventory_name }}"
+        notification_templates_success: ["{{ test_notification_template.json.name }}"]
+      check_mode: true
+      register: unchanged_notification
+
+    - name: Assert notification check mode is idempotent
+      ansible.builtin.assert:
+        that: unchanged_notification is not changed
+
     - name: Check exists
       ansible.platform.inventory_source:
         name: "{{ name_prefix }}-Test"
@@ -151,6 +187,20 @@
       ansible.builtin.assert:
         that:
           - exists_check.exists
+
+    - name: Delete the source with unused invalid references
+      ansible.platform.inventory_source:
+        name: "{{ name_prefix }}-Test"
+        inventory: "{{ test_inventory_name }}"
+        credential: "{{ name_prefix }}-Missing-Credential"
+        execution_environment: "{{ name_prefix }}-Missing-EE"
+        source_project: "{{ name_prefix }}-Missing-Project"
+        state: absent
+      register: deleted_source
+
+    - name: Assert the existing source was deleted
+      ansible.builtin.assert:
+        that: deleted_source is changed
 
   always:
     - name: Delete inventory source

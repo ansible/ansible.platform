@@ -64,6 +64,10 @@
           - launched_job is changed
           - launched_job.id is defined
           - launched_job.status == 'successful'
+          - launched_job.elapsed is number
+          - launched_job.started is string
+          - launched_job.finished is sameas true
+          - launched_job.finished_at is string
 
   always:
     - name: Remove the test job template

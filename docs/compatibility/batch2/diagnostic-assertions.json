@@ -1,0 +1,95 @@
+{
+  "workflow_job_template": [
+    {
+      "task": "Assert no name for approval failed",
+      "conditions": [
+        "no_name_results.msg is search('Approval node name is required to create approval node.')"
+      ]
+    },
+    {
+      "task": "Assert remove of non-existent notification failed",
+      "conditions": [
+        "remove_copied_workflow_node.msg is search('returned 0 items')"
+      ]
+    },
+    {
+      "task": "Assert module failed as expected for non-existent org",
+      "conditions": [
+        "result.msg is search('returned 0 items, expected 1')",
+        "result.msg is search('Non_Existing_Organization')"
+      ]
+    },
+    {
+      "task": "Assert GitLab webhook with Github cred failed",
+      "conditions": [
+        "result.msg in search('Must match the selected webhook service')"
+      ]
+    }
+  ],
+  "execution_environment": [],
+  "group": [
+    {
+      "task": "assert",
+      "conditions": [
+        "'test-non-existing-inventory' in result.msg",
+        "result.total_results == 0"
+      ]
+    }
+  ],
+  "token": [
+    {
+      "task": "assert",
+      "conditions": [
+        "\"The provided dict in aap_token did not properly contain the token entry\" == results.msg"
+      ]
+    },
+    {
+      "task": "assert",
+      "conditions": [
+        "\"The provided aap_token type was not valid (list). Valid options are str or dict.\" == results.msg"
+      ]
+    },
+    {
+      "task": "assert",
+      "conditions": [
+        "'You don\\'t have permission to POST' in result.msg"
+      ]
+    }
+  ],
+  "job_wait": [
+    {
+      "task": "assert",
+      "conditions": [
+        "result.msg == 'Unable to wait, no job_id 99999999 found: The requested object could not be found.' or result.msg == 'Unable to wait on job 99999999; that ID does not exist.'"
+      ]
+    },
+    {
+      "task": "assert",
+      "conditions": [
+        "'aborted due to timeout' in wait_results.msg"
+      ]
+    },
+    {
+      "task": "assert",
+      "conditions": [
+        "'Unable to find job with id' not in result.msg"
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "task": "Assert result failed",
+      "conditions": [
+        "'Unable to update settings' in result.msg | default('')"
+      ]
+    },
+    {
+      "task": "Assert result failed",
+      "conditions": [
+        "'Unable to update settings' in result.msg | default('')"
+      ]
+    }
+  ],
+  "notification_template": [],
+  "project_update": []
+}

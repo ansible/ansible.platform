@@ -1,0 +1,106 @@
+---
+- name: Verify inventory-scoped group associations and check mode
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: '{{ gateway_hostname }}'
+      gateway_username: '{{ gateway_username }}'
+      gateway_password: '{{ gateway_password }}'
+  block:
+    - name: Create two inventories
+      ansible.platform.inventory:
+        name: AAP-Group-Compat-{{ item }}-{{ test_id }}
+        organization: Default
+      loop:
+        - A
+        - B
+    - name: Create duplicate host names across inventories
+      ansible.platform.host:
+        name: batch2-shared-host
+        inventory: AAP-Group-Compat-{{ item }}-{{ test_id }}
+      loop:
+        - A
+        - B
+    - name: Create duplicate child group names across inventories
+      ansible.platform.group:
+        name: batch2-shared-child
+        inventory: AAP-Group-Compat-{{ item }}-{{ test_id }}
+      loop:
+        - A
+        - B
+    - name: Create parent without associations
+      ansible.platform.group:
+        name: batch2-parent
+        inventory: AAP-Group-Compat-A-{{ test_id }}
+      register: parent
+    - name: Check mode predicts association-only changes
+      ansible.platform.group:
+        name: batch2-parent
+        inventory: AAP-Group-Compat-A-{{ test_id }}
+        hosts:
+          - batch2-shared-host
+        children:
+          - batch2-shared-child
+      check_mode: true
+      register: planned
+    - name: Read host associations after check mode
+      ansible.builtin.uri:
+        url: '{{ gateway_hostname }}/api/controller/v2/groups/{{ parent.id }}/hosts/'
+        user: '{{ gateway_username }}'
+        password: '{{ gateway_password }}'
+        force_basic_auth: true
+        return_content: true
+        validate_certs: '{{ gateway_validate_certs | bool }}'
+      register: remote
+      delegate_to: localhost
+    - name: Assert check mode preserves remote associations
+      ansible.builtin.assert:
+        that:
+          - planned is changed
+          - remote.json.count == 0
+    - name: Associate using the inventory-scoped names
+      ansible.platform.group:
+        name: batch2-parent
+        inventory: AAP-Group-Compat-A-{{ test_id }}
+        hosts:
+          - batch2-shared-host
+        children:
+          - batch2-shared-child
+      register: scoped
+    - name: Reapply scoped associations
+      ansible.platform.group:
+        name: batch2-parent
+        inventory: AAP-Group-Compat-A-{{ test_id }}
+        hosts:
+          - batch2-shared-host
+        children:
+          - batch2-shared-child
+      register: repeated
+    - name: Assert association idempotency
+      ansible.builtin.assert:
+        that:
+          - scoped is changed
+          - repeated is not changed
+    - name: Check mode sees unchanged associations
+      ansible.platform.group:
+        name: batch2-parent
+        inventory: AAP-Group-Compat-A-{{ test_id }}
+        hosts:
+          - batch2-shared-host
+        children:
+          - batch2-shared-child
+      check_mode: true
+      register: unchanged
+    - name: Assert check mode is idempotent
+      ansible.builtin.assert:
+        that:
+          - unchanged is not changed
+  always:
+    - name: Delete test-owned scope inventories
+      ansible.platform.inventory:
+        name: AAP-Group-Compat-{{ item }}-{{ test_id }}
+        organization: Default
+        state: absent
+      loop:
+        - A
+        - B
+...

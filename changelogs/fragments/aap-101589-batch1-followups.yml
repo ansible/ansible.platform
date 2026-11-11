@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - inventory - restore the copied result flag when copy_from is supplied.
+  - inventory and schedule - compare existing associations in check mode instead of unconditionally reporting changes.
+  - inventory_source - predict notification association changes in check mode without modifying the resource.
+  - inventory_source - ignore unused credential, execution environment, and project references during find and delete operations.
+  - job_launch - restore wait timing and failed job data, using finished_at for the timestamp alongside Ansible's boolean finished flag.
+...
