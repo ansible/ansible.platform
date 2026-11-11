@@ -82,6 +82,46 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertFalse(result["failed"])
         self.assertEqual(result["status"], "successful")
+        action._client.wait_for_completion.assert_called_once_with(
+            "/api/controller/v2/jobs/42/",
+            timeout=-1.0,
+            interval=1.0,
+            service="controller",
+        )
+
+    def test_launch_with_zero_timeout_waits_indefinitely(self):
+        action = self._make_action({"name": "Demo", "wait": True, "timeout": 0, "interval": 1.0})
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 1
+        action._client.launch_resource.return_value = {"id": 42, "status": "pending"}
+        action._client.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+
+        action.run(task_vars={})
+
+        assert action._client.wait_for_completion.call_args.kwargs["timeout"] == -1.0
+
+    def test_disallowed_prompt_override_fails_before_launch(self):
+        action = self._make_action({"name": "Demo", "limit": "web", "wait": False})
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 42
+        action._client.search_api.side_effect = [
+            {"organization": {"id": 9}},
+            {"ask_limit_on_launch": False},
+        ]
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(
+            result["msg"],
+            "Parameters specified which can not be passed into job template, see errors for details",
+        )
+        self.assertEqual(
+            result["errors"],
+            ["The field limit was specified but the job template does not allow for it to be overridden"],
+        )
+        action._client.launch_resource.assert_not_called()
 
     def test_launch_with_wait_failed_job(self):
         action = self._make_action({"name": "Demo", "wait": True, "interval": 1.0})
@@ -200,7 +240,10 @@ class TestJobLaunchAction(unittest.TestCase):
             ("credentials", "name", "AWS"): 20,
             ("execution_environments", "name", "My EE"): 30,
         }.get((ep, field, val), 999)
-        action._client.search_api.return_value = {"organization": None}
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {"ask_inventory_on_launch": True, "ask_credential_on_launch": True},
+        ]
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",

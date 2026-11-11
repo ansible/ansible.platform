@@ -39,13 +39,28 @@ class TestScheduleTransform(unittest.TestCase):
         mock_manager.lookup_resource_id.return_value = 42
         ansible = AnsibleSchedule(name="s", unified_job_template="Demo Job Template")
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
-        mock_manager.lookup_resource_id.assert_called_once_with("unified_job_templates", "name", "Demo Job Template", service="controller")
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "unified_job_templates", "name", "Demo Job Template", service="controller", require_unique=True
+        )
         self.assertEqual(api.unified_job_template, 42)
 
     def test_ujt_id_skips_lookup(self):
         ansible = AnsibleSchedule(name="s", unified_job_template="42")
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
         self.assertEqual(api.unified_job_template, 42)
+
+    def test_ujt_name_lookup_is_scoped_by_organization(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.side_effect = [9, 42]
+        ansible = AnsibleSchedule(name="s", unified_job_template="Shared Template", organization="Engineering")
+
+        api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.unified_job_template, 42)
+        self.assertEqual(
+            mock_manager.lookup_resource_id.call_args_list[1].kwargs,
+            {"service": "controller", "require_unique": True, "extra_query_params": {"organization": 9}},
+        )
 
     def test_update_with_new_name(self):
         ansible = AnsibleSchedule(name="old", new_name="new")

@@ -68,7 +68,18 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
         if ujt is not None:
             manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
             if manager is not None and not str(ujt).strip().isdigit():
-                api_data["unified_job_template"] = manager.lookup_resource_id("unified_job_templates", "name", ujt, service="controller")
+                organization = getattr(ansible_instance, "organization", None)
+                organization_id = None
+                if organization is not None:
+                    organization_id = (
+                        int(organization)
+                        if str(organization).strip().isdigit()
+                        else manager.lookup_resource_id("organizations", "name", organization, service="controller")
+                    )
+                lookup_kwargs = {"service": "controller", "require_unique": True}
+                if organization_id is not None:
+                    lookup_kwargs["extra_query_params"] = {"organization": organization_id}
+                api_data["unified_job_template"] = manager.lookup_resource_id("unified_job_templates", "name", ujt, **lookup_kwargs)
             else:
                 api_data["unified_job_template"] = int(ujt) if ujt is not None else None
 
