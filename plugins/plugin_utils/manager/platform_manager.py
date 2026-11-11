@@ -94,6 +94,7 @@ class PlatformService(BaseAPIClient):
         self._last_auth_error = None
         # Authentication records activity before the service is fully initialized.
         self._activity_lock = threading.Lock()
+        self._active_waits = 0
         self._last_activity_monotonic = time.monotonic()
 
         try:
@@ -134,7 +135,30 @@ class PlatformService(BaseAPIClient):
         with self._shutdown_lock:
             if self._shutdown_requested:
                 return False
-        return self.seconds_since_last_activity() >= self.config.idle_timeout
+        with self._activity_lock:
+            if self._active_waits:
+                return False
+            return time.monotonic() - self._last_activity_monotonic >= self.config.idle_timeout
+
+    def _register_active_wait(self) -> None:
+        """Keep the manager alive while a completion wait is in progress."""
+        with self._activity_lock:
+            self._active_waits += 1
+            self._last_activity_monotonic = time.monotonic()
+
+    def _release_active_wait(self) -> None:
+        """Release a completion wait and restart the idle timeout."""
+        with self._activity_lock:
+            self._active_waits -= 1
+            self._last_activity_monotonic = time.monotonic()
+
+    def wait_for_completion(self, resource_url: str, timeout: Optional[float] = None, interval: Optional[float] = None, service: str = "gateway") -> dict:
+        """Wait for a resource while preventing idle shutdown between polls."""
+        self._register_active_wait()
+        try:
+            return super().wait_for_completion(resource_url, timeout=timeout, interval=interval, service=service)
+        finally:
+            self._release_active_wait()
 
     def _make_request(
         self,
