@@ -234,6 +234,8 @@ def _client(client_mode: str):
     else:
         client = PlatformService.__new__(PlatformService)
         client.record_activity = MagicMock()
+        client._activity_lock = threading.Lock()
+        client._active_waits = 0
         client.session = MagicMock()
 
     client.base_url = BASE_URL
