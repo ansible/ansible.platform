@@ -63,7 +63,15 @@ class ActionModule(BaseResourceActionPlugin):
                         changed = True
                 except (ValueError, ValidationError) as exc:
                     not_found_prefix = "Resource '%s' with %s=" % (lookup_endpoint, lookup_field)
-                    if self._task.check_mode and str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found"):
+                    missing_association = str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found")
+                    missing_credential_organization = field == "credentials" and any(
+                        isinstance(value, str)
+                        and value.count("++") == 1
+                        and all(part.strip() for part in value.split("++"))
+                        and str(exc) == "Resource 'organizations' with name=%s not found" % value.partition("++")[2].strip()
+                        for value in desired
+                    )
+                    if self._task.check_mode and (missing_association or missing_credential_organization):
                         changed = True
                     else:
                         raise
