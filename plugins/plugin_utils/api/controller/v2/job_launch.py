@@ -214,6 +214,12 @@ class JobLaunchTransformMixin_v2(BaseTransformMixin):
                 required_for="find",
                 order=1,
             ),
+            "get_job_template": EndpointOperation(
+                path=f"{CONTROLLER_JOB_TEMPLATES_ENDPOINT}{{id}}/",
+                method="GET",
+                fields=[],
+                path_params=["id"],
+            ),
             "launch": EndpointOperation(
                 path=CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
                 method="POST",

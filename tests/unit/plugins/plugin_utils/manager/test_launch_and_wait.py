@@ -97,6 +97,7 @@ def _make_platform_service():
     mgr.request_timeout = 30
     mgr.base_url = "https://gw.example.com"
     mgr._activity_lock = threading.Lock()
+    mgr._active_waits = 0
     mgr._last_activity_monotonic = time.monotonic()
     mgr._lock = threading.Lock()
     mgr._http_request_count = 0
