@@ -73,11 +73,7 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
                 if organization is not None:
                     if not str(organization).strip():
                         raise ValueError("organization must be a non-empty name or ID")
-                    organization_id = (
-                        int(organization)
-                        if str(organization).strip().isdigit()
-                        else manager.lookup_resource_id("organizations", "name", organization, service="controller")
-                    )
+                    organization_id = int(organization) if str(organization).strip().isdigit() else cls._lookup_organization_id(manager, organization)
                     if organization_id is None or (isinstance(organization_id, str) and not organization_id.strip()):
                         raise ValueError("organization could not be resolved to a non-empty ID")
                 lookup_kwargs = {"service": "controller", "require_unique": True}
@@ -137,6 +133,14 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
                 api_data[field] = val
 
         return APISchedule_v2(**api_data)
+
+    @staticmethod
+    def _lookup_organization_id(manager, organization: str) -> Optional[int]:
+        """Resolve a schedule organization without conflating it with a missing schedule."""
+        try:
+            return manager.lookup_resource_id("organizations", "name", organization, service="controller")
+        except Exception as exc:
+            raise ValueError(f"Failed to resolve schedule organization {organization!r}: {exc}") from exc
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:

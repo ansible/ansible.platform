@@ -156,6 +156,12 @@ class ActionModule(BaseResourceActionPlugin):
             "verbosity": "ask_verbosity_on_launch",
             "inventory": "ask_inventory_on_launch",
             "credentials": "ask_credential_on_launch",
+            "execution_environment": "ask_execution_environment_on_launch",
+            "forks": "ask_forks_on_launch",
+            "instance_groups": "ask_instance_groups_on_launch",
+            "labels": "ask_labels_on_launch",
+            "job_slice_count": "ask_job_slice_count_on_launch",
+            "job_timeout": "ask_timeout_on_launch",
         }
         param_errors = []
         requested_fields = [field for field in checks if params.get(field) is not None]

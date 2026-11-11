@@ -123,12 +123,18 @@ class TestJobLaunchAction(unittest.TestCase):
         )
         action._client.launch_resource.assert_not_called()
 
-    def test_falsy_prompt_overrides_are_rejected_in_check_and_live_mode(self):
+    def test_supplied_prompt_overrides_are_rejected_in_check_and_live_mode(self):
         cases = (
             ("diff_mode", False, "ask_diff_mode_on_launch"),
             ("verbosity", 0, "ask_verbosity_on_launch"),
             ("tags", [], "ask_tags_on_launch"),
             ("extra_vars", {}, "ask_variables_on_launch"),
+            ("execution_environment", "Default", "ask_execution_environment_on_launch"),
+            ("forks", 0, "ask_forks_on_launch"),
+            ("instance_groups", [], "ask_instance_groups_on_launch"),
+            ("labels", [], "ask_labels_on_launch"),
+            ("job_slice_count", 0, "ask_job_slice_count_on_launch"),
+            ("job_timeout", 0, "ask_timeout_on_launch"),
         )
 
         for check_mode in (False, True):
@@ -271,7 +277,11 @@ class TestJobLaunchAction(unittest.TestCase):
         }.get((ep, field, val), 999)
         action._client.search_api.side_effect = [
             {"organization": None},
-            {"ask_inventory_on_launch": True, "ask_credential_on_launch": True},
+            {
+                "ask_inventory_on_launch": True,
+                "ask_credential_on_launch": True,
+                "ask_execution_environment_on_launch": True,
+            },
         ]
         action._client.launch_resource.return_value = {
             "id": 42,
@@ -309,7 +319,11 @@ class TestJobLaunchAction(unittest.TestCase):
                 )
                 self._patch_prepare(action)
                 action._client.lookup_resource_id.return_value = 42
-                action._client.search_api.side_effect = [{"organization": 9}, {"results": environments}]
+                action._client.search_api.side_effect = [
+                    {"organization": 9},
+                    {"results": environments},
+                    {"ask_execution_environment_on_launch": True},
+                ]
                 action._client.launch_resource.return_value = {"id": 77, "status": "pending"}
 
                 result = action.run(task_vars={})
