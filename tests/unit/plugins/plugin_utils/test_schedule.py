@@ -39,9 +39,7 @@ class TestScheduleTransform(unittest.TestCase):
         mock_manager.lookup_resource_id.return_value = 42
         ansible = AnsibleSchedule(name="s", unified_job_template="Demo Job Template")
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
-        mock_manager.lookup_resource_id.assert_called_once_with(
-            "unified_job_templates", "name", "Demo Job Template", service="controller", require_unique=True
-        )
+        mock_manager.lookup_resource_id.assert_called_once_with("unified_job_templates", "name", "Demo Job Template", service="controller", require_unique=True)
         self.assertEqual(api.unified_job_template, 42)
 
     def test_ujt_id_skips_lookup(self):
