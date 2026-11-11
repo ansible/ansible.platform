@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.rulebook_activation_copy import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
 
 class TestRulebookActivationCopyAction(unittest.TestCase):
@@ -110,6 +111,32 @@ class TestRulebookActivationCopyAction(unittest.TestCase):
 
         self.assertTrue(result.get("failed", False))
         self.assertIn("copy_from", result["msg"])
+
+    def test_copy_duplicate_name_preserves_api_error_message(self):
+        """Return the API's duplicate-name message to callers."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "source-activation"})
+        manager.direct_request.side_effect = APIError(
+            "API request failed: HTTP 400",
+            operation="http_request",
+            resource="unknown",
+            details={
+                "status_code": 400,
+                "response_body": '{"__all__": ["Activation with name new-activation already exists"]}',
+            },
+            status_code=400,
+        )
+
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "new-activation", "copy_from": "source-activation"},
+        )
+
+        self.assertTrue(result.get("failed", False))
+        self.assertIn("API request failed: HTTP 400", result["msg"])
+        self.assertIn("Operation: http_request", result["msg"])
+        self.assertIn("Activation with name new-activation already exists", result["msg"])
 
 
 if __name__ == "__main__":

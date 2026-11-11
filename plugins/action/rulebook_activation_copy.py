@@ -22,6 +22,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ru
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation_copy import (
     RulebookActivationCopyTransformMixin_v1,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import format_error_response_body
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
@@ -100,7 +101,11 @@ class ActionModule(BaseResourceActionPlugin):
 
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
-            result["msg"] = str(e)
+            error_message = str(e)
+            response_body = format_error_response_body(e)
+            if response_body and response_body not in error_message:
+                error_message = "%s: %s" % (error_message, response_body)
+            result["msg"] = error_message
             if self._display.verbosity >= 3:
                 result["exception"] = traceback.format_exc()
 

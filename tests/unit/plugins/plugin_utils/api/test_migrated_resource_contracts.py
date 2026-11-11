@@ -339,10 +339,11 @@ class TestMigratedFindRequestContracts(unittest.TestCase):
                     self.assertEqual(request.args[0].upper(), "GET")
                     query = FIND_QUERY_PARAMETERS[module_name]
                     expected_url = BASE_URL + endpoint
-                    if not (module_name == "eda_credential_input_source" and client_mode == "persistent"):
+                    persistent_query = client_mode == "persistent" and module_name in {"eda_credential_input_source", "eda_project"}
+                    if not persistent_query:
                         expected_url += "?" + urlencode(query)
                     self.assertEqual(request.args[1], expected_url)
-                    if module_name == "eda_credential_input_source" and client_mode == "persistent":
+                    if persistent_query:
                         self.assertEqual(request.kwargs["params"], query)
                     self.assertEqual(result["id"], 42)
 
