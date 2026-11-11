@@ -101,8 +101,11 @@ class ActionModule(BaseResourceActionPlugin):
 
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
+            error_message = str(e)
             response_body = format_error_response_body(e)
-            result["msg"] = f"Failed to copy rulebook activation: {response_body or e}"
+            if response_body and response_body not in error_message:
+                error_message = "%s: %s" % (error_message, response_body)
+            result["msg"] = error_message
             if self._display.verbosity >= 3:
                 result["exception"] = traceback.format_exc()
 

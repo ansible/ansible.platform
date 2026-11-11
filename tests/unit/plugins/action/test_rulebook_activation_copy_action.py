@@ -134,6 +134,8 @@ class TestRulebookActivationCopyAction(unittest.TestCase):
         )
 
         self.assertTrue(result.get("failed", False))
+        self.assertIn("API request failed: HTTP 400", result["msg"])
+        self.assertIn("Operation: http_request", result["msg"])
         self.assertIn("Activation with name new-activation already exists", result["msg"])
 
 
