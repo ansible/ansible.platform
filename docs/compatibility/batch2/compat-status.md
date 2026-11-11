@@ -20,7 +20,7 @@ The manifest's collection-wide AWX summary counts conflict with its detailed row
 
 ## Live results
 
-“Original” preserves the legacy inputs and assertions, substituting platform module names. Setup dependencies were additionally isolated with legacy modules for workflow, job wait, and project update, so unrelated migrations would not mask the subject module. “Adapted” is a diagnostic continuation with the explicit changes below; it is not an unchanged legacy pass.
+"Original" preserves the legacy inputs and assertions, substituting platform module names. Setup dependencies were additionally isolated with legacy modules for workflow, job wait, and project update, so unrelated migrations would not mask the subject module. "Adapted" is a diagnostic continuation with the explicit changes below; it is not an unchanged legacy pass.
 
 | Legacy → platform module | Original legacy outcome | Adapted legacy outcome | Platform-native outcome |
 |---|---|---|---|
@@ -38,7 +38,7 @@ The adapted scenarios change `exists` to `present` only for the tasks that creat
 
 The token baseline failure is a legacy-helper/test-environment mismatch before the module under review, not evidence of a platform token defect. Its adapted continuation exercises creation, use, deletion, repeat creation, and rejection of insufficient privileges. Token runs reference the matching stable collection for legacy dependencies; other targets reference AWX `devel`.
 
-[Omitted diagnostic assertions](diagnostic-assertions.json) records the exact conditions removed. Some message-only assertions become empty and provide no functional coverage. The workflow source also uses `failed_when: false` on graph creation, so its later “not failed” assertion cannot establish successful creation. Direct validation confirms `Input validation failed: workflow_nodes`; the later launch error is a consequence, not evidence of another migrated module's return contract.
+[Omitted diagnostic assertions](diagnostic-assertions.json) records the exact conditions removed. Some message-only assertions become empty and provide no functional coverage. The workflow source also uses `failed_when: false` on graph creation, so its later "not failed" assertion cannot establish successful creation. Direct validation confirms `Input validation failed: workflow_nodes`; the later launch error is a consequence, not evidence of another migrated module's return contract.
 
 Native targets use their existing platform task format. Most runs use local connections and the collection's ephemeral manager; Controller settings uses `ansible.platform.http` with persistence enabled. This is not a complete three-connection-mode or supported-Python/Ansible matrix.
 
@@ -58,7 +58,7 @@ These are compatibility defects repaired here, rather than remaining migration r
 | Group association lookups ignored inventory scope | Legacy `group` resolves hosts/children with an inventory filter. A live case with duplicate names in two inventories failed as ambiguous. Both association lookups now use the selected inventory ID. | Live reproduction failed before and passed after; permanent native regression |
 | Group check mode ignored association-only changes | The action skipped association reconciliation entirely in check mode. SDK association reconciliation now supports a read-only comparison, and the group action uses it. | Both client implementations, RPC forwarding, action tests; live checks verify predicted changes, unchanged remote associations, and subsequent idempotency |
 | Notification/workflow copies omitted `result.copied` | Both legacy scenarios use this runtime field, supplied by `ControllerAPIModule.copy_item`. Restored true for an actual copy and false for an existing destination. | Both action types tested; adapted notification scenario completes |
-| Workflow deletion with unused invalid inventory/webhook references incorrectly reported “already absent” | The legacy workflow scenario expects deletion to succeed. Resolving unrelated references during find raised a not-found error that the absent flow interpreted as a missing workflow. Find/delete now omit those write-only FK resolutions while retaining organization scope. | Transform regression and native deletion scenario |
+| Workflow deletion with unused invalid inventory/webhook references incorrectly reported "already absent" | The legacy workflow scenario expects deletion to succeed. Resolving unrelated references during find raised a not-found error that the absent flow interpreted as a missing workflow. Find/delete now omit those write-only FK resolutions while retaining organization scope. | Transform regression and native deletion scenario |
 
 Implementation and focused tests are linked by the [changelog fragment](../../../changelogs/fragments/aap-101589-batch2-compat.yml). The shared SDK additions preserve the default write behavior for callers that do not request check mode.
 
