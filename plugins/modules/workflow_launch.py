@@ -92,7 +92,9 @@ options:
   timeout:
     description:
       - Maximum time in seconds to wait for the workflow job to complete.
-      - If not set, waits indefinitely, matching the legacy module behavior.
+      - If omitted or set to C(0), wait indefinitely.
+      - Only used when C(wait=true).
+      - Reaching this timeout stops waiting but does not cancel the remote workflow job.
     type: int
 
 seealso:

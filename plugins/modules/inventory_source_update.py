@@ -58,8 +58,10 @@ options:
 
   timeout:
     description:
-      - Maximum seconds to wait before aborting (client-side).
+      - Maximum time in seconds to wait for the inventory source update to finish.
+      - If omitted or set to C(0), wait indefinitely.
       - Only used when C(wait=true).
+      - Reaching this timeout stops waiting but does not cancel the remote update.
     type: int
 
 seealso:
