@@ -71,11 +71,15 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
                 organization = getattr(ansible_instance, "organization", None)
                 organization_id = None
                 if organization is not None:
+                    if not str(organization).strip():
+                        raise ValueError("organization must be a non-empty name or ID")
                     organization_id = (
                         int(organization)
                         if str(organization).strip().isdigit()
                         else manager.lookup_resource_id("organizations", "name", organization, service="controller")
                     )
+                    if organization_id is None or (isinstance(organization_id, str) and not organization_id.strip()):
+                        raise ValueError("organization could not be resolved to a non-empty ID")
                 lookup_kwargs = {"service": "controller", "require_unique": True}
                 if organization_id is not None:
                     lookup_kwargs["extra_query_params"] = {"organization": organization_id}

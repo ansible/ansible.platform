@@ -60,6 +60,25 @@ class TestScheduleTransform(unittest.TestCase):
             {"service": "controller", "require_unique": True, "extra_query_params": {"organization": 9}},
         )
 
+    def test_empty_organization_is_rejected_before_lookup(self):
+        mock_manager = MagicMock()
+        ansible = AnsibleSchedule(name="s", unified_job_template="Shared Template", organization=" ")
+
+        with self.assertRaisesRegex(ValueError, "organization must be a non-empty"):
+            ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_not_called()
+
+    def test_unresolved_organization_does_not_fall_back_to_unscoped_lookup(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = None
+        ansible = AnsibleSchedule(name="s", unified_job_template="Shared Template", organization="Missing Org")
+
+        with self.assertRaisesRegex(ValueError, "organization could not be resolved"):
+            ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Missing Org", service="controller")
+
     def test_update_with_new_name(self):
         ansible = AnsibleSchedule(name="old", new_name="new")
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})

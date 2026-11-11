@@ -47,7 +47,7 @@ class ActionModule(BaseResourceActionPlugin):
         # Legacy AWX treats an omitted timeout or timeout=0 as no limit.
         # The shared waiter treats negative values as no-timeout and zero as
         # an immediate timeout.
-        timeout = -1.0 if raw_timeout is None or float(raw_timeout) == 0 else max(float(raw_timeout), 0.0)
+        timeout = -1.0 if raw_timeout is None or float(raw_timeout) == 0 else float(raw_timeout)
 
         try:
             model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}
@@ -158,8 +158,8 @@ class ActionModule(BaseResourceActionPlugin):
             "credentials": "ask_credential_on_launch",
         }
         param_errors = []
-        requested_fields = [field for field in checks if params.get(field)]
-        check_extra_vars = bool(params.get("extra_vars"))
+        requested_fields = [field for field in checks if params.get(field) is not None]
+        check_extra_vars = params.get("extra_vars") is not None
         if not requested_fields and not check_extra_vars:
             return param_errors
 

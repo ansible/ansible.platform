@@ -73,7 +73,7 @@ class ActionModule(BaseResourceActionPlugin):
             # Legacy AWX waits indefinitely when timeout is omitted or zero.
             # The shared waiter uses None for its one-hour default and zero
             # for an immediate timeout.
-            wait_timeout = -1.0 if timeout is None or float(timeout) == 0 else max(float(timeout), 0.0)
+            wait_timeout = -1.0 if timeout is None or float(timeout) == 0 else float(timeout)
             wait_result = manager.wait_for_completion(
                 job_url,
                 timeout=wait_timeout,

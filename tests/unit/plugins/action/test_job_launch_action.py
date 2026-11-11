@@ -123,6 +123,35 @@ class TestJobLaunchAction(unittest.TestCase):
         )
         action._client.launch_resource.assert_not_called()
 
+    def test_falsy_prompt_overrides_are_rejected_in_check_and_live_mode(self):
+        cases = (
+            ("diff_mode", False, "ask_diff_mode_on_launch"),
+            ("verbosity", 0, "ask_verbosity_on_launch"),
+            ("tags", [], "ask_tags_on_launch"),
+            ("extra_vars", {}, "ask_variables_on_launch"),
+        )
+
+        for check_mode in (False, True):
+            for field, value, prompt in cases:
+                with self.subTest(check_mode=check_mode, field=field):
+                    action = self._make_action({"name": "Demo", field: value, "wait": False}, check_mode=check_mode)
+                    self._patch_prepare(action)
+                    action._client.lookup_resource_id.return_value = 42
+                    template = {prompt: False}
+                    if field == "extra_vars":
+                        template["survey_enabled"] = False
+                    action._client.search_api.side_effect = [{"organization": None}, template]
+
+                    result = action.run(task_vars={})
+
+                    self.assertTrue(result["failed"])
+                    self.assertFalse(result["changed"])
+                    self.assertEqual(
+                        result["errors"],
+                        [f"The field {field} was specified but the job template does not allow for it to be overridden"],
+                    )
+                    action._client.launch_resource.assert_not_called()
+
     def test_launch_with_wait_failed_job(self):
         action = self._make_action({"name": "Demo", "wait": True, "interval": 1.0})
         self._patch_prepare(action)
