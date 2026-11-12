@@ -289,6 +289,10 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this to list mutable FK fields for their resource.
     _MUTABLE_FK_FIELDS: frozenset = frozenset()
 
+    # Nullable relationships accepting an empty string to clear the reference.
+    # APIs return null after clearing; these values compare as equivalent.
+    _NULLABLE_FK_FIELDS: frozenset = frozenset()
+
     # Fields where list order does not matter for idempotency comparison.
     # By default, list comparison is order-sensitive (safer).  Subclasses
     # opt in specific fields where the API may return items in a different
@@ -549,6 +553,11 @@ class BaseResourceActionPlugin(ActionBase):
         validation_args = {key: value for key, value in self._task.args.items() if value is not None}
         validated_input = self._validate_data(validation_args, argspec, "input")
         validated_params = dict(validated_input.validated_parameters)
+        # Ansible retains supplied aliases alongside their canonical names.
+        # Resource models accept only the canonical fields.
+        for spec in argspec.get("argument_spec", {}).values():
+            for alias in spec.get("aliases", []):
+                validated_params.pop(alias, None)
         explicit_fields = getattr(self, "_explicit_fields_to_send", None)
         if getattr(self, "_preserve_explicit_nulls_for_update", False) and explicit_fields is not None:
             validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
@@ -1208,6 +1217,8 @@ class BaseResourceActionPlugin(ActionBase):
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
+            if key in self._NULLABLE_FK_FIELDS and desired_val == "" and current_val is None:
+                continue
             if (
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)

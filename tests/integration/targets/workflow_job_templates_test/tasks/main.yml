@@ -80,6 +80,9 @@
         that:
           - idempotent_update_wjt is not changed
 
+    - name: Check survey and association compatibility
+      ansible.builtin.include_tasks: compatibility.yml
+
     - name: Rename workflow job template
       ansible.platform.workflow_job_template:
         name: "{{ workflow_template_name }}"

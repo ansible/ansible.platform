@@ -27,6 +27,7 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset(_ASSOC_MAP)
+    _NULLABLE_FK_FIELDS = frozenset({"inventory", "execution_environment"})
 
     def _should_update(self, desired_data, current_data):
         """Compare schedule fields, excluding organization used only to scope template lookup."""

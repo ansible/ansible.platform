@@ -48,6 +48,7 @@ class ActionModule(BaseResourceActionPlugin):
                 endpoint=CONTROLLER_JOBS_ENDPOINT,
                 query_params=query_params or None,
                 return_all=all_pages,
+                max_objects=10000,
             )
 
             # Return the API response directly

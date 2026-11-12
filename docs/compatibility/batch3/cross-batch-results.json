@@ -1,0 +1,1417 @@
+{
+  "ticket": "AAP-101590",
+  "snapshot_date": "2026-11-12",
+  "scope": [
+    "organization",
+    "workflow_job_template",
+    "execution_environment",
+    "group",
+    "token",
+    "job_wait",
+    "settings",
+    "controller_settings",
+    "notification_template",
+    "job_launch",
+    "inventory",
+    "host",
+    "inventory_source_update",
+    "schedule",
+    "inventory_source",
+    "project_update"
+  ],
+  "platform_base_commit": "f8d6c3fb099608d1bc688c84e0fcf06f9771d263",
+  "platform_snapshot": "uncommitted working tree; final combined production hashes below",
+  "legacy_source": {
+    "repository": "ansible/awx",
+    "ref": "devel",
+    "commit": "72a1922a9cdc7c877c91d2e97d0c53ed34b437f4"
+  },
+  "environment": {
+    "designation": "authorized disposable local aap-dev 2.7-next",
+    "controller_version": "4.8.11",
+    "ansible_core": "2.21.5",
+    "python": "3.14.6",
+    "node_types": [
+      "control"
+    ]
+  },
+  "live_scope": "Native platform scenarios; prior legacy batch evidence is not represented as newly rerun.",
+  "native_attempts": [
+    {
+      "scenario": "native_cross_organization",
+      "label": "",
+      "log": "native_cross_organization.log",
+      "exit_code": 0,
+      "seconds": 9.0,
+      "recaps": [
+        "localhost                  : ok=22   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "a173ca7f53c100b14e71950ac7787bd010b41883df0d19d11801ebea6ddf2e67"
+    },
+    {
+      "scenario": "native_cross_workflow_job_template",
+      "label": "",
+      "log": "native_cross_workflow_job_template.log",
+      "exit_code": 2,
+      "seconds": 8.9,
+      "recaps": [
+        "localhost                  : ok=18   changed=3    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "297a57c828bb97459d9615e1a4dd89f8f24d22d1d8464106ea119f43636335b6"
+    },
+    {
+      "scenario": "native_cross_execution_environment",
+      "label": "",
+      "log": "native_cross_execution_environment.log",
+      "exit_code": 0,
+      "seconds": 9.7,
+      "recaps": [
+        "localhost                  : ok=23   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "c3693cdbd181067c3e26d365f248740fe77da4569f86a875e3f02965e2d29cbc"
+    },
+    {
+      "scenario": "native_cross_workflow_job_template",
+      "label": "headers-fixed",
+      "log": "native_cross_workflow_job_template-headers-fixed.log",
+      "exit_code": 0,
+      "seconds": 23.9,
+      "recaps": [
+        "localhost                  : ok=36   changed=9    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "c86c81b6ef8371cc46856f814a24adfe0e13ac5d9f7d8c3d2816c1079cf86afe"
+    },
+    {
+      "scenario": "native_cross_group",
+      "label": "",
+      "log": "native_cross_group.log",
+      "exit_code": 0,
+      "seconds": 52.9,
+      "recaps": [
+        "localhost                  : ok=51   changed=15   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "7f63277d9647cdf66ce9d78262c4f1c400cb0de98766443c6553eb0235e0625e"
+    },
+    {
+      "scenario": "native_cross_token",
+      "label": "",
+      "log": "native_cross_token.log",
+      "exit_code": 0,
+      "seconds": 17.5,
+      "recaps": [
+        "localhost                  : ok=29   changed=14   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "87eb7ee616529ca4b2bb4b75f11398c99ca96e85550b4252df32863cd69be5b1"
+    },
+    {
+      "scenario": "native_cross_job_wait",
+      "label": "",
+      "log": "native_cross_job_wait.log",
+      "exit_code": 0,
+      "seconds": 18.2,
+      "recaps": [
+        "localhost                  : ok=20   changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "a80ee77f22681ce02b0a54204c2094aad3a99fbea5ab05514c4f320a30b5f66e"
+    },
+    {
+      "scenario": "native_cross_settings",
+      "label": "",
+      "log": "native_cross_settings.log",
+      "exit_code": 0,
+      "seconds": 5.2,
+      "recaps": [
+        "localhost                  : ok=10   changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "92b5704962fb7c7f20b90aaa76f040a8874f9f178288ca196d3a76874d0a8bbc"
+    },
+    {
+      "scenario": "native_cross_controller_settings_persistent",
+      "label": "",
+      "log": "native_cross_controller_settings_persistent.log",
+      "exit_code": 0,
+      "seconds": 5.1,
+      "recaps": [
+        "batch3_controller          : ok=13   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "3d994080f8fe7b704a72eb9d1fd75391c253e17d9006438119342b34ed6207c1"
+    },
+    {
+      "scenario": "native_cross_notification_template",
+      "label": "",
+      "log": "native_cross_notification_template.log",
+      "exit_code": 0,
+      "seconds": 13.3,
+      "recaps": [
+        "localhost                  : ok=23   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "9ee1245f55d5c4bad5ef17d5aa8e79b5c72a04a9f98074cef32a990f66f71375"
+    },
+    {
+      "scenario": "native_cross_job_launch",
+      "label": "",
+      "log": "native_cross_job_launch.log",
+      "exit_code": 0,
+      "seconds": 16.4,
+      "recaps": [
+        "localhost                  : ok=15   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "0c451a28b516e37e957a05f7946fd0886d574689bcf470eb1a1d6aaf639f4095"
+    },
+    {
+      "scenario": "native_cross_inventory",
+      "label": "",
+      "log": "native_cross_inventory.log",
+      "exit_code": 0,
+      "seconds": 27.8,
+      "recaps": [
+        "localhost                  : ok=38   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "d2c737c69d7fa37e23b15b6cc11f7c110dd2d4ccfbcb77828d5ad28501ae0680"
+    },
+    {
+      "scenario": "native_cross_host",
+      "label": "",
+      "log": "native_cross_host.log",
+      "exit_code": 0,
+      "seconds": 12.5,
+      "recaps": [
+        "localhost                  : ok=22   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "aa14144d6c9d9131b3c424aa09615d58053a0a693fd114fba1646af18763e403"
+    },
+    {
+      "scenario": "native_cross_inventory_source_update",
+      "label": "",
+      "log": "native_cross_inventory_source_update.log",
+      "exit_code": 0,
+      "seconds": 128.3,
+      "recaps": [
+        "localhost                  : ok=25   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "78de22d90054500809e1a9ccb5340a0c05085e90cc865b4c8e960ae601e35ff7"
+    },
+    {
+      "scenario": "native_cross_schedule",
+      "label": "",
+      "log": "native_cross_schedule.log",
+      "exit_code": 2,
+      "seconds": 5.6,
+      "recaps": [
+        "localhost                  : ok=10   changed=3    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "397153f32bdd1fb20daa4cf2f94c44f3e318d22e863cd1740af9ac453da85e34"
+    },
+    {
+      "scenario": "native_cross_inventory_source",
+      "label": "",
+      "log": "native_cross_inventory_source.log",
+      "exit_code": 0,
+      "seconds": 21.3,
+      "recaps": [
+        "localhost                  : ok=32   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "6ece04d9d34d6a3ef775336737de1f08451ff180fa5784ae80420a228025a931"
+    },
+    {
+      "scenario": "native_cross_project_update",
+      "label": "",
+      "log": "native_cross_project_update.log",
+      "exit_code": 0,
+      "seconds": 67.1,
+      "recaps": [
+        "localhost                  : ok=14   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "afe66ce457fd1a2be746b8fd70f17c3376b50bb87ebeb131a9e9817581b49ec4"
+    },
+    {
+      "scenario": "native_cross_schedule",
+      "label": "final",
+      "log": "native_cross_schedule-final.log",
+      "exit_code": 0,
+      "seconds": 13.9,
+      "recaps": [
+        "localhost                  : ok=29   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "3379cecff3005463e22d915b59c9ad6db55d2e4888d6f40bdfb55251e6846083"
+    },
+    {
+      "scenario": "native_cross_workflow_job_template_persistent",
+      "label": "final",
+      "log": "native_cross_workflow_job_template_persistent-final.log",
+      "exit_code": 0,
+      "seconds": 11.5,
+      "recaps": [
+        "batch3_controller          : ok=36   changed=9    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "343d46ff965e87a48126b6a2ca060ef774a09c079238a620e37602c80ac0e9b5"
+    },
+    {
+      "scenario": "native_workflow_launch",
+      "label": "legacy-negative",
+      "log": "native_workflow_launch-legacy-negative.log",
+      "exit_code": 0,
+      "seconds": 61.2,
+      "recaps": [
+        "localhost                  : ok=19   changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "90d6838ff187ca593eb4dc1597faf6710b1a282cd9b9afd8f27d59a611d05592"
+    }
+  ],
+  "final_native_results": {
+    "native_cross_organization": {
+      "scenario": "native_cross_organization",
+      "label": "",
+      "log": "native_cross_organization.log",
+      "exit_code": 0,
+      "seconds": 9.0,
+      "recaps": [
+        "localhost                  : ok=22   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "a173ca7f53c100b14e71950ac7787bd010b41883df0d19d11801ebea6ddf2e67"
+    },
+    "native_cross_workflow_job_template": {
+      "scenario": "native_cross_workflow_job_template",
+      "label": "headers-fixed",
+      "log": "native_cross_workflow_job_template-headers-fixed.log",
+      "exit_code": 0,
+      "seconds": 23.9,
+      "recaps": [
+        "localhost                  : ok=36   changed=9    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "c86c81b6ef8371cc46856f814a24adfe0e13ac5d9f7d8c3d2816c1079cf86afe"
+    },
+    "native_cross_execution_environment": {
+      "scenario": "native_cross_execution_environment",
+      "label": "",
+      "log": "native_cross_execution_environment.log",
+      "exit_code": 0,
+      "seconds": 9.7,
+      "recaps": [
+        "localhost                  : ok=23   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "c3693cdbd181067c3e26d365f248740fe77da4569f86a875e3f02965e2d29cbc"
+    },
+    "native_cross_group": {
+      "scenario": "native_cross_group",
+      "label": "",
+      "log": "native_cross_group.log",
+      "exit_code": 0,
+      "seconds": 52.9,
+      "recaps": [
+        "localhost                  : ok=51   changed=15   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "7f63277d9647cdf66ce9d78262c4f1c400cb0de98766443c6553eb0235e0625e"
+    },
+    "native_cross_token": {
+      "scenario": "native_cross_token",
+      "label": "",
+      "log": "native_cross_token.log",
+      "exit_code": 0,
+      "seconds": 17.5,
+      "recaps": [
+        "localhost                  : ok=29   changed=14   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "87eb7ee616529ca4b2bb4b75f11398c99ca96e85550b4252df32863cd69be5b1"
+    },
+    "native_cross_job_wait": {
+      "scenario": "native_cross_job_wait",
+      "label": "",
+      "log": "native_cross_job_wait.log",
+      "exit_code": 0,
+      "seconds": 18.2,
+      "recaps": [
+        "localhost                  : ok=20   changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "a80ee77f22681ce02b0a54204c2094aad3a99fbea5ab05514c4f320a30b5f66e"
+    },
+    "native_cross_settings": {
+      "scenario": "native_cross_settings",
+      "label": "",
+      "log": "native_cross_settings.log",
+      "exit_code": 0,
+      "seconds": 5.2,
+      "recaps": [
+        "localhost                  : ok=10   changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "92b5704962fb7c7f20b90aaa76f040a8874f9f178288ca196d3a76874d0a8bbc"
+    },
+    "native_cross_controller_settings_persistent": {
+      "scenario": "native_cross_controller_settings_persistent",
+      "label": "",
+      "log": "native_cross_controller_settings_persistent.log",
+      "exit_code": 0,
+      "seconds": 5.1,
+      "recaps": [
+        "batch3_controller          : ok=13   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "3d994080f8fe7b704a72eb9d1fd75391c253e17d9006438119342b34ed6207c1"
+    },
+    "native_cross_notification_template": {
+      "scenario": "native_cross_notification_template",
+      "label": "",
+      "log": "native_cross_notification_template.log",
+      "exit_code": 0,
+      "seconds": 13.3,
+      "recaps": [
+        "localhost                  : ok=23   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "9ee1245f55d5c4bad5ef17d5aa8e79b5c72a04a9f98074cef32a990f66f71375"
+    },
+    "native_cross_job_launch": {
+      "scenario": "native_cross_job_launch",
+      "label": "",
+      "log": "native_cross_job_launch.log",
+      "exit_code": 0,
+      "seconds": 16.4,
+      "recaps": [
+        "localhost                  : ok=15   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "0c451a28b516e37e957a05f7946fd0886d574689bcf470eb1a1d6aaf639f4095"
+    },
+    "native_cross_inventory": {
+      "scenario": "native_cross_inventory",
+      "label": "",
+      "log": "native_cross_inventory.log",
+      "exit_code": 0,
+      "seconds": 27.8,
+      "recaps": [
+        "localhost                  : ok=38   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "d2c737c69d7fa37e23b15b6cc11f7c110dd2d4ccfbcb77828d5ad28501ae0680"
+    },
+    "native_cross_host": {
+      "scenario": "native_cross_host",
+      "label": "",
+      "log": "native_cross_host.log",
+      "exit_code": 0,
+      "seconds": 12.5,
+      "recaps": [
+        "localhost                  : ok=22   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "aa14144d6c9d9131b3c424aa09615d58053a0a693fd114fba1646af18763e403"
+    },
+    "native_cross_inventory_source_update": {
+      "scenario": "native_cross_inventory_source_update",
+      "label": "",
+      "log": "native_cross_inventory_source_update.log",
+      "exit_code": 0,
+      "seconds": 128.3,
+      "recaps": [
+        "localhost                  : ok=25   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "78de22d90054500809e1a9ccb5340a0c05085e90cc865b4c8e960ae601e35ff7"
+    },
+    "native_cross_schedule": {
+      "scenario": "native_cross_schedule",
+      "label": "final",
+      "log": "native_cross_schedule-final.log",
+      "exit_code": 0,
+      "seconds": 13.9,
+      "recaps": [
+        "localhost                  : ok=29   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "3379cecff3005463e22d915b59c9ad6db55d2e4888d6f40bdfb55251e6846083"
+    },
+    "native_cross_inventory_source": {
+      "scenario": "native_cross_inventory_source",
+      "label": "",
+      "log": "native_cross_inventory_source.log",
+      "exit_code": 0,
+      "seconds": 21.3,
+      "recaps": [
+        "localhost                  : ok=32   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "6ece04d9d34d6a3ef775336737de1f08451ff180fa5784ae80420a228025a931"
+    },
+    "native_cross_project_update": {
+      "scenario": "native_cross_project_update",
+      "label": "",
+      "log": "native_cross_project_update.log",
+      "exit_code": 0,
+      "seconds": 67.1,
+      "recaps": [
+        "localhost                  : ok=14   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "afe66ce457fd1a2be746b8fd70f17c3376b50bb87ebeb131a9e9817581b49ec4"
+    },
+    "native_cross_workflow_job_template_persistent": {
+      "scenario": "native_cross_workflow_job_template_persistent",
+      "label": "final",
+      "log": "native_cross_workflow_job_template_persistent-final.log",
+      "exit_code": 0,
+      "seconds": 11.5,
+      "recaps": [
+        "batch3_controller          : ok=36   changed=9    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "343d46ff965e87a48126b6a2ca060ef774a09c079238a620e37602c80ac0e9b5"
+    },
+    "native_workflow_launch": {
+      "scenario": "native_workflow_launch",
+      "label": "legacy-negative",
+      "log": "native_workflow_launch-legacy-negative.log",
+      "exit_code": 0,
+      "seconds": 61.2,
+      "recaps": [
+        "localhost                  : ok=19   changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "90d6838ff187ca593eb4dc1597faf6710b1a282cd9b9afd8f27d59a611d05592"
+    }
+  },
+  "native_targets": {
+    "native_cross_organization": "tests/integration/targets/organizations_test/tasks/main.yml",
+    "native_cross_workflow_job_template": "tests/integration/targets/workflow_job_templates_test/tasks/main.yml",
+    "native_cross_execution_environment": "tests/integration/targets/execution_environment_test/tasks/main.yml",
+    "native_cross_group": "tests/integration/targets/groups_test/tasks/main.yml",
+    "native_cross_token": "tests/integration/targets/tokens_test/tasks/main.yml",
+    "native_cross_job_wait": "tests/integration/targets/job_waits_test/tasks/main.yml",
+    "native_cross_settings": "tests/integration/targets/settings_test/tasks/main.yml",
+    "native_cross_controller_settings_persistent": "tests/integration/targets/controller_settings_test/tasks/main.yml",
+    "native_cross_notification_template": "tests/integration/targets/notification_templates_test/tasks/main.yml",
+    "native_cross_job_launch": "tests/integration/targets/job_launches_test/tasks/main.yml",
+    "native_cross_inventory": "tests/integration/targets/inventory_test/tasks/main.yml",
+    "native_cross_host": "tests/integration/targets/hosts_test/tasks/main.yml",
+    "native_cross_inventory_source_update": "tests/integration/targets/inventory_source_updates_test/tasks/main.yml",
+    "native_cross_schedule": "tests/integration/targets/schedule_test/tasks/main.yml",
+    "native_cross_inventory_source": "tests/integration/targets/inventory_sources_test/tasks/main.yml",
+    "native_cross_project_update": "tests/integration/targets/project_updates_test/tasks/main.yml",
+    "native_cross_workflow_job_template_persistent": "tests/integration/targets/workflow_job_templates_test/tasks/main.yml",
+    "native_workflow_launch": "tests/integration/targets/workflow_launchs_test/tasks/main.yml"
+  },
+  "additional_transport_check": "workflow_job_template: same native target through persistent manager; controller_settings also persistent",
+  "initial_failure_classification": {
+    "workflow_job_template": "test fixture: webhook notification missing required headers; corrected to headers: {}",
+    "schedule": "test assumption: first explicit empty prompt overrides differ from inherited null; corrected to assert one change, then unchanged reapplication"
+  },
+  "schedule_api_diagnostic": {
+    "raw": {
+      "scm_branch": null,
+      "job_tags": null,
+      "skip_tags": null,
+      "limit": null,
+      "inventory": null,
+      "execution_environment": null
+    },
+    "comparisons": {
+      "scm_branch": {
+        "current": null,
+        "desired": "",
+        "changed": true
+      },
+      "job_tags": {
+        "current": null,
+        "desired": "",
+        "changed": true
+      },
+      "skip_tags": {
+        "current": null,
+        "desired": "",
+        "changed": true
+      },
+      "limit": {
+        "current": null,
+        "desired": "",
+        "changed": true
+      },
+      "inventory": {
+        "current": null,
+        "desired": "",
+        "changed": false
+      },
+      "execution_environment": {
+        "current": null,
+        "desired": "",
+        "changed": false
+      }
+    },
+    "after_explicit_clear": {
+      "scm_branch": {
+        "raw": "",
+        "changed": false
+      },
+      "job_tags": {
+        "raw": "",
+        "changed": false
+      },
+      "skip_tags": {
+        "raw": "",
+        "changed": false
+      },
+      "limit": {
+        "raw": "",
+        "changed": false
+      },
+      "inventory": {
+        "raw": null,
+        "changed": false
+      },
+      "execution_environment": {
+        "raw": null,
+        "changed": false
+      }
+    }
+  },
+  "unit_suite": {
+    "tests": 2317,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "cross_batch_regressions": {
+    "tests": 105,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "original_baseline_reproduction": {
+    "counts": {
+      "tests": 105,
+      "failures": 57,
+      "errors": 0,
+      "skipped": 0
+    },
+    "note": "Same 105 tests in isolated original HEAD; 57 failed / 48 passed. This includes missing new SDK signatures, not 57 independent defects.",
+    "source_checkout_modified": false,
+    "final_test_file_sha256": "895836a5a5b8df3bad2368ca1d544a7fd7ffc17fae00085a86cd1dc38ae031ce"
+  },
+  "quality_checks": {
+    "ruff": "passed: check and format; 443 files",
+    "mypy": "passed: 75 source files",
+    "pydoclint": "passed: plugins/action",
+    "action_plugin_invariants": "passed",
+    "ansible_lint": "passed: production profile, 8 changed native target YAML files, offline; no failures or warnings",
+    "ansible_sanity": {
+      "status": "passed",
+      "ansible_version": "2.16",
+      "python_version": "3.11",
+      "tests": [
+        "pylint",
+        "no-smart-quotes",
+        "validate-modules"
+      ],
+      "target_paths": [
+        "plugins/action/base_action.py",
+        "plugins/action/export.py",
+        "plugins/action/instance_group.py",
+        "plugins/action/inventory_source_update.py",
+        "plugins/action/job_launch.py",
+        "plugins/action/job_list.py",
+        "plugins/action/schedule.py",
+        "plugins/action/workflow_job_template.py",
+        "plugins/action/workflow_job_template_node.py",
+        "plugins/action/workflow_launch.py",
+        "plugins/modules/export.py",
+        "plugins/modules/inventory_source_update.py",
+        "plugins/modules/job_launch.py",
+        "plugins/modules/job_list.py",
+        "plugins/modules/workflow_job_template_node.py",
+        "plugins/modules/workflow_launch.py",
+        "plugins/plugin_utils/ansible_models/workflow_job_template_node.py",
+        "plugins/plugin_utils/api/controller/v2/execution_environment.py",
+        "plugins/plugin_utils/api/controller/v2/schedule.py",
+        "plugins/plugin_utils/api/controller/v2/workflow_job_template_node.py",
+        "plugins/plugin_utils/manager/platform_manager.py",
+        "plugins/plugin_utils/manager/rpc_client.py",
+        "plugins/plugin_utils/platform/base_client.py",
+        "plugins/plugin_utils/platform/direct_client.py",
+        "tests/test_completeness.py",
+        "tests/unit/plugins/action/test_batch3_compatibility.py",
+        "tests/unit/plugins/action/test_cross_batch_compatibility.py",
+        "tests/unit/plugins/action/test_instance_group_action.py",
+        "tests/unit/plugins/action/test_inventory_source_update.py",
+        "tests/unit/plugins/action/test_job_list.py",
+        "tests/unit/plugins/action/test_workflow_job_template_action.py",
+        "tests/unit/plugins/action/test_workflow_launch.py",
+        "tests/unit/plugins/plugin_utils/manager/test_manage_associations_and_copy.py",
+        "tests/unit/plugins/plugin_utils/manager/test_rpc_client_associations_and_copy.py",
+        "tests/unit/plugins/plugin_utils/platform/test_direct_client_associations_and_copy.py",
+        "tests/unit/plugins/plugin_utils/platform/test_workflow_approval_reconciliation.py"
+      ],
+      "raw_log_sha256": "4b0900c7400d14427b606546512f916843e835ce9819d4109d158cd0975cedc9"
+    }
+  },
+  "skill_rows": [
+    {
+      "module_id": "awx_collection:execution_environment",
+      "module": "execution_environment",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "execution_environment"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:group",
+      "module": "group",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "group"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:host",
+      "module": "host",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [
+            "instance_id"
+          ],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "host"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:inventory",
+      "module": "inventory",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "copied",
+            "inventory"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:inventory_source",
+      "module": "inventory_source",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [
+            "custom_virtualenv"
+          ],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": true,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "inventory_source"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:inventory_source_update",
+      "module": "inventory_source_update",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "elapsed",
+            "finished",
+            "finished_at",
+            "job_data",
+            "started"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": true,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:job_launch",
+      "module": "job_launch",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "elapsed",
+            "finished",
+            "finished_at",
+            "job_data",
+            "started"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": true,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:job_wait",
+      "module": "job_wait",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "finished_at"
+          ],
+          "changed": {
+            "finished": {
+              "type": {
+                "legacy": "str",
+                "platform": "bool",
+                "severity": "review"
+              }
+            }
+          },
+          "breaking": false,
+          "review_keys": [
+            "finished"
+          ]
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:notification_template",
+      "module": "notification_template",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "copied",
+            "notification_template"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:organization",
+      "module": "organization",
+      "source": "awx_collection",
+      "status": "out-of-scope",
+      "platform_module": null,
+      "diff": null,
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:project_update",
+      "module": "project_update",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "elapsed",
+            "finished",
+            "finished_at",
+            "job_data",
+            "started"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": true,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:schedule",
+      "module": "schedule",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "schedule"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:settings",
+      "module": "settings",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "controller_settings",
+            "new_values",
+            "old_values",
+            "value",
+            "values"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:workflow_job_template",
+      "module": "workflow_job_template",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [
+            "destroy_current_nodes",
+            "destroy_current_schema",
+            "schema",
+            "workflow_nodes"
+          ],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": true,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "copied",
+            "workflow_job_template"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    },
+    {
+      "module_id": "awx_collection:workflow_launch",
+      "module": "workflow_launch",
+      "source": "awx_collection",
+      "status": "migrated",
+      "platform_module": null,
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "elapsed",
+            "errors",
+            "finished",
+            "finished_at",
+            "id",
+            "job_data",
+            "job_info.id",
+            "started",
+            "status",
+            "workflow_launch"
+          ],
+          "changed": {
+            "job_info": {
+              "returned": {
+                "legacy": "If workflow launched",
+                "platform": "when a workflow is launched",
+                "severity": "review"
+              }
+            }
+          },
+          "breaking": false,
+          "review_keys": [
+            "job_info"
+          ]
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": true,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "notes": null
+    }
+  ],
+  "skill_scope_notes": [
+    "Organization is a Gateway replacement excluded from planned AWX migrations; see manual Batch 2 comparison.",
+    "Token is absent from this AWX devel snapshot; historical Controller token comparison remains in Batch 2.",
+    "Legacy settings maps to controller_settings; platform settings is Gateway-owned."
+  ],
+  "final_production_sha256": {
+    "plugins/action/base_action.py": "d445cfb16ec390beeee13f82b2abda4a9aa09c0c0e159a48d2ff8b2fd7ccfd7d",
+    "plugins/action/export.py": "79e0d8684b33bbd31488ee2591fef5ae61987bfcf9e323f8b12d5dcc9c26d3e3",
+    "plugins/action/instance_group.py": "cca249f331cd1d0ffa0c99234717e9ed4fc5b52bc83a8e7d2536f852ac3d624d",
+    "plugins/action/inventory_source_update.py": "72e90a90b7d74062eb760b88e9f1a1a0a552ad65f79a68409349fc50a11ae66d",
+    "plugins/action/job_launch.py": "13669315db5bb6d9ffe0649fc80c7655ea89c668114cbd871d1f77d29622d6a6",
+    "plugins/action/job_list.py": "eaba32209dfbd883371029d15d637f544cea2183aa7f61f44f86b56f080eb72d",
+    "plugins/action/schedule.py": "2d1f9b1751fe55ef803d4b5176448e57a3673857c3469192c74d609ffe48df07",
+    "plugins/action/workflow_job_template.py": "1fa84f96950534b47d0e4b104b50b155b8fddd7111696f7a4f2e4099f7e56cbb",
+    "plugins/action/workflow_job_template_node.py": "e37938e8912527d0b9f2b51382c38ec364c92b2e8f153c20d5977c51c4770c80",
+    "plugins/action/workflow_launch.py": "32bafff1c5ff9b05dd9139b1ac41014f4c9c4efe13361eee3f8829f715b247e7",
+    "plugins/modules/export.py": "a6148bf799f183096e002a363ca29532a39417d8469be81ca1107a37ba021f4c",
+    "plugins/modules/inventory_source_update.py": "8bfd25706f35e9d2b0dd1e97f5117b3c39ca0f3d215cbb084f8be1d2f31458d0",
+    "plugins/modules/job_launch.py": "4638a81eaaad52e24a41746fd92e8b9f53a0d64c42319541c7bf2af9b77f7f15",
+    "plugins/modules/job_list.py": "b43767c9f724db78137e5eff6d16b1ae3325b32d2b4c31b9432bff796d75a0bf",
+    "plugins/modules/workflow_job_template_node.py": "9eff8e406b9d4af6200318a1c5540fc133301c50b751a0eb967de8ef79b5a6f8",
+    "plugins/modules/workflow_launch.py": "a119dd768141c100e6f24aaf04dffe94626168c699c0dbcdda2462f2aa39646f",
+    "plugins/plugin_utils/ansible_models/workflow_job_template_node.py": "bdb122e6f052b1ae6abb5dda83698ddd9dc23a2cf8eb06fa3912e96c0a52a00e",
+    "plugins/plugin_utils/api/controller/v2/execution_environment.py": "a9613caa4b3c4df56f834bb2da0094f62572154a1231cc995e76c49cf4477768",
+    "plugins/plugin_utils/api/controller/v2/schedule.py": "144f819b894070abb549f4bace9308d901a53b9bcb12696b8a4df095825fc4b5",
+    "plugins/plugin_utils/api/controller/v2/workflow_job_template_node.py": "5a14083b06874ed32e6911675d03fc3202031e533f58b0d1ff53d023e9245d53",
+    "plugins/plugin_utils/manager/platform_manager.py": "634a94588ee0fd20a56a84a9c1503d232ecdd78768b1ec2f4ef9c0037c4ce3a3",
+    "plugins/plugin_utils/manager/rpc_client.py": "9af48e5abec77f30719b35a8c7c642bfe7ee474fe86de2121c36b33af84db86e",
+    "plugins/plugin_utils/platform/base_client.py": "438c0e8781d4cae4ce05470e0b302ca892f483252055fdb466cc0c970e645e05",
+    "plugins/plugin_utils/platform/direct_client.py": "ba04387f6e8c86e1fe1126e590f093b717d0f4aba9a87a3389fa4a777fc876c7"
+  },
+  "pending": [
+    "Agreed follow-up: M3 to run instance-group association scenario with an eligible execution/hybrid node before ticket closure; coverage remains open and has not been waived",
+    "Documented breaking gap: inventory_source.custom_virtualenv fails Platform validation; execution_environment requires an image containing the dependencies, not a virtualenv path. User agreed to record the gap for team disposition under AAP-101590; intentional difference not yet approved",
+    "Previously recorded Batch 2 workflow-template graph/schema gap",
+    "PR CI, approvals, and M3 review"
+  ],
+  "ticket_acceptance_complete": false
+}

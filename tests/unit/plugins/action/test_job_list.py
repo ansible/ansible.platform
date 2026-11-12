@@ -139,6 +139,7 @@ class TestJobListAction:
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params={"status": "successful"},
             return_all=False,
+            max_objects=10000,
         )
 
     @patch.object(
@@ -173,6 +174,7 @@ class TestJobListAction:
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params=None,
             return_all=True,
+            max_objects=10000,
         )
 
     @patch.object(
@@ -212,6 +214,7 @@ class TestJobListAction:
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params={"status": "running", "playbook": "testing.yml"},
             return_all=False,
+            max_objects=10000,
         )
 
     @patch.object(
@@ -301,4 +304,5 @@ class TestJobListAction:
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params={"page": 3},
             return_all=False,
+            max_objects=10000,
         )

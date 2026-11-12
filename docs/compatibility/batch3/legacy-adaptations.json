@@ -1,0 +1,30 @@
+{
+  "purpose": "Diagnostic copies only. Strict run results remain authoritative for unchanged legacy compatibility.",
+  "changes": [
+    {
+      "module": "team",
+      "assertions_modified": true,
+      "diff": "--- strict/targets/team/tasks/main.yml\n+++ adapted/targets/team/tasks/main.yml\n@@ -52,7 +52,7 @@\n   ansible.platform.team:\n     name: '{{ team_name }}'\n     organization: Default\n-    state: exists\n+    state: present\n - name: Assert result changed\n   ansible.builtin.assert:\n     that:\n@@ -78,13 +78,10 @@\n   ansible.builtin.assert:\n     that:\n     - result is failed\n-    - '''returned 0 items, expected 1'' in result.msg or ''returned 0 items, expected\n-      1'' in result.exception or ''returned 0 items, expected 1'' in result.get(''msg'',\n-      '''')'\n+    - '''not found'' in result.msg'\n - name: Lookup of the related organization should cause a failure\n   ansible.builtin.assert:\n     that:\n     - result.failed\n     - not result.changed\n     - '''Non_Existing_Org'' in result.msg'\n-    - result.total_results == 0\n"
+    },
+    {
+      "module": "label",
+      "assertions_modified": true,
+      "diff": "--- strict/targets/label/tasks/main.yml\n+++ adapted/targets/label/tasks/main.yml\n@@ -36,4 +36,3 @@\n     - result is failed\n     - result is not changed\n     - '''Non_existing_org'' in result.msg'\n-    - result.total_results == 0\n"
+    },
+    {
+      "module": "instance_group",
+      "assertions_modified": true,
+      "diff": "--- strict/targets/instance_group/tasks/main.yml\n+++ adapted/targets/instance_group/tasks/main.yml\n@@ -58,7 +58,7 @@\n       name: '{{ group_name1 }}'\n       policy_instance_percentage: 34\n       policy_instance_minimum: 12\n-      state: exists\n+      state: present\n   - assert:\n       that:\n       - result is changed\n"
+    },
+    {
+      "module": "workflow_launch",
+      "assertions_modified": true,
+      "diff": "--- strict/targets/workflow_launch/tasks/main.yml\n+++ adapted/targets/workflow_launch/tasks/main.yml\n@@ -52,8 +52,7 @@\n     ansible.builtin.assert:\n       that:\n       - result.failed | default(false)\n-      - '''Monitoring of Workflow Job - ''~ wfjt_name1 ~ '' aborted due to timeout''\n-        in result.msg'\n+      - '''timed out'' in (result.msg | lower)'\n   - name: Kick off a workflow and wait for it\n     ignore_errors: true\n     register: result\n"
+    },
+    {
+      "module": "workflow_job_template_node",
+      "assertions_modified": true,
+      "diff": "--- strict/targets/workflow_job_template_node/tasks/main.yml\n+++ adapted/targets/workflow_job_template_node/tasks/main.yml\n@@ -450,8 +450,7 @@\n   - name: Assert no name for approval failed\n     ansible.builtin.assert:\n       that:\n-      - no_name_results.msg is search('Approval node name is required to create approval\n-        node.')\n+      - '''missing required arguments: name found in approval_node'' in no_name_results.msg'\n   - name: Fail if absent and no identifier set\n     register: no_identifier_results\n     failed_when: false\n"
+    }
+  ]
+}

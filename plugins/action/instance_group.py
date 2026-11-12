@@ -35,6 +35,7 @@ class ActionModule(BaseResourceActionPlugin):
                 "instances",
                 "hostname",
                 service="controller",
+                check_mode=self._task.check_mode,
             ):
                 result["changed"] = True
 

@@ -1,0 +1,104 @@
+---
+- name: Verify legacy survey aliases and association check mode
+  vars:
+    compatibility_survey:
+      name: Compatibility survey
+      description: ""
+      spec:
+        - question_name: Compatibility input
+          question_description: ""
+          required: false
+          type: text
+          variable: compatibility_value
+          min: 0
+          max: 1024
+          default: ""
+  block:
+    - name: Create a notification for association comparison
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Compatibility-Notify"
+        organization: Default
+        notification_type: webhook
+        notification_configuration:
+          url: https://example.invalid/compatibility
+          http_method: POST
+          headers: {}
+
+    - name: Apply a survey through the legacy alias and add a notification
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: "{{ compatibility_survey }}"
+        notification_templates_success: ["{{ name_prefix }}-Compatibility-Notify"]
+      register: compatibility_created
+
+    - name: Compare identical survey and associations in check mode
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: "{{ compatibility_survey }}"
+        notification_templates_success: ["{{ name_prefix }}-Compatibility-Notify"]
+      check_mode: true
+      register: compatibility_unchanged
+
+    - name: Predict clearing survey and associations
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: {}
+        notification_templates_success: []
+      check_mode: true
+      register: compatibility_predicted
+
+    - name: Read associations after check mode
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ created_wjt.id }}/notification_templates_success/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: compatibility_associations
+
+    - name: Read survey after check mode
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ created_wjt.id }}/survey_spec/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: compatibility_current_survey
+
+    - name: Assert prediction did not modify the workflow
+      ansible.builtin.assert:
+        that:
+          - compatibility_created is changed
+          - compatibility_unchanged is not changed
+          - compatibility_predicted is changed
+          - compatibility_associations.json.count == 1
+          - compatibility_current_survey.json == compatibility_survey
+
+    - name: Apply the predicted survey and association clear
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: {}
+        notification_templates_success: []
+      register: compatibility_cleared
+
+    - name: Reapply the empty survey and association list
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: {}
+        notification_templates_success: []
+      register: compatibility_repeated_clear
+
+    - name: Assert clearing is a change only once
+      ansible.builtin.assert:
+        that:
+          - compatibility_cleared is changed
+          - compatibility_repeated_clear is not changed
+  always:
+    - name: Remove the compatibility notification
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Compatibility-Notify"
+        organization: Default
+        state: absent
+...

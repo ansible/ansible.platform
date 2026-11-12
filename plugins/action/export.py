@@ -290,9 +290,18 @@ class ActionModule(BaseResourceActionPlugin):
         results = []
         seen_ids = set()
         for name in names_filter:
+            query_field = id_field
+            query_value = name
+            if str(name).isdecimal():
+                query_field, query_value = "id", int(name)
+            elif "++" in str(name):
+                service = "gateway" if "/gateway/" in endpoint else "controller"
+                resource_type = endpoint.strip("/").rsplit("/", 1)[-1]
+                query_field = "id"
+                query_value = manager.lookup_resource_id(resource_type, id_field, name, service=service)
             response = manager.search_api(
                 endpoint=endpoint,
-                query_params={id_field: name},
+                query_params={query_field: query_value},
                 return_all=True,
                 max_objects=max_objects,
             )

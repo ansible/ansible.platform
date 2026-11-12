@@ -333,12 +333,14 @@ class TestManageSubResource(unittest.TestCase):
         self.svc.session.get.assert_not_called()
 
     def test_empty_dict_deletes(self):
+        self.svc.session.get.return_value = _resp(json_data={"name": "Existing"})
         self.svc.session.delete.return_value = _resp(status_code=200)
         changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertTrue(changed)
         self.svc.session.delete.assert_called_once_with("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", timeout=30, verify=True)
 
     def test_empty_dict_delete_404_is_not_changed(self):
+        self.svc.session.get.return_value = _resp(json_data={"name": "Existing"})
         self.svc.session.delete.return_value = _resp(status_code=404)
         changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)

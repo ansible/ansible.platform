@@ -1,0 +1,706 @@
+{
+  "ticket": "AAP-101590",
+  "snapshot_date": "2026-11-12",
+  "status": "live_runs_completed_with_documented_contract_differences_and_coverage_limits",
+  "unit_suite": {
+    "status": "passed",
+    "junit_cases_including_subtests": {
+      "tests": 2212,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "baseline_reproduction": {
+    "status": "expected_failures",
+    "isolated_base_commit": "f8d6c3fb099608d1bc688c84e0fcf06f9771d263",
+    "selected_regressions": {
+      "tests": 9,
+      "failures": 9,
+      "errors": 0,
+      "skipped": 0
+    },
+    "source_checkout_modified": false
+  },
+  "focused_regressions": {
+    "status": "passed",
+    "junit_cases": {
+      "tests": 34,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "note": "Snapshot before additional verbosity and negative-timeout cases; those are covered by the full final suite"
+  },
+  "quality_checks": {
+    "ruff": "passed; 442 files formatted",
+    "mypy": "passed; 75 source files",
+    "pydoclint": "passed on changed actions",
+    "action_plugin_invariants": "passed",
+    "ansible_doc": "passed for all seven modules",
+    "ansible_lint": "production profile passed on preparation script and three modified native targets; corrected Controller-organization prerequisite also passed the production profile",
+    "ansible_test_sanity": "passed: Ansible 2.16, Python 3.11; pylint, no-smart-quotes, validate-modules in isolated checkout; shared alias fix and regression tests subsequently passed pylint and no-smart-quotes in the same pinned tooling",
+    "completeness_exemptions": "passed against real Controller OPTIONS metadata for the three node client-side fields, including rejection of a sentinel unknown option; full collection completeness suite not run"
+  },
+  "environment": {
+    "designation": "authorized disposable local aap-dev 2.7-next",
+    "controller_version": "4.8.11",
+    "ansible_core": "2.21.5",
+    "python": "3.14.6",
+    "preflight": {
+      "ready": true,
+      "http_status": 200,
+      "controller_version": "4.8.11"
+    },
+    "startup_issue": "Resolved HTTP 423 resource-sync lock caused by bootstrap metrics HTTP 503 failure",
+    "environment_adjustment": {
+      "resource": "deployment/myaap-automationmetricsservice-web",
+      "readinessProbe.timeoutSeconds": 15,
+      "livenessProbe.timeoutSeconds": 15,
+      "previous_timeoutSeconds": 5,
+      "measured_health_latency_seconds": 6.04
+    },
+    "migration_retry": "Succeeded for gateway/controller/eda/metrics-service; automatic register-services job completed",
+    "controller_node_types": [
+      "control"
+    ]
+  },
+  "legacy": [
+    {
+      "module": "team",
+      "legacy_target": "team",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "team",
+        "exit_code": 2,
+        "seconds": 5.4,
+        "recaps": [
+          "localhost                  : ok=12   changed=2    unreachable=0    failed=1    skipped=0    rescued=0    ignored=1"
+        ],
+        "raw_log_sha256": "245660a9d3773d2e29bb4bfdd56062c7011a178e8715cd7449dfc06995356c05"
+      },
+      "classification": "documented_read_only_exists_and_error_metadata",
+      "diagnostic_adapted": {
+        "scenario": "adapted_team",
+        "label": "",
+        "log": "adapted_team.log",
+        "exit_code": 0,
+        "seconds": 9.0,
+        "recaps": [
+          "localhost                  : ok=18   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=2"
+        ],
+        "raw_log_sha256": "81c636f04cf3051584dcd4658dc584bcd64554734884965a7d33677e0bd4c0f8"
+      },
+      "adaptation_details": "legacy-adaptations.json"
+    },
+    {
+      "module": "workflow_launch",
+      "legacy_target": "workflow_launch",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "workflow_launch",
+        "label": "after-bootstrap",
+        "log": "workflow_launch-after-bootstrap.log",
+        "exit_code": 2,
+        "seconds": 9.8,
+        "recaps": [
+          "localhost                  : ok=10   changed=4    unreachable=0    failed=2    skipped=0    rescued=0    ignored=2"
+        ],
+        "raw_log_sha256": "6865195e58a72616e38b73d555d21f01d7326cc1b6ebd130af7b31bd4dc28f11"
+      },
+      "classification": "documented_error_text_after_alias_fix",
+      "diagnostic_adapted": {
+        "scenario": "adapted_workflow_launch",
+        "label": "",
+        "log": "adapted_workflow_launch.log",
+        "exit_code": 0,
+        "seconds": 130.1,
+        "recaps": [
+          "localhost                  : ok=34   changed=16   unreachable=0    failed=0    skipped=0    rescued=0    ignored=5"
+        ],
+        "raw_log_sha256": "a8e0ffed0b7bcf1c6ee81ab711f3d50589b9fd7b84a6d8a376547871644b5a8a"
+      },
+      "adaptation_details": "legacy-adaptations.json"
+    },
+    {
+      "module": "export",
+      "legacy_target": "export",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "export",
+        "label": "unlocked",
+        "log": "export-unlocked.log",
+        "exit_code": 0,
+        "seconds": 26.7,
+        "recaps": [
+          "localhost                  : ok=19   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "0fedab2c7ddb48a9fc865016a46662e82efad93475ff832f30270359d79ad2ca"
+      },
+      "classification": "passed_unchanged_after_environment_repair",
+      "diagnostic_adapted": null,
+      "adaptation_details": null
+    },
+    {
+      "module": "workflow_job_template_node",
+      "legacy_target": "workflow_job_template",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "workflow_job_template_node",
+        "label": "unlocked",
+        "log": "workflow_job_template_node-unlocked.log",
+        "exit_code": 2,
+        "seconds": 177.0,
+        "recaps": [
+          "localhost                  : ok=69   changed=41   unreachable=0    failed=1    skipped=3    rescued=0    ignored=1"
+        ],
+        "raw_log_sha256": "42a40d21f38e1d1c9866330cc5f6164ed4a4e2f8950cfa48f8b34a703a5cdebe"
+      },
+      "classification": "documented_approval_name_error_text_after_module_fixes",
+      "diagnostic_adapted": {
+        "scenario": "adapted_workflow_job_template_node",
+        "label": "",
+        "log": "adapted_workflow_job_template_node.log",
+        "exit_code": 0,
+        "seconds": 261.3,
+        "recaps": [
+          "localhost                  : ok=112  changed=57   unreachable=0    failed=0    skipped=4    rescued=0    ignored=1"
+        ],
+        "raw_log_sha256": "bb8d9b4c5f3878b2fa31143924936767ac616314e4fbe5fed2cc0fa5bd71fece"
+      },
+      "adaptation_details": "legacy-adaptations.json"
+    },
+    {
+      "module": "label",
+      "legacy_target": "label",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "label",
+        "exit_code": 2,
+        "seconds": 3.4,
+        "recaps": [
+          "localhost                  : ok=8    changed=1    unreachable=0    failed=1    skipped=0    rescued=0    ignored=1"
+        ],
+        "raw_log_sha256": "5260866735a26759e75a052747bb20327ed116a02b98a141647d86e5fb3bf568"
+      },
+      "classification": "documented_error_metadata",
+      "diagnostic_adapted": {
+        "scenario": "adapted_label",
+        "label": "",
+        "log": "adapted_label.log",
+        "exit_code": 0,
+        "seconds": 3.6,
+        "recaps": [
+          "localhost                  : ok=9    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+        ],
+        "raw_log_sha256": "eec26899fd8464f15882a4c6c2770524a552dc0ec438de8474b60785e8cc5792"
+      },
+      "adaptation_details": "legacy-adaptations.json"
+    },
+    {
+      "module": "job_list",
+      "legacy_target": "job_list",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "job_list",
+        "exit_code": 0,
+        "seconds": 3.6,
+        "recaps": [
+          "localhost                  : ok=9    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "b4f81a191bb97aa5c0c49f123100717db8e1e2bb8ff5307904b06974b7889234"
+      },
+      "classification": "passed_unchanged",
+      "diagnostic_adapted": null,
+      "adaptation_details": null
+    },
+    {
+      "module": "instance_group",
+      "legacy_target": "instance_group",
+      "strict_assertions_modified": false,
+      "strict_final": {
+        "scenario": "instance_group",
+        "exit_code": 2,
+        "seconds": 8.1,
+        "recaps": [
+          "localhost                  : ok=14   changed=3    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "aa24109f72a022d3645bfc98683b9e02a69b175413ec4158aa2ddf23dc9bcd19"
+      },
+      "classification": "documented_read_only_exists",
+      "diagnostic_adapted": {
+        "scenario": "adapted_instance_group",
+        "label": "",
+        "log": "adapted_instance_group.log",
+        "exit_code": 0,
+        "seconds": 10.8,
+        "recaps": [
+          "localhost                  : ok=19   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "028441f4629e93fa186525534f0c47620defcd176357386d3c66e24f0cd785fa"
+      },
+      "adaptation_details": "legacy-adaptations.json"
+    }
+  ],
+  "native": [
+    {
+      "module": "team",
+      "status": "passed",
+      "run": {
+        "scenario": "native_team",
+        "exit_code": 0,
+        "seconds": 19.0,
+        "recaps": [
+          "localhost                  : ok=37   changed=13   unreachable=0    failed=0    skipped=0    rescued=0    ignored=2"
+        ],
+        "raw_log_sha256": "0e5af30ee29cbfa97ea171036067b6c1a21b93c01b37016608c6c87931264629"
+      },
+      "coverage_limit": null
+    },
+    {
+      "module": "workflow_launch",
+      "status": "passed",
+      "run": {
+        "scenario": "native_workflow_launch",
+        "exit_code": 0,
+        "seconds": 56.9,
+        "recaps": [
+          "localhost                  : ok=19   changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "10e4ffaba934debc7ecd5aff24ab87648181b2cdb1d44249c71be78f43d63ec3"
+      },
+      "coverage_limit": null
+    },
+    {
+      "module": "export",
+      "status": "passed",
+      "run": {
+        "scenario": "native_export",
+        "exit_code": 0,
+        "seconds": 154.4,
+        "recaps": [
+          "localhost                  : ok=73   changed=36   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "764eeda295c84674a5b7bf7f6369d5927f6ef26fc665e4903a1b945e7aa603a8"
+      },
+      "coverage_limit": null
+    },
+    {
+      "module": "workflow_job_template_node",
+      "status": "passed",
+      "run": {
+        "scenario": "native_workflow_job_template_node",
+        "label": "unlocked",
+        "log": "native_workflow_job_template_node-unlocked.log",
+        "exit_code": 0,
+        "seconds": 37.2,
+        "recaps": [
+          "localhost                  : ok=46   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "e4c02f432893dccb1ca65dda8afa1df1b290364f9812d93bafd8d539aa96e84b"
+      },
+      "coverage_limit": null
+    },
+    {
+      "module": "label",
+      "status": "passed",
+      "run": {
+        "scenario": "native_label",
+        "exit_code": 0,
+        "seconds": 3.0,
+        "recaps": [
+          "localhost                  : ok=9    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "01efa58e29ab32446372159f0798a32281db4ee3ed3d9511afdd3c93d6f346e5"
+      },
+      "coverage_limit": null
+    },
+    {
+      "module": "job_list",
+      "status": "passed",
+      "run": {
+        "scenario": "native_job_list",
+        "exit_code": 0,
+        "seconds": 1.2,
+        "recaps": [
+          "localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "6cd3488999154b990281c0dcd8fee1b9415ba62e2583aac1a83a8c8c74841436"
+      },
+      "coverage_limit": null
+    },
+    {
+      "module": "instance_group",
+      "status": "passed",
+      "run": {
+        "scenario": "native_instance_group",
+        "exit_code": 0,
+        "seconds": 13.5,
+        "recaps": [
+          "localhost                  : ok=34   changed=6    unreachable=0    failed=0    skipped=12   rescued=0    ignored=0"
+        ],
+        "raw_log_sha256": "6283a95730db5a14d26af2c16e243def6c0e6d8d03782ccb87dc2c35b97c74be"
+      },
+      "coverage_limit": "12 tasks skipped: no hybrid/execution node for instance associations"
+    }
+  ],
+  "acceptance_criteria_met": false,
+  "jira_tickets_created": 0,
+  "alias_baseline_reproduction": {
+    "status": "expected_failures",
+    "base_commit": "f8d6c3fb099608d1bc688c84e0fcf06f9771d263",
+    "tests": 2,
+    "failures": 2,
+    "note": "Both real preparation tests retain aliases on the original base; both pass with the shared normalization fix."
+  },
+  "persistent_node_validation": {
+    "status": "passed",
+    "run": {
+      "scenario": "native_workflow_job_template_node_persistent",
+      "label": "delegation-fixed",
+      "log": "native_workflow_job_template_node_persistent-delegation-fixed.log",
+      "exit_code": 0,
+      "seconds": 22.6,
+      "recaps": [
+        "batch3_controller          : ok=46   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "bc6762a3e7d383b67c154c7277a503827e453a81d1862ef19a52ca867a0cda0a"
+    },
+    "initial_harness_failure": "URI tasks could not execute with the API connection on localhost. Using a separate API inventory host restored local delegation; collection code unchanged."
+  },
+  "legacy_node_skips": {
+    "count": 4,
+    "reason": "No optional GitHub PAT supplied; skipped legacy credential creation, its assertion, a parent-workflow webhook test and credential cleanup. No platform node task was skipped."
+  },
+  "all_attempts": [
+    {
+      "scenario": "team",
+      "exit_code": 2,
+      "seconds": 5.4,
+      "recaps": [
+        "localhost                  : ok=12   changed=2    unreachable=0    failed=1    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "245660a9d3773d2e29bb4bfdd56062c7011a178e8715cd7449dfc06995356c05"
+    },
+    {
+      "scenario": "label",
+      "exit_code": 2,
+      "seconds": 3.4,
+      "recaps": [
+        "localhost                  : ok=8    changed=1    unreachable=0    failed=1    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "5260866735a26759e75a052747bb20327ed116a02b98a141647d86e5fb3bf568"
+    },
+    {
+      "scenario": "instance_group",
+      "exit_code": 2,
+      "seconds": 8.1,
+      "recaps": [
+        "localhost                  : ok=14   changed=3    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "aa24109f72a022d3645bfc98683b9e02a69b175413ec4158aa2ddf23dc9bcd19"
+    },
+    {
+      "scenario": "job_list",
+      "exit_code": 0,
+      "seconds": 3.6,
+      "recaps": [
+        "localhost                  : ok=9    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "b4f81a191bb97aa5c0c49f123100717db8e1e2bb8ff5307904b06974b7889234"
+    },
+    {
+      "scenario": "export",
+      "exit_code": 2,
+      "seconds": 4.1,
+      "recaps": [
+        "localhost                  : ok=3    changed=0    unreachable=0    failed=2    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "02c767e233367187325a4854bd8e1e2055e8a935eabe0a547516593492d8cbad"
+    },
+    {
+      "scenario": "workflow_job_template_node",
+      "exit_code": 2,
+      "seconds": 26.5,
+      "recaps": [
+        "localhost                  : ok=21   changed=0    unreachable=0    failed=1    skipped=1    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "42369d6b45283efff8efbc4e075de0ae1b873f632dae539d9e9e6d0e0091bf23"
+    },
+    {
+      "scenario": "workflow_launch",
+      "exit_code": 2,
+      "seconds": 6.4,
+      "recaps": [
+        "localhost                  : ok=7    changed=3    unreachable=0    failed=1    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "b50a1a8d98fe6b0032c8575e84124a15aa845b348cf6bf842c8ed89ef9edd74b"
+    },
+    {
+      "scenario": "native_team",
+      "exit_code": 0,
+      "seconds": 19.0,
+      "recaps": [
+        "localhost                  : ok=37   changed=13   unreachable=0    failed=0    skipped=0    rescued=0    ignored=2"
+      ],
+      "raw_log_sha256": "0e5af30ee29cbfa97ea171036067b6c1a21b93c01b37016608c6c87931264629"
+    },
+    {
+      "scenario": "native_label",
+      "exit_code": 0,
+      "seconds": 3.0,
+      "recaps": [
+        "localhost                  : ok=9    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "01efa58e29ab32446372159f0798a32281db4ee3ed3d9511afdd3c93d6f346e5"
+    },
+    {
+      "scenario": "native_instance_group",
+      "exit_code": 0,
+      "seconds": 13.5,
+      "recaps": [
+        "localhost                  : ok=34   changed=6    unreachable=0    failed=0    skipped=12   rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "6283a95730db5a14d26af2c16e243def6c0e6d8d03782ccb87dc2c35b97c74be"
+    },
+    {
+      "scenario": "native_job_list",
+      "exit_code": 0,
+      "seconds": 1.2,
+      "recaps": [
+        "localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "6cd3488999154b990281c0dcd8fee1b9415ba62e2583aac1a83a8c8c74841436"
+    },
+    {
+      "scenario": "native_export",
+      "exit_code": 0,
+      "seconds": 154.4,
+      "recaps": [
+        "localhost                  : ok=73   changed=36   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "764eeda295c84674a5b7bf7f6369d5927f6ef26fc665e4903a1b945e7aa603a8"
+    },
+    {
+      "scenario": "native_workflow_job_template_node",
+      "exit_code": 2,
+      "seconds": 3.2,
+      "recaps": [
+        "localhost                  : ok=5    changed=2    unreachable=0    failed=1    skipped=5    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "b7f5304a1d6aa3bfdf6bcb8648adbcc36484ffdea249919b9f31473bf1f8c27c"
+    },
+    {
+      "scenario": "native_workflow_launch",
+      "exit_code": 0,
+      "seconds": 56.9,
+      "recaps": [
+        "localhost                  : ok=19   changed=2    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "10e4ffaba934debc7ecd5aff24ab87648181b2cdb1d44249c71be78f43d63ec3"
+    },
+    {
+      "scenario": "export",
+      "label": "after-bootstrap",
+      "log": "export-after-bootstrap.log",
+      "exit_code": 2,
+      "seconds": 4.6,
+      "recaps": [
+        "localhost                  : ok=3    changed=0    unreachable=0    failed=2    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "5d16c655f786ae0a73515270bef9951670ea61e1a445d06f250f7139cd2b9a3d"
+    },
+    {
+      "scenario": "workflow_job_template_node",
+      "label": "after-bootstrap",
+      "log": "workflow_job_template_node-after-bootstrap.log",
+      "exit_code": 2,
+      "seconds": 26.0,
+      "recaps": [
+        "localhost                  : ok=21   changed=0    unreachable=0    failed=1    skipped=1    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "587470c66a3ec0d307e68c208c2a5060379ce25cd3b750d47e4758a90dc48fbc"
+    },
+    {
+      "scenario": "workflow_launch",
+      "label": "after-bootstrap",
+      "log": "workflow_launch-after-bootstrap.log",
+      "exit_code": 2,
+      "seconds": 9.8,
+      "recaps": [
+        "localhost                  : ok=10   changed=4    unreachable=0    failed=2    skipped=0    rescued=0    ignored=2"
+      ],
+      "raw_log_sha256": "6865195e58a72616e38b73d555d21f01d7326cc1b6ebd130af7b31bd4dc28f11"
+    },
+    {
+      "scenario": "export",
+      "label": "stable",
+      "log": "export-stable.log",
+      "exit_code": 2,
+      "seconds": 4.9,
+      "recaps": [
+        "localhost                  : ok=3    changed=0    unreachable=0    failed=2    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "da470a241b3264007c153fcc5d292864b425ef9afbbcde72199c53e4b315cae4"
+    },
+    {
+      "scenario": "workflow_job_template_node",
+      "label": "stable",
+      "log": "workflow_job_template_node-stable.log",
+      "exit_code": 2,
+      "seconds": 24.8,
+      "recaps": [
+        "localhost                  : ok=21   changed=0    unreachable=0    failed=1    skipped=1    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "680681d59c7560b47e9a421a260b1a519f631e9b69610ecfcec1aef0ad8d91fe"
+    },
+    {
+      "scenario": "adapted_team",
+      "label": "",
+      "log": "adapted_team.log",
+      "exit_code": 0,
+      "seconds": 9.0,
+      "recaps": [
+        "localhost                  : ok=18   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=2"
+      ],
+      "raw_log_sha256": "81c636f04cf3051584dcd4658dc584bcd64554734884965a7d33677e0bd4c0f8"
+    },
+    {
+      "scenario": "adapted_label",
+      "label": "",
+      "log": "adapted_label.log",
+      "exit_code": 0,
+      "seconds": 3.6,
+      "recaps": [
+        "localhost                  : ok=9    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "eec26899fd8464f15882a4c6c2770524a552dc0ec438de8474b60785e8cc5792"
+    },
+    {
+      "scenario": "adapted_instance_group",
+      "label": "",
+      "log": "adapted_instance_group.log",
+      "exit_code": 0,
+      "seconds": 10.8,
+      "recaps": [
+        "localhost                  : ok=19   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "028441f4629e93fa186525534f0c47620defcd176357386d3c66e24f0cd785fa"
+    },
+    {
+      "scenario": "adapted_workflow_launch",
+      "label": "",
+      "log": "adapted_workflow_launch.log",
+      "exit_code": 0,
+      "seconds": 130.1,
+      "recaps": [
+        "localhost                  : ok=34   changed=16   unreachable=0    failed=0    skipped=0    rescued=0    ignored=5"
+      ],
+      "raw_log_sha256": "a8e0ffed0b7bcf1c6ee81ab711f3d50589b9fd7b84a6d8a376547871644b5a8a"
+    },
+    {
+      "scenario": "export",
+      "label": "unlocked",
+      "log": "export-unlocked.log",
+      "exit_code": 0,
+      "seconds": 26.7,
+      "recaps": [
+        "localhost                  : ok=19   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "0fedab2c7ddb48a9fc865016a46662e82efad93475ff832f30270359d79ad2ca"
+    },
+    {
+      "scenario": "workflow_job_template_node",
+      "label": "unlocked",
+      "log": "workflow_job_template_node-unlocked.log",
+      "exit_code": 2,
+      "seconds": 177.0,
+      "recaps": [
+        "localhost                  : ok=69   changed=41   unreachable=0    failed=1    skipped=3    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "42a40d21f38e1d1c9866330cc5f6164ed4a4e2f8950cfa48f8b34a703a5cdebe"
+    },
+    {
+      "scenario": "native_workflow_job_template_node",
+      "label": "unlocked",
+      "log": "native_workflow_job_template_node-unlocked.log",
+      "exit_code": 0,
+      "seconds": 37.2,
+      "recaps": [
+        "localhost                  : ok=46   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "e4c02f432893dccb1ca65dda8afa1df1b290364f9812d93bafd8d539aa96e84b"
+    },
+    {
+      "scenario": "native_workflow_job_template_node_persistent",
+      "label": "",
+      "log": "native_workflow_job_template_node_persistent.log",
+      "exit_code": 2,
+      "seconds": 1.0,
+      "recaps": [
+        "localhost                  : ok=3    changed=0    unreachable=0    failed=1    skipped=6    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "ade25573661e0c918d3a8b9647a089b3da42cfd0c374a990d1e4498c4a7a6ae4"
+    },
+    {
+      "scenario": "adapted_workflow_job_template_node",
+      "label": "",
+      "log": "adapted_workflow_job_template_node.log",
+      "exit_code": 0,
+      "seconds": 261.3,
+      "recaps": [
+        "localhost                  : ok=112  changed=57   unreachable=0    failed=0    skipped=4    rescued=0    ignored=1"
+      ],
+      "raw_log_sha256": "bb8d9b4c5f3878b2fa31143924936767ac616314e4fbe5fed2cc0fa5bd71fece"
+    },
+    {
+      "scenario": "native_workflow_job_template_node_persistent",
+      "label": "delegation-fixed",
+      "log": "native_workflow_job_template_node_persistent-delegation-fixed.log",
+      "exit_code": 0,
+      "seconds": 22.6,
+      "recaps": [
+        "batch3_controller          : ok=46   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      ],
+      "raw_log_sha256": "bc6762a3e7d383b67c154c7277a503827e453a81d1862ef19a52ca867a0cda0a"
+    }
+  ],
+  "coverage_limits": [
+    "Live instance-group association write/check-mode checks require an execution or hybrid node; local Controller has only a control node. Unit regressions pass for changed and unchanged comparisons.",
+    "Optional GitHub PAT checks in the legacy parent-workflow scenario skipped; these do not invoke the migrated node module.",
+    "Full collection completeness suite not run; focused changed node exemptions passed using live API metadata."
+  ],
+  "remaining_work": [
+    "Run live instance-group association cases on a Controller with a hybrid/execution node or record approved acceptance/follow-up for this coverage limit.",
+    "Review documented intentional contract differences and audit output with M3; AAP-101590 remains open."
+  ],
+  "focused_live_checks": {
+    "export_selectors": {
+      "status": "passed",
+      "scope": "Real HTTP calls through export action selector handling and shared SDK; direct transport",
+      "cases": [
+        {
+          "selector_kind": "numeric_id",
+          "selected_id": 1,
+          "status": "passed"
+        },
+        {
+          "selector_kind": "named_url",
+          "selected_id": 1,
+          "status": "passed"
+        }
+      ]
+    },
+    "node_client_inputs": {
+      "status": "passed",
+      "http_status": 200,
+      "scope": "Three node client-side inputs only, not the full collection completeness suite",
+      "fields": {
+        "organization": "OK, no api parameter is ok",
+        "lookup_organization": "OK, no api parameter is ok",
+        "approval_node": "OK, no api parameter is ok"
+      },
+      "unknown_option_rejected": true
+    }
+  }
+}

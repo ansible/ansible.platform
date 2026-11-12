@@ -1,0 +1,23 @@
+{
+  "deleted_test_resources": [
+    {
+      "resource": "workflow_job_templates",
+      "id": 18,
+      "name": "AWX-Collection-tests-workflow_launch--wfjt1-zPXlQRGLCgFmSyEE",
+      "delete_status": 204
+    },
+    {
+      "resource": "credentials",
+      "id": 3,
+      "name": "AWX-Collection-tests-instance_group-cred1-zhZNffqBPketLyJW",
+      "delete_status": 204
+    },
+    {
+      "resource": "credentials",
+      "id": 5,
+      "name": "AWX-Collection-tests-instance_group-cred1-NpqPGelhqSTjxGdH",
+      "delete_status": 204
+    }
+  ],
+  "retained": "Labels created by legacy/native scenarios remain because the Controller label API does not support deletion; the native label scenario explicitly documents this limitation."
+}

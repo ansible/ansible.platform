@@ -49,6 +49,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params=None,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -80,6 +81,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params={"organization": 42},
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -112,6 +114,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params=None,
+            check_mode=False,
         )
         action._client.manage_associations.assert_any_call(
             "/api/controller/v2/workflow_job_templates/",
@@ -122,6 +125,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params=None,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -151,6 +155,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             30,
             "survey_spec",
             survey,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -277,7 +282,8 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.manage_associations.assert_not_called()
+        action._client.manage_associations.assert_called_once()
+        self.assertTrue(action._client.manage_associations.call_args.kwargs["check_mode"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_check_mode_reports_changed_for_survey(self, mock_super_run):
@@ -295,7 +301,8 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.manage_sub_resource.assert_not_called()
+        action._client.manage_sub_resource.assert_called_once()
+        self.assertTrue(action._client.manage_sub_resource.call_args.kwargs["check_mode"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_changed_false_when_associations_unchanged(self, mock_super_run):

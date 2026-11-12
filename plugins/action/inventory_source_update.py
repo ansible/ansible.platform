@@ -74,6 +74,8 @@ class ActionModule(BaseResourceActionPlugin):
             # The shared waiter uses None for its one-hour default and zero
             # for an immediate timeout.
             wait_timeout = -1.0 if timeout is None or float(timeout) == 0 else float(timeout)
+            if timeout is not None and timeout < 0:
+                wait_timeout = 0.0  # Legacy stops waiting after the first unfinished response.
             wait_result = manager.wait_for_completion(
                 job_url,
                 timeout=wait_timeout,
@@ -89,11 +91,9 @@ class ActionModule(BaseResourceActionPlugin):
                     "failed": failed,
                     "id": wait_result.get("id", job_id),
                     "status": final_status,
-                    "elapsed": wait_result.get("elapsed"),
-                    "started": wait_result.get("started"),
-                    "finished": wait_result.get("finished"),
                 }
             )
+            self._set_job_timing(result, wait_result)
             if failed:
                 result["msg"] = "Inventory source update %s finished with status: %s" % (job_id, final_status)
                 result["job_data"] = wait_result
@@ -106,11 +106,9 @@ class ActionModule(BaseResourceActionPlugin):
                     "msg": str(exc),
                     "id": lr.get("id", job_id),
                     "status": lr.get("status", "unknown"),
-                    "elapsed": lr.get("elapsed"),
-                    "started": lr.get("started"),
-                    "finished": lr.get("finished"),
                 }
             )
+            self._set_job_timing(result, lr)
         except Exception as exc:
             result.update(
                 {

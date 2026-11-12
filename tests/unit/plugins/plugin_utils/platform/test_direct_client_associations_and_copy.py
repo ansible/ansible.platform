@@ -386,16 +386,17 @@ class TestManageSubResource(unittest.TestCase):
         mock_request.assert_not_called()
 
     def test_empty_dict_deletes(self):
-        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(status=200)) as mock_request:
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"name": "Existing"}, status=200)) as mock_request:
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertTrue(changed)
-        mock_request.assert_called_once_with(
+        self.assertEqual(mock_request.call_count, 2)
+        mock_request.assert_called_with(
             "DELETE", "https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", operation="delete_sub_resource", resource="survey_spec"
         )
 
     def test_empty_dict_delete_404_is_not_changed(self):
         not_found = APIError("API request failed: HTTP 404", operation="delete_sub_resource", resource="survey_spec", status_code=404)
-        with unittest.mock.patch.object(self.client, "_make_request", side_effect=not_found):
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body={"name": "Existing"}), not_found]):
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
 

@@ -123,7 +123,7 @@ class ExecutionEnvironmentTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: credential (Controller-owned)
         credential = getattr(ansible_instance, "credential", None)
-        if credential is not None:
+        if credential is not None and op not in ("find", "delete"):
             if manager is not None and not str(credential).strip().isdigit():
                 api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, **lookup_kwargs)
             else:

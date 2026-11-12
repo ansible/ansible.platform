@@ -600,7 +600,7 @@ class DirectHTTPClient(BaseAPIClient):
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], check_mode: bool = False) -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -608,6 +608,7 @@ class DirectHTTPClient(BaseAPIClient):
         rather than writing bespoke get/compare/post logic per resource. data is None:
         no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
         POST only if different.
+        Check mode compares current state without POST or DELETE requests.
 
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
@@ -618,7 +619,20 @@ class DirectHTTPClient(BaseAPIClient):
         self._ensure_authenticated()
         sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
 
+        try:
+            response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
+        except (APIError, HTTPError) as err:
+            status = err.status_code if isinstance(err, APIError) else err.code
+            if data == {} and status == 404:
+                return False
+            raise
+        current = json.loads(response.read())
+        if current == data:
+            return False
+
         if data == {}:
+            if check_mode:
+                return True
             try:
                 self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
             except APIError as err:
@@ -633,12 +647,8 @@ class DirectHTTPClient(BaseAPIClient):
                 raise
             return True
 
-        response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
-        current = json.loads(response.read())
-        if current == data:
-            return False
-
-        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
+        if not check_mode:
+            self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
         return True
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:

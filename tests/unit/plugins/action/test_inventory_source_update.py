@@ -141,7 +141,8 @@ def test_wait_without_timeout_preserves_legacy_indefinite_wait(action_module, ti
     assert manager.wait_for_completion.call_args.kwargs["timeout"] == -1.0
     assert result["elapsed"] == 12.5
     assert result["started"] == "start"
-    assert result["finished"] == "finish"
+    assert result["finished"] is True
+    assert result["finished_at"] == "finish"
 
 
 def test_wait_failure_preserves_job_data(action_module):

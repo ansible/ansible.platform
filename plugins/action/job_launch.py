@@ -48,6 +48,8 @@ class ActionModule(BaseResourceActionPlugin):
         # The shared waiter treats negative values as no-timeout and zero as
         # an immediate timeout.
         timeout = -1.0 if raw_timeout is None or float(raw_timeout) == 0 else float(raw_timeout)
+        if raw_timeout is not None and raw_timeout < 0:
+            timeout = 0.0  # Legacy stops waiting after the first unfinished response.
 
         try:
             model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}

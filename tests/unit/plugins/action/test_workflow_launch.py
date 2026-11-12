@@ -338,6 +338,9 @@ class TestWorkflowLaunchActionModule:
 
         assert result["failed"] is True
         assert result["status"] == "failed"
+        assert result["job_data"] == mock_manager.wait_for_completion.return_value
+        assert result["finished"] is False
+        assert result["finished_at"] is None
         assert result["id"] == 42
         mock_manager.wait_for_completion.assert_called_once_with(
             "/api/controller/v2/workflow_jobs/42/",

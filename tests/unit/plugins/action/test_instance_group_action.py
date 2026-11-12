@@ -48,6 +48,7 @@ class TestInstanceGroupAssociations(unittest.TestCase):
             "instances",
             "hostname",
             service="controller",
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")

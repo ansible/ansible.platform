@@ -634,6 +634,29 @@ class BaseAPIClient(ABC):
         """Fetch an API endpoint using the concrete client's transport."""
         pass
 
+    def manage_workflow_approval(self, node_id: int, data: dict, check_mode: bool = False) -> bool:
+        """Reconcile a node's approval template without writing during check mode."""
+        data = {key: value for key, value in data.items() if value is not None}
+        if "name" not in data:
+            raise ValueError("Approval node name is required")
+        node_path = f"/api/controller/v2/workflow_job_template_nodes/{node_id}/"
+        node = self.search_api(node_path)
+        template_id = node.get("unified_job_template")
+        if template_id is None:
+            if not check_mode:
+                self.post_resource(node_path + "create_approval_template/", data, service="controller", retry=False)
+            return True
+
+        current = self.search_api(f"/api/controller/v2/workflow_approval_templates/{template_id}/")
+        if current.get("type") != "workflow_approval_template":
+            raise ValueError("Workflow node is attached to a non-approval template")
+        changes = {key: value for key, value in data.items() if current.get(key) != value}
+        if not changes:
+            return False
+        if not check_mode:
+            self.direct_request("PATCH", f"/api/controller/v2/workflow_approval_templates/{template_id}/", changes)
+        return True
+
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST to a launch endpoint and return the created resource.
 
