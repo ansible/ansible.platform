@@ -29,6 +29,7 @@ from ansible.utils.display import Display
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.idempotency import canonical_json_object
 
 # ---------------------------------------------------------------------------
@@ -385,6 +386,8 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             bool: True when the error uses a recognized not-found response.
         """
+        if isinstance(exc, ResourceNotFoundError):
+            return True
         status_code = getattr(exc, "status_code", None)
         if status_code is None:
             details = getattr(exc, "details", None)
@@ -1217,7 +1220,9 @@ class BaseResourceActionPlugin(ActionBase):
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
-            if key in self._NULLABLE_FK_FIELDS and desired_val == "" and current_val is None:
+            if key in self._NULLABLE_FK_FIELDS and desired_val == "":
+                if current_val not in (None, ""):
+                    return True
                 continue
             if (
                 key not in self._MUTABLE_FK_FIELDS

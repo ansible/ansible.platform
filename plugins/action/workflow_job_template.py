@@ -10,7 +10,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.wo
     AnsibleWorkflowJobTemplate,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_job_template import BASE_PATH
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 
 _ASSOC_MAP = {
     "labels": ("labels", "name"),
@@ -54,8 +54,7 @@ class ActionModule(BaseResourceActionPlugin):
             task_vars = {}
 
         copy_from = self._task.args.get("copy_from")
-        survey_spec = self._task.args.get("survey_spec")
-        if survey_spec is None:
+        if (survey_spec := self._task.args.get("survey_spec")) is None:
             survey_spec = self._task.args.get("survey")
         association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
 
@@ -114,8 +113,8 @@ class ActionModule(BaseResourceActionPlugin):
                         extra_query_params=extra,
                         check_mode=check_mode,
                     )
-                except (ValueError, ValidationError) as exc:
-                    missing_reference = str(exc).startswith("Resource '%s' with %s=" % (lookup_endpoint, lookup_field)) and str(exc).endswith(" not found")
+                except ResourceNotFoundError as exc:
+                    missing_reference = (exc.endpoint, exc.lookup_field, exc.service) == (lookup_endpoint, lookup_field, _SERVICE)
                     if not check_mode or not missing_reference:
                         raise
                     association_changed = True

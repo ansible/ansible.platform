@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional, Tuple
 from urllib.parse import quote
 
 from ..platform.config import GatewayConfig
-from ..platform.exceptions import APIError, ValidationError
+from ..platform.exceptions import APIError, ResourceNotFoundError, ValidationError
 from ..platform.loader import DynamicClassLoader
 from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
 
@@ -317,7 +317,13 @@ class BaseAPIClient(ABC):
         response_data = self.search_api(api_path, query_params=query, service=service)
         results = response_data.get("results", [])
         if not results:
-            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
+            raise ResourceNotFoundError(
+                "Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value),
+                endpoint=endpoint,
+                lookup_field=lookup_field,
+                lookup_value=lookup_value,
+                service=service,
+            )
         if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
             raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
 
@@ -360,9 +366,8 @@ class BaseAPIClient(ABC):
                     extra_query_params=lookup_filters,
                     require_unique=True,
                 )
-            except ValueError as exc:
-                not_found_prefix = "Resource '%s' with %s=" % (endpoint, lookup_field)
-                if allow_missing and str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found"):
+            except ResourceNotFoundError as exc:
+                if allow_missing and (exc.endpoint, exc.lookup_field, exc.service) == (endpoint, lookup_field, service):
                     continue
                 raise
 
@@ -403,7 +408,13 @@ class BaseAPIClient(ABC):
                 if not matches:
                     if allow_missing:
                         continue
-                    raise ValidationError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
+                    raise ResourceNotFoundError(
+                        "Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value),
+                        endpoint=endpoint,
+                        lookup_field=lookup_field,
+                        lookup_value=value,
+                        service=service,
+                    )
                 if len(matches) > 1:
                     raise ValidationError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, value))
                 resolved[value] = matches[0].get("id")

@@ -7,6 +7,7 @@ __metaclass__ = type
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 
 @pytest.fixture
@@ -336,12 +337,20 @@ class TestWorkflowLaunchActionModule:
             }
             result = action_module.run(task_vars={})
 
-        assert result["failed"] is True
-        assert result["status"] == "failed"
-        assert result["job_data"] == mock_manager.wait_for_completion.return_value
-        assert result["finished"] is False
-        assert result["finished_at"] is None
-        assert result["id"] == 42
+        assert result == {
+            "changed": True,
+            "failed": True,
+            "msg": "Workflow job 42 finished with status 'failed'",
+            "id": 42,
+            "status": "failed",
+            "workflow_launch": {"id": 42, "status": "failed"},
+            "job_info": {"id": 42},
+            "job_data": {"id": 42, "status": "failed"},
+            "elapsed": None,
+            "started": None,
+            "finished": False,
+            "finished_at": None,
+        }
         mock_manager.wait_for_completion.assert_called_once_with(
             "/api/controller/v2/workflow_jobs/42/",
             timeout=-1,
@@ -743,3 +752,82 @@ class TestWorkflowLaunchActionModule:
         assert result["failed"] is True
         assert "specify an organization" in result["msg"]
         mock_manager.launch_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("wait", [False, True])
+def test_workflow_launch_negative_timeout_respects_wait_and_check_mode(check_mode, wait):
+    """Only wait on negative timeouts after a real launch when requested."""
+    from ansible_collections.ansible.platform.plugins.action.workflow_launch import ActionModule
+
+    action = ActionModule.__new__(ActionModule)
+    action._task = MagicMock(check_mode=check_mode)
+    action._display = MagicMock(verbosity=0)
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": [{"id": 3}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    action._prepare_action = MagicMock(
+        return_value={"result": {}, "validated_params": {"name": "Workflow", "timeout": -5, "wait": wait}, "resource_data": {}, "manager": manager}
+    )
+    result = action.run(task_vars={})
+    assert not result.get("failed"), result.get("msg")
+    if check_mode:
+        manager.launch_resource.assert_not_called()
+    else:
+        manager.launch_resource.assert_called_once()
+    if wait and not check_mode:
+        assert manager.wait_for_completion.call_args.kwargs["timeout"] == 0.0
+    else:
+        manager.wait_for_completion.assert_not_called()
+
+
+@pytest.mark.parametrize("timeout,expected", [(None, -1.0), (0, -1.0), (-1, 0.0), (-5, 0.0), (30, 30.0)])
+def test_launch_wait_timeout_normalization(action_module, timeout, expected):
+    """Use unlimited zero/omitted waits and immediate negative-timeout waits."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": timeout}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    assert not result.get("failed")
+    assert manager.wait_for_completion.call_args.kwargs["timeout"] == expected
+
+
+@pytest.mark.parametrize("status", ["running", "successful"])
+def test_negative_launch_timeout_polls_once_using_real_waiter(action_module, status):
+    """Stop after the first unfinished response while accepting a terminal job."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": -5}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    client = DirectHTTPClient.__new__(DirectHTTPClient)
+    client.base_url = "https://gateway.example"
+    client.api_versions = {"controller": "2"}
+    client._get_json = MagicMock(side_effect=[{"id": 42, "status": status}, AssertionError("Waiter polled more than once")])
+    manager.wait_for_completion = client.wait_for_completion
+    with (
+        patch("ansible.plugins.action.ActionBase.run", return_value={}),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep") as sleep,
+    ):
+        result = action.run(task_vars={})
+    assert {
+        "changed": result["changed"],
+        "failed": result.get("failed", False),
+        "id": result["id"],
+        "status": result["status"],
+    } == {"changed": True, "failed": status == "running", "id": 42, "status": status}, result.get("msg")
+    client._get_json.assert_called_once()
+    manager.launch_resource.assert_called_once()
+    sleep.assert_not_called()

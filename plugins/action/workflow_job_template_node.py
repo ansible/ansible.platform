@@ -26,6 +26,10 @@ _SERVICE = "controller"
 _NODE_ASSOC_FIELDS = frozenset({"success_nodes", "failure_nodes", "always_nodes"})
 
 
+class WorkflowNodeNotFoundError(ValueError):
+    """A requested node identifier was not found within the selected workflow."""
+
+
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_job_template_node"
     MODEL_CLASS = AnsibleWorkflowJobTemplateNode
@@ -70,7 +74,7 @@ class ActionModule(BaseResourceActionPlugin):
         for ident in identifiers:
             key = str(ident)
             if key not in resolved:
-                raise ValueError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
+                raise WorkflowNodeNotFoundError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
             node_ids.append(resolved[key])
         return node_ids
 
@@ -120,12 +124,8 @@ class ActionModule(BaseResourceActionPlugin):
                 if field in _NODE_ASSOC_FIELDS and wfjt_id:
                     try:
                         desired = self._resolve_node_ids_in_workflow(manager, wfjt_id, desired)
-                    except ValueError as exc:
-                        if (
-                            self._task.check_mode
-                            and str(exc).startswith("Workflow node with identifier '")
-                            and str(exc).endswith("not found in workflow %s" % wfjt_id)
-                        ):
+                    except WorkflowNodeNotFoundError:
+                        if self._task.check_mode:
                             changed = True
                             continue
                         raise

@@ -37,7 +37,7 @@ options:
 
   all_pages:
     description:
-      - At most 10,000 jobs can be retrieved, matching the legacy module limit.
+      - At most 10,000 jobs can be retrieved.
       - Fetch all the pages and return a single result.
       - Cannot be combined with C(page).
     type: bool

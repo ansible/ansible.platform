@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.inventory_source_update import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
 @pytest.fixture
@@ -123,7 +125,7 @@ def test_sync_request_uses_declared_endpoint_operation(action_module):
 
 
 @pytest.mark.parametrize("timeout", [None, 0])
-def test_wait_without_timeout_preserves_legacy_indefinite_wait(action_module, timeout):
+def test_wait_without_timeout_waits_indefinitely(action_module, timeout):
     manager = MagicMock()
     manager.search_api.return_value = {"results": [{"id": 23}]}
     manager.launch_resource.return_value = {"id": 55, "status": "pending", "url": "/api/controller/v2/inventory_updates/55/"}
@@ -139,10 +141,16 @@ def test_wait_without_timeout_preserves_legacy_indefinite_wait(action_module, ti
         result = action_module.run(task_vars={})
 
     assert manager.wait_for_completion.call_args.kwargs["timeout"] == -1.0
-    assert result["elapsed"] == 12.5
-    assert result["started"] == "start"
-    assert result["finished"] is True
-    assert result["finished_at"] == "finish"
+    assert result == {
+        "changed": True,
+        "failed": False,
+        "id": 55,
+        "status": "successful",
+        "elapsed": 12.5,
+        "started": "start",
+        "finished": True,
+        "finished_at": "finish",
+    }
 
 
 def test_wait_failure_preserves_job_data(action_module):
@@ -162,3 +170,76 @@ def test_wait_failure_preserves_job_data(action_module):
 
     assert result["failed"] is True
     assert result["job_data"] == manager.wait_for_completion.return_value
+
+
+@pytest.mark.parametrize("timeout,expected", [(None, -1.0), (0, -1.0), (-1, 0.0), (-5, 0.0), (30, 30.0)])
+def test_launch_wait_timeout_normalization(action_module, timeout, expected):
+    """Use unlimited zero/omitted waits and immediate negative-timeout waits."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": timeout, "inventory": "1"}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    assert not result.get("failed")
+    assert manager.wait_for_completion.call_args.kwargs["timeout"] == expected
+
+
+@pytest.mark.parametrize("status", ["running", "successful"])
+def test_negative_launch_timeout_polls_once_using_real_waiter(action_module, status):
+    """Stop after the first unfinished response while accepting a terminal job."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": -5, "inventory": "1"}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    client = DirectHTTPClient.__new__(DirectHTTPClient)
+    client.base_url = "https://gateway.example"
+    client.api_versions = {"controller": "2"}
+    client._get_json = MagicMock(side_effect=[{"id": 42, "status": status}, AssertionError("Waiter polled more than once")])
+    manager.wait_for_completion = client.wait_for_completion
+    with (
+        patch("ansible.plugins.action.ActionBase.run", return_value={}),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep") as sleep,
+    ):
+        result = action.run(task_vars={})
+    assert {
+        "changed": result["changed"],
+        "failed": result.get("failed", False),
+        "id": result["id"],
+        "status": result["status"],
+    } == {"changed": True, "failed": status == "running", "id": 42, "status": status}, result.get("msg")
+    client._get_json.assert_called_once()
+    manager.launch_resource.assert_called_once()
+    sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_inventory_update_retains_timestamp_using_documented_platform_key(action_module, timed_out):
+    """Preserve timing for both completed and timed-out inventory updates."""
+    action = action_module
+    action._task.args = {"name": "Resource", "inventory": "1", "wait": True}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    data = {"id": 42, "status": "successful", "elapsed": 2.0, "started": "2026-01-01T00:00:00Z", "finished": "2026-01-01T00:00:02Z"}
+    manager.wait_for_completion.return_value = data
+    if timed_out:
+        data.update(status="running", finished=None)
+        manager.wait_for_completion.side_effect = WaitTimeoutError("Timed out", last_result=data)
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    expected = {"finished": not timed_out, "finished_at": data["finished"], "elapsed": 2.0}
+    assert {key: result[key] for key in expected} == expected

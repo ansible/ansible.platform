@@ -21,6 +21,9 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
     build_query_params,
 )
 
+# Allow up to 10,000 jobs when retrieving all pages.
+_MAX_JOBS = 10_000
+
 
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "job_list"
@@ -48,7 +51,7 @@ class ActionModule(BaseResourceActionPlugin):
                 endpoint=CONTROLLER_JOBS_ENDPOINT,
                 query_params=query_params or None,
                 return_all=all_pages,
-                max_objects=10000,
+                max_objects=_MAX_JOBS,
             )
 
             # Return the API response directly

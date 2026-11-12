@@ -70,12 +70,14 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            # Legacy AWX waits indefinitely when timeout is omitted or zero.
-            # The shared waiter uses None for its one-hour default and zero
-            # for an immediate timeout.
-            wait_timeout = -1.0 if timeout is None or float(timeout) == 0 else float(timeout)
-            if timeout is not None and timeout < 0:
-                wait_timeout = 0.0  # Legacy stops waiting after the first unfinished response.
+            # Omitted/zero means unlimited; negative means a single poll.
+            # Translate these values to the shared waiter's timeout conventions.
+            if timeout is None or timeout == 0:
+                wait_timeout = -1.0
+            elif timeout < 0:
+                wait_timeout = 0.0  # Stop after the first unfinished response.
+            else:
+                wait_timeout = float(timeout)
             wait_result = manager.wait_for_completion(
                 job_url,
                 timeout=wait_timeout,

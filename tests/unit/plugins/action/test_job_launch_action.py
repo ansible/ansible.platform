@@ -4,9 +4,11 @@
 """Unit tests for the job_launch action plugin (Shape 2)."""
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible_collections.ansible.platform.plugins.action.job_launch import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
@@ -467,6 +469,68 @@ class TestJobLaunchAction(unittest.TestCase):
         source = inspect.getsource(ActionModule)
         for forbidden in ("session.", "import requests", "_make_request", "_build_url"):
             self.assertNotIn(forbidden, source, f"Found '{forbidden}' in action plugin source")
+
+
+@pytest.fixture
+def action_module():
+    """Create a job launch action with real argument validation."""
+    action = ActionModule.__new__(ActionModule)
+    action._task = MagicMock(args={"name": "Resource"}, check_mode=False)
+    action._display = MagicMock()
+    action._display.verbosity = 0
+    action._client = MagicMock()
+    return action
+
+
+@pytest.mark.parametrize("timeout,expected", [(None, -1.0), (0, -1.0), (-1, 0.0), (-5, 0.0), (30, 30.0)])
+def test_launch_wait_timeout_normalization(action_module, timeout, expected):
+    """Use unlimited zero/omitted waits and immediate negative-timeout waits."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": timeout}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    assert not result.get("failed")
+    assert manager.wait_for_completion.call_args.kwargs["timeout"] == expected
+
+
+@pytest.mark.parametrize("status", ["running", "successful"])
+def test_negative_launch_timeout_polls_once_using_real_waiter(action_module, status):
+    """Stop after the first unfinished response while accepting a terminal job."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": -5}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    client = DirectHTTPClient.__new__(DirectHTTPClient)
+    client.base_url = "https://gateway.example"
+    client.api_versions = {"controller": "2"}
+    client._get_json = MagicMock(side_effect=[{"id": 42, "status": status}, AssertionError("Waiter polled more than once")])
+    manager.wait_for_completion = client.wait_for_completion
+    with (
+        patch("ansible.plugins.action.ActionBase.run", return_value={}),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep") as sleep,
+    ):
+        result = action.run(task_vars={})
+    assert {
+        "changed": result["changed"],
+        "failed": result.get("failed", False),
+        "id": result["id"],
+        "status": result["status"],
+    } == {"changed": True, "failed": status == "running", "id": 42, "status": status}, result.get("msg")
+    client._get_json.assert_called_once()
+    manager.launch_resource.assert_called_once()
+    sleep.assert_not_called()
 
 
 if __name__ == "__main__":

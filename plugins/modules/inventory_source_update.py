@@ -60,7 +60,7 @@ options:
     description:
       - Maximum time in seconds to wait for the inventory source update to finish.
       - If omitted or set to C(0), wait indefinitely.
-      - A negative value stops waiting after the first unfinished response, matching legacy behavior.
+      - A negative value stops waiting after the first unfinished response.
       - Only used when C(wait=true).
       - Reaching this timeout stops waiting but does not cancel the remote update.
     type: int

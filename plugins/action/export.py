@@ -281,7 +281,11 @@ class ActionModule(BaseResourceActionPlugin):
         return value
 
     def _search_resources(self, manager, endpoint, id_field, names_filter, max_objects):
-        """Search a resource endpoint without relying on Controller-only ``or__`` filters."""
+        """Search by lookup-field value, numeric ID, or qualified named URL.
+
+        Resolve named URLs through the SDK before querying by ID, rather than
+        treating them as literal names. Avoid Controller-only ``or__`` filters.
+        """
         if names_filter is None:
             return manager.search_api(endpoint=endpoint, return_all=True, max_objects=max_objects)
         if not names_filter:
@@ -289,16 +293,16 @@ class ActionModule(BaseResourceActionPlugin):
 
         results = []
         seen_ids = set()
-        for name in names_filter:
+        for reference in names_filter:
             query_field = id_field
-            query_value = name
-            if str(name).isdecimal():
-                query_field, query_value = "id", int(name)
-            elif "++" in str(name):
+            query_value = reference
+            if str(reference).isdecimal():
+                query_field, query_value = "id", int(reference)
+            elif "++" in str(reference):
                 service = "gateway" if "/gateway/" in endpoint else "controller"
                 resource_type = endpoint.strip("/").rsplit("/", 1)[-1]
                 query_field = "id"
-                query_value = manager.lookup_resource_id(resource_type, id_field, name, service=service)
+                query_value = manager.lookup_resource_id(resource_type, id_field, reference, service=service)
             response = manager.search_api(
                 endpoint=endpoint,
                 query_params={query_field: query_value},

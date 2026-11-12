@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
-from ..platform.exceptions import APIError, AuthenticationError, PlatformError, format_error_response_body
+from ..platform.exceptions import APIError, AuthenticationError, PlatformError, ResourceNotFoundError, format_error_response_body
 from ..platform.idempotency import canonical_json_object
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext, build_endpoint_request
@@ -593,12 +593,11 @@ class PlatformService(BaseAPIClient):
 
             return result
 
+        except ResourceNotFoundError as e:
+            logger.debug("Operation %s on %s: %s", operation, module_name, e)
+            raise
         except ValueError as e:
-            # "Resource not found" is expected during idempotency checks
-            if "not found" in str(e):
-                logger.debug("Operation %s on %s: %s", operation, module_name, e)
-            else:
-                logger.error("Operation %s on %s failed: %s", operation, module_name, e)
+            logger.error("Operation %s on %s failed: %s", operation, module_name, e)
             raise
         except Exception as e:
             logger.error("Operation %s on %s failed: %s", operation, module_name, e, exc_info=True)

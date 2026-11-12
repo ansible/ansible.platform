@@ -1,16 +1,17 @@
 ---
 bugfixes:
   - export - restore numeric ID selectors and resolve named URL selectors through the SDK.
-  - job_list - retain the legacy 10,000-job limit for all_pages instead of the SDK default limit of 1,000.
+  - job_list - allow retrieval of up to 10,000 jobs with all_pages instead of the SDK default limit of 1,000.
   - instance_group - compare associations without writing them in check mode.
   - workflow_job_template_node - restore approval_node and lookup_organization support, preserve independent workflow and target organization scopes, and retain organization during workflow lookup.
   - workflow_job_template_node - compare associations in check mode, preserve explicit execution-environment clearing, and ignore unused launch references during find and delete.
   - workflow_launch - restore timing fields, failed-workflow job_data, and structured prompt-validation errors.
-  - workflow_launch - preserve legacy negative-timeout behavior by stopping after the first unfinished poll instead of waiting indefinitely.
-  - action plugins - normalize validated parameter aliases before constructing resource models, restoring legacy workflow_template and workflow aliases.
+  - workflow_launch - stop waiting after the first unfinished poll for negative timeouts instead of waiting indefinitely.
+  - action plugins - normalize validated parameter aliases before constructing resource models so workflow_template and workflow aliases are accepted.
   - workflow_job_template - preserve the survey alias, compare surveys and associations in check mode without writing, and make repeated survey clearing idempotent in both transports.
   - execution_environment and schedule - avoid resolving unused update-only references during find and delete.
   - schedule - preserve empty prompt overrides, resolve execution environments within the organization scope, and avoid repeated changes after clearing nullable inventory or execution-environment references.
-  - job_launch and inventory_source_update - preserve legacy negative-timeout behavior by stopping after the first unfinished poll instead of waiting indefinitely.
+  - action plugins - apply explicit nullable relationship clears when the API returns an assigned numeric-string ID (https://github.com/ansible/ansible.platform/pull/391).
+  - job_launch and inventory_source_update - stop waiting after the first unfinished poll for negative timeouts instead of waiting indefinitely.
   - inventory_source_update - preserve elapsed and start timing and return the finish timestamp as finished_at with a boolean finished value.
 ...

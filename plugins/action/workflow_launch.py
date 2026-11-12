@@ -92,7 +92,7 @@ class ActionModule(BaseResourceActionPlugin):
                 if field_name in post_data and not wjt.get(prompt_flag):
                     param_errors.append(f"The field {field_name} was specified but the workflow job template does not allow it to be overridden")
             if launch.extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
-                param_errors.append("The field extra_vars was specified but the workflow job template does not allow for it to be overridden")
+                param_errors.append("The field extra_vars was specified but the workflow job template does not allow it to be overridden")
             if param_errors:
                 result["errors"] = param_errors
                 raise AnsibleError("Parameters specified which cannot be passed into workflow job template launch: " + "; ".join(param_errors))
@@ -138,11 +138,14 @@ class ActionModule(BaseResourceActionPlugin):
 
             # Wait for the workflow job to complete
             try:
-                # The legacy module waited indefinitely when timeout was omitted.
-                # The SDK uses negative timeout values for an unbounded wait.
-                wait_timeout = -1.0 if not timeout else float(timeout)
-                if timeout is not None and timeout < 0:
-                    wait_timeout = 0.0  # Legacy stops after the first unfinished response.
+                # Omitted/zero means unlimited; negative means a single poll.
+                # Translate these values to the shared waiter's timeout conventions.
+                if timeout is None or timeout == 0:
+                    wait_timeout = -1.0
+                elif timeout < 0:
+                    wait_timeout = 0.0  # Stop after the first unfinished response.
+                else:
+                    wait_timeout = float(timeout)
                 wait_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["workflow_job"]
                 job_result = manager.wait_for_completion(
                     wait_operation.path.format(id=workflow_job_id),

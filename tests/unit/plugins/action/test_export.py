@@ -8,7 +8,7 @@ through the production action plugin.
 
 from __future__ import absolute_import, division, print_function
 
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -429,3 +429,21 @@ def test_name_cache_loads_gateway_and_controller_organizations():
     assert "api/gateway/v1/organizations/" in cache
     organization_endpoints = {call.kwargs["endpoint"] for call in manager.search_api.call_args_list if "organizations/" in call.kwargs["endpoint"]}
     assert organization_endpoints == {"api/controller/v2/organizations/", "api/gateway/v1/organizations/"}
+
+
+@pytest.mark.parametrize("reference,expected", [("42", 42), ("Deploy++Org", 42)])
+def test_export_resolves_non_name_selectors(reference, expected):
+    """Export numeric IDs and named URLs through the appropriate ID query."""
+    from ansible_collections.ansible.platform.plugins.action.export import ActionModule
+
+    manager = MagicMock()
+    manager.lookup_resource_id.return_value = 42
+    manager.search_api.return_value = {"results": [{"id": 42, "name": "Deploy"}]}
+    action = ActionModule.__new__(ActionModule)
+    result = action._search_resources(manager, "api/controller/v2/projects/", "name", [reference], 10)
+    assert result == {"results": [{"id": 42, "name": "Deploy"}]}
+    manager.search_api.assert_called_once_with(endpoint="api/controller/v2/projects/", query_params={"id": expected}, return_all=True, max_objects=10)
+    if "++" in reference:
+        manager.lookup_resource_id.assert_called_once_with("projects", "name", reference, service="controller")
+    else:
+        manager.lookup_resource_id.assert_not_called()

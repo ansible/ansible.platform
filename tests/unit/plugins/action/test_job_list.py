@@ -4,6 +4,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -131,10 +132,7 @@ class TestJobListAction:
         action = self._make_action_module({"status": "successful"})
         result = action.run(task_vars={})
 
-        assert result["changed"] is False
-        assert result["failed"] is False
-        assert result["count"] == 2
-        assert len(result["results"]) == 2
+        assert result == {"changed": False, "failed": False, **mock_manager.search_api.return_value}
         mock_manager.search_api.assert_called_once_with(
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params={"status": "successful"},
@@ -168,8 +166,7 @@ class TestJobListAction:
         action = self._make_action_module({"all_pages": True})
         result = action.run(task_vars={})
 
-        assert result["changed"] is False
-        assert result["count"] == 100
+        assert result == {"changed": False, "failed": False, **mock_manager.search_api.return_value}
         mock_manager.search_api.assert_called_once_with(
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params=None,
@@ -208,8 +205,7 @@ class TestJobListAction:
         action = self._make_action_module({"status": "running", "query": {"playbook": "testing.yml"}})
         result = action.run(task_vars={})
 
-        assert result["changed"] is False
-        assert result["count"] == 1
+        assert result == {"changed": False, "failed": False, **mock_manager.search_api.return_value}
         mock_manager.search_api.assert_called_once_with(
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params={"status": "running", "playbook": "testing.yml"},
@@ -297,12 +293,42 @@ class TestJobListAction:
         action = self._make_action_module({"page": 3})
         result = action.run(task_vars={})
 
-        assert result["changed"] is False
-        assert result["next"] == 4
-        assert result["previous"] == 2
+        assert result == {"changed": False, "failed": False, **mock_manager.search_api.return_value}
         mock_manager.search_api.assert_called_once_with(
             endpoint=CONTROLLER_JOBS_ENDPOINT,
             query_params={"page": 3},
             return_all=False,
             max_objects=10000,
         )
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_job_list_returns_more_than_one_thousand_jobs(persistent):
+    """Retrieve multiple pages beyond the SDK's default safety cap."""
+    from ansible_collections.ansible.platform.plugins.action.job_list import ActionModule
+    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+    from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+
+    client_type = PlatformService if persistent else DirectHTTPClient
+    client = client_type.__new__(client_type)
+    client.base_url = "https://gateway.example"
+    client.api_versions = {"gateway": "1", "controller": "2"}
+    client.cache = {}
+    client._authenticated = True
+    client.record_activity = MagicMock()
+    client.session = MagicMock()
+    results = [{"id": i} for i in range(1001)]
+    responses = []
+    for page, next_url in [(results[:1000], "/api/controller/v2/jobs/?page=2"), (results[1000:], None)]:
+        body = {"count": 1001, "results": page, "next": next_url, "previous": None}
+        response = MagicMock()
+        response.read.return_value = json.dumps(body).encode()
+        response.json.return_value = body
+        responses.append(response)
+    client._make_request = MagicMock(side_effect=responses)
+    action = ActionModule.__new__(ActionModule)
+    action._display = MagicMock()
+    action._prepare_action = MagicMock(return_value={"result": {}, "validated_params": {"all_pages": True}, "manager": client})
+    result = action.run(task_vars={})
+    assert result == {"changed": False, "failed": False, "count": 1001, "results": results, "next": None, "previous": None}
+    assert client._make_request.call_count == 2

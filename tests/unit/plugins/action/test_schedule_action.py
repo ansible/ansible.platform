@@ -1,7 +1,9 @@
 """Unit tests for schedule action idempotency behavior."""
 
+from dataclasses import asdict
 from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible_collections.ansible.platform.plugins.action.schedule import ActionModule
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.schedule import AnsibleSchedule
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.schedule import ScheduleTransformMixin_v2
@@ -59,3 +61,19 @@ def test_exists_fails_when_organization_lookup_reports_not_found():
     assert result["failed"]
     assert "Failed to resolve schedule organization" in result["msg"]
     assert "exists" not in result
+
+
+@pytest.mark.parametrize("field", ["scm_branch", "job_tags", "skip_tags", "limit"])
+def test_schedule_empty_prompt_round_trip_is_idempotent(field):
+    """Do not turn stored empty prompts into null and repeatedly PATCH them."""
+    transform = ScheduleTransformMixin_v2
+    current = asdict(transform.from_api({"name": "Resource", field: ""}, {}))
+    assert current[field] == ""
+    assert not ActionModule.__new__(ActionModule)._should_update({field: ""}, current)
+
+
+@pytest.mark.parametrize("field", ["scm_branch", "job_tags", "skip_tags", "limit"])
+def test_schedule_explicit_empty_prompt_changes_inherited_null(field):
+    """Distinguish template inheritance from an explicitly cleared override."""
+    current = asdict(ScheduleTransformMixin_v2.from_api({"name": "Resource", field: None}, {}))
+    assert ActionModule.__new__(ActionModule)._should_update({field: ""}, current)

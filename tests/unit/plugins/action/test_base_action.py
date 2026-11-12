@@ -6,10 +6,12 @@
 from __future__ import absolute_import, division, print_function
 
 import unittest
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.authenticator_user import ActionModule as AuthenticatorUserAction
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -466,6 +468,111 @@ class TestAuthenticatorUserLookup(unittest.TestCase):
 
         self.assertIsNone(resource.id)
         self.assertNotIn("id", resource_data)
+
+
+@pytest.mark.parametrize(
+    "module,alias,canonical,extra",
+    [("workflow_launch", "workflow_template", "name", {}), ("workflow_job_template_node", "workflow", "workflow_job_template", {"identifier": "leaf"})],
+)
+def test_real_preparation_normalizes_workflow_aliases(module, alias, canonical, extra):
+    """Pass only canonical validated keys into models when aliases are used."""
+    from importlib import import_module
+
+    action_type = import_module("ansible_collections.ansible.platform.plugins.action." + module).ActionModule
+    action = action_type.__new__(action_type)
+    action._task = MagicMock(args={alias: "Workflow", **extra})
+    action._display = MagicMock()
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(MagicMock(), None)):
+        prepared = action._prepare_action(None, {})
+    assert alias not in prepared["validated_params"]
+    assert alias not in prepared["resource_data"]
+    model = action.MODEL_CLASS(**prepared["resource_data"])
+    assert getattr(model, canonical) == "Workflow"
+
+
+_RESOURCE_INPUTS = {
+    "organization": {"name": "Resource"},
+    "workflow_job_template": {"name": "Resource"},
+    "execution_environment": {"name": "Resource"},
+    "group": {"name": "Resource", "inventory": "1"},
+    "token": {},
+    "job_wait": {"job_id": 1},
+    "settings": {"settings": {}},
+    "controller_settings": {"settings": {}},
+    "notification_template": {"name": "Resource"},
+    "job_launch": {"name": "Resource"},
+    "inventory": {"name": "Resource", "organization": "1"},
+    "host": {"name": "Resource", "inventory": "1"},
+    "inventory_source_update": {"name": "Resource", "inventory": "1"},
+    "schedule": {"name": "Resource"},
+    "inventory_source": {"name": "Resource", "inventory": "1"},
+    "project_update": {"name": "Resource"},
+}
+
+
+def _make_resource_action(module, args=None, check_mode=False):
+    """Build an action while retaining its real argument validation."""
+    cls = import_module("ansible_collections.ansible.platform.plugins.action." + module).ActionModule
+    action = cls.__new__(cls)
+    action._task = MagicMock(args=dict(_RESOURCE_INPUTS.get(module, {}), **(args or {})), check_mode=check_mode)
+    action._display = MagicMock()
+    action._display.verbosity = 0
+    action._client = MagicMock()
+    return action
+
+
+def _resource_transform(module):
+    """Load the concrete transform for a resource."""
+    service, version = ("gateway", "1") if module == "organization" else ("controller", "2")
+    imported = import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.{service}.v{version}.{module}")
+    return next(value for name, value in vars(imported).items() if name.endswith("TransformMixin_v" + version))
+
+
+@pytest.mark.parametrize("module", _RESOURCE_INPUTS)
+def test_real_validation_retains_canonical_inputs_and_removes_alias_keys(module):
+    """Normalize supported aliases through actual Ansible argument validation."""
+    action = _make_resource_action(module)
+    baseline = action._validate_action_input()
+    specs = baseline.argspec["argument_spec"]
+    for canonical, spec in specs.items():
+        if canonical in action._AUTH_PARAMS:
+            continue
+        for alias in spec.get("aliases", []):
+            value = {"bool": False, "dict": {}, "list": []}.get(spec.get("type"), "Resource")
+            args = dict(_RESOURCE_INPUTS[module])
+            args.pop(canonical, None)
+            args[alias] = value
+            action._task.args = args
+            validated = action._validate_action_input().validated_params
+            assert alias not in validated
+            assert validated[canonical] == value
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["organization", "workflow_job_template", "execution_environment", "group", "notification_template", "inventory", "host", "inventory_source", "schedule"],
+)
+def test_empty_description_round_trip_does_not_predict_an_update(module):
+    """Preserve stored empty descriptions when comparing repeated tasks."""
+    action = _make_resource_action(module)
+    transform = _resource_transform(module)
+    raw = {"id": 7, "name": "Resource", "description": "", "inventory": 1, "organization": 1}
+    manager = MagicMock()
+    manager.search_api.return_value = {"id": 1, "name": "Resource"}
+    manager.lookup_organization_names.return_value = ["Resource"]
+    current = asdict(transform.from_api(raw, {"manager": manager}))
+    assert current["description"] == ""
+    assert not action._should_update({"description": ""}, current)
+
+
+@pytest.mark.parametrize(
+    "module,field", [("schedule", "inventory"), ("schedule", "execution_environment"), ("workflow_job_template_node", "execution_environment")]
+)
+@pytest.mark.parametrize("current,changed", [(None, False), ("", False), (7, True), ("7", True), ("Existing", True)])
+def test_nullable_reference_clear_is_idempotent_after_api_returns_null(module, field, current, changed):
+    """Clear assigned relationships, including numeric-string IDs, but retain cleared values."""
+    action = _make_resource_action(module)
+    assert action._should_update({field: ""}, {field: current}) is changed
 
 
 if __name__ == "__main__":

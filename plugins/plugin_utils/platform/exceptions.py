@@ -169,6 +169,24 @@ class ValidationError(PlatformError):
             return "Review input parameters and ensure all required fields are provided with valid values."
 
 
+class ResourceNotFoundError(ValidationError, ValueError):
+    """A lookup found no resource, with identity metadata independent of its message.
+
+    Retain both existing validation-error and value-error catch behavior.
+    Optional metadata also allows exception reconstruction by RPC pickling.
+    """
+
+    def __init__(
+        self, message: str, *, endpoint: Optional[str] = None, lookup_field: Optional[str] = None, lookup_value: Any = None, service: Optional[str] = None
+    ):
+        super().__init__(message)
+        self.endpoint = endpoint
+        self.lookup_field = lookup_field
+        self.lookup_value = lookup_value
+        self.service = service
+        self.details.update(endpoint=endpoint, lookup_field=lookup_field, lookup_value=lookup_value, service=service)
+
+
 class APIError(PlatformError):
     """
     API-level errors (may be retryable).
