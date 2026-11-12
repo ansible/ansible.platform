@@ -12,7 +12,6 @@ __metaclass__ = type
 
 from dataclasses import asdict
 
-import yaml
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_settings import AnsibleControllerSettings
 
@@ -71,34 +70,6 @@ class ActionModule(BaseResourceActionPlugin):
         return cls._redact_settings(settings)
 
     @staticmethod
-    def _coerce_type(value):
-        """Convert legacy string values to common Controller setting types."""
-        if value is None or not isinstance(value, str):
-            return value
-
-        if (value.startswith("{") and value.endswith("}")) or (value.startswith("[") and value.endswith("]")):
-            try:
-                return yaml.safe_load(value)
-            except yaml.YAMLError as exc:
-                mark = getattr(exc, "problem_mark", None)
-                if mark is not None:
-                    error_message = "Unable to parse setting value as YAML at line %d, column %d" % (mark.line + 1, mark.column + 1)
-                else:
-                    error_message = "Unable to parse setting value as YAML"
-
-            # Raise outside the except block so the parser exception is not
-            # retained as an exception context or exposed in the task result.
-            raise ValueError(error_message)
-
-        if value.lower() in ("true", "false", "t", "f"):
-            return value.lower() in ("true", "t")
-
-        try:
-            return int(value)
-        except ValueError:
-            return value
-
-    @staticmethod
     def _result_payload(current_settings, requested_settings, updated_settings, changed):
         """Build stable legacy-compatible output fields."""
         old_values = {key: current_settings.get(key) for key in requested_settings}
@@ -126,62 +97,34 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
 
             name = validated_params.get("name")
-            requested_settings = validated_params.get("settings")
-            has_name = name is not None
-            if has_name and validated_params.get("value") is None:
-                raise ValueError("value is required when name is provided")
-            if has_name:
-                requested_settings = {name: self._coerce_type(validated_params.get("value"))}
-            else:
-                requested_settings = dict(requested_settings)
-
-            current_result = manager.execute(
-                operation="find",
-                module_name=self.MODULE_NAME,
-                ansible_data=asdict(AnsibleControllerSettings(settings={})),
+            params = asdict(
+                AnsibleControllerSettings(
+                    settings=validated_params.get("settings"),
+                    name=name,
+                    value=validated_params.get("value"),
+                )
             )
-            current_settings = current_result.get("settings", {}) or {}
-            unknown_settings = sorted(set(requested_settings) - set(current_settings))
-            if unknown_settings:
-                raise ValueError("Unknown Controller setting(s): %s" % ", ".join(unknown_settings))
-            to_update = {key: value for key, value in requested_settings.items() if current_settings[key] != value}
+            params["_platform_check_mode"] = self._task.check_mode
+            sdk_result = manager.execute(operation="update", module_name=self.MODULE_NAME, ansible_data=params)
+            requested = sdk_result["new_values"]
+            updated = sdk_result["settings"]
+            changed = sdk_result["changed"]
+            result.update(self._result_payload(sdk_result["old_values"], requested, updated, changed))
+            result["failed"] = False
 
             if self._task.diff:
                 result["diff"] = {
-                    "before": self._redact_settings({key: current_settings.get(key) for key in to_update}),
-                    "after": self._redact_requested_settings(to_update),
+                    "before": self._redact_settings(sdk_result["diff"]["before"]),
+                    "after": self._redact_requested_settings(sdk_result["diff"]["after"]),
                 }
 
-            if not to_update:
-                result.update(self._result_payload(current_settings, requested_settings, current_settings, False))
-                result["failed"] = False
-                if name is not None:
-                    result["value"] = self._redact_setting_value(name, current_settings.get(name))
-                else:
-                    result["values"] = self._redact_settings({key: current_settings.get(key) for key in requested_settings})
-                return result
-
-            if self._task.check_mode:
-                result.update(self._result_payload(current_settings, requested_settings, current_settings, True))
-                result["failed"] = False
-                if name is not None:
-                    result["value"] = self._redact_setting_value(name, to_update.get(name))
-                else:
-                    result["values"] = self._redact_requested_settings(to_update)
-                return result
-
-            update_result = manager.execute(
-                operation="update",
-                module_name=self.MODULE_NAME,
-                ansible_data=asdict(AnsibleControllerSettings(settings=to_update)),
-            )
-            updated_settings = update_result.get("settings", {}) or {}
-            result.update(self._result_payload(current_settings, requested_settings, updated_settings, True))
-            result["failed"] = False
+            # Check mode displays the proposed values while settings still
+            # contains the current server state. The SDK supplies both views.
+            values = sdk_result["diff"]["after"] if self._task.check_mode and changed else {key: updated.get(key) for key in requested}
             if name is not None:
-                result["value"] = self._redact_setting_value(name, updated_settings.get(name))
+                result["value"] = self._redact_setting_value(name, values.get(name))
             else:
-                result["values"] = self._redact_settings({key: updated_settings.get(key) for key in requested_settings})
+                result["values"] = self._redact_settings(values)
 
         except Exception as exc:
             self._display.vvv(f"Error in controller_settings action plugin: {exc}")

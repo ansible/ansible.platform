@@ -14,11 +14,31 @@ class TestControllerSettingsAction(unittest.TestCase):
         action = ActionModule.__new__(ActionModule)
         action._display = MagicMock()
         action._task = SimpleNamespace(check_mode=check_mode, diff=diff)
+        from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader import DynamicClassLoader
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry
+
+        # Exercise the action and real SDK together, mocking only HTTP and the
+        # Ansible task setup. This keeps result/redaction tests independent of
+        # where the update decisions are implemented.
+        service = PlatformService.__new__(PlatformService)
+        service.record_activity = MagicMock()
+        service.session = MagicMock()
+        service.cache = {}
+        service.base_url = "https://gateway.example"
+        service.api_versions = {"controller": "2", "gateway": "1"}
+        service.registry = APIVersionRegistry()
+        service.loader = DynamicClassLoader(service.registry)
+        responses = []
+        for settings in (current, updated if updated is not None else current):
+            response = MagicMock()
+            response.json.return_value = settings
+            response.content = b"nonempty"
+            responses.append(response)
+        service._make_request = MagicMock(side_effect=responses)
         manager = MagicMock()
-        manager.execute.side_effect = [
-            {"settings": current},
-            {"settings": updated if updated is not None else current},
-        ]
+        manager.execute.side_effect = lambda operation, module_name, ansible_data: service.execute(operation, module_name, ansible_data)
+        manager.http = service._make_request
         action._prepare_action = MagicMock(
             return_value={
                 "result": {},
@@ -71,37 +91,20 @@ class TestControllerSettingsAction(unittest.TestCase):
         # Preserve legacy behavior: a masked value is not comparable to the
         # supplied plaintext, so the secret is sent again on every run.
         self.assertTrue(result["changed"])
-        self.assertEqual(manager.execute.call_count, 2)
+        self.assertEqual(manager.execute.call_count, 1)
+        self.assertEqual(manager.http.call_count, 2)
         self.assertEqual(result["old_values"]["SUBSCRIPTIONS_PASSWORD"], "$encrypted$")
         self.assertEqual(result["new_values"]["SUBSCRIPTIONS_PASSWORD"], "$redacted$")
         self.assertEqual(result["value"], "$encrypted$")
         self.assertEqual(result["controller_settings"]["settings"]["SUBSCRIPTIONS_PASSWORD"], "$encrypted$")
-
-    def test_coerce_type(self):
-        from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule
-
-        self.assertEqual(ActionModule._coerce_type("true"), True)
-        self.assertEqual(ActionModule._coerce_type("42"), 42)
-        self.assertEqual(ActionModule._coerce_type("[a, b]"), ["a", "b"])
-        self.assertEqual(ActionModule._coerce_type("plain"), "plain")
-
-    def test_malformed_yaml_error_is_sanitized(self):
-        from ansible_collections.ansible.platform.plugins.action.controller_settings import ActionModule
-
-        with self.assertRaises(ValueError) as raised:
-            ActionModule._coerce_type("{PASSWORD: [super-secret}")
-
-        self.assertEqual(str(raised.exception), "Unable to parse setting value as YAML at line 1, column 25")
-        self.assertNotIn("super-secret", str(raised.exception))
-        self.assertIsNone(raised.exception.__cause__)
-        self.assertIsNone(raised.exception.__context__)
 
     def test_name_value_update_and_idempotency(self):
         action, manager = self._action({"DEFAULT_JOB_TIMEOUT": 0}, {"DEFAULT_JOB_TIMEOUT": 3600})
         result = action.run(task_vars={})
         self.assertTrue(result["changed"])
         self.assertEqual(result["value"], 3600)
-        self.assertEqual(manager.execute.call_count, 2)
+        self.assertEqual(manager.execute.call_count, 1)
+        self.assertEqual(manager.http.call_count, 2)
 
         action, manager = self._action({"DEFAULT_JOB_TIMEOUT": 3600})
         result = action.run(task_vars={})
@@ -113,6 +116,8 @@ class TestControllerSettingsAction(unittest.TestCase):
         result = action.run(task_vars={})
         self.assertTrue(result["changed"])
         self.assertIn("diff", result)
+        manager.http.assert_called_once()
+        self.assertEqual(manager.http.call_args.args[0].upper(), "GET")
         self.assertEqual(manager.execute.call_count, 1)
 
 

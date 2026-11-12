@@ -79,7 +79,12 @@ scattered across the action plugin.
 - HTTP calls (use `context.manager.lookup_resource_id()` for secondary lookups)
 - `import requests`
 - Ansible module result formatting
-- Action plugin logic (state machines, idempotency checks)
+- Ansible task orchestration and Ansible-specific state handling
+
+Resource-specific singleton comparisons belong in a declarative mutation plan,
+not in an action plugin. A mixin may implement `validate_mutation()` and
+`plan_mutation()`; the shared SDK executor reads current state and executes the
+returned endpoint steps. The plan also supports prediction without writes.
 
 **Test**: If the mixin is importing anything other than dataclasses, types, and local models, review it.
 
@@ -103,6 +108,7 @@ Logic trapped in a custom action plugin (especially direct `manager.session` HTT
 |------|----------------|---------------|
 | Field mapping, FK resolution | Transform mixin | Pattern A (default) |
 | Associations, surveys, copy, secondary endpoints | Mixin `get_endpoint_operations()` / hooks | Pattern B hooks only |
+| Singleton filtering, comparisons, and multi-endpoint mutations | Mixin result hook / `SingletonMutationPlan`, executed by the shared SDK | File adaptation, check-mode forwarding, and result formatting only |
 | Launch/job wait (`wait`, `interval`, `timeout`) | `client.launch_resource()` / `client.wait_for_completion()` | Pattern C (thin `run()`) |
 | Multi-step Ansible orchestration | Thin custom `run()` calling `manager.execute()` | Pattern C |
 

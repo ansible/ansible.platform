@@ -10,6 +10,7 @@
 6. [The RPC Interface](#section-6-the-rpc-interface)
 7. [Directory Structure](#section-7-directory-structure)
 8. [Why a Separate Process](#section-8-why-a-separate-process)
+9. [Singleton Resource Operations](#section-9-singleton-resource-operations)
 
 ---
 
@@ -722,3 +723,82 @@ The separate process architecture is the right solution and is stable in product
 The unit tests in `test_http.py` and `test_manager.py` verify the error recovery
 paths (stale socket, dead manager, re-spawn, idle timeout) to ensure the complexity
 does not become a reliability risk.
+
+---
+
+## SECTION 9: Singleton Resource Operations
+
+A singleton uses a fixed endpoint rather than an object ID. Given an initialized
+`PlatformService` or `DirectHTTPClient`, use the same public `execute()` contract:
+
+| Resource | Operations | Shared SDK behavior |
+|---|---|---|
+| `settings` | `find`, `update` | Compare requested Gateway setting keys and PUT only changed keys. Preserve the module's string comparison of existing/requested values. |
+| `controller_settings` | `find`, `update` | Accept `settings` or `name`/`value`, validate setting names, normalize legacy string values, and PATCH only changed keys. |
+| `subscriptions` | `find` | POST credentials, then apply substring filters locally. Missing filter keys are ignored, preserving the module's behavior. |
+| `license` | `find`, `create`, `delete` | Read license state, apply manifests or attach subscriptions, honor `force`, and remove a license without an object ID. |
+
+```python
+# Inputs are dictionaries; neither call imports an Ansible action plugin.
+client.execute("update", "settings", {"settings": {"SESSION_COOKIE_AGE": 3600}})
+client.execute("update", "controller_settings", {"name": "DEFAULT_JOB_TIMEOUT", "value": "7200"})
+
+subscriptions = client.execute(
+    "find", "subscriptions",
+    {"client_id": client_id, "client_secret": client_secret,
+     "filters": {"support_level": "Premium"}},
+)
+
+# License creation requires exactly one non-empty manifest or subscription_id.
+client.execute("create", "license", {"subscription_id": subscription_id, "force": False})
+client.execute("delete", "license", {})
+```
+
+For manifest submission, send the file contents encoded as base64, not a filename:
+
+```python
+import base64
+from pathlib import Path
+
+manifest = base64.b64encode(Path("manifest.zip").read_bytes()).decode("ascii")
+client.execute("create", "license", {"manifest": manifest})
+```
+
+The Ansible action plugin performs file lookup/reading on the Ansible controller.
+The manager process receives the encoded contents and needs no access to that path.
+
+For settings updates and license mutations, `_platform_check_mode=True` validates
+inputs and reads current state, returning the predicted `changed` result without
+issuing a mutation. A predicted `changed=True` does not mean the server changed.
+Check mode is rejected for unsupported mutation paths rather than silently ignored.
+
+```python
+preview = client.execute(
+    "update", "controller_settings",
+    {"settings": {"DEFAULT_JOB_TIMEOUT": 7200}, "_platform_check_mode": True},
+)
+```
+
+Settings results contain `settings`, `changed`, `old_values`, and `new_values`.
+In check mode, `settings` remains the current server state. Gateway old/new values
+contain changed keys; Controller old/new values contain all requested keys, and
+`diff` contains only changed keys. Controller `name`/`value` strings retain legacy
+boolean, integer, list, and dictionary conversion; values in `settings` retain their
+supplied types. Read failures propagate and prevent writes.
+
+The SDK returns values to its caller; the Ansible action plugin redacts sensitive
+settings from module results and diffs. A server value of `$encrypted$` is a
+placeholder, so supplying a plaintext replacement still causes an update.
+
+### Extension points
+
+Singleton lookup mixins may provide `from_find_result(api_data, ansible_data,
+context)` when response handling needs original inputs, such as subscription
+filters. Other singletons use `from_api()` as before.
+
+Mutable singleton mixins provide `validate_mutation()` and `plan_mutation()`.
+`SingletonMutationPlan` contains ordered endpoint-operation names, a predicted
+result, and optionally API data restricted to changed fields. The shared client
+validates, reads current state, requests the plan, and executes its declared steps.
+The mixin makes resource decisions; the shared client performs HTTP. Both clients
+use this same executor, including check-mode prediction and failure propagation.

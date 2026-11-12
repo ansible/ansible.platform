@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - subscriptions - apply client-side subscription filters through the shared SDK execution path in both clients.
+  - license - expose subscription attachment and removal through the SDK, sharing already-licensed, force, and check-mode behavior with the Ansible action.
+  - settings and controller_settings - compare requested keys in the shared SDK and send only changed settings, including check-mode predictions and stopping on read failures.
+  - controller_settings - support legacy name/value conversion through the public SDK while preserving Ansible result and diff redaction.
+...
