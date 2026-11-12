@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - settings - compare requested Gateway keys in the shared SDK and send only changed settings, including check-mode predictions and stopping on read failures.
+  - controller_settings - compare requested keys in the shared SDK, send only changed settings, and support legacy name/value conversion through the public SDK while preserving Ansible result and diff redaction.
+...

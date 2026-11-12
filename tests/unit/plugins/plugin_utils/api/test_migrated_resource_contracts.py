@@ -1113,6 +1113,92 @@ class TestSingletonConsumerParity(unittest.TestCase):
 
                 client._make_request.assert_not_called()
 
+    def test_settings_unchanged_subset_does_not_write(self):
+        current = {"SETTING_A": "same", "SETTING_B": "keep"}
+        for client_mode in ("direct", "persistent"):
+            for module_name in ("settings", "controller_settings"):
+                with self.subTest(client=client_mode, module=module_name):
+                    client = _client(client_mode)
+                    client._make_request.return_value = _response(current, direct=client_mode == "direct")
+
+                    result = client.execute("update", module_name, {"settings": {"SETTING_A": "same"}})
+
+                    client._make_request.assert_called_once()
+                    self.assertEqual(client._make_request.call_args.args[0].upper(), "GET")
+                    self.assertIs(result["changed"], False)
+                    self.assertEqual(result["settings"], current)
+
+    def test_settings_update_sends_only_changed_keys(self):
+        current = {"SETTING_A": "old", "SETTING_B": "keep", "SETTING_C": "unrequested"}
+        updated = {**current, "SETTING_A": "new"}
+        for client_mode in ("direct", "persistent"):
+            for module_name, method, path in (
+                ("settings", "PUT", "/api/gateway/v1/settings/all/"),
+                ("controller_settings", "PATCH", "/api/controller/v2/settings/all/"),
+            ):
+                with self.subTest(client=client_mode, module=module_name):
+                    client = _client(client_mode)
+                    client._make_request.side_effect = [
+                        _response(current, direct=client_mode == "direct"),
+                        _response(updated, direct=client_mode == "direct"),
+                    ]
+
+                    result = client.execute("update", module_name, {"settings": {"SETTING_A": "new", "SETTING_B": "keep"}})
+
+                    requests = client._make_request.call_args_list
+                    self.assertEqual([request.args[0].upper() for request in requests], ["GET", method])
+                    self.assertEqual(requests[1].args[1], BASE_URL + path)
+                    self.assertEqual(requests[1].kwargs["json"], {"SETTING_A": "new"})
+                    self.assertIs(result["changed"], True)
+                    self.assertEqual(result["settings"], updated)
+
+    def test_controller_settings_name_value_is_coerced_through_sdk(self):
+        for client_mode in ("direct", "persistent"):
+            for value, expected in (("true", True), ("42", 42), ("[a, b]", ["a", "b"]), ("plain", "plain")):
+                with self.subTest(client=client_mode, value=value):
+                    client = _client(client_mode)
+                    client._make_request.side_effect = [
+                        _response({"SETTING_A": None}, direct=client_mode == "direct"),
+                        _response({"SETTING_A": expected}, direct=client_mode == "direct"),
+                    ]
+
+                    result = client.execute("update", "controller_settings", {"name": "SETTING_A", "value": value})
+
+                    self.assertEqual(client._make_request.call_args.kwargs["json"], {"SETTING_A": expected})
+                    self.assertEqual(result["settings"]["SETTING_A"], expected)
+                    self.assertIs(result["changed"], True)
+
+    def test_settings_check_mode_predicts_without_writing(self):
+        current = {"SETTING_A": "old", "SETTING_B": "keep"}
+        for client_mode in ("direct", "persistent"):
+            for module_name in ("settings", "controller_settings"):
+                with self.subTest(client=client_mode, module=module_name):
+                    client = _client(client_mode)
+                    client._make_request.return_value = _response(current, direct=client_mode == "direct")
+
+                    result = client.execute("update", module_name, {"settings": {"SETTING_A": "new"}, "_platform_check_mode": True})
+
+                    client._make_request.assert_called_once()
+                    self.assertEqual(client._make_request.call_args.args[0].upper(), "GET")
+                    self.assertIs(result["changed"], True)
+                    self.assertEqual(result["settings"], current)
+                    self.assertEqual(result["old_values"], {"SETTING_A": "old"})
+                    self.assertEqual(result["new_values"], {"SETTING_A": "new"})
+
+    def test_settings_read_failure_prevents_mutation(self):
+        for client_mode in ("direct", "persistent"):
+            for module_name in ("settings", "controller_settings"):
+                with self.subTest(client=client_mode, module=module_name):
+                    client = _client(client_mode)
+                    error = APIError("Cannot read current settings", status_code=500)
+                    client._make_request.side_effect = [error, _response({"SETTING_A": "new"}, direct=client_mode == "direct")]
+
+                    with self.assertRaises(APIError) as raised:
+                        client.execute("update", module_name, {"settings": {"SETTING_A": "new"}})
+
+                    self.assertIs(raised.exception, error)
+                    client._make_request.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

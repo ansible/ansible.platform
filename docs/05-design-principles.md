@@ -87,6 +87,11 @@ mutations use `validate_mutation()` and `plan_mutation()`. The shared SDK
 executor reads current state and runs the declared endpoint steps, with prediction
 without writes for license check mode.
 
+Settings mixins use the same mutation-plan hooks for requested-key comparisons and
+legacy input conversion. Their plans provide API data limited to changed settings;
+the shared SDK uses the existing PUT/PATCH execution path. Ansible result/diff
+formatting and redaction stay in the action plugins.
+
 **Test**: If the mixin is importing anything other than dataclasses, types, and local models, review it.
 
 ---

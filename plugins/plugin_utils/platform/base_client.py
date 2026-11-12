@@ -650,6 +650,8 @@ class BaseAPIClient(ABC):
         if not plan.operations or context.check_mode:
             return plan.result
 
+        if plan.api_data is not None:
+            api_data = plan.api_data
         operations = mixin_class.get_endpoint_operations()
         api_result = None
         for name in plan.operations:
@@ -661,6 +663,8 @@ class BaseAPIClient(ABC):
                 api_result = self._get_json(url, operation=context.operation, resource=module_name)
             elif method == "POST":
                 api_result = self._post_json(url, payload, operation=context.operation, resource=module_name, retry=False)
+            elif method in {"PUT", "PATCH"}:
+                api_result = self._execute_operations({name: endpoint}, api_data, context, required_for=context.operation)
             elif method == "DELETE":
                 self.delete_resource(path, service=context.service)
                 api_result = None
