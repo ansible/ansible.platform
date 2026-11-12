@@ -25,6 +25,21 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 class TestWorkflowJobTemplateTransform(unittest.TestCase):
     """Ansible <-> API round-trip tests for workflow_job_template."""
 
+    def test_find_and_delete_ignore_non_lookup_foreign_keys(self):
+        """Unused inventory and webhook fields cannot hide an existing workflow."""
+        for operation in ("find", "delete"):
+            with self.subTest(operation=operation):
+                manager = MagicMock()
+                manager.lookup_resource_id.return_value = 7
+                ansible = AnsibleWorkflowJobTemplate(name="wf", organization="Default", inventory="Missing", webhook_credential="Missing")
+
+                api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": operation, "manager": manager})
+
+                manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
+                self.assertEqual(api.organization, 7)
+                self.assertIsNone(api.inventory)
+                self.assertIsNone(api.webhook_credential)
+
     def test_extra_vars_stays_as_dict(self):
         ansible = AnsibleWorkflowJobTemplate(name="wf", extra_vars={"foo": "bar"})
         self.assertIsInstance(ansible.extra_vars, dict)

@@ -108,6 +108,7 @@ class ActionModule(BaseResourceActionPlugin):
                 service="controller",
             )
             final_status = wait_result.get("status", "unknown")
+            self._set_job_timing(result, wait_result)
             failed = final_status in ("failed", "error", "canceled")
             result.update(
                 {
@@ -118,9 +119,11 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
             if failed:
+                result["job_data"] = wait_result
                 result["msg"] = f"Job {job_id} finished with status: {final_status}"
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._set_job_timing(result, lr)
             result.update(
                 {
                     "changed": True,

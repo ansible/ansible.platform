@@ -27,6 +27,8 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "token"
     _NO_LOG_FIELDS = frozenset({"existing_token"})
+    _MUTUALLY_EXCLUSIVE = [["existing_token", "existing_token_id"]]
+    _REQUIRED_IF = [["state", "absent", ["existing_token", "existing_token_id"], True]]
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:

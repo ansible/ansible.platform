@@ -194,6 +194,27 @@ EXAMPLES = """
 """
 
 RETURN = """
+elapsed:
+  description: Elapsed seconds reported by Controller.
+  returned: when waiting completes or times out
+  type: float
+started:
+  description: Timestamp of when the job started.
+  returned: when waiting completes or times out
+  type: str
+finished:
+  description: Whether Controller reports a finish timestamp.
+  returned: when waiting completes or times out
+  type: bool
+finished_at:
+  description: Finish timestamp reported by Controller, or null while running.
+  returned: when waiting completes or times out
+  type: str
+job_data:
+  description: Controller job data when the job ends in a failed status.
+  returned: when waiting ends in a failed, error, or canceled status
+  type: dict
+
 id:
   description: Job ID of the newly launched job.
   returned: success

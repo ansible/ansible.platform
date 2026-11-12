@@ -11,6 +11,22 @@ from ansible_collections.ansible.platform.plugins.action.group import ActionModu
 
 
 class TestGroupAssociations(unittest.TestCase):
+    @patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "id": 10})
+    def test_check_mode_predicts_association_changes(self, mock_super_run):
+        """Existing groups still compare requested associations in check mode."""
+        action = self._make_action({"name": "webservers", "inventory": "Prod", "hosts": ["web1"]})
+        action._task.check_mode = True
+        for changed in (True, False):
+            with self.subTest(changed=changed):
+                mock_super_run.return_value = {"changed": False, "id": 10}
+                action._client.manage_associations.return_value = changed
+
+                result = action.run(task_vars={})
+
+                self.assertEqual(result["changed"], changed)
+                self.assertTrue(action._client.manage_associations.call_args.kwargs["check_mode"])
+                self.assertEqual(action._client.manage_associations.call_args.kwargs["extra_query_params"], {"inventory": 7})
+
     def _make_action(self, args):
         action = ActionModule.__new__(ActionModule)
         action._task = MagicMock()
@@ -18,6 +34,7 @@ class TestGroupAssociations(unittest.TestCase):
         action._task.check_mode = False
         action._display = MagicMock()
         action._client = MagicMock()
+        action._client.lookup_resource_id.return_value = 7
         return action
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -49,7 +66,9 @@ class TestGroupAssociations(unittest.TestCase):
             "hosts",
             "name",
             service="controller",
+            extra_query_params={"inventory": 7},
             preserve_existing=False,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -80,7 +99,9 @@ class TestGroupAssociations(unittest.TestCase):
             "groups",
             "name",
             service="controller",
+            extra_query_params={"inventory": 7},
             preserve_existing=False,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -113,7 +134,9 @@ class TestGroupAssociations(unittest.TestCase):
             "hosts",
             "name",
             service="controller",
+            extra_query_params={"inventory": 7},
             preserve_existing=True,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -146,7 +169,9 @@ class TestGroupAssociations(unittest.TestCase):
             "hosts",
             "name",
             service="controller",
+            extra_query_params={"inventory": 7},
             preserve_existing=False,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -194,6 +219,7 @@ class TestGroupAssociations(unittest.TestCase):
 
         self.assertEqual(action._task.args["hosts"], ["web1"])
         self.assertEqual(action._task.args["children"], ["east"])
+        action._client.lookup_resource_id.assert_called_once_with("inventories", "name", "Prod", service="controller")
         self.assertTrue(action._task.args["preserve_existing_hosts"])
         self.assertFalse(action._task.args["preserve_existing_children"])
 

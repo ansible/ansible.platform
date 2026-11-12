@@ -42,10 +42,14 @@ options:
         - If not provided, will lookup by name only, which does not work with duplicates.
       type: str
     existing_token:
-      description: The data structure produced from token in create mode to be used with state absent.
+      description:
+        - The data structure produced from token in create mode to be used with state absent.
+        - Mutually exclusive with O(existing_token_id). One identifier is required for C(state=absent).
       type: dict
     existing_token_id:
-      description: A token ID (number) which can be used to delete an arbitrary token with state absent.
+      description:
+        - A token ID (number) which can be used to delete an arbitrary token with state absent.
+        - Mutually exclusive with O(existing_token). One identifier is required for C(state=absent).
       type: str
     scope:
       description:

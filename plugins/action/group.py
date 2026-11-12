@@ -53,10 +53,13 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
 
-        if resource_id and state not in ("absent", "deleted", "exists") and association_data and not self._task.check_mode:
+        if resource_id and state not in ("absent", "deleted", "exists") and association_data:
+            inventory_id = None
             for field, (lookup_ep, lookup_field) in _ASSOCIATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
+                    if inventory_id is None:
+                        inventory_id = self._client.lookup_resource_id("inventories", "name", self._task.args["inventory"], service="controller")
                     if self._client.manage_associations(
                         "groups",
                         resource_id,
@@ -65,7 +68,9 @@ class ActionModule(BaseResourceActionPlugin):
                         lookup_ep,
                         lookup_field,
                         service="controller",
+                        extra_query_params={"inventory": inventory_id},
                         preserve_existing=preserve_flags.get(field, False),
+                        check_mode=self._task.check_mode,
                     ):
                         result["changed"] = True
 

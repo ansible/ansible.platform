@@ -71,6 +71,8 @@ class ActionModule(BaseResourceActionPlugin):
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
+        if copy_from:
+            result["copied"] = copied
         if copied:
             result["changed"] = True
         if result.get("failed") or state in ("absent", "exists"):
@@ -80,18 +82,14 @@ class ActionModule(BaseResourceActionPlugin):
         if not inv_id:
             return result
 
-        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
-        if check_mode:
-            if reconcile_fields:
-                result["changed"] = True
-            return result
-
         try:
             manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(BASE_PATH, inv_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                if desired is not None and manager.manage_associations(
+                    BASE_PATH, inv_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=check_mode
+                ):
                     changed = True
         except Exception as exc:
             result["failed"] = True

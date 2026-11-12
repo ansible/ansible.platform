@@ -41,6 +41,17 @@ def _http_resp(status=200, body=None):
 
 
 class TestManageAssociations(unittest.TestCase):
+    def test_check_mode_compares_without_writes(self):
+        """Dry-run comparisons detect additions, removals, and unchanged sets."""
+        client = _client()
+        client._make_request = MagicMock()
+        client.search_api.return_value = {"results": [{"id": 1}]}
+        for desired, preserve, expected in (([2], False, True), ([], False, True), ([1], False, False), ([], True, False)):
+            with self.subTest(desired=desired, preserve=preserve):
+                changed = client.manage_associations("groups", 42, "hosts", desired, "hosts", "name", preserve_existing=preserve, check_mode=True)
+                self.assertEqual(changed, expected)
+        client._make_request.assert_not_called()
+
     def setUp(self):
         self.client = _client()
 

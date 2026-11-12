@@ -25,6 +25,26 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 class TestInventorySourceTransform(unittest.TestCase):
     """Ansible <-> API round-trip tests for inventory_source."""
 
+    def test_find_and_delete_ignore_unused_foreign_keys(self):
+        """Keep inventory scope while avoiding write-only reference lookups."""
+        for operation in ("find", "delete"):
+            with self.subTest(operation=operation):
+                manager = MagicMock()
+                manager.lookup_resource_id.return_value = 7
+                ansible = AnsibleInventorySource(
+                    name="source", inventory="Prod", credential="Missing", execution_environment="Missing", source_project="Missing"
+                )
+
+                api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": operation, "manager": manager})
+
+                manager.lookup_resource_id.assert_called_once_with(
+                    "inventories", "name", "Prod", service="controller", extra_query_params=None, require_unique=True
+                )
+                self.assertEqual(api.inventory, 7)
+                self.assertIsNone(api.credential)
+                self.assertIsNone(api.execution_environment)
+                self.assertIsNone(api.source_project)
+
     def test_post_init_normalizes_source_vars_dict(self):
         ansible = AnsibleInventorySource(name="src", inventory="1", source_vars={"private": False})
         self.assertIsInstance(ansible.source_vars, str)

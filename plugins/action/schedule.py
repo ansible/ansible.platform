@@ -10,6 +10,7 @@ __metaclass__ = type
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.schedule import AnsibleSchedule
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.schedule import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
 
 _ASSOC_MAP = {
     "credentials": ("credentials", "name"),
@@ -48,19 +49,32 @@ class ActionModule(BaseResourceActionPlugin):
         if not sched_id:
             return result
 
-        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
-        if self._task.check_mode:
-            if reconcile_fields:
-                result["changed"] = True
-            return result
-
         try:
             manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
-                    changed = True
+                if desired is None:
+                    continue
+                try:
+                    if manager.manage_associations(
+                        BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=self._task.check_mode
+                    ):
+                        changed = True
+                except (ValueError, ValidationError) as exc:
+                    not_found_prefix = "Resource '%s' with %s=" % (lookup_endpoint, lookup_field)
+                    missing_association = str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found")
+                    missing_credential_organization = field == "credentials" and any(
+                        isinstance(value, str)
+                        and value.count("++") == 1
+                        and all(part.strip() for part in value.split("++"))
+                        and str(exc) == "Resource 'organizations' with name=%s not found" % value.partition("++")[2].strip()
+                        for value in desired
+                    )
+                    if self._task.check_mode and (missing_association or missing_credential_organization):
+                        changed = True
+                    else:
+                        raise
         except Exception as exc:
             result["failed"] = True
             result["msg"] = "Failed to reconcile associations: %s" % exc

@@ -31,6 +31,8 @@ execution invariants** — to understand personas, phases, and quality gates.
 
 ## Document Index
 
+Compatibility audits: [Batch 2 — AAP-101589](compatibility/batch2/compat-status.md).
+
 | # | File | Audience | Description |
 |---|------|----------|-------------|
 | 01 | [01-overview.md](01-overview.md) | All | Problem, vision, personas, user stories, module coverage, doc map |

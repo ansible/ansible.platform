@@ -1,0 +1,694 @@
+{
+  "date": "2026-11-11",
+  "records": [
+    {
+      "scenario": "organization",
+      "exit_code": 2,
+      "seconds": 1.3,
+      "module": "organization",
+      "kind": "original",
+      "tasks_started": 5,
+      "errors": [
+        {
+          "task": "Create a new organization",
+          "error": "[ERROR]: Task failed: Action failed: Input validation failed: galaxy_credentials. Supported parameters include: aap_ca_bundle, aap_hostname, aap_password, aap_request_timeout, aap_token, aap_username, aap_validate_certs, description, name, new_name, persistent_manager_idle_timeout, state (ansible_platform_ca_bundle, gateway_ca_bundle, gateway_hostname, gateway_password, gateway_request_timeout, gateway_token, gateway_username, gateway_validate_certs, request_timeout, validate_certs)."
+        }
+      ],
+      "recap": "localhost                  : ok=4    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "native_organization",
+      "exit_code": 0,
+      "seconds": 8.8,
+      "module": "organization",
+      "kind": "native",
+      "tasks_started": 19,
+      "errors": [],
+      "recap": "localhost                  : ok=19   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "isolated_workflow_job_template",
+      "exit_code": 2,
+      "seconds": 157.9,
+      "module": "workflow_job_template",
+      "kind": "original",
+      "tasks_started": 57,
+      "errors": [
+        {
+          "task": "Assert workflow job template with exists created",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        }
+      ],
+      "recap": "localhost                  : ok=53   changed=30   unreachable=0    failed=1    skipped=3    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "adapted_workflow_job_template",
+      "exit_code": 2,
+      "seconds": 203.3,
+      "module": "workflow_job_template",
+      "kind": "adapted",
+      "tasks_started": 107,
+      "errors": [
+        {
+          "task": "Create a workflow job template with bad label",
+          "error": "[ERROR]: Task failed: Action failed: Failed to reconcile associations/survey_spec: Resource 'labels' with name=label_bad not found"
+        },
+        {
+          "task": "Assert workflow kicked off and waited",
+          "error": "[ERROR]: Task failed: Error while evaluating conditional: object of type 'dict' has no attribute 'job_info'"
+        }
+      ],
+      "recap": "localhost                  : ok=103  changed=52   unreachable=0    failed=1    skipped=3    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "native_workflow_job_template",
+      "exit_code": 0,
+      "seconds": 10.6,
+      "module": "workflow_job_template",
+      "kind": "native",
+      "tasks_started": 21,
+      "errors": [],
+      "recap": "localhost                  : ok=21   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "execution_environment",
+      "exit_code": 2,
+      "seconds": 5.4,
+      "module": "execution_environment",
+      "kind": "original",
+      "tasks_started": 13,
+      "errors": [
+        {
+          "task": "assert",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        },
+        {
+          "task": "assert",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        }
+      ],
+      "recap": "localhost                  : ok=11   changed=2    unreachable=0    failed=2    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "adapted_execution_environment",
+      "exit_code": 0,
+      "seconds": 8.6,
+      "module": "execution_environment",
+      "kind": "adapted",
+      "tasks_started": 17,
+      "errors": [
+        {
+          "task": "Associate the Test EE with Default Org (this should fail)",
+          "error": "[ERROR]: Task failed: Action failed: Resource 'organizations' with name=Some Org not found"
+        }
+      ],
+      "recap": "localhost                  : ok=17   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "native_execution_environment",
+      "exit_code": 0,
+      "seconds": 8.1,
+      "module": "execution_environment",
+      "kind": "native",
+      "tasks_started": 20,
+      "errors": [],
+      "recap": "localhost                  : ok=20   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "group",
+      "exit_code": 2,
+      "seconds": 9.2,
+      "module": "group",
+      "kind": "original",
+      "tasks_started": 15,
+      "errors": [
+        {
+          "task": "assert",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        }
+      ],
+      "recap": "localhost                  : ok=14   changed=5    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "adapted_group",
+      "exit_code": 0,
+      "seconds": 39.7,
+      "module": "group",
+      "kind": "adapted",
+      "tasks_started": 38,
+      "errors": [
+        {
+          "task": "Check module fails with correct msg",
+          "error": "[ERROR]: Task failed: Action failed: Resource 'inventories' with name=test-non-existing-inventory not found"
+        }
+      ],
+      "recap": "localhost                  : ok=38   changed=18   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "native_group",
+      "exit_code": 0,
+      "seconds": 41.3,
+      "module": "group",
+      "kind": "native",
+      "tasks_started": 48,
+      "errors": [],
+      "recap": "localhost                  : ok=48   changed=15   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "isolated_token",
+      "exit_code": 2,
+      "seconds": 2.4,
+      "module": "token",
+      "kind": "original",
+      "tasks_started": 7,
+      "errors": [
+        {
+          "task": "Try to use a token as a dict which is missing the token parameter",
+          "error": "[ERROR]: Task failed: Module failed: The provided dict in aap_token did not properly contain the token entry"
+        },
+        {
+          "task": "Try to use a token as a list",
+          "error": "[ERROR]: Task failed: Module failed: Invalid authentication credentials for /api/controller/v2/jobs/ (HTTP 401)."
+        },
+        {
+          "task": "assert",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        }
+      ],
+      "recap": "localhost                  : ok=6    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=2"
+    },
+    {
+      "scenario": "adapted_token",
+      "exit_code": 0,
+      "seconds": 9.0,
+      "module": "token",
+      "kind": "adapted",
+      "tasks_started": 27,
+      "errors": [
+        {
+          "task": "Try to use a token as a dict which is missing the token parameter",
+          "error": "[ERROR]: Task failed: Module failed: The provided dict in aap_token did not properly contain the token entry"
+        },
+        {
+          "task": "Try to use a token as a list",
+          "error": "[ERROR]: Task failed: Module failed: Invalid authentication credentials for /api/controller/v2/jobs/ (HTTP 401)."
+        },
+        {
+          "task": "Try to delete a token with no existing_token or existing_token_id",
+          "error": "[ERROR]: Task failed: Action failed: Input validation failed: state is absent but any of the following are missing: existing_token, existing_token_id"
+        },
+        {
+          "task": "Try to delete a token with both existing_token or existing_token_id",
+          "error": "[ERROR]: Task failed: Action failed: Input validation failed: parameters are mutually exclusive: existing_token|existing_token_id"
+        },
+        {
+          "task": "Ensure the new token is being used and not the default token for the tests.",
+          "error": "[ERROR]: Task failed: Action failed: 403 403 Client Error: Forbidden for url: http://localhost:44927/api/gateway/v1/tokens/"
+        }
+      ],
+      "recap": "localhost                  : ok=27   changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=5"
+    },
+    {
+      "scenario": "native_token",
+      "exit_code": 0,
+      "seconds": 14.0,
+      "module": "token",
+      "kind": "native",
+      "tasks_started": 26,
+      "errors": [
+        {
+          "task": "Fail to create an app token w/o clarification of which org we are using",
+          "error": "[ERROR]: Task failed: Action failed: Application 'GW-Collection-Test-Applications-ZZYhqdddhkJseHtD-app1' is ambiguous: found 2 matches across different organizations. Specify the 'organization' parameter to disambiguate."
+        }
+      ],
+      "recap": "localhost                  : ok=26   changed=14   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "isolated_job_wait",
+      "exit_code": 2,
+      "seconds": 38.9,
+      "module": "job_wait",
+      "kind": "original",
+      "tasks_started": 8,
+      "errors": [
+        {
+          "task": "Check module fails with correct msg",
+          "error": "[ERROR]: Task failed: Action failed: Unable to wait, no job 99999999 found: The requested object could not be found."
+        },
+        {
+          "task": "assert",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        },
+        {
+          "task": "Clean up test workflow",
+          "error": "[ERROR]: Task failed: Finalization of task args for 'awx.awx.workflow_job_template' failed: Error while resolving value for 'name': 'wfjt_name2' is undefined"
+        }
+      ],
+      "recap": "localhost                  : ok=6    changed=2    unreachable=0    failed=2    skipped=0    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "adapted_job_wait",
+      "exit_code": 0,
+      "seconds": 70.9,
+      "module": "job_wait",
+      "kind": "adapted",
+      "tasks_started": 29,
+      "errors": [
+        {
+          "task": "Check module fails with correct msg",
+          "error": "[ERROR]: Task failed: Action failed: Unable to wait, no job 99999999 found: The requested object could not be found."
+        },
+        {
+          "task": "Timeout waiting for the job to complete",
+          "error": "[ERROR]: Task failed: Action failed: Monitoring of job 45 aborted due to timeout."
+        },
+        {
+          "task": "Wait for the job to exit on cancel",
+          "error": "[ERROR]: Task failed: Action failed: Job 45 was canceled."
+        }
+      ],
+      "recap": "localhost                  : ok=29   changed=11   unreachable=0    failed=0    skipped=0    rescued=0    ignored=3"
+    },
+    {
+      "scenario": "native_job_wait",
+      "exit_code": 0,
+      "seconds": 17.7,
+      "module": "job_wait",
+      "kind": "native",
+      "tasks_started": 17,
+      "errors": [
+        {
+          "task": "Check module fails with correct msg for nonexistent job",
+          "error": "[ERROR]: Task failed: Action failed: Unable to wait, no job 99999999 found: The requested object could not be found."
+        }
+      ],
+      "recap": "localhost                  : ok=17   changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "settings",
+      "exit_code": 2,
+      "seconds": 6.3,
+      "module": "settings",
+      "kind": "original",
+      "tasks_started": 11,
+      "errors": [
+        {
+          "task": "Set the value of AWX_ISOLATION_SHOW_PATHS to get an error back from the controller",
+          "error": "[ERROR]: Task failed: Action failed: 400 400 Client Error: Bad Request for url: http://localhost:44927/api/controller/v2/settings/all/"
+        },
+        {
+          "task": "Assert result failed",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        }
+      ],
+      "recap": "localhost                  : ok=10   changed=3    unreachable=0    failed=1    skipped=0    rescued=0    ignored=1"
+    },
+    {
+      "scenario": "adapted_settings",
+      "exit_code": 0,
+      "seconds": 10.8,
+      "module": "settings",
+      "kind": "adapted",
+      "tasks_started": 25,
+      "errors": [
+        {
+          "task": "Set the value of AWX_ISOLATION_SHOW_PATHS to get an error back from the controller",
+          "error": "[ERROR]: Task failed: Action failed: 400 400 Client Error: Bad Request for url: http://localhost:44927/api/controller/v2/settings/all/"
+        },
+        {
+          "task": "Handle an omit value",
+          "error": "[ERROR]: Task failed: Action failed: value is required when name is provided"
+        }
+      ],
+      "recap": "localhost                  : ok=25   changed=5    unreachable=0    failed=0    skipped=0    rescued=0    ignored=2"
+    },
+    {
+      "scenario": "native_settings",
+      "exit_code": 0,
+      "seconds": 4.0,
+      "module": "settings",
+      "kind": "native",
+      "tasks_started": 11,
+      "errors": [],
+      "recap": "batch2_controller          : ok=10   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "notification_template",
+      "exit_code": 2,
+      "seconds": 4.8,
+      "module": "notification_template",
+      "kind": "original",
+      "tasks_started": 11,
+      "errors": [
+        {
+          "task": "assert",
+          "error": "[ERROR]: Task failed: Action failed: Assertion failed"
+        }
+      ],
+      "recap": "localhost                  : ok=10   changed=2    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "adapted_notification_template",
+      "exit_code": 0,
+      "seconds": 21.7,
+      "module": "notification_template",
+      "kind": "adapted",
+      "tasks_started": 37,
+      "errors": [],
+      "recap": "localhost                  : ok=37   changed=16   unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "native_notification_template",
+      "exit_code": 0,
+      "seconds": 10.5,
+      "module": "notification_template",
+      "kind": "native",
+      "tasks_started": 20,
+      "errors": [],
+      "recap": "localhost                  : ok=20   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "isolated_project_update",
+      "exit_code": 0,
+      "seconds": 91.8,
+      "module": "project_update",
+      "kind": "original",
+      "tasks_started": 13,
+      "errors": [],
+      "recap": "localhost                  : ok=13   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    },
+    {
+      "scenario": "native_project_update",
+      "exit_code": 0,
+      "seconds": 51.9,
+      "module": "project_update",
+      "kind": "native",
+      "tasks_started": 11,
+      "errors": [],
+      "recap": "localhost                  : ok=11   changed=3    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+    }
+  ],
+  "focused_regressions": {
+    "group_scope_and_check_mode": {
+      "scenario": "scope_group",
+      "exit_code": 0,
+      "seconds": 20.6
+    },
+    "workflow_graph_validation": "Input validation failed: workflow_nodes"
+  },
+  "checks": {
+    "unit_passes": 1430,
+    "unit_failures": 0,
+    "ruff_lint": "pass",
+    "ruff_format": "pass",
+    "mypy": "pass, 75 source files",
+    "pydoclint": "pass, changed action plugins",
+    "action_plugin_invariants": "pass",
+    "ansible_doc": "pass",
+    "ansible_lint": "pass, production profile, 3 integration task files"
+  },
+  "limitations": [
+    "Native runs use one AAP instance, Python 3.14.6 and ansible-core 2.21.5; no full supported-version/client-mode matrix.",
+    "Original legacy failures are retained; adapted diagnostics are not unchanged parity passes.",
+    "Workflow graph rejection is masked by failed_when: false in the source scenario and later appears as a launch job_info assertion; direct argument validation confirms the root rejection.",
+    "Organization uses a Gateway replacement contract. Token uses a stable-2.6 baseline because AWX devel has no token module."
+  ],
+  "cleanup": {
+    "leftovers_from_failed_legacy_runs": [
+      {
+        "endpoint": "job_templates",
+        "id": 26,
+        "status": 204
+      },
+      {
+        "endpoint": "job_templates",
+        "id": 41,
+        "status": 204
+      },
+      {
+        "endpoint": "notification_templates",
+        "id": 10,
+        "status": 204
+      },
+      {
+        "endpoint": "notification_templates",
+        "id": 6,
+        "status": 204
+      },
+      {
+        "endpoint": "notification_templates",
+        "id": 11,
+        "status": 204
+      },
+      {
+        "endpoint": "projects",
+        "id": 25,
+        "status": 204
+      },
+      {
+        "endpoint": "projects",
+        "id": 39,
+        "status": 204
+      },
+      {
+        "endpoint": "inventories",
+        "id": 16,
+        "status": 202
+      },
+      {
+        "endpoint": "inventories",
+        "id": 20,
+        "status": 202
+      }
+    ],
+    "inventory_deletion": "Completed, verified by the subsequent scoped query.",
+    "verification": "Subsequent scoped API query returned no matching audit leftovers; asynchronous inventory deletion completed."
+  },
+  "batch1_followups": {
+    "comparison_branch": "ANSTRAT-1874-batch1-compat",
+    "comparison_commit": "be0d20c94d0b64afdf43d7da41836f1e74b103d7",
+    "applied_on": "AAP-101589-batch2-compat working tree",
+    "code_hashes": {
+      "plugins/action/inventory.py": "803f064e3cb92760d45b7226ec08427c74bd36231dd64611018a8f192febfec7",
+      "plugins/action/schedule.py": "2780e6daa466a90cf868940140e8b3f4464a3411b85b38aa1bd413266f363cd3",
+      "plugins/action/inventory_source.py": "35853e1aaffae594390da180f9375600a0d9e4834699eff8196884d6d1a4c0e6",
+      "plugins/action/job_launch.py": "b1d770673b157ef487aded87927d4b01221dbf6cd751bc038f2c990562c121b9",
+      "plugins/modules/inventory.py": "f4dedce11f8e17d83e10f1bd30777189851019099985e454cdcde2a8f8677ff2",
+      "plugins/modules/job_launch.py": "67968a2c279e88b349c3c0919110e342aa27b54ac5f7b2dda10e85200f0cfa34",
+      "plugins/plugin_utils/api/controller/v2/inventory_source.py": "59480443b816f646b227745997fda9231b241469b7f01f946613209d7034dcee"
+    },
+    "native_runs": [
+      {
+        "scenario": "followup_inventory",
+        "exit_code": 0,
+        "seconds": 23.7,
+        "module": "inventory",
+        "tasks_started": 35,
+        "errors": [
+          {
+            "task": "Reject an invalid inventory organization",
+            "error": "[ERROR]: Task failed: Action failed: Resource 'organizations' with name=AAP-Collection-Test-Inventory-AxXaVDmzRvKSGDqS-does-not-exist not found",
+            "expected": true
+          }
+        ],
+        "recap": "localhost                  : ok=35   changed=12   unreachable=0    failed=0    skipped=0    rescued=0    ignored=1"
+      },
+      {
+        "scenario": "followup_schedule",
+        "exit_code": 0,
+        "seconds": 9.5,
+        "module": "schedule",
+        "tasks_started": 22,
+        "errors": [],
+        "recap": "localhost                  : ok=22   changed=4    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      },
+      {
+        "scenario": "followup_inventory_source",
+        "exit_code": 0,
+        "seconds": 18.9,
+        "module": "inventory_source",
+        "tasks_started": 29,
+        "errors": [],
+        "recap": "localhost                  : ok=29   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      },
+      {
+        "scenario": "followup_job_launch",
+        "exit_code": 0,
+        "seconds": 13.3,
+        "module": "job_launch",
+        "tasks_started": 12,
+        "errors": [],
+        "recap": "localhost                  : ok=12   changed=7    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"
+      }
+    ],
+    "validation": {
+      "unit_passes": 1448,
+      "unit_failures": 0,
+      "ruff_lint": "pass",
+      "ruff_format": "pass",
+      "mypy": "pass, 75 source files",
+      "pydoclint": "pass, changed actions",
+      "action_plugin_invariants": "pass",
+      "ansible_doc": "pass",
+      "ansible_lint": "pass, production profile, four changed native targets"
+    },
+    "existing_batch1_work_not_duplicated": [
+      "job_launch omitted timeout is unlimited",
+      "inventory_source_update omitted/zero timeout is unlimited",
+      "inventory_source_update timing and failed job data"
+    ],
+    "coverage_note": "Native regression targets for the four changed modules were rerun. This is not a new run of all legacy Batch 1 scenarios. The inventory error is an expected negative test with a subsequent failure assertion."
+  },
+  "precommit_review": {
+    "recorded_at_utc": "2026-11-11T12:49:55.759503+00:00",
+    "scope": "Record separate bulk-zero timeout follow-up and refresh relevant checks. Production code and timeout documentation remain unchanged in this review.",
+    "bulk_zero_timeout_followup": {
+      "local_id": "B2-FOLLOWUP-001",
+      "record": "follow-ups.md",
+      "status": "unresolved, outside Batch 2 module list",
+      "external_issue": null,
+      "approved_exception": false,
+      "runtime_changed": false
+    },
+    "bulk_zero_timeout_probe": [
+      {
+        "input_timeout": null,
+        "forwarded_timeout": -1.0,
+        "failed": false,
+        "status": "successful",
+        "polls": 2,
+        "message": null
+      },
+      {
+        "input_timeout": 0,
+        "forwarded_timeout": 0.0,
+        "failed": true,
+        "status": "running",
+        "polls": 1,
+        "message": "Timed out waiting after 0.0s | Operation: wait_for_completion | Resource: workflow_jobs/42"
+      },
+      {
+        "input_timeout": 30,
+        "forwarded_timeout": 30.0,
+        "failed": false,
+        "status": "successful",
+        "polls": 2,
+        "message": null
+      }
+    ],
+    "probe_method": "Real bulk action and shared polling helper, stubbed API responses and disabled sleep. No live AAP calls.",
+    "focused_tests": {
+      "paths": [
+        "tests/unit/plugins/action/test_bulk_job_launch.py",
+        "tests/unit/plugins/action/test_project_update.py",
+        "tests/unit/plugins/action/test_job_launch_action.py",
+        "tests/unit/plugins/action/test_inventory_source_update.py",
+        "tests/unit/plugins/action/test_job_wait_timeout.py"
+      ],
+      "passed": 65,
+      "failed": 0
+    },
+    "documentation": {
+      "ansible_doc": "pass",
+      "modules": [
+        "ansible.platform.ad_hoc_command",
+        "ansible.platform.ad_hoc_command_cancel",
+        "ansible.platform.ad_hoc_command_wait",
+        "ansible.platform.bulk_job_launch",
+        "ansible.platform.controller_project",
+        "ansible.platform.inventory",
+        "ansible.platform.inventory_source_update",
+        "ansible.platform.job_launch",
+        "ansible.platform.job_wait",
+        "ansible.platform.project_update",
+        "ansible.platform.workflow_approval",
+        "ansible.platform.workflow_launch",
+        "ansible.platform.workflow_node_wait"
+      ],
+      "local_audit_links": "pass",
+      "local_links_checked": 10,
+      "json_evidence": "parsed successfully"
+    },
+    "code_hash_verification": {
+      "files_checked": 29,
+      "mismatches": []
+    },
+    "quality_checks": {
+      "ruff_lint": "pass, plugins and unit tests",
+      "ruff_format": "pass, 420 files",
+      "mypy": "pass, 75 source files",
+      "pydoclint": "pass, nine changed actions",
+      "action_plugin_invariants": "pass",
+      "git_diff_check": "pass"
+    },
+    "previous_validation_retained": {
+      "full_unit_suite_passes": 1448,
+      "full_suite_rerun_for_this_docs_only_review": false,
+      "live_aap_runs_rerun_for_this_review": false
+    },
+    "remaining_work": [
+      "Integrate existing Batch 1 timeout corrections before documenting omitted/zero as unlimited for job_launch and inventory_source_update on this branch.",
+      "Finish timeout wording updates identified by the documentation review.",
+      "Resolve or obtain an approved disposition for missing workflow graph options."
+    ],
+    "historical_snapshot": true,
+    "superseded_bulk_status": "Resolved by bulk_zero_timeout_fix; the original evidence is retained."
+  },
+  "bulk_zero_timeout_fix": {
+    "recorded_at_utc": "2026-11-11T12:53:38.340691+00:00",
+    "local_finding": "B2-FOLLOWUP-001",
+    "status": "fixed in this branch",
+    "external_followup_required": false,
+    "scope_added_after_user_requested_resolution_here": true,
+    "behavior": "Top-level timeout omitted or zero waits indefinitely. Positive deadlines and negative-input rejection remain. jobs[].timeout is unchanged.",
+    "code_hashes": {
+      "plugins/action/bulk_job_launch.py": "1b69e8ed7a71af815196d6455594834c01806b6b93f720fdd0320be748e1f9a2",
+      "plugins/modules/bulk_job_launch.py": "ecf728bf81ef29763360d5d73a5bb1bf7afb53d0d60cb61cfbf9cf0904a782c4",
+      "tests/unit/plugins/action/test_bulk_job_launch.py": "e7455d076c1cc697da583d19f003c83c18c4a947b83de936a10097249fd7e217",
+      "tests/integration/targets/bulk_job_launches_test/tasks/main.yml": "1d480e262489b0995340db26809b85d921f5c5f14b5f1d305e9a01ea5c9511a7"
+    },
+    "regressions_failed_before_fix": [
+      "tests/unit/plugins/action/test_bulk_job_launch.py::TestBulkJobLaunchActionModule::test_unlimited_wait_timeout_preserves_indefinite_wait[0]",
+      "tests/unit/plugins/action/test_bulk_job_launch.py::TestBulkJobLaunchActionModule::test_zero_timeout_waits_across_a_running_response"
+    ],
+    "unit_tests": {
+      "full_unit": {
+        "passed": 1450,
+        "failed": 0
+      },
+      "bulk_action": {
+        "passed": 25,
+        "failed": 0
+      }
+    },
+    "native_aap_run": {
+      "scenario": "followup_bulk_job_launch",
+      "exit_code": 0,
+      "seconds": 24.7,
+      "target": "bulk_job_launches_test",
+      "recap": "localhost                  : ok=18   changed=9    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0",
+      "errors": [],
+      "coverage": [
+        "positive timeout launch",
+        "zero-timeout launch to successful completion",
+        "no-wait launch followed by a successful remote result",
+        "test resource cleanup"
+      ]
+    },
+    "quality_checks": {
+      "ruff_lint": "pass",
+      "ruff_format": "pass, 420 files",
+      "mypy": "pass, 75 source files",
+      "pydoclint": "pass, bulk action",
+      "action_plugin_invariants": "pass",
+      "ansible_doc": "pass, updated bulk documentation",
+      "ansible_lint": "pass, production profile, bulk integration target",
+      "git_diff_check": "pass"
+    },
+    "remaining_work": [
+      "Existing Batch 1 timeout integrations for job_launch and inventory_source_update.",
+      "Timeout wording updates for other modules.",
+      "Missing workflow graph interface decision."
+    ]
+  }
+}

@@ -299,7 +299,7 @@ class TestRPCClientWrappers(unittest.TestCase):
 
         result = client.wait_for_completion("/jobs/1/", timeout=30, interval=5, service="controller")
 
-        self.assertEqual(result["status"], "successful")
+        self.assertEqual(result, {"id": 1, "status": "successful"})
         client.service_proxy.wait_for_completion.assert_called_once_with("/jobs/1/", 30, 5, "controller")
 
 

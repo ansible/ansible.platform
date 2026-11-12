@@ -53,6 +53,17 @@
       ansible.builtin.assert:
         that: idem is not changed
 
+    - name: Compare an empty schedule association in check mode
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        credentials: []
+      check_mode: true
+      register: unchanged_credentials
+
+    - name: Assert empty schedule associations remain unchanged
+      ansible.builtin.assert:
+        that: unchanged_credentials is not changed
+
     - name: Check schedule exists
       ansible.platform.schedule:
         name: "{{ schedule_name }}"

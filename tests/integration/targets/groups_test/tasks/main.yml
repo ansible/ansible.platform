@@ -279,4 +279,6 @@
       when: test_inventory is defined
       failed_when: false
 
+- name: Verify legacy group association compatibility
+  ansible.builtin.include_tasks: compatibility.yml
 ...

@@ -70,6 +70,25 @@
           - launch_result.status == "successful"
           - launch_result.changed
 
+    - name: Bulk launch with an unlimited zero timeout
+      ansible.platform.bulk_job_launch:
+        name: "{{ test_job_template_name }}-ZeroTimeout"
+        jobs:
+          - unified_job_template: "{{ test_jt.job_template.id }}"
+        organization: Default
+        inventory: "{{ test_inventory_name }}"
+        wait: true
+        timeout: 0
+        interval: 1
+      register: zero_timeout_result
+
+    - name: Assert zero timeout waits until successful completion
+      ansible.builtin.assert:
+        that:
+          - zero_timeout_result is not failed
+          - zero_timeout_result is changed
+          - zero_timeout_result.status == 'successful'
+
     - name: Bulk launch without waiting
       ansible.platform.bulk_job_launch:
         name: "{{ test_job_template_name }}-NoWait"

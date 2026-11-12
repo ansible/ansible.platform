@@ -31,6 +31,10 @@ class ActionModule(BaseResourceActionPlugin):
         interval = params.get("interval", 2.0)
         timeout = params.get("timeout")
 
+        if timeout is not None and timeout < 0:
+            result.update({"changed": False, "failed": True, "msg": "timeout must be 0 or greater"})
+            return result
+
         try:
             project_id = self._resolve_project(manager, name, organization)
         except Exception as exc:
@@ -74,7 +78,7 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             wait_result = manager.wait_for_completion(
                 job_url,
-                timeout=float(timeout) if timeout is not None else None,
+                timeout=float(timeout) if timeout else -1.0,
                 interval=float(interval),
                 service=_SERVICE,
             )
@@ -85,10 +89,13 @@ class ActionModule(BaseResourceActionPlugin):
             changed = scm_revision_new != scm_revision_original
 
             result.update({"changed": changed, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
+            self._set_job_timing(result, wait_result)
             if failed:
+                result["job_data"] = wait_result
                 result["msg"] = "Project update %s finished with status: %s" % (job_id, final_status)
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._set_job_timing(result, lr)
             result.update(
                 {
                     "changed": True,

@@ -33,7 +33,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
 
-        if resource_id and state not in ("absent", "deleted", "exists") and association_data and not self._task.check_mode:
+        if resource_id and state not in ("absent", "deleted", "exists") and association_data:
             for field, (lookup_ep, lookup_field) in _NOTIFICATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
@@ -45,6 +45,7 @@ class ActionModule(BaseResourceActionPlugin):
                         lookup_ep,
                         lookup_field,
                         service="controller",
+                        check_mode=self._task.check_mode,
                     ):
                         result["changed"] = True
 

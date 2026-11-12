@@ -54,6 +54,7 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "pending")
+        self.assertNotIn("finished_at", result)
         self.assertEqual(
             action._client.launch_resource.call_args.args,
             ("/api/controller/v2/job_templates/1/launch/", {}),
@@ -75,6 +76,9 @@ class TestJobLaunchAction(unittest.TestCase):
         action._client.wait_for_completion.return_value = {
             "id": 42,
             "status": "successful",
+            "elapsed": 3.0,
+            "started": "2026-11-11T10:00:00Z",
+            "finished": "2026-11-11T10:00:03Z",
         }
 
         result = action.run(task_vars={})
@@ -82,6 +86,11 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertFalse(result["failed"])
         self.assertEqual(result["status"], "successful")
+        self.assertEqual(result["elapsed"], 3.0)
+        self.assertEqual(result["started"], "2026-11-11T10:00:00Z")
+        self.assertIs(result["finished"], True)
+        self.assertEqual(result["finished_at"], "2026-11-11T10:00:03Z")
+
         action._client.wait_for_completion.assert_called_once_with(
             "/api/controller/v2/jobs/42/",
             timeout=-1.0,
@@ -178,6 +187,7 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertTrue(result["failed"])
         self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["job_data"], action._client.wait_for_completion.return_value)
 
     def test_launch_with_wait_timeout(self):
         action = self._make_action({"name": "Demo", "wait": True, "timeout": 10, "interval": 1.0})
@@ -198,6 +208,8 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "running")
         self.assertIn("Timed out", result["msg"])
+        self.assertIs(result["finished"], False)
+        self.assertIsNone(result["finished_at"])
 
     def test_check_mode_skips_launch(self):
         action = self._make_action({"name": "Demo"}, check_mode=True)

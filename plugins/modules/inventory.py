@@ -157,6 +157,11 @@ EXAMPLES = """
 """
 
 RETURN = """
+copied:
+  description: Whether this invocation copied a source inventory into a new destination.
+  returned: when copy_from is supplied
+  type: bool
+
 changed:
   description: Whether the inventory was created, updated, or deleted.
   returned: always

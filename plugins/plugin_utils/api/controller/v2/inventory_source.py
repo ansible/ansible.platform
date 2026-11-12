@@ -111,7 +111,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: credential name → ID (Controller-owned)
         credential = getattr(ansible_instance, "credential", None)
-        if credential is not None:
+        if credential is not None and op not in ("find", "delete"):
             if manager is not None and not str(credential).strip().isdigit():
                 api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, service="controller")
             else:
@@ -119,7 +119,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: execution_environment name → ID (Controller-owned)
         ee = getattr(ansible_instance, "execution_environment", None)
-        if ee is not None:
+        if ee is not None and op not in ("find", "delete"):
             if manager is not None and not str(ee).strip().isdigit():
                 api_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", ee, service="controller")
             else:
@@ -127,7 +127,7 @@ class InventorySourceTransformMixin_v2(BaseTransformMixin):
 
         # FK resolution: source_project name → ID (Controller-owned)
         source_project = getattr(ansible_instance, "source_project", None)
-        if source_project is not None:
+        if source_project is not None and op not in ("find", "delete"):
             if manager is not None and not str(source_project).strip().isdigit():
                 api_data["source_project"] = manager.lookup_resource_id(
                     "projects",
