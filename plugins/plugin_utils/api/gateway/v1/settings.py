@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
-from ....platform.types import EndpointOperation, SingletonMutationPlan, TransformContext
+from ....platform.types import EndpointOperation, TransformContext
 
 
 @dataclass
@@ -60,29 +60,6 @@ class SettingsTransformMixin_v1(BaseTransformMixin):
                 flatten_body=True,  # Send the dict values as the body directly
             ),
         }
-
-    @classmethod
-    def validate_mutation(cls, ansible_data, context):
-        """Gateway settings support updates of a mapping, without create/delete."""
-        if context.operation != "update":
-            raise ValueError("Gateway settings support only find and update operations")
-        if ansible_data.settings is not None and not isinstance(ansible_data.settings, dict):
-            raise ValueError("settings must be a mapping")
-
-    @classmethod
-    def plan_mutation(cls, ansible_data, current, context):
-        """Compare only requested keys using the module's string comparison rule."""
-        current_settings = current.get("settings") or {}
-        requested = ansible_data.settings or {}
-        changes = {key: value for key, value in requested.items() if str(current_settings.get(key)) != str(value)}
-        result = {
-            "changed": bool(changes),
-            "old_values": {key: current_settings.get(key) for key in changes},
-            "new_values": changes,
-        }
-        if not changes or context.check_mode:
-            result["settings"] = current_settings
-        return SingletonMutationPlan(["update"] if changes else [], result, APISettings_v1(settings=changes))
 
     @classmethod
     def get_lookup_field(cls) -> str:

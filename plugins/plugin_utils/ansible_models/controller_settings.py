@@ -15,7 +15,3 @@ class AnsibleControllerSettings:
     old_values: Optional[Dict[str, Any]] = None
     new_values: Optional[Dict[str, Any]] = None
     changed: bool = False
-
-    # Optional legacy single-setting input form, normalized in the SDK mixin.
-    name: Optional[str] = None
-    value: Optional[Any] = None

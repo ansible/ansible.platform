@@ -127,22 +127,5 @@ class TestControllerSettingsTransformMixin(unittest.TestCase):
         self.assertEqual(args[1].settings, {"DEFAULT_JOB_TIMEOUT": 3600})
 
 
-class TestControllerSettingsCoercion(unittest.TestCase):
-    def test_coerce_type(self):
-        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("true"), True)
-        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("42"), 42)
-        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("[a, b]"), ["a", "b"])
-        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("plain"), "plain")
-
-    def test_malformed_yaml_error_is_sanitized(self):
-        with self.assertRaises(ValueError) as raised:
-            ControllerSettingsTransformMixin_v2.coerce_value("{PASSWORD: [super-secret}")
-
-        self.assertEqual(str(raised.exception), "Unable to parse setting value as YAML at line 1, column 25")
-        self.assertNotIn("super-secret", str(raised.exception))
-        self.assertIsNone(raised.exception.__cause__)
-        self.assertIsNone(raised.exception.__context__)
-
-
 if __name__ == "__main__":
     unittest.main()

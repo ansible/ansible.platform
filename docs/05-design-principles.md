@@ -81,10 +81,11 @@ scattered across the action plugin.
 - Ansible module result formatting
 - Ansible task orchestration and Ansible-specific state handling
 
-Resource-specific singleton comparisons belong in a declarative mutation plan,
-not in an action plugin. A mixin may implement `validate_mutation()` and
-`plan_mutation()`; the shared SDK executor reads current state and executes the
-returned endpoint steps. The plan also supports prediction without writes.
+Subscription filtering and license mutation decisions belong in SDK mixin hooks,
+not in an action plugin. Subscription filters use `from_find_result()`; license
+mutations use `validate_mutation()` and `plan_mutation()`. The shared SDK
+executor reads current state and runs the declared endpoint steps, with prediction
+without writes for license check mode.
 
 **Test**: If the mixin is importing anything other than dataclasses, types, and local models, review it.
 
@@ -108,7 +109,7 @@ Logic trapped in a custom action plugin (especially direct `manager.session` HTT
 |------|----------------|---------------|
 | Field mapping, FK resolution | Transform mixin | Pattern A (default) |
 | Associations, surveys, copy, secondary endpoints | Mixin `get_endpoint_operations()` / hooks | Pattern B hooks only |
-| Singleton filtering, comparisons, and multi-endpoint mutations | Mixin result hook / `SingletonMutationPlan`, executed by the shared SDK | File adaptation, check-mode forwarding, and result formatting only |
+| Subscription filtering and license mutation decisions | Mixin result/mutation hooks, executed by the shared SDK | File adaptation, license check-mode forwarding, and result formatting only |
 | Launch/job wait (`wait`, `interval`, `timeout`) | `client.launch_resource()` / `client.wait_for_completion()` | Pattern C (thin `run()`) |
 | Multi-step Ansible orchestration | Thin custom `run()` calling `manager.execute()` | Pattern C |
 
@@ -556,4 +557,3 @@ matching must be designed. (See: Principle 2 in `04-data-model-transformation.md
 | 15. SDK consumer parity | All behavior via `PlatformService.execute()` | Multi-consumer architecture |
 
 ---
-

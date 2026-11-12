@@ -10,7 +10,7 @@
 6. [The RPC Interface](#section-6-the-rpc-interface)
 7. [Directory Structure](#section-7-directory-structure)
 8. [Why a Separate Process](#section-8-why-a-separate-process)
-9. [Singleton Resource Operations](#section-9-singleton-resource-operations)
+9. [Subscription and License Operations](#section-9-subscription-and-license-operations)
 
 ---
 
@@ -726,79 +726,39 @@ does not become a reliability risk.
 
 ---
 
-## SECTION 9: Singleton Resource Operations
+## SECTION 9: Subscription and License Operations
 
-A singleton uses a fixed endpoint rather than an object ID. Given an initialized
-`PlatformService` or `DirectHTTPClient`, use the same public `execute()` contract:
+Subscriptions and Controller licensing use singleton endpoints. Both are available
+through the public `execute()` contract on `PlatformService` and
+`DirectHTTPClient`.
 
 | Resource | Operations | Shared SDK behavior |
 |---|---|---|
-| `settings` | `find`, `update` | Compare requested Gateway setting keys and PUT only changed keys. Preserve the module's string comparison of existing/requested values. |
-| `controller_settings` | `find`, `update` | Accept `settings` or `name`/`value`, validate setting names, normalize legacy string values, and PATCH only changed keys. |
-| `subscriptions` | `find` | POST credentials, then apply substring filters locally. Missing filter keys are ignored, preserving the module's behavior. |
-| `license` | `find`, `create`, `delete` | Read license state, apply manifests or attach subscriptions, honor `force`, and remove a license without an object ID. |
+| `subscriptions` | `find` | POST credentials, then filter the returned subscriptions locally. |
+| `license` | `find`, `create`, `delete` | Read license state, apply a manifest or attach a subscription, and remove a license without an object ID. |
 
-```python
-# Inputs are dictionaries; neither call imports an Ansible action plugin.
-client.execute("update", "settings", {"settings": {"SESSION_COOKIE_AGE": 3600}})
-client.execute("update", "controller_settings", {"name": "DEFAULT_JOB_TIMEOUT", "value": "7200"})
+Subscription filters use substring matching. Every filter with a matching response
+key must match; a missing key does not exclude that subscription. The mixin applies
+these filters in `from_find_result()`, so direct and persistent clients return the
+same filtered list.
 
-subscriptions = client.execute(
-    "find", "subscriptions",
-    {"client_id": client_id, "client_secret": client_secret,
-     "filters": {"support_level": "Premium"}},
-)
+License creation accepts exactly one non-empty manifest value or
+`subscription_id`. The action plugin reads a manifest file and passes its base64
+encoded contents to the SDK; SDK callers pass the encoded contents themselves.
+Subscription attachment posts the ID and then reads the updated configuration.
+Deleting a license uses the fixed config endpoint and requires no resource ID.
+Deleting when no license exists is an unchanged result.
 
-# License creation requires exactly one non-empty manifest or subscription_id.
-client.execute("create", "license", {"subscription_id": subscription_id, "force": False})
-client.execute("delete", "license", {})
-```
-
-For manifest submission, send the file contents encoded as base64, not a filename:
-
-```python
-import base64
-from pathlib import Path
-
-manifest = base64.b64encode(Path("manifest.zip").read_bytes()).decode("ascii")
-client.execute("create", "license", {"manifest": manifest})
-```
-
-The Ansible action plugin performs file lookup/reading on the Ansible controller.
-The manager process receives the encoded contents and needs no access to that path.
-
-For settings updates and license mutations, `_platform_check_mode=True` validates
-inputs and reads current state, returning the predicted `changed` result without
-issuing a mutation. A predicted `changed=True` does not mean the server changed.
-Check mode is rejected for unsupported mutation paths rather than silently ignored.
-
-```python
-preview = client.execute(
-    "update", "controller_settings",
-    {"settings": {"DEFAULT_JOB_TIMEOUT": 7200}, "_platform_check_mode": True},
-)
-```
-
-Settings results contain `settings`, `changed`, `old_values`, and `new_values`.
-In check mode, `settings` remains the current server state. Gateway old/new values
-contain changed keys; Controller old/new values contain all requested keys, and
-`diff` contains only changed keys. Controller `name`/`value` strings retain legacy
-boolean, integer, list, and dictionary conversion; values in `settings` retain their
-supplied types. Read failures propagate and prevent writes.
-
-The SDK returns values to its caller; the Ansible action plugin redacts sensitive
-settings from module results and diffs. A server value of `$encrypted$` is a
-placeholder, so supplying a plaintext replacement still causes an update.
+An already licensed, valid, non-trial Controller is unchanged unless `force` is
+true. License create and delete honor `_platform_check_mode`: the SDK validates
+and reads current state, predicts `changed`, and performs no mutation request.
 
 ### Extension points
 
-Singleton lookup mixins may provide `from_find_result(api_data, ansible_data,
-context)` when response handling needs original inputs, such as subscription
-filters. Other singletons use `from_api()` as before.
-
-Mutable singleton mixins provide `validate_mutation()` and `plan_mutation()`.
-`SingletonMutationPlan` contains ordered endpoint-operation names, a predicted
-result, and optionally API data restricted to changed fields. The shared client
-validates, reads current state, requests the plan, and executes its declared steps.
-The mixin makes resource decisions; the shared client performs HTTP. Both clients
-use this same executor, including check-mode prediction and failure propagation.
+The subscription mixin can implement `from_find_result()` when response handling
+depends on the original request, such as client-side filters. License mixins
+implement `validate_mutation()` and `plan_mutation()`. A
+`SingletonMutationPlan` declares ordered endpoint operations and the predicted
+result; the shared executor validates, reads current state, and runs those steps.
+The mixin owns resource decisions, while the executor owns HTTP execution. Both
+clients use this same path, including check-mode prediction and error propagation.
