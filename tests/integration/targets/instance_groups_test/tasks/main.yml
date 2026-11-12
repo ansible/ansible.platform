@@ -121,6 +121,33 @@
           - renamed_ig.instance_group.id == created_ig.instance_group.id
           - renamed_ig.instance_group.name == (name_prefix ~ '-Renamed')
 
+    - name: Predict an instance association without writing it
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        instances:
+          - "{{ controller_instance.hostname }}"
+      check_mode: true
+      register: planned_instances
+      when: controller_instance is defined
+
+    - name: Verify check mode left the instance association empty
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/instance_groups/{{ renamed_ig.instance_group.id }}/instances/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      register: dry_run_instances
+      delegate_to: localhost
+      when: controller_instance is defined
+
+    - name: Assert the association was only predicted
+      ansible.builtin.assert:
+        that:
+          - planned_instances is changed
+          - dry_run_instances.json.count == 0
+      when: controller_instance is defined
+
     - name: Associate an existing instance with the group
       ansible.platform.instance_group:
         name: "{{ name_prefix }}-Renamed"
@@ -166,6 +193,21 @@
       ansible.builtin.assert:
         that:
           - idempotent_association is not changed
+      when: controller_instance is defined
+
+    - name: Check mode preserves unchanged instance associations
+      ansible.platform.instance_group:
+        name: "{{ name_prefix }}-Renamed"
+        instances:
+          - "{{ controller_instance.hostname }}"
+      check_mode: true
+      register: unchanged_instances
+      when: controller_instance is defined
+
+    - name: Assert check mode recognizes the existing association
+      ansible.builtin.assert:
+        that:
+          - unchanged_instances is not changed
       when: controller_instance is defined
 
     - name: Set policy_instance_list on the group (works with all node types)

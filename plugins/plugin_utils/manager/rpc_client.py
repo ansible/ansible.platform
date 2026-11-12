@@ -189,9 +189,9 @@ class ManagerRPCClient:
             check_mode,
         )
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], check_mode: bool = False) -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
-        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data, check_mode)
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
@@ -221,6 +221,10 @@ class ManagerRPCClient:
     def wait_for_completion(self, resource_url: str, timeout: float = None, interval: float = None, service: str = "gateway") -> dict:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
+
+    def manage_workflow_approval(self, node_id: int, data: dict, check_mode: bool = False) -> bool:
+        """Reconcile a workflow approval template through the shared manager SDK."""
+        return self.service_proxy.manage_workflow_approval(node_id, data, check_mode)
 
     def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""

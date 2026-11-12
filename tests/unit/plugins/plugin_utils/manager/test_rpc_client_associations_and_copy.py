@@ -83,7 +83,7 @@ class TestRPCWrappers(unittest.TestCase):
         result = client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", None)
 
         self.assertFalse(result)
-        client.service_proxy.manage_sub_resource.assert_called_once_with("/api/controller/v2/job_templates", 42, "survey_spec", None)
+        client.service_proxy.manage_sub_resource.assert_called_once_with("/api/controller/v2/job_templates", 42, "survey_spec", None, False)
 
     def test_copy_resource_delegates_to_service_proxy(self):
         client = _rpc_client()
@@ -93,6 +93,17 @@ class TestRPCWrappers(unittest.TestCase):
 
         self.assertEqual(result, {"id": 99})
         client.service_proxy.copy_resource.assert_called_once_with("job_template", "source", "copied", "/api/controller/v2/job_templates", "controller")
+
+
+def test_subresource_dry_run_flag_is_forwarded_through_rpc():
+    """Keep the persistent action on the same comparison path as direct mode."""
+    from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
+
+    client = ManagerRPCClient.__new__(ManagerRPCClient)
+    client.service_proxy = MagicMock()
+    client.service_proxy.manage_sub_resource.return_value = True
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", {}, check_mode=True)
+    client.service_proxy.manage_sub_resource.assert_called_once_with("/api/controller/v2/workflow_job_templates", 7, "survey_spec", {}, True)
 
 
 if __name__ == "__main__":

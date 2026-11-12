@@ -117,6 +117,7 @@
     - name: Delete execution environment
       ansible.platform.execution_environment:
         name: "{{ renamed_ee.execution_environment.id }}"
+        credential: "{{ name_prefix }}-Missing-Credential"
         state: absent
       register: deleted_ee
 

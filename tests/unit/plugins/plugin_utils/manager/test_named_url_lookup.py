@@ -4,14 +4,17 @@ from __future__ import absolute_import, division, print_function
 
 import json
 import unittest
+from multiprocessing import get_context
+from multiprocessing.managers import BaseManager
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory import AnsibleInventory
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ResourceNotFoundError, ValidationError
 
 __metaclass__ = type
 
@@ -73,7 +76,53 @@ def _request_filters(client, call):
     return parse_qs(urlparse(call.args[1]).query)
 
 
+def _missing_lookup_service():
+    """Serve the real shared lookup with an empty mocked HTTP response."""
+    service = _service()
+    _set_responses(service, _response(body={"results": []}))
+    return service
+
+
+class _LookupErrorManager(BaseManager):
+    """Use the production RPC transport with an isolated lookup service."""
+
+
+_LookupErrorManager.register("get_service", callable=_missing_lookup_service, exposed=["lookup_resource_id"])
+
+
 class TestResourceLookup(unittest.TestCase):
+    def test_missing_lookup_error_survives_real_manager_rpc(self):
+        """Preserve exception identity and metadata through a separate manager process."""
+        with _LookupErrorManager(address=("127.0.0.1", 0), authkey=b"unit-test-key", ctx=get_context("spawn")) as manager:
+            client = ManagerRPCClient.__new__(ManagerRPCClient)
+            client.service_proxy = manager.get_service()
+            with self.assertRaises(ResourceNotFoundError) as caught:
+                client.lookup_resource_id("labels", "name", "Missing", service="controller")
+            error = caught.exception
+            self.assertEqual((error.endpoint, error.lookup_field, error.lookup_value, error.service), ("labels", "name", "Missing", "controller"))
+            self.assertEqual(str(error), "Resource 'labels' with name=Missing not found")
+
+    def test_missing_lookup_identifies_its_resource_for_both_clients(self):
+        """Single and batch lookups retain structured identity without parsing text."""
+        for factory in (_service, _direct_client):
+            for values in (["Missing"], ["Missing", "Also Missing"]):
+                with self.subTest(client=factory.__name__, values=values):
+                    client = factory()
+                    _set_responses(client, _response(body={"count": 0, "results": []}))
+                    with self.assertRaises(ResourceNotFoundError) as caught:
+                        client.lookup_resource_ids("labels", "name", values, service="controller")
+                    error = caught.exception
+                    self.assertEqual((error.endpoint, error.lookup_field, error.lookup_value, error.service), ("labels", "name", "Missing", "controller"))
+
+    def test_allow_missing_does_not_swallow_missing_named_key_organization(self):
+        """Missing identity scopes must fail even when missing target resources are allowed."""
+        for client in (_service(), _direct_client()):
+            _set_responses(client, APIError("Named URL missing", status_code=404), _response(body={"results": []}))
+            with self.subTest(client=type(client).__name__), self.assertRaises(ResourceNotFoundError) as caught:
+                client.lookup_resource_ids("inventories", "name", ["Missing++Unknown Org"], service="controller", allow_missing=True)
+            self.assertEqual(caught.exception.endpoint, "organizations")
+            self.assertEqual(caught.exception.lookup_value, "Unknown Org")
+
     def test_plain_name_resolves_for_both_clients(self):
         for client in (_service(), _direct_client()):
             _set_responses(client, _response(body={"count": 1, "results": [{"id": 71, "name": "Shared"}]}))

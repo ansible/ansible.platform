@@ -6,6 +6,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.instance_group import ActionModule
 
@@ -48,6 +49,7 @@ class TestInstanceGroupAssociations(unittest.TestCase):
             "instances",
             "hostname",
             service="controller",
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -191,6 +193,20 @@ class TestInstanceGroupAssociations(unittest.TestCase):
 
         call = action._client.manage_associations.call_args
         self.assertEqual(call.args[1], 55)
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_association_check_mode_compares_instead_of_writing(changed):
+    """Use the SDK's association comparison for changed and unchanged dry runs."""
+    action = ActionModule.__new__(ActionModule)
+    action._task = MagicMock(args={"name": "Resource", "instances": ["Existing"]}, check_mode=True)
+    action._client = MagicMock()
+    action._client.manage_associations.return_value = changed
+    result_data = {"id": 7, "changed": False, action.MODULE_NAME: {"id": 7, "workflow_job_template": 3}}
+    with patch.object(BaseResourceActionPlugin, "run", return_value=result_data):
+        result = action.run(task_vars={})
+    assert result["changed"] is changed
+    assert action._client.manage_associations.call_args.kwargs["check_mode"] is True
 
 
 if __name__ == "__main__":

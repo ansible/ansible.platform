@@ -10,7 +10,7 @@ __metaclass__ = type
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.schedule import AnsibleSchedule
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.schedule import BASE_PATH
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ValidationError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 
 _ASSOC_MAP = {
     "credentials": ("credentials", "name"),
@@ -27,6 +27,7 @@ class ActionModule(BaseResourceActionPlugin):
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset(_ASSOC_MAP)
+    _NULLABLE_FK_FIELDS = frozenset({"inventory", "execution_environment"})
 
     def _should_update(self, desired_data, current_data):
         """Compare schedule fields, excluding organization used only to scope template lookup."""
@@ -61,15 +62,18 @@ class ActionModule(BaseResourceActionPlugin):
                         BASE_PATH, sched_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=self._task.check_mode
                     ):
                         changed = True
-                except (ValueError, ValidationError) as exc:
-                    not_found_prefix = "Resource '%s' with %s=" % (lookup_endpoint, lookup_field)
-                    missing_association = str(exc).startswith(not_found_prefix) and str(exc).endswith(" not found")
-                    missing_credential_organization = field == "credentials" and any(
-                        isinstance(value, str)
-                        and value.count("++") == 1
-                        and all(part.strip() for part in value.split("++"))
-                        and str(exc) == "Resource 'organizations' with name=%s not found" % value.partition("++")[2].strip()
-                        for value in desired
+                except ResourceNotFoundError as exc:
+                    missing_association = (exc.endpoint, exc.lookup_field, exc.service) == (lookup_endpoint, lookup_field, _SERVICE)
+                    missing_credential_organization = (
+                        field == "credentials"
+                        and (exc.endpoint, exc.lookup_field, exc.service) == ("organizations", "name", _SERVICE)
+                        and any(
+                            isinstance(value, str)
+                            and value.count("++") == 1
+                            and all(part.strip() for part in value.split("++"))
+                            and str(exc.lookup_value) == value.partition("++")[2].strip()
+                            for value in desired
+                        )
                     )
                     if self._task.check_mode and (missing_association or missing_credential_organization):
                         changed = True

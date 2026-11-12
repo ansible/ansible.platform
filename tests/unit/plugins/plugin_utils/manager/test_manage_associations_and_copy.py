@@ -9,6 +9,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
@@ -333,12 +334,14 @@ class TestManageSubResource(unittest.TestCase):
         self.svc.session.get.assert_not_called()
 
     def test_empty_dict_deletes(self):
+        self.svc.session.get.return_value = _resp(json_data={"name": "Existing"})
         self.svc.session.delete.return_value = _resp(status_code=200)
         changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertTrue(changed)
         self.svc.session.delete.assert_called_once_with("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", timeout=30, verify=True)
 
     def test_empty_dict_delete_404_is_not_changed(self):
+        self.svc.session.get.return_value = _resp(json_data={"name": "Existing"})
         self.svc.session.delete.return_value = _resp(status_code=404)
         changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
@@ -390,6 +393,33 @@ class TestCopyResource(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             self.svc.copy_resource("job_template", "missing", "copied", "/api/controller/v2/job_templates")
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current,desired,changed",
+    [({}, {}, False), ({"name": "Old"}, {}, True), ({"name": "Same"}, {"name": "Same"}, False), ({"name": "Old"}, {"name": "New"}, True)],
+)
+def test_subresource_comparison_and_clear_idempotency(check_mode, current, desired, changed):
+    """Compare sub-resource state without writing during check mode."""
+    client = _service()
+    client.session.get.return_value.status_code = 200
+    client.session.get.return_value.json.return_value = current
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", desired, check_mode=check_mode) is changed
+    if check_mode or not changed:
+        client.session.post.assert_not_called()
+        client.session.delete.assert_not_called()
+    else:
+        method = client.session.delete if desired == {} else client.session.post
+        method.assert_called_once()
+
+
+def test_subresource_clear_dry_run_handles_absent_survey():
+    """Treat a missing survey as an unchanged dry-run clear."""
+    client = _service()
+    client.session.get.return_value.status_code = 404
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", {}, check_mode=True) is False
+    client.session.delete.assert_not_called()
 
 
 if __name__ == "__main__":

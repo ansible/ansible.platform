@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
-from ..platform.exceptions import APIError, AuthenticationError, PlatformError, format_error_response_body
+from ..platform.exceptions import APIError, AuthenticationError, PlatformError, ResourceNotFoundError, format_error_response_body
 from ..platform.idempotency import canonical_json_object
 from ..platform.retry import RetryConfig, retry_http_request
 from ..platform.types import TransformContext, build_endpoint_request
@@ -593,12 +593,11 @@ class PlatformService(BaseAPIClient):
 
             return result
 
+        except ResourceNotFoundError as e:
+            logger.debug("Operation %s on %s: %s", operation, module_name, e)
+            raise
         except ValueError as e:
-            # "Resource not found" is expected during idempotency checks
-            if "not found" in str(e):
-                logger.debug("Operation %s on %s: %s", operation, module_name, e)
-            else:
-                logger.error("Operation %s on %s failed: %s", operation, module_name, e)
+            logger.error("Operation %s on %s failed: %s", operation, module_name, e)
             raise
         except Exception as e:
             logger.error("Operation %s on %s failed: %s", operation, module_name, e, exc_info=True)
@@ -1268,7 +1267,7 @@ class PlatformService(BaseAPIClient):
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], check_mode: bool = False) -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -1276,6 +1275,7 @@ class PlatformService(BaseAPIClient):
         rather than writing bespoke get/compare/post logic per resource. data is None:
         no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
         POST only if different.
+        Check mode compares current state without POST or DELETE requests.
 
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
@@ -1286,20 +1286,25 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
         sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
 
+        current_response = self.session.get(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
+        if data == {} and current_response.status_code == 404:
+            return False
+        current_response.raise_for_status()
+        if current_response.json() == data:
+            return False
+
         if data == {}:
+            if check_mode:
+                return True
             response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
             if response.status_code == 404:
                 return False
             response.raise_for_status()
             return True
 
-        current_response = self.session.get(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
-        current_response.raise_for_status()
-        if current_response.json() == data:
-            return False
-
-        response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
-        response.raise_for_status()
+        if not check_mode:
+            response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
         return True
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:

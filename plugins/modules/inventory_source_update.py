@@ -60,6 +60,7 @@ options:
     description:
       - Maximum time in seconds to wait for the inventory source update to finish.
       - If omitted or set to C(0), wait indefinitely.
+      - A negative value stops waiting after the first unfinished response.
       - Only used when C(wait=true).
       - Reaching this timeout stops waiting but does not cancel the remote update.
     type: int
@@ -97,6 +98,26 @@ EXAMPLES = """
 """
 
 RETURN = """
+elapsed:
+  description: Elapsed seconds reported by Controller.
+  returned: when waiting completes or times out
+  type: float
+started:
+  description: Timestamp of when the update started.
+  returned: when waiting completes or times out
+  type: str
+finished:
+  description: Whether Controller reports a finish timestamp.
+  returned: when waiting completes or times out
+  type: bool
+finished_at:
+  description: Finish timestamp reported by Controller, or null while running.
+  returned: when waiting completes or times out
+  type: str
+job_data:
+  description: Controller update data when the update ends in a failed status.
+  returned: when waiting ends in a failed, error, or canceled status
+  type: dict
 id:
   description: ID of the inventory update job.
   returned: success
