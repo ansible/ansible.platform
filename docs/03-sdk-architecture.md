@@ -10,6 +10,7 @@
 6. [The RPC Interface](#section-6-the-rpc-interface)
 7. [Directory Structure](#section-7-directory-structure)
 8. [Why a Separate Process](#section-8-why-a-separate-process)
+9. [Subscription and License Operations](#section-9-subscription-and-license-operations)
 
 ---
 
@@ -722,3 +723,42 @@ The separate process architecture is the right solution and is stable in product
 The unit tests in `test_http.py` and `test_manager.py` verify the error recovery
 paths (stale socket, dead manager, re-spawn, idle timeout) to ensure the complexity
 does not become a reliability risk.
+
+---
+
+## SECTION 9: Subscription and License Operations
+
+Subscriptions and Controller licensing use singleton endpoints. Both are available
+through the public `execute()` contract on `PlatformService` and
+`DirectHTTPClient`.
+
+| Resource | Operations | Shared SDK behavior |
+|---|---|---|
+| `subscriptions` | `find` | POST credentials, then filter the returned subscriptions locally. |
+| `license` | `find`, `create`, `delete` | Read license state, apply a manifest or attach a subscription, and remove a license without an object ID. |
+
+Subscription filters use substring matching. Every filter with a matching response
+key must match; a missing key does not exclude that subscription. The mixin applies
+these filters in `from_find_result()`, so direct and persistent clients return the
+same filtered list.
+
+License creation accepts exactly one non-empty manifest value or
+`subscription_id`. The action plugin reads a manifest file and passes its base64
+encoded contents to the SDK; SDK callers pass the encoded contents themselves.
+Subscription attachment posts the ID and then reads the updated configuration.
+Deleting a license uses the fixed config endpoint and requires no resource ID.
+Deleting when no license exists is an unchanged result.
+
+An already licensed, valid, non-trial Controller is unchanged unless `force` is
+true. License create and delete honor `_platform_check_mode`: the SDK validates
+and reads current state, predicts `changed`, and performs no mutation request.
+
+### Extension points
+
+The subscription mixin can implement `from_find_result()` when response handling
+depends on the original request, such as client-side filters. License mixins
+implement `validate_mutation()` and `plan_mutation()`. A
+`SingletonMutationPlan` declares ordered endpoint operations and the predicted
+result; the shared executor validates, reads current state, and runs those steps.
+The mixin owns resource decisions, while the executor owns HTTP execution. Both
+clients use this same path, including check-mode prediction and error propagation.

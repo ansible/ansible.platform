@@ -9,6 +9,7 @@ import json
 import logging
 import time
 from abc import ABC, abstractmethod
+from dataclasses import asdict
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import quote
 
@@ -16,6 +17,7 @@ from ..platform.config import GatewayConfig
 from ..platform.exceptions import APIError, ValidationError
 from ..platform.loader import DynamicClassLoader
 from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
+from ..platform.types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -633,6 +635,41 @@ class BaseAPIClient(ABC):
     ) -> dict:
         """Fetch an API endpoint using the concrete client's transport."""
         pass
+
+    def _execute_singleton_mutation(self, module_name: str, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
+        """Execute a mixin's mutation plan through the shared SDK transports.
+
+        Validate before reading current state. A mixin plans endpoint steps
+        using that state, keeping resource decisions out of either client.
+        Check mode returns the same prediction without executing those steps.
+        """
+        mixin_class.validate_mutation(ansible_data, context)
+        api_data = mixin_class.from_ansible_data(ansible_data, context)
+        current = self.execute("find", module_name, {})
+        plan = mixin_class.plan_mutation(ansible_data, current, context)
+        if not plan.operations or context.check_mode:
+            return plan.result
+
+        operations = mixin_class.get_endpoint_operations()
+        api_result = None
+        for name in plan.operations:
+            endpoint = operations[name]
+            path, payload = build_endpoint_request(endpoint, api_data, context)
+            method = endpoint.method.upper()
+            url = self._build_url(path, service=context.service, api_version=context.api_version)
+            if method == "GET":
+                api_result = self._get_json(url, operation=context.operation, resource=module_name)
+            elif method == "POST":
+                api_result = self._post_json(url, payload, operation=context.operation, resource=module_name, retry=False)
+            elif method == "DELETE":
+                self.delete_resource(path, service=context.service)
+                api_result = None
+            else:
+                raise ValueError("Unsupported singleton mutation method: %s" % method)
+
+        result = asdict(mixin_class.from_api(api_result, context)) if api_result is not None else {}
+        result.update(plan.result)
+        return result
 
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST to a launch endpoint and return the created resource.

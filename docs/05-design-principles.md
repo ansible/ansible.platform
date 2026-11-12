@@ -79,7 +79,13 @@ scattered across the action plugin.
 - HTTP calls (use `context.manager.lookup_resource_id()` for secondary lookups)
 - `import requests`
 - Ansible module result formatting
-- Action plugin logic (state machines, idempotency checks)
+- Ansible task orchestration and Ansible-specific state handling
+
+Subscription filtering and license mutation decisions belong in SDK mixin hooks,
+not in an action plugin. Subscription filters use `from_find_result()`; license
+mutations use `validate_mutation()` and `plan_mutation()`. The shared SDK
+executor reads current state and runs the declared endpoint steps, with prediction
+without writes for license check mode.
 
 **Test**: If the mixin is importing anything other than dataclasses, types, and local models, review it.
 
@@ -103,6 +109,7 @@ Logic trapped in a custom action plugin (especially direct `manager.session` HTT
 |------|----------------|---------------|
 | Field mapping, FK resolution | Transform mixin | Pattern A (default) |
 | Associations, surveys, copy, secondary endpoints | Mixin `get_endpoint_operations()` / hooks | Pattern B hooks only |
+| Subscription filtering and license mutation decisions | Mixin result/mutation hooks, executed by the shared SDK | File adaptation, license check-mode forwarding, and result formatting only |
 | Launch/job wait (`wait`, `interval`, `timeout`) | `client.launch_resource()` / `client.wait_for_completion()` | Pattern C (thin `run()`) |
 | Multi-step Ansible orchestration | Thin custom `run()` calling `manager.execute()` | Pattern C |
 
@@ -550,4 +557,3 @@ matching must be designed. (See: Principle 2 in `04-data-model-transformation.md
 | 15. SDK consumer parity | All behavior via `PlatformService.execute()` | Multi-consumer architecture |
 
 ---
-

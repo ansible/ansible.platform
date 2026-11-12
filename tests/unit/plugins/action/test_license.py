@@ -8,7 +8,6 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import base64
-import os
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -61,14 +60,8 @@ def _licensed_config():
     }
 
 
-def _unlicensed_config():
-    return {
-        "license_info": {},
-    }
-
-
 class TestLicenseAction(unittest.TestCase):
-    """Tests for license action plugin."""
+    """The action adapts Ansible inputs and delegates license behavior to the SDK."""
 
     def _run_with_prepare(self, module, manager, validated_params):
         with patch.object(module, "_prepare_action") as mock_prepare:
@@ -79,195 +72,132 @@ class TestLicenseAction(unittest.TestCase):
             }
             return module.run(task_vars={})
 
-    def test_absent_no_license(self):
-        """state=absent with no existing license returns changed=False."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.return_value = _unlicensed_config()
+    def test_manifest_contents_and_force_are_forwarded_to_sdk(self):
+        for force in (False, True):
+            with self.subTest(force=force):
+                module = _make_module()
+                manager = _make_manager()
+                manager.execute.return_value = {"changed": True, **_licensed_config()}
+                with tempfile.NamedTemporaryFile(suffix=".zip") as manifest_file:
+                    manifest_file.write(b"fake-manifest-data")
+                    manifest_file.flush()
+                    with patch.object(module, "_find_needle", return_value=manifest_file.name) as find_file:
+                        result = self._run_with_prepare(module, manager, {"state": "present", "manifest": "relative-manifest.zip", "force": force})
 
-        result = self._run_with_prepare(module, manager, {"state": "absent"})
+                find_file.assert_called_once_with("files", "relative-manifest.zip")
+                manager.execute.assert_called_once()
+                request = manager.execute.call_args.kwargs
+                self.assertEqual(request["operation"], "create")
+                self.assertEqual(request["module_name"], "license")
+                self.assertEqual(request["ansible_data"]["manifest"], base64.b64encode(b"fake-manifest-data").decode("ascii"))
+                self.assertIs(request["ansible_data"]["force"], force)
+                self.assertEqual(result, {"changed": True, **_licensed_config()})
+                self.assertNotIn("manifest", result)
+                manager.post_resource.assert_not_called()
 
-        self.assertFalse(result["changed"])
-        self.assertIn("No license", result["msg"])
-        manager.delete_resource.assert_not_called()
+    def test_subscription_changed_status_and_message_come_from_sdk(self):
+        for changed in (False, True):
+            with self.subTest(changed=changed):
+                module = _make_module()
+                manager = _make_manager()
+                sdk_result = {"changed": changed, **_licensed_config()}
+                if not changed:
+                    sdk_result["msg"] = "Already licensed. Use force=true to re-apply."
+                manager.execute.return_value = sdk_result
 
-    def test_absent_removes_license(self):
-        """state=absent with existing license calls delete_resource."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.return_value = _licensed_config()
-        manager.delete_resource.return_value = {}
+                result = self._run_with_prepare(module, manager, {"state": "present", "subscription_id": "sub-123", "force": True})
 
-        result = self._run_with_prepare(module, manager, {"state": "absent"})
+                self.assertEqual(result, sdk_result)
+                manager.execute.assert_called_once()
+                request = manager.execute.call_args.kwargs
+                self.assertEqual(request["operation"], "create")
+                self.assertEqual(request["ansible_data"]["subscription_id"], "sub-123")
+                self.assertIs(request["ansible_data"]["force"], True)
+                manager.post_resource.assert_not_called()
 
-        self.assertTrue(result["changed"])
-        manager.delete_resource.assert_called_once_with("config/", service="controller")
+    def test_absent_delegates_removal_and_noop_to_sdk(self):
+        for sdk_result in ({"changed": True, "msg": "License removed"}, {"changed": False, "msg": "No license to remove"}):
+            with self.subTest(result=sdk_result):
+                module = _make_module()
+                manager = _make_manager()
+                manager.execute.return_value = sdk_result
 
-    def test_absent_check_mode(self):
-        """state=absent in check mode does not call delete."""
-        module = _make_module(check_mode=True)
-        manager = _make_manager()
-        manager.execute.return_value = _licensed_config()
+                result = self._run_with_prepare(module, manager, {"state": "absent"})
 
-        result = self._run_with_prepare(module, manager, {"state": "absent"})
+                self.assertEqual(result, sdk_result)
+                manager.execute.assert_called_once()
+                request = manager.execute.call_args.kwargs
+                self.assertEqual(request["operation"], "delete")
+                self.assertNotIn("id", request["ansible_data"])
+                manager.delete_resource.assert_not_called()
 
-        self.assertTrue(result["changed"])
-        manager.delete_resource.assert_not_called()
+    def test_check_mode_is_forwarded_and_prediction_is_preserved(self):
+        for state in ("present", "absent"):
+            with self.subTest(state=state):
+                module = _make_module(check_mode=True)
+                manager = _make_manager()
+                manager.execute.return_value = {"changed": True}
 
-    def test_manifest_already_licensed_no_force(self):
-        """Manifest with existing license and no force returns changed=False."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.return_value = _licensed_config()
+                result = self._run_with_prepare(module, manager, {"state": state, "subscription_id": "sub-123"})
 
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
-            f.write(b"fake-manifest-data")
-            manifest_path = f.name
-
-        try:
-            with patch.object(module, "_find_needle", return_value=manifest_path):
-                result = self._run_with_prepare(module, manager, {"state": "present", "manifest": manifest_path})
-        finally:
-            os.unlink(manifest_path)
-
-        self.assertFalse(result["changed"])
-        self.assertIn("Already licensed", result["msg"])
-
-    def test_manifest_creates_license(self):
-        """Manifest POST uses execute('create') through SDK."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.side_effect = [
-            _unlicensed_config(),
-            {"changed": True, "license_info": _licensed_config()["license_info"]},
-        ]
-
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
-            f.write(b"fake-manifest-data")
-            manifest_path = f.name
-
-        try:
-            with patch.object(module, "_find_needle", return_value=manifest_path):
-                result = self._run_with_prepare(module, manager, {"state": "present", "manifest": manifest_path})
-        finally:
-            os.unlink(manifest_path)
-
-        self.assertTrue(result["changed"])
-        calls = manager.execute.call_args_list
-        self.assertEqual(calls[0][1]["operation"], "find")
-        self.assertEqual(calls[1][1]["operation"], "create")
-        manifest_b64 = base64.b64encode(b"fake-manifest-data").decode()
-        self.assertEqual(calls[1][1]["ansible_data"]["manifest"], manifest_b64)
-
-    def test_manifest_check_mode(self):
-        """Manifest in check mode returns changed=True without API call."""
-        module = _make_module(check_mode=True)
-        manager = _make_manager()
-        manager.execute.return_value = _unlicensed_config()
-
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
-            f.write(b"fake-manifest-data")
-            manifest_path = f.name
-
-        try:
-            with patch.object(module, "_find_needle", return_value=manifest_path):
-                result = self._run_with_prepare(module, manager, {"state": "present", "manifest": manifest_path})
-        finally:
-            os.unlink(manifest_path)
-
-        self.assertTrue(result["changed"])
-        self.assertEqual(manager.execute.call_count, 1)
-
-    def test_subscription_creates_license(self):
-        """Subscription uses post_resource with attach endpoint and retry=False."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.side_effect = [
-            _unlicensed_config(),
-            _licensed_config(),
-        ]
-        manager.post_resource.return_value = {}
-
-        result = self._run_with_prepare(module, manager, {"state": "present", "subscription_id": "sub-123"})
-
-        self.assertTrue(result["changed"])
-        manager.post_resource.assert_called_once_with(
-            "config/attach/",
-            {"subscription_id": "sub-123"},
-            service="controller",
-            retry=False,
-        )
-
-    def test_subscription_already_licensed_no_force(self):
-        """Subscription with existing license and no force returns changed=False."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.return_value = _licensed_config()
-
-        result = self._run_with_prepare(module, manager, {"state": "present", "subscription_id": "sub-123"})
-
-        self.assertFalse(result["changed"])
-        manager.post_resource.assert_not_called()
-
-    def test_manifest_with_force_reapplies(self):
-        """force=True bypasses the already-licensed check."""
-        module = _make_module()
-        manager = _make_manager()
-        manager.execute.side_effect = [
-            _licensed_config(),
-            {"changed": True, "license_info": _licensed_config()["license_info"]},
-        ]
-
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
-            f.write(b"fake-manifest-data")
-            manifest_path = f.name
-
-        try:
-            with patch.object(module, "_find_needle", return_value=manifest_path):
-                result = self._run_with_prepare(module, manager, {"state": "present", "manifest": manifest_path, "force": True})
-        finally:
-            os.unlink(manifest_path)
-
-        self.assertTrue(result["changed"])
-        self.assertEqual(manager.execute.call_count, 2)
+                self.assertEqual(result, {"changed": True})
+                manager.execute.assert_called_once()
+                request = manager.execute.call_args.kwargs
+                self.assertEqual(request["operation"], "delete" if state == "absent" else "create")
+                self.assertIs(request["ansible_data"]["_platform_check_mode"], True)
+                manager.post_resource.assert_not_called()
+                manager.delete_resource.assert_not_called()
 
     def test_present_without_manifest_or_subscription(self):
-        """The shared argument validator requires a license source for state=present."""
-        module = _make_module()
-        module._task.args = {"state": "present"}
-
+        module = _make_module(args={"state": "present"})
         with self.assertRaisesRegex(Exception, "manifest|subscription_id"):
             module._validate_action_input()
 
-    def test_present_with_empty_manifest_and_subscription_fails(self):
-        """Empty license source values fail without calling a license handler."""
+    def test_sdk_validation_error_becomes_failed_module_result(self):
         module = _make_module()
         manager = _make_manager()
+        manager.execute.side_effect = ValueError("Exactly one non-empty manifest or subscription_id is required")
 
         result = self._run_with_prepare(module, manager, {"state": "present", "manifest": "", "subscription_id": ""})
 
-        self.assertEqual(
-            result,
-            {
-                "changed": False,
-                "failed": True,
-                "msg": "Either manifest or subscription_id must be non-empty when state=present",
-            },
-        )
-        manager.execute.assert_not_called()
+        self.assertIs(result["failed"], True)
+        self.assertIs(result["changed"], False)
+        self.assertIn("manifest or subscription_id", result["msg"])
         manager.post_resource.assert_not_called()
 
-    def test_manifest_file_not_found(self):
-        """Missing manifest file returns failed result."""
-        module = _make_module()
-        manager = _make_manager()
-
+    def test_manifest_file_not_found_fails_before_sdk_call(self):
         from ansible.errors import AnsibleError
 
+        module = _make_module()
+        manager = _make_manager()
         with patch.object(module, "_find_needle", side_effect=AnsibleError("not found")):
             result = self._run_with_prepare(module, manager, {"state": "present", "manifest": "/nonexistent.zip"})
 
-        self.assertTrue(result["failed"])
+        self.assertIs(result["failed"], True)
+        self.assertIs(result["changed"], False)
+        manager.execute.assert_not_called()
+
+    def test_unreadable_manifest_fails_before_sdk_call(self):
+        module = _make_module()
+        manager = _make_manager()
+        with patch.object(module, "_find_needle", return_value="manifest.zip"), patch("builtins.open", side_effect=PermissionError("unreadable manifest")):
+            result = self._run_with_prepare(module, manager, {"state": "present", "manifest": "manifest.zip"})
+
+        self.assertIs(result["failed"], True)
+        self.assertIn("unreadable manifest", result["msg"])
+        manager.execute.assert_not_called()
+
+    def test_sdk_api_failure_becomes_failed_module_result(self):
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+
+        module = _make_module()
+        manager = _make_manager()
+        manager.execute.side_effect = APIError("License rejected", status_code=400)
+
+        result = self._run_with_prepare(module, manager, {"state": "present", "subscription_id": "sub-123"})
+
+        self.assertIs(result["failed"], True)
+        self.assertIn("License rejected", result["msg"])
 
 
 class TestPostResourceRetry(unittest.TestCase):

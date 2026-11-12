@@ -65,6 +65,18 @@ class EndpointOperation:
 
 
 @dataclass
+class SingletonMutationPlan:
+    """Ordered endpoint-operation names and the predicted public result.
+
+    Resource mixins decide which steps are needed. The shared client executes
+    the declared steps, or returns only the prediction in check mode.
+    """
+
+    operations: List[str]
+    result: Dict[str, Any]
+
+
+@dataclass
 class TransformContext:
     """
     Context for data transformations between Ansible and API formats.
@@ -82,6 +94,7 @@ class TransformContext:
             for optional fields so the API can clear them (enforced state only; present must not send nulls).
         force_update: When True, skip idempotency short-circuiting for an intentional update such as
             resetting a write-only secret that the API represents with an encrypted placeholder.
+        check_mode: Predict a supported singleton mutation without sending writes.
         current_api_data: Raw API resource currently being transformed, used by idempotency checks
             that need server-side foreign-key IDs after public fields are converted to names.
     """
@@ -95,6 +108,7 @@ class TransformContext:
     include_nulls_for_update: bool = False
     force_update: bool = False
     current_api_data: Optional[Dict[str, Any]] = None
+    check_mode: bool = False
 
 
 def build_endpoint_request(

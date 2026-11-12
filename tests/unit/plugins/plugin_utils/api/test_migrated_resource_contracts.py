@@ -95,7 +95,6 @@ CREATE_CONTRACTS = (
     ),
     ("job_template", "/api/controller/v2/job_templates/", {"name": "Contract Resource"}, {"name": "Contract Resource"}),
     ("label", "/api/controller/v2/labels/", {"name": "Contract Resource", "organization": "1"}, {"name": "Contract Resource", "organization": 1}),
-    ("license", "/api/controller/v2/config/", {"manifest": "contract-manifest"}, {"manifest": "contract-manifest"}),
     ("notification_template", "/api/controller/v2/notification_templates/", {"name": "Contract Resource"}, {"name": "Contract Resource"}),
     ("rulebook_activation", "/api/eda/v1/activations/", {"name": "Contract Resource"}, {"name": "Contract Resource"}),
     ("schedule", "/api/controller/v2/schedules/", {"name": "Contract Resource"}, {"name": "Contract Resource"}),
@@ -894,6 +893,261 @@ class TestCustomMigrationAPIContracts(unittest.TestCase):
                 self.assertEqual(request.args[0].upper(), "DELETE")
                 self.assertEqual(request.args[1], BASE_URL + "/api/controller/v2/config/")
                 self.assertEqual(result, {})
+
+
+class TestSingletonConsumerParity(unittest.TestCase):
+    """Singleton behavior is available through the public SDK entry point."""
+
+    def test_subscription_filters_are_local_and_return_matching_results(self):
+        subscriptions = [
+            {"id": 1, "product_name": "AAP", "support_level": "Premium"},
+            {"id": 2, "product_name": "AAP", "support_level": "Standard"},
+            {"id": 3, "product_name": "Other", "support_level": "Premium"},
+        ]
+        cases = (
+            ({}, [1, 2, 3]),
+            ({"support_level": "Premium"}, [1, 3]),
+            ({"product_name": "AAP", "support_level": "Premium"}, [1]),
+            ({"product_name": "Missing"}, []),
+            ({"product_name": "AA"}, [1, 2]),
+            ({"id": "1"}, [1]),
+            ({"id": 1}, [1]),
+            ({"id": 0}, []),
+            ({"id": 9}, []),
+            ({"unknown_key": "ignored"}, [1, 2, 3]),
+            ({"unknown_key": 1}, [1, 2, 3]),
+            ({"product_name": "AAP", "unknown_key": "ignored"}, [1, 2]),
+        )
+        for client_mode in ("direct", "persistent"):
+            for filters, expected_ids in cases:
+                with self.subTest(client=client_mode, filters=filters):
+                    client = _client(client_mode)
+                    client._make_request.return_value = _response(subscriptions, direct=client_mode == "direct")
+
+                    result = client.execute(
+                        "find",
+                        "subscriptions",
+                        {"client_id": "example-client", "client_secret": "example-secret", "filters": filters},
+                    )
+
+                    client._make_request.assert_called_once()
+                    request = client._make_request.call_args
+                    self.assertEqual(request.args[0].upper(), "POST")
+                    self.assertEqual(request.args[1], BASE_URL + "/api/controller/v2/config/subscriptions/")
+                    self.assertEqual(
+                        request.kwargs["json"],
+                        {"subscriptions_client_id": "example-client", "subscriptions_client_secret": "example-secret"},
+                    )
+                    self.assertCountEqual([subscription["id"] for subscription in result["subscriptions"]], expected_ids)
+
+    def test_license_create_does_not_post_when_already_licensed(self):
+        config = {"license_info": {"instance_count": 100, "valid_key": True, "trial": False, "license_type": "enterprise"}}
+        for client_mode in ("direct", "persistent"):
+            for license_source in ({"manifest": "encoded-manifest"}, {"subscription_id": "SUB-42"}):
+                with self.subTest(client=client_mode, source=next(iter(license_source))):
+                    client = _client(client_mode)
+                    client._make_request.return_value = _response(config, direct=client_mode == "direct")
+
+                    result = client.execute("create", "license", license_source)
+
+                    client._make_request.assert_called_once()
+                    request = client._make_request.call_args
+                    self.assertEqual(request.args[0].upper(), "GET")
+                    self.assertEqual(request.args[1], BASE_URL + "/api/controller/v2/config/")
+                    self.assertIs(result["changed"], False)
+                    self.assertEqual(result["license_info"], config["license_info"])
+
+    def test_license_subscription_attach_posts_id_then_reads_updated_config(self):
+        updated = {"license_info": {"instance_count": 100, "valid_key": True, "trial": False}}
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client._make_request.side_effect = [
+                    _response({"license_info": {}}, direct=client_mode == "direct"),
+                    _response({}, direct=client_mode == "direct"),
+                    _response(updated, direct=client_mode == "direct"),
+                ]
+
+                result = client.execute("create", "license", {"subscription_id": "SUB-42"})
+
+                requests = client._make_request.call_args_list
+                self.assertEqual(
+                    [(request.args[0].upper(), request.args[1]) for request in requests],
+                    [
+                        ("GET", BASE_URL + "/api/controller/v2/config/"),
+                        ("POST", BASE_URL + "/api/controller/v2/config/attach/"),
+                        ("GET", BASE_URL + "/api/controller/v2/config/"),
+                    ],
+                )
+                attach = requests[1]
+                body = attach.kwargs["json"] if "json" in attach.kwargs else json.loads(attach.kwargs["data"])
+                self.assertEqual(body, {"subscription_id": "SUB-42"})
+                self.assertIs(result["changed"], True)
+                self.assertEqual(result["license_info"], updated["license_info"])
+
+    def test_license_delete_uses_fixed_endpoint_without_resource_id(self):
+        config = {"license_info": {"instance_count": 100, "license_type": "enterprise"}}
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client._make_request.side_effect = [
+                    _response(config, direct=client_mode == "direct"),
+                    _response({}, direct=client_mode == "direct"),
+                ]
+
+                result = client.execute("delete", "license", {})
+
+                self.assertEqual(
+                    [(request.args[0].upper(), request.args[1]) for request in client._make_request.call_args_list],
+                    [
+                        ("GET", BASE_URL + "/api/controller/v2/config/"),
+                        ("DELETE", BASE_URL + "/api/controller/v2/config/"),
+                    ],
+                )
+                self.assertIs(result["changed"], True)
+
+    def test_license_delete_is_unchanged_when_no_license_exists(self):
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+                client._make_request.return_value = _response({"license_info": {}}, direct=client_mode == "direct")
+
+                result = client.execute("delete", "license", {})
+
+                client._make_request.assert_called_once()
+                self.assertEqual(client._make_request.call_args.args[0].upper(), "GET")
+                self.assertIs(result["changed"], False)
+
+    def test_invalid_license_sources_fail_before_sending_requests(self):
+        for client_mode in ("direct", "persistent"):
+            for params in ({}, {"manifest": ""}, {"subscription_id": ""}, {"manifest": "encoded", "subscription_id": "SUB-42"}):
+                with self.subTest(client=client_mode, params=params):
+                    client = _client(client_mode)
+
+                    with self.assertRaisesRegex(ValueError, "manifest|subscription_id"):
+                        client.execute("create", "license", params)
+
+                    client._make_request.assert_not_called()
+
+    def test_license_manifest_apply_respects_force_and_trial_state(self):
+        cases = (
+            ({}, False),
+            ({"instance_count": 100, "valid_key": True, "trial": False}, True),
+            ({"instance_count": 100, "valid_key": True, "trial": True}, False),
+            ({"instance_count": 100, "valid_key": False, "trial": False}, False),
+        )
+        updated = {"license_info": {"instance_count": 200, "valid_key": True, "trial": False}}
+        for client_mode in ("direct", "persistent"):
+            for license_info, force in cases:
+                with self.subTest(client=client_mode, current=license_info, force=force):
+                    client = _client(client_mode)
+                    client._make_request.side_effect = [
+                        _response({"license_info": license_info}, direct=client_mode == "direct"),
+                        _response(updated, direct=client_mode == "direct"),
+                    ]
+
+                    result = client.execute("create", "license", {"manifest": "encoded-manifest", "force": force})
+
+                    requests = client._make_request.call_args_list
+                    self.assertEqual([request.args[0].upper() for request in requests], ["GET", "POST"])
+                    self.assertEqual(requests[1].args[1], BASE_URL + "/api/controller/v2/config/")
+                    self.assertEqual(requests[1].kwargs["json"], {"manifest": "encoded-manifest"})
+                    if client_mode == "persistent":
+                        self.assertEqual(requests[1].kwargs["retry_config"].max_attempts, 1)
+                    self.assertIs(result["changed"], True)
+                    self.assertEqual(result["license_info"], updated["license_info"])
+
+    def test_license_check_mode_predicts_change_without_mutation(self):
+        licensed = {"instance_count": 100, "valid_key": True, "trial": False, "license_type": "enterprise"}
+        cases = (
+            ("create", {"manifest": "encoded-manifest"}, {}, True),
+            ("create", {"subscription_id": "SUB-42"}, {}, True),
+            ("create", {"manifest": "encoded-manifest"}, licensed, False),
+            ("create", {"subscription_id": "SUB-42", "force": True}, licensed, True),
+            ("delete", {}, licensed, True),
+            ("delete", {}, {}, False),
+        )
+        for client_mode in ("direct", "persistent"):
+            for operation, inputs, license_info, changed in cases:
+                with self.subTest(client=client_mode, operation=operation, inputs=inputs, current=license_info):
+                    client = _client(client_mode)
+                    client._make_request.return_value = _response({"license_info": license_info}, direct=client_mode == "direct")
+                    params = {**inputs, "_platform_check_mode": True}
+
+                    result = client.execute(operation, "license", params)
+
+                    client._make_request.assert_called_once()
+                    self.assertEqual(client._make_request.call_args.args[0].upper(), "GET")
+                    self.assertIs(result["changed"], changed)
+                    self.assertIs(params["_platform_check_mode"], True)
+                    self.assertNotEqual(result.get("msg"), "License removed")
+
+    def test_license_api_failures_propagate_without_false_success(self):
+        licensed = {"license_info": {"instance_count": 100, "license_type": "enterprise"}}
+        cases = (
+            ("create", {"manifest": "encoded-manifest"}, []),
+            ("create", {"manifest": "encoded-manifest"}, [{"license_info": {}}]),
+            ("create", {"subscription_id": "SUB-42"}, [{"license_info": {}}]),
+            ("create", {"subscription_id": "SUB-42"}, [{"license_info": {}}, {}]),
+            ("delete", {}, []),
+            ("delete", {}, [licensed]),
+        )
+        for client_mode in ("direct", "persistent"):
+            for operation, params, prior_responses in cases:
+                with self.subTest(client=client_mode, operation=operation, params=params, failure_step=len(prior_responses)):
+                    client = _client(client_mode)
+                    error = APIError("License API failure", status_code=500)
+                    client._make_request.side_effect = [
+                        *(_response(body, direct=client_mode == "direct") for body in prior_responses),
+                        error,
+                    ]
+
+                    with self.assertRaises(APIError) as raised:
+                        client.execute(operation, "license", params)
+
+                    self.assertIs(raised.exception, error)
+                    self.assertEqual(client._make_request.call_count, len(prior_responses) + 1)
+
+    def test_direct_singleton_response_errors_stop_before_license_mutation(self):
+        cases = (("find", {}), ("create", {"manifest": "encoded-manifest"}), ("delete", {}))
+        for operation, params in cases:
+            for failure in ("read", "json"):
+                with self.subTest(operation=operation, failure=failure):
+                    client = _client("direct")
+                    response = _response({}, direct=True)
+                    if failure == "read":
+                        response.read.side_effect = OSError("Response could not be read")
+                        error_type = OSError
+                    else:
+                        response.read.return_value = b"not valid JSON"
+                        error_type = json.JSONDecodeError
+                    client._make_request.return_value = response
+
+                    with self.assertRaises(error_type):
+                        client.execute(operation, "license", params)
+
+                    client._make_request.assert_called_once()
+                    self.assertEqual(client._make_request.call_args.args[0].upper(), "GET")
+
+    def test_direct_singleton_empty_body_preserves_empty_state(self):
+        for body in (b"", b"{}"):
+            with self.subTest(body=body):
+                client = _client("direct")
+                client._make_request.return_value.read.return_value = body
+
+                result = client.execute("find", "license", {})
+
+                self.assertEqual(result, {"manifest": None, "subscription_id": None, "force": False, "license_info": {}})
+
+    def test_license_update_is_rejected_before_requests(self):
+        for client_mode in ("direct", "persistent"):
+            with self.subTest(client=client_mode):
+                client = _client(client_mode)
+
+                with self.assertRaisesRegex(ValueError, "find, create, and delete"):
+                    client.execute("update", "license", {"manifest": "encoded-manifest"})
+
+                client._make_request.assert_not_called()
 
 
 if __name__ == "__main__":

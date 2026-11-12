@@ -842,9 +842,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Load version-appropriate classes (shared layer)
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
+        ansible_data_dict = dict(ansible_data_dict)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
         force_update = ansible_data_dict.pop("_platform_force_update", False)
+        check_mode = ansible_data_dict.pop("_platform_check_mode", False)
+        if not isinstance(check_mode, bool):
+            raise ValueError("_platform_check_mode must be a boolean")
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -859,11 +863,17 @@ class DirectHTTPClient(BaseAPIClient):
             operation=operation,
             include_nulls_for_update=include_nulls,
             force_update=force_update,
+            check_mode=check_mode,
         )
 
         # Execute operation (shared CRUD logic)
         try:
-            if operation == "create":
+            has_mutation_plan = getattr(MixinClass, "is_singleton", False) and hasattr(MixinClass, "plan_mutation")
+            if check_mode and operation != "find" and not has_mutation_plan:
+                raise ValueError("Check mode through execute() is not supported for this operation")
+            if has_mutation_plan and operation in {"create", "update", "delete"}:
+                result = self._execute_singleton_mutation(module_name, ansible_instance, MixinClass, context)
+            elif operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
@@ -1072,12 +1082,12 @@ class DirectHTTPClient(BaseAPIClient):
                 api_data = mixin_class.from_ansible_data(ansible_data, context)
                 request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
             response = self._make_request(get_op.method, url, **request_kwargs)
-            try:
-                response_body = response.read()
-                api_result = json.loads(response_body) if response_body else {}
-            except Exception:
-                api_result = {}
-            ansible_instance = mixin_class.from_api(api_result, context)
+            response_body = response.read()
+            api_result = json.loads(response_body) if response_body else {}
+            # Singleton result transforms may depend on original request inputs,
+            # such as client-side filters that are never sent to the API.
+            find_transform = getattr(mixin_class, "from_find_result", None)
+            ansible_instance = find_transform(api_result, ansible_data, context) if find_transform else mixin_class.from_api(api_result, context)
             from dataclasses import asdict
 
             return asdict(ansible_instance)
@@ -1211,7 +1221,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         results = {}
         fields_to_null = fields_to_null or set()
-        logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
+        logger.info("DirectHTTPClient: Executing operations: %s", list(operations))
 
         # Filter operations by required_for
         relevant_ops = {name: op for name, op in operations.items() if op.required_for == required_for or required_for is None}
