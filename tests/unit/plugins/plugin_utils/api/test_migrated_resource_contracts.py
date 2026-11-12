@@ -910,7 +910,12 @@ class TestSingletonConsumerParity(unittest.TestCase):
             ({"product_name": "AAP", "support_level": "Premium"}, [1]),
             ({"product_name": "Missing"}, []),
             ({"product_name": "AA"}, [1, 2]),
+            ({"id": "1"}, [1]),
+            ({"id": 1}, [1]),
+            ({"id": 0}, []),
+            ({"id": 9}, []),
             ({"unknown_key": "ignored"}, [1, 2, 3]),
+            ({"unknown_key": 1}, [1, 2, 3]),
             ({"product_name": "AAP", "unknown_key": "ignored"}, [1, 2]),
         )
         for client_mode in ("direct", "persistent"):
@@ -1102,6 +1107,37 @@ class TestSingletonConsumerParity(unittest.TestCase):
 
                     self.assertIs(raised.exception, error)
                     self.assertEqual(client._make_request.call_count, len(prior_responses) + 1)
+
+    def test_direct_singleton_response_errors_stop_before_license_mutation(self):
+        cases = (("find", {}), ("create", {"manifest": "encoded-manifest"}), ("delete", {}))
+        for operation, params in cases:
+            for failure in ("read", "json"):
+                with self.subTest(operation=operation, failure=failure):
+                    client = _client("direct")
+                    response = _response({}, direct=True)
+                    if failure == "read":
+                        response.read.side_effect = OSError("Response could not be read")
+                        error_type = OSError
+                    else:
+                        response.read.return_value = b"not valid JSON"
+                        error_type = json.JSONDecodeError
+                    client._make_request.return_value = response
+
+                    with self.assertRaises(error_type):
+                        client.execute(operation, "license", params)
+
+                    client._make_request.assert_called_once()
+                    self.assertEqual(client._make_request.call_args.args[0].upper(), "GET")
+
+    def test_direct_singleton_empty_body_preserves_empty_state(self):
+        for body in (b"", b"{}"):
+            with self.subTest(body=body):
+                client = _client("direct")
+                client._make_request.return_value.read.return_value = body
+
+                result = client.execute("find", "license", {})
+
+                self.assertEqual(result, {"manifest": None, "subscription_id": None, "force": False, "license_info": {}})
 
     def test_license_update_is_rejected_before_requests(self):
         for client_mode in ("direct", "persistent"):

@@ -99,6 +99,6 @@ class SubscriptionsTransformMixin_v2(BaseTransformMixin):
         result.subscriptions = [
             subscription
             for subscription in result.subscriptions
-            if all(key not in subscription or value in str(subscription[key]) for key, value in filters.items())
+            if all(key not in subscription or str(value) in str(subscription[key]) for key, value in filters.items())
         ]
         return result

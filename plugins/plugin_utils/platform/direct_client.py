@@ -1082,11 +1082,8 @@ class DirectHTTPClient(BaseAPIClient):
                 api_data = mixin_class.from_ansible_data(ansible_data, context)
                 request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
             response = self._make_request(get_op.method, url, **request_kwargs)
-            try:
-                response_body = response.read()
-                api_result = json.loads(response_body) if response_body else {}
-            except Exception:
-                api_result = {}
+            response_body = response.read()
+            api_result = json.loads(response_body) if response_body else {}
             # Singleton result transforms may depend on original request inputs,
             # such as client-side filters that are never sent to the API.
             find_transform = getattr(mixin_class, "from_find_result", None)
@@ -1224,7 +1221,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         results = {}
         fields_to_null = fields_to_null or set()
-        logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
+        logger.info("DirectHTTPClient: Executing operations: %s", list(operations))
 
         # Filter operations by required_for
         relevant_ops = {name: op for name, op in operations.items() if op.required_for == required_for or required_for is None}
