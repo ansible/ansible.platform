@@ -36,8 +36,12 @@ class TestControllerSettingsAction(unittest.TestCase):
             response.content = b"nonempty"
             responses.append(response)
         service._make_request = MagicMock(side_effect=responses)
+
+        def execute(operation, module_name, ansible_data):
+            return service.execute(operation, module_name, ansible_data_dict=ansible_data)
+
         manager = MagicMock()
-        manager.execute.side_effect = lambda operation, module_name, ansible_data: service.execute(operation, module_name, ansible_data)
+        manager.execute.side_effect = execute
         manager.http = service._make_request
         action._prepare_action = MagicMock(
             return_value={
