@@ -1,6 +1,10 @@
 # Agent Collaboration Guide — AI Agents Working with Developers on `ansible.platform`
 
-This document guides AI agents working with developers on the **`ansible.platform` collection** for Ansible Automation Platform (AAP) Gateway. It defines personas, workflows, quality gates, and coding standards so agents can collaborate effectively without reinventing patterns or skipping critical steps.
+This document guides AI agents working with developers on the **`ansible.platform`
+collection** for Ansible Automation Platform (AAP) Gateway, Automation Controller,
+and Event-Driven Ansible (EDA). It defines personas, workflows, quality gates, and
+coding standards so agents can collaborate effectively without reinventing patterns
+or skipping critical steps.
 
 **Audience**: AI agents (LLMs, coding assistants) assisting developers
 
@@ -175,7 +179,7 @@ For **each** component:
 
 #### Phase 3: Set Up Code Generators
 
-**Agent asks:** "Do you want code generators? These are optional but strongly recommended for scaling to all 22 modules."
+**Agent asks:** "Do you want code generators? These are optional but strongly recommended for adding resources across the collection."
 
 **Agent can implement:**
 

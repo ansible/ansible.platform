@@ -374,9 +374,10 @@ Every `ansible.platform` resource module guarantees this contract:
 
 ### Before Making Any Change
 
-The module **always** reads the current state of the resource from the Gateway API
-before deciding whether to create, update, or delete. This is the "find before mutate"
-pattern. It is what makes idempotency possible.
+For resource convergence, the action reads current state from the resource's
+owning service before deciding whether to create, update, or delete. This is the
+"find before mutate" pattern. Operation modules such as launch, wait, and cancel
+have their own documented behavior.
 
 ```
 Input:  task args (desired state)
@@ -388,9 +389,10 @@ Step 4: If different → execute API call → return changed=true
 
 ### check_mode
 
-When `check_mode: true` is set on a task, step 4 is skipped. The action plugin returns
-what it *would* do, including a `would_change` key in the result, but makes no
-API calls. This is guaranteed for all 22 action plugins.
+For modules that support check mode, `check_mode: true` skips the mutation in
+step 4 and reports whether a change would be needed. Read requests may still be
+required to inspect current state. Consult the module documentation for check-mode
+support and result fields; a `would_change` field is not a collection-wide contract.
 
 ```yaml
 - name: Preview changes without applying them

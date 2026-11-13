@@ -4,11 +4,11 @@ This document maps the three AAP services and their resource coverage to help yo
 
 ## Quick Reference
 
-| Service | Resources | Scope | Module Prefix |
+| Service | Resources | Scope | Example Module Names |
 |---------|-----------|-------|---------------|
-| **Gateway** | 48 | AAP platform management (users, orgs, services) | *(none currently)* |
-| **EDA** | 37 | Event-driven automation (projects, rulebooks, activations) | `eda_` |
-| **Controller** | 93 | Ansible Controller (inventories, credentials, jobs) | `controller_` |
+| **Gateway** | 48 | AAP platform management (users, orgs, services) | `user`, `settings` |
+| **EDA** | 37 | Event-driven automation (projects, rulebooks, activations) | `eda_project`, `rulebook_activation` |
+| **Controller** | 93 | Ansible Controller (inventories, credentials, jobs) | `controller_project`, `inventory` |
 
 ---
 
@@ -28,7 +28,9 @@ This document maps the three AAP services and their resource coverage to help yo
 - Applications: `applications`
 - Infrastructure: `activity_stream`, `status`, `ping`
 
-**Current Collection Coverage**: 22 modules (all Gateway resources)
+**Gateway Module Coverage**: 22 modules. This is the Gateway subset of the
+[collection inventory](README.md#collection-scope-and-module-inventory), not all
+Gateway API resources or the full collection.
 
 **Spec**: `../aap-openapi-specs/gateway.json` (125 endpoints)
 
@@ -45,7 +47,9 @@ This document maps the three AAP services and their resource coverage to help yo
 - Configuration: `decision_environments`, `event_streams`, `credential_types`, `eda_credentials`
 - Shared: `organizations`, `users`, `teams` (inherit from Gateway auth)
 
-**Current Collection Coverage**: 1 module (`eda_project`)
+**EDA Module Coverage**: `eda_project`, `eda_credential`, `eda_credential_type`,
+`eda_credential_input_source`, `eda_controller_token`, `decision_environment`,
+`event_stream`, `rulebook_activation`, and `rulebook_activation_copy`.
 
 **Spec**: `../aap-openapi-specs/eda.json` (83 endpoints)
 
@@ -66,7 +70,11 @@ This document maps the three AAP services and their resource coverage to help yo
 - Platform configuration: `settings` (exposed as `controller_settings` to distinguish it from Gateway settings)
 - More: `labels`, `schedules`, `notifications`, `webhook_receivers`, etc.
 
-**Current Collection Coverage**: 0 modules (planned)
+**Controller Module Coverage**: Includes inventories, hosts, groups, projects,
+credentials, execution environments, job and workflow operations, schedules,
+notifications, settings, and licensing. See the
+[collection inventory](README.md#collection-scope-and-module-inventory) and
+[module sources](../plugins/modules/) for the current surface.
 
 **Spec**: `../aap-openapi-specs/controller.json` (2.1MB, most comprehensive)
 
@@ -82,7 +90,8 @@ These resources exist in Gateway, EDA, AND Controller:
 - `credentials` (different schemas per service)
 - `config`, `metadata`, `status`
 
-**Naming Strategy**: Already handled via authentication federation. These are typically shared across services via Gateway auth.
+**Ownership**: Shared authentication does not make service resources interchangeable.
+Check the owning API and schema before selecting a module or resolving an ID.
 
 ### EDA + Controller Only (2 resources)
 
@@ -93,7 +102,7 @@ These resources exist in Gateway, EDA, AND Controller:
 
 **Naming Rule**:
 - EDA: `eda_project`
-- Controller: `controller_project` (when implemented)
+- Controller: `controller_project`
 
 ### Gateway + Controller Only (2 resources)
 - `ping`, `settings`
@@ -126,21 +135,22 @@ When adding a new module, determine which service owns the resource:
 
 ## Future-Proofing
 
-As the collection grows to support multiple AAP services:
+When extending the existing multi-service collection:
 
 1. **Service prefixes prevent collisions**
    - `gateway_*` (future, if needed for clarity)
    - `eda_*` (active)
-   - `controller_*` (planned)
+   - `controller_*` (used for names such as `controller_project` and `controller_settings`)
 
 2. **Naming consistency across the collection**
-   - All EDA modules start with `eda_`
-   - All Controller modules start with `controller_`
-   - This makes discovery via `ansible.platform.eda_` or `ansible.platform.controller_` possible
+   - Prefixes resolve conflicts, but are not universal service identifiers.
+   - EDA includes unprefixed modules such as `decision_environment` and `event_stream`.
+   - Controller includes unprefixed modules such as `inventory` and `job_template`.
+   - Check the module documentation and its service-specific API implementation.
 
 3. **Schema isolation**
    - Each service has its own transform mixins in `api/{service}/v1/`, `api/{service}/v2/`, etc.
-   - No risk of Gateway fields leaking into EDA modules (or vice versa)
+   - Keep service-specific schemas and transformations in their owning mixins.
 
 ---
 

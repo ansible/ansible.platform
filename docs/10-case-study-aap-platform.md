@@ -1,15 +1,17 @@
-# Case Study: AAP Platform Resources
+# Case Study: AAP Gateway Resources
 
-This document provides a concrete map of the 22 modules in `ansible.platform`, their
-domain groupings, identity characteristics, complexity level for implementation, and
-known AAP API quirks that affect the collection design.
+This document maps the 22 Gateway modules in `ansible.platform`, their domain
+groupings, identity characteristics, implementation complexity, and API quirks.
+It covers the Gateway subset; see the
+[collection inventory](README.md#collection-scope-and-module-inventory) for
+Controller and EDA coverage.
 
 ---
 
 ## SECTION 1: The Platform API Landscape
 
 AAP Gateway exposes a REST API with resources grouped across several functional domains.
-The collection models these as 22 Ansible modules, each covering exactly one logical entity.
+The Gateway subset models these as 22 Ansible modules, each covering one logical entity.
 
 ### Coverage by Domain
 
@@ -432,7 +434,7 @@ To support a new AAP release (e.g., 2.7) when its API changes ship:
 
 ---
 
-## Complete Module Reference
+## Gateway Module Reference
 
 | # | Module | Domain | Lookup Field | Complexity | Status |
 |---|--------|--------|--------------|-----------|--------|
@@ -459,4 +461,4 @@ To support a new AAP release (e.g., 2.7) when its API changes ship:
 | 21 | `token` | Security | `name` | Low | ✅ |
 | 22 | `application` | Applications | (composite) | Medium | ✅ |
 
-**Total: 22 modules across 7 domains.**
+**Gateway subtotal: 22 modules across 7 domains.**
