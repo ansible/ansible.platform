@@ -1,5 +1,10 @@
 # Overview — `ansible.platform` Collection
 
+The collection covers Gateway, Automation Controller, and Event-Driven Ansible
+(EDA). See the [collection inventory](README.md#collection-scope-and-module-inventory)
+for its current module surface. Gateway resources illustrate the core design below;
+Controller and EDA resources use their own service APIs and transforms.
+
 ## The Problem
 
 Ansible Automation Platform (AAP) Gateway exposes a REST API that covers dozens of
@@ -24,7 +29,7 @@ source of race conditions when credentials are rotated mid-play.
 ## The Vision
 
 `ansible.platform` is built as a **platform SDK** that expresses entity-centric,
-state-driven resource management over the AAP Gateway API. The SDK manages
+state-driven resource management over the Gateway, Controller, and EDA APIs. The SDK manages
 **configuration entities** — users, organizations, authenticators, service clusters —
 not raw API endpoints.
 
@@ -48,7 +53,7 @@ The target is clear:
 | Multi-step operations | Manual chaining | Transparent |
 | API version compatibility | Caller must handle | Automatic version detection + fallback |
 | Idempotency | Manual comparison | Built-in state comparison |
-| check_mode support | Not possible | Supported on all resources |
+| check_mode support | Caller must implement | Module-specific; see module documentation |
 
 ## Personas
 
@@ -189,11 +194,14 @@ in normal operation.
 - **`TransformMixin`** — field mapping + business logic between the two tiers
 - **`PlatformManager.idle_timeout`** — auto-terminates manager after N seconds of inactivity (default 3600s, set to 0 to disable)
 - **`PlatformService`** — the HTTP client + transform engine running in the manager process
-- **`BaseResourceActionPlugin`** — base class wiring all 22 action plugins to the framework
+- **`BaseResourceActionPlugin`** — base class connecting resource action plugins to the shared framework
 - **`APIVersionRegistry`** — auto-discovers api/v*/ directories at startup
 - **`DynamicClassLoader`** — loads the right (AnsibleClass, APIClass, MixinClass) tuple
 
-### Module Coverage (22 resources)
+### Gateway Module Coverage (22 resources)
+
+This table covers the Gateway subset. Controller and EDA coverage is described in
+the [collection inventory](README.md#collection-scope-and-module-inventory).
 
 | Domain | Modules |
 |--------|---------|
