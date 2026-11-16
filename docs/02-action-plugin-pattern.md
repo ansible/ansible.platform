@@ -365,7 +365,7 @@ Every `ansible.platform` resource module guarantees this contract:
 ### The Convergence Loop
 
 ```
-1. GATHER:  Read current config from Gateway (same schema as user input)
+1. GATHER:  Read current config from the owning service (same schema as user input)
 2. COMPARE: Diff desired config against current config
 3. PLAN:    Compute operations needed (create, update, delete)
 4. EXECUTE: Apply operations via API (or skip if no diff)
@@ -447,7 +447,7 @@ check mode is not a simulation — it is a **computation**.
 The convergence loop becomes:
 
 ```
-1. GATHER:  Read current config from Gateway → before
+1. GATHER:  Read current config from the owning service → before
 2. PREDICT: Compute after from set theory (no API calls)
 3. REPORT:  Return changed=(before != after), before/after state
 ```
