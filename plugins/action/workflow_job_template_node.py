@@ -26,12 +26,32 @@ _SERVICE = "controller"
 _NODE_ASSOC_FIELDS = frozenset({"success_nodes", "failure_nodes", "always_nodes"})
 
 
+class WorkflowNodeNotFoundError(ValueError):
+    """A requested node identifier was not found within the selected workflow."""
+
+
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_job_template_node"
     MODEL_CLASS = AnsibleWorkflowJobTemplateNode
     LOOKUP_FIELD = "identifier"
 
-    _WRITE_ONLY_FIELDS = frozenset(set(_ASSOC_MAP) | {"organization"})
+    _WRITE_ONLY_FIELDS = frozenset(set(_ASSOC_MAP) | {"approval_node"})
+    _MUTUALLY_EXCLUSIVE = [["unified_job_template", "approval_node"]]
+    _NULLABLE_FK_FIELDS = frozenset({"execution_environment"})
+
+    def _build_argspec_from_docs(self, documentation: str) -> dict:
+        """Validate approval suboptions before any resource lookup or mutation.
+
+        Args:
+            documentation: Module DOCUMENTATION YAML.
+
+        Returns:
+            dict: Argument specification with approval dictionary validation enabled.
+        """
+        argspec = super()._build_argspec_from_docs(documentation)
+        approval = argspec["argument_spec"]["approval_node"]
+        approval["options"] = approval.pop("suboptions")
+        return argspec
 
     @staticmethod
     def _resolve_node_ids_in_workflow(manager, workflow_id, identifiers):
@@ -54,7 +74,7 @@ class ActionModule(BaseResourceActionPlugin):
         for ident in identifiers:
             key = str(ident)
             if key not in resolved:
-                raise ValueError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
+                raise WorkflowNodeNotFoundError(f"Workflow node with identifier '{ident}' not found in workflow {workflow_id}")
             node_ids.append(resolved[key])
         return node_ids
 
@@ -64,6 +84,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
         organization = self._task.args.get("organization")
+        approval_node = self._task.args.get("approval_node")
 
         result = super().run(tmp, task_vars)
 
@@ -73,12 +94,6 @@ class ActionModule(BaseResourceActionPlugin):
 
         node_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
         if not node_id:
-            return result
-
-        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
-        if self._task.check_mode:
-            if reconcile_fields:
-                result["changed"] = True
             return result
 
         node_data = result.get(self.MODULE_NAME) or {}
@@ -98,14 +113,34 @@ class ActionModule(BaseResourceActionPlugin):
             org_scope = {"organization": org_id} if org_id is not None else None
 
             changed = False
+            if approval_node is not None:
+                result["workflow_node_id"] = node_id
+                if manager.manage_workflow_approval(node_id, approval_node, check_mode=self._task.check_mode):
+                    changed = True
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
                 if desired is None:
                     continue
                 if field in _NODE_ASSOC_FIELDS and wfjt_id:
-                    desired = self._resolve_node_ids_in_workflow(manager, wfjt_id, desired)
+                    try:
+                        desired = self._resolve_node_ids_in_workflow(manager, wfjt_id, desired)
+                    except WorkflowNodeNotFoundError:
+                        if self._task.check_mode:
+                            changed = True
+                            continue
+                        raise
                 extra = org_scope if field == "labels" and org_scope else None
-                if manager.manage_associations(BASE_PATH, node_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, extra_query_params=extra):
+                if manager.manage_associations(
+                    BASE_PATH,
+                    node_id,
+                    field,
+                    desired,
+                    lookup_endpoint,
+                    lookup_field,
+                    service=_SERVICE,
+                    extra_query_params=extra,
+                    check_mode=self._task.check_mode,
+                ):
                     changed = True
         except Exception as exc:
             result["failed"] = True

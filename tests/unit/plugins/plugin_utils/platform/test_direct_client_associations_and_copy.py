@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
@@ -386,16 +387,17 @@ class TestManageSubResource(unittest.TestCase):
         mock_request.assert_not_called()
 
     def test_empty_dict_deletes(self):
-        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(status=200)) as mock_request:
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"name": "Existing"}, status=200)) as mock_request:
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertTrue(changed)
-        mock_request.assert_called_once_with(
+        self.assertEqual(mock_request.call_count, 2)
+        mock_request.assert_called_with(
             "DELETE", "https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", operation="delete_sub_resource", resource="survey_spec"
         )
 
     def test_empty_dict_delete_404_is_not_changed(self):
         not_found = APIError("API request failed: HTTP 404", operation="delete_sub_resource", resource="survey_spec", status_code=404)
-        with unittest.mock.patch.object(self.client, "_make_request", side_effect=not_found):
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body={"name": "Existing"}), not_found]):
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
 
@@ -523,6 +525,32 @@ class TestSearchApi(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body=page1), _http_resp(body=page2)]):
             with self.assertRaisesRegex(ValueError, "max_objects=3"):
                 self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=3)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current,desired,changed",
+    [({}, {}, False), ({"name": "Old"}, {}, True), ({"name": "Same"}, {"name": "Same"}, False), ({"name": "Old"}, {"name": "New"}, True)],
+)
+def test_subresource_comparison_and_clear_idempotency(check_mode, current, desired, changed):
+    """Compare sub-resource state without writing during check mode."""
+    client = _client()
+    client._ensure_authenticated = MagicMock()
+    client._make_request = MagicMock(return_value=_http_resp(body=current))
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", desired, check_mode=check_mode) is changed
+    expected_methods = ["GET"]
+    if changed and not check_mode:
+        expected_methods.append("DELETE" if desired == {} else "POST")
+    assert [call.args[0] for call in client._make_request.call_args_list] == expected_methods
+
+
+def test_subresource_clear_dry_run_handles_absent_survey():
+    """Treat a missing survey as an unchanged dry-run clear."""
+    client = _client()
+    client._ensure_authenticated = MagicMock()
+    client._make_request = MagicMock(side_effect=APIError("Not found", status_code=404))
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", {}, check_mode=True) is False
+    client.session.delete.assert_not_called()
 
 
 if __name__ == "__main__":

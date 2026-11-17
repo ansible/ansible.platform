@@ -136,11 +136,16 @@
           - launch_result is not failed
           - launch_result.id is defined
           - launch_result.status == "successful"
+          - launch_result.elapsed is defined
+          - launch_result.started is defined
+          - launch_result.finished | bool
+          - launch_result.finished_at is string
 
     - name: Launch the workflow without waiting
       ansible.platform.workflow_launch:
         name: "{{ name_prefix }}-WF"
         wait: false
+        timeout: -5
       register: nowait_result
 
     - name: Assert no-wait launch returned an ID

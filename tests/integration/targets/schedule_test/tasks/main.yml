@@ -53,6 +53,41 @@
       ansible.builtin.assert:
         that: idem is not changed
 
+    - name: Explicitly clear schedule prompt overrides
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        scm_branch: ""
+        job_tags: ""
+        skip_tags: ""
+        limit: ""
+        inventory: ""
+        execution_environment: ""
+      register: cleared_overrides
+
+    - name: Assert clearing inherited prompts changes the schedule
+      ansible.builtin.assert:
+        that:
+          - cleared_overrides is changed
+          - cleared_overrides.schedule.scm_branch == ""
+          - cleared_overrides.schedule.job_tags == ""
+          - cleared_overrides.schedule.skip_tags == ""
+          - cleared_overrides.schedule.limit == ""
+
+    - name: Reapply empty schedule prompt overrides
+      ansible.platform.schedule:
+        name: "{{ schedule_name }}"
+        scm_branch: ""
+        job_tags: ""
+        skip_tags: ""
+        limit: ""
+        inventory: ""
+        execution_environment: ""
+      register: repeated_clear
+
+    - name: Assert explicit schedule clears are idempotent
+      ansible.builtin.assert:
+        that: repeated_clear is not changed
+
     - name: Compare an empty schedule association in check mode
       ansible.platform.schedule:
         name: "{{ schedule_name }}"

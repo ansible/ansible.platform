@@ -94,6 +94,7 @@ class ActionModule(BaseResourceActionPlugin):
             if launch.extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
                 param_errors.append("The field extra_vars was specified but the workflow job template does not allow it to be overridden")
             if param_errors:
+                result["errors"] = param_errors
                 raise AnsibleError("Parameters specified which cannot be passed into workflow job template launch: " + "; ".join(param_errors))
 
             if self._task.check_mode:
@@ -137,9 +138,14 @@ class ActionModule(BaseResourceActionPlugin):
 
             # Wait for the workflow job to complete
             try:
-                # The legacy module waited indefinitely when timeout was omitted.
-                # The SDK uses negative timeout values for an unbounded wait.
-                wait_timeout = -1.0 if not timeout else float(timeout)
+                # Omitted/zero means unlimited; negative means a single poll.
+                # Translate these values to the shared waiter's timeout conventions.
+                if timeout is None or timeout == 0:
+                    wait_timeout = -1.0
+                elif timeout < 0:
+                    wait_timeout = 0.0  # Stop after the first unfinished response.
+                else:
+                    wait_timeout = float(timeout)
                 wait_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["workflow_job"]
                 job_result = manager.wait_for_completion(
                     wait_operation.path.format(id=workflow_job_id),
@@ -150,9 +156,11 @@ class ActionModule(BaseResourceActionPlugin):
                 final_status = job_result.get("status", "")
                 result["status"] = final_status
                 result[self.MODULE_NAME]["status"] = final_status
+                self._set_job_timing(result, job_result)
 
                 if final_status in ("failed", "error", "canceled"):
                     result["failed"] = True
+                    result["job_data"] = job_result
                     result["msg"] = f"Workflow job {workflow_job_id} finished with status '{final_status}'"
 
             except WaitTimeoutError as exc:
@@ -161,6 +169,7 @@ class ActionModule(BaseResourceActionPlugin):
                 result["msg"] = str(exc)
                 result["status"] = last.get("status", "unknown")
                 result[self.MODULE_NAME]["status"] = last.get("status", "unknown")
+                self._set_job_timing(result, last)
 
         except Exception as exc:
             import traceback as _tb
