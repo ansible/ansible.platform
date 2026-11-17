@@ -1,0 +1,10 @@
+---
+minor_changes:
+  - >-
+    ``organization`` - accept optional Controller organization settings and
+    associations, including ``default_environment``, ``max_hosts``,
+    ``instance_groups``, notification templates, and ``galaxy_credentials``.
+    Gateway continues to manage the Gateway organization while the Controller
+    API manages these Controller-owned fields
+    (https://issues.redhat.com/browse/AAP-102302).
+...
