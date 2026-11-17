@@ -6,8 +6,10 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.workflow_job_template import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 
 
 class TestWorkflowJobTemplateAssociations(unittest.TestCase):
@@ -49,6 +51,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params=None,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -80,6 +83,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params={"organization": 42},
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -112,6 +116,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params=None,
+            check_mode=False,
         )
         action._client.manage_associations.assert_any_call(
             "/api/controller/v2/workflow_job_templates/",
@@ -122,6 +127,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             "name",
             service="controller",
             extra_query_params=None,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -151,6 +157,7 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
             30,
             "survey_spec",
             survey,
+            check_mode=False,
         )
 
     @patch.object(BaseResourceActionPlugin, "run")
@@ -277,7 +284,8 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.manage_associations.assert_not_called()
+        action._client.manage_associations.assert_called_once()
+        self.assertTrue(action._client.manage_associations.call_args.kwargs["check_mode"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_check_mode_reports_changed_for_survey(self, mock_super_run):
@@ -295,7 +303,8 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.manage_sub_resource.assert_not_called()
+        action._client.manage_sub_resource.assert_called_once()
+        self.assertTrue(action._client.manage_sub_resource.call_args.kwargs["check_mode"])
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_changed_false_when_associations_unchanged(self, mock_super_run):
@@ -338,6 +347,55 @@ class TestWorkflowJobTemplateAssociations(unittest.TestCase):
 
         call = action._client.manage_associations.call_args
         self.assertEqual(call.args[1], 55)
+
+
+@pytest.fixture
+def action_module():
+    """Create a workflow template action with real argument validation."""
+    action = ActionModule.__new__(ActionModule)
+    action._task = MagicMock(args={"name": "Resource"}, check_mode=False)
+    action._display = MagicMock()
+    action._display.verbosity = 0
+    action._client = MagicMock()
+    return action
+
+
+@pytest.mark.parametrize("changed", [False, True])
+@pytest.mark.parametrize("field,alias", [("labels", "labels"), ("survey_spec", "survey_spec"), ("survey_spec", "survey")])
+def test_workflow_template_dry_run_compares_associations_and_survey(action_module, field, alias, changed):
+    """Preserve survey aliases and compare current values instead of assuming change."""
+    desired = ["Existing"] if field == "labels" else {"name": "Survey", "description": "", "spec": []}
+    action = action_module
+    action._task.args[alias] = desired
+    action._task.check_mode = True
+    action._client.manage_associations.return_value = changed
+    action._client.manage_sub_resource.return_value = changed
+    with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "id": 7}):
+        result = action.run(task_vars={})
+    assert result["changed"] is changed
+    method = action._client.manage_associations if field == "labels" else action._client.manage_sub_resource
+    assert method.call_args.kwargs["check_mode"] is True
+    assert method.call_args.args[3] == desired
+
+
+@pytest.mark.parametrize("missing,check_mode", [(True, True), (True, False), (False, True)])
+def test_workflow_template_only_predicts_expected_missing_associations(action_module, missing, check_mode):
+    """Predict a dependency created earlier in check mode while propagating real errors."""
+    action = action_module
+    action._task.args["labels"] = ["New Label"]
+    action._task.check_mode = check_mode
+    error = (
+        ResourceNotFoundError("No matching label", endpoint="labels", lookup_field="name", lookup_value="New Label", service="controller")
+        if missing
+        else ValueError("Resource 'labels' with name=New Label not found")
+    )
+    action._client.manage_associations.side_effect = error
+    with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "id": 7}):
+        result = action.run(task_vars={})
+    assert {"failed": result.get("failed", False), "changed": result["changed"]} == {
+        "failed": not (missing and check_mode),
+        "changed": missing and check_mode,
+    }
 
 
 if __name__ == "__main__":

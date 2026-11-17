@@ -135,6 +135,10 @@
           - wait_result is not failed
           - wait_result.id is defined
           - wait_result.status == "successful"
+          - wait_result.elapsed is defined
+          - wait_result.started is defined
+          - wait_result.finished is true
+          - wait_result.finished_at is string
 
     - name: Trigger update by numeric source ID (validates inventory ownership)
       ansible.platform.inventory_source_update:

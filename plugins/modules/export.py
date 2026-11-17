@@ -23,6 +23,8 @@ description:
     resource dict. The output can be piped directly into the
     C(ansible.platform.import) module or role.
   - This is a read-only module; it never makes changes. C(changed) is always C(false).
+  - Resource selectors accept names and numeric IDs. Named URLs are resolved through the SDK when supported by the owning service.
+  - Organizations, users, and teams are exported from Gateway; other resource types are exported from Controller.
 version_added: "2.7.0"
 
 options:

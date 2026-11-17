@@ -29,6 +29,7 @@ from ansible.utils.display import Display
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.idempotency import canonical_json_object
 
 # ---------------------------------------------------------------------------
@@ -289,6 +290,10 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this to list mutable FK fields for their resource.
     _MUTABLE_FK_FIELDS: frozenset = frozenset()
 
+    # Nullable relationships accepting an empty string to clear the reference.
+    # APIs return null after clearing; these values compare as equivalent.
+    _NULLABLE_FK_FIELDS: frozenset = frozenset()
+
     # Fields where list order does not matter for idempotency comparison.
     # By default, list comparison is order-sensitive (safer).  Subclasses
     # opt in specific fields where the API may return items in a different
@@ -381,6 +386,8 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             bool: True when the error uses a recognized not-found response.
         """
+        if isinstance(exc, ResourceNotFoundError):
+            return True
         status_code = getattr(exc, "status_code", None)
         if status_code is None:
             details = getattr(exc, "details", None)
@@ -549,6 +556,11 @@ class BaseResourceActionPlugin(ActionBase):
         validation_args = {key: value for key, value in self._task.args.items() if value is not None}
         validated_input = self._validate_data(validation_args, argspec, "input")
         validated_params = dict(validated_input.validated_parameters)
+        # Ansible retains supplied aliases alongside their canonical names.
+        # Resource models accept only the canonical fields.
+        for spec in argspec.get("argument_spec", {}).values():
+            for alias in spec.get("aliases", []):
+                validated_params.pop(alias, None)
         explicit_fields = getattr(self, "_explicit_fields_to_send", None)
         if getattr(self, "_preserve_explicit_nulls_for_update", False) and explicit_fields is not None:
             validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
@@ -1208,6 +1220,10 @@ class BaseResourceActionPlugin(ActionBase):
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
+            if key in self._NULLABLE_FK_FIELDS and desired_val == "":
+                if current_val not in (None, ""):
+                    return True
+                continue
             if (
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)

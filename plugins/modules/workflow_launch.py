@@ -93,6 +93,7 @@ options:
     description:
       - Maximum time in seconds to wait for the workflow job to complete.
       - If omitted or set to C(0), wait indefinitely.
+      - A negative value stops waiting after the first unfinished response; the remote workflow continues running.
       - Only used when C(wait=true).
       - Reaching this timeout stops waiting but does not cancel the remote workflow job.
     type: int
@@ -135,6 +136,32 @@ EXAMPLES = """
 """
 
 RETURN = """
+elapsed:
+  description: Elapsed workflow runtime in seconds.
+  returned: when waiting returns workflow data
+  type: float
+started:
+  description: Timestamp at which the workflow started.
+  returned: when waiting returns workflow data
+  type: str
+finished:
+  description: Whether the workflow has finished.
+  returned: when waiting returns workflow data
+  type: bool
+finished_at:
+  description: Timestamp at which the workflow finished.
+  returned: when waiting returns workflow data
+  type: str
+job_data:
+  description: Workflow response describing a failed workflow.
+  returned: when a waited workflow fails
+  type: dict
+errors:
+  description: Overrides rejected by the template's prompt settings.
+  returned: when launch override validation fails
+  type: list
+  elements: str
+
 changed:
   description: Whether a workflow job was launched (always true on success).
   returned: always
@@ -142,19 +169,19 @@ changed:
 
 id:
   description: The ID of the launched workflow job.
-  returned: success
+  returned: when a workflow is launched
   type: int
   sample: 42
 
 status:
   description: The final status of the workflow job.
-  returned: success
+  returned: when a workflow is launched
   type: str
   sample: "successful"
 
 workflow_launch:
   description: The workflow job resource.
-  returned: success
+  returned: when a workflow is launched
   type: dict
   contains:
     id:
@@ -166,7 +193,7 @@ workflow_launch:
 
 job_info:
   description: Backward-compatible information about the launched workflow job.
-  returned: success
+  returned: when a workflow is launched
   type: dict
   contains:
     id:
