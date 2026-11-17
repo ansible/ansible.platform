@@ -113,8 +113,13 @@ class TestEdaControllerTokenAction(unittest.TestCase):
             },
         )
 
-        self.assertFalse(result.get("failed", False))
-        self.assertTrue(result["changed"])
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "eda_controller_token": {"state": "absent", "id": 5999},
+            "id": 5999,
+        }
+        self.assertEqual(result, expected_result)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertEqual(calls, ["find", "delete"])
 
@@ -172,6 +177,7 @@ class TestEdaControllerTokenAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
+        self.assertNotIn("id", result)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertNotIn("delete", calls)
 

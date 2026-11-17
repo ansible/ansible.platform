@@ -1372,13 +1372,16 @@ class BaseResourceActionPlugin(ActionBase):
                     if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                         raise
                     find_result, exists = {}, False
+                flat_fields, extra_flat = self._format_resource_output(find_result, argspec) if exists else ({}, {})
                 result.update(
                     {
+                        **flat_fields,
+                        **extra_flat,
                         "changed": False,
                         "failed": False,
                         "exists": exists,
-                        self.MODULE_NAME: find_result if exists else {},
-                        "id": find_result.get("id") if exists else None,
+                        self.MODULE_NAME: flat_fields,
+                        "id": flat_fields.get("id") if exists else None,
                     }
                 )
                 return result
@@ -1489,11 +1492,16 @@ class BaseResourceActionPlugin(ActionBase):
 
             if self._task.check_mode and operation in ("create", "update", "delete"):
                 if operation == "delete":
+                    resource_id = getattr(resource, "id", None)
+                    resource_output = {"state": "absent"}
+                    if resource_id is not None:
+                        resource_output["id"] = resource_id
                     result.update(
                         {
-                            "changed": bool(getattr(resource, "id", None)),
+                            "changed": bool(resource_id),
                             "failed": False,
-                            self.MODULE_NAME: {"state": "absent"},
+                            self.MODULE_NAME: resource_output,
+                            **({"id": resource_id} if resource_id is not None else {}),
                         }
                     )
                 else:
