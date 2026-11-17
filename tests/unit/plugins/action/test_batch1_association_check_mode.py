@@ -8,7 +8,7 @@ from ansible_collections.ansible.platform.plugins.action.inventory import Action
 from ansible_collections.ansible.platform.plugins.action.inventory_source import ActionModule as InventorySourceAction
 from ansible_collections.ansible.platform.plugins.action.schedule import ActionModule as ScheduleAction
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ResourceNotFoundError, ValidationError
 
 
 @pytest.mark.parametrize(
@@ -50,20 +50,20 @@ def test_read_only_state_does_not_reconcile_associations(action_type):
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
-@pytest.mark.parametrize("error_type", [ValueError, ValidationError])
-def test_schedule_missing_association_is_a_potential_change_only_in_check_mode(check_mode, error_type):
+@pytest.mark.parametrize("message", ["Resource 'credentials' with name=Missing not found", "No matching credential"])
+def test_schedule_missing_association_is_a_potential_change_only_in_check_mode(check_mode, message):
     """Allow missing dry-run dependencies while still comparing other associations."""
     action = ScheduleAction.__new__(ScheduleAction)
     action._task = MagicMock()
     action._task.args = {"name": "Weekly", "credentials": ["Missing"], "labels": ["Existing"], "instance_groups": []}
     action._task.check_mode = check_mode
     action._client = MagicMock()
-    action._client.manage_associations.side_effect = [error_type("Resource 'credentials' with name=Missing not found"), False, False]
+    error = ResourceNotFoundError(message, endpoint="credentials", lookup_field="name", lookup_value="Missing", service="controller")
+    action._client.manage_associations.side_effect = [error, False, False]
     with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "id": 7}):
         result = action.run(task_vars={})
 
-    assert result.get("failed", False) is not check_mode
-    assert result["changed"] is check_mode
+    assert {"failed": result.get("failed", False), "changed": result["changed"]} == {"failed": not check_mode, "changed": check_mode}
     calls = action._client.manage_associations.call_args_list
     assert [call.args[2] for call in calls] == (["credentials", "labels", "instance_groups"] if check_mode else ["credentials"])
     assert all(call.kwargs["check_mode"] is check_mode for call in calls)
@@ -75,6 +75,9 @@ def test_schedule_missing_association_is_a_potential_change_only_in_check_mode(c
         ValueError("Resource 'credentials' with name=Duplicate matched multiple resources; provide additional filters"),
         RuntimeError("Connection failed"),
         ValidationError("Resource 'schedules' with name=Weekly not found"),
+        ValueError("Resource 'credentials' with name=resource not found"),
+        ResourceNotFoundError("Missing schedule", endpoint="schedules", lookup_field="name", lookup_value="Weekly", service="controller"),
+        ResourceNotFoundError("Wrong service", endpoint="credentials", lookup_field="name", lookup_value="resource", service="gateway"),
     ],
 )
 def test_schedule_check_mode_preserves_other_association_errors(error):

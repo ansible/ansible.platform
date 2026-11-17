@@ -1,0 +1,104 @@
+---
+- name: Verify survey aliases and association check mode
+  vars:
+    survey_spec:
+      name: Workflow survey
+      description: ""
+      spec:
+        - question_name: Survey input
+          question_description: ""
+          required: false
+          type: text
+          variable: survey_value
+          min: 0
+          max: 1024
+          default: ""
+  block:
+    - name: Create a notification for association comparison
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Survey-Notify"
+        organization: Default
+        notification_type: webhook
+        notification_configuration:
+          url: https://example.invalid/survey
+          http_method: POST
+          headers: {}
+
+    - name: Apply a survey through its alias and add a notification
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: "{{ survey_spec }}"
+        notification_templates_success: ["{{ name_prefix }}-Survey-Notify"]
+      register: survey_created
+
+    - name: Compare identical survey and associations in check mode
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: "{{ survey_spec }}"
+        notification_templates_success: ["{{ name_prefix }}-Survey-Notify"]
+      check_mode: true
+      register: survey_unchanged
+
+    - name: Predict clearing survey and associations
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: {}
+        notification_templates_success: []
+      check_mode: true
+      register: survey_predicted
+
+    - name: Read associations after check mode
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ created_wjt.id }}/notification_templates_success/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: survey_associations
+
+    - name: Read survey after check mode
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_templates/{{ created_wjt.id }}/survey_spec/"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: survey_current_survey
+
+    - name: Assert prediction did not modify the workflow
+      ansible.builtin.assert:
+        that:
+          - survey_created is changed
+          - survey_unchanged is not changed
+          - survey_predicted is changed
+          - survey_associations.json.count == 1
+          - survey_current_survey.json == survey_spec
+
+    - name: Apply the predicted survey and association clear
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: {}
+        notification_templates_success: []
+      register: survey_cleared
+
+    - name: Reapply the empty survey and association list
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        survey: {}
+        notification_templates_success: []
+      register: survey_repeated_clear
+
+    - name: Assert clearing is a change only once
+      ansible.builtin.assert:
+        that:
+          - survey_cleared is changed
+          - survey_repeated_clear is not changed
+  always:
+    - name: Remove the survey notification
+      ansible.platform.notification_template:
+        name: "{{ name_prefix }}-Survey-Notify"
+        organization: Default
+        state: absent
+...

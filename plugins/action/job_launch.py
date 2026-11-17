@@ -44,10 +44,14 @@ class ActionModule(BaseResourceActionPlugin):
         wait = params.pop("wait", False)
         interval = params.pop("interval", 2.0)
         raw_timeout = params.pop("timeout", None)
-        # Legacy AWX treats an omitted timeout or timeout=0 as no limit.
-        # The shared waiter treats negative values as no-timeout and zero as
-        # an immediate timeout.
-        timeout = -1.0 if raw_timeout is None or float(raw_timeout) == 0 else float(raw_timeout)
+        # Omitted/zero means unlimited; negative means a single poll.
+        # Translate these values to the shared waiter's timeout conventions.
+        if raw_timeout is None or raw_timeout == 0:
+            timeout = -1.0
+        elif raw_timeout < 0:
+            timeout = 0.0  # Stop after the first unfinished response.
+        else:
+            timeout = float(raw_timeout)
 
         try:
             model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}

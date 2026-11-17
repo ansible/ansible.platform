@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -283,6 +285,18 @@ class TestInventorySourceTransform(unittest.TestCase):
         api_data = APIInventorySource_v2(name="src")
         params = InventorySourceTransformMixin_v2.get_find_list_query_params(api_data)
         self.assertEqual(params, {})
+
+
+@pytest.mark.parametrize("field", ["source_project", "credential", "execution_environment"])
+@pytest.mark.parametrize("operation", ["find", "delete"])
+def test_unused_write_reference_does_not_block_find_or_delete(field, operation):
+    """Do not mistake an invalid unused reference for an absent resource."""
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = ValueError("unused reference must not be resolved")
+    model = AnsibleInventorySource(name="Resource", **{"inventory": "1", field: "Missing Reference"})
+    data = InventorySourceTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": operation})
+    assert getattr(data, field) is None
+    manager.lookup_resource_id.assert_not_called()
 
 
 if __name__ == "__main__":

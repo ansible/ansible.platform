@@ -11,6 +11,8 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -252,6 +254,43 @@ class TestWorkflowJobTemplateNodeTransform(unittest.TestCase):
         }
         ansible = WorkflowJobTemplateNodeTransformMixin_v2.from_api(api_data, {"manager": mock_manager})
         self.assertEqual(ansible.workflow_job_template, "999")
+
+
+def test_node_parent_and_target_use_independent_organization_scopes():
+    """Resolve a target outside its parent workflow's organization."""
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = [10, 20, 30, 40]
+    model = AnsibleWorkflowJobTemplateNode(
+        identifier="leaf", workflow_job_template="Parent", organization="Parent Org", unified_job_template="Job", lookup_organization="Job Org"
+    )
+    result = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": "create"})
+    assert {"workflow_job_template": result.workflow_job_template, "unified_job_template": result.unified_job_template} == {
+        "workflow_job_template": 20,
+        "unified_job_template": 40,
+    }
+    manager.lookup_resource_id.assert_any_call("workflow_job_templates", "name", "Parent", service="controller", extra_query_params={"organization": 10})
+    manager.lookup_resource_id.assert_any_call("unified_job_templates", "name", "Job", service="controller", extra_query_params={"organization": 30})
+
+
+@pytest.mark.parametrize("operation", ["find", "delete"])
+def test_node_lookup_ignores_unused_launch_references(operation):
+    """Find and delete nodes without resolving unused update fields."""
+    manager = MagicMock()
+    model = AnsibleWorkflowJobTemplateNode(
+        identifier="leaf", workflow_job_template="3", unified_job_template="Missing", inventory="Missing", execution_environment="Missing"
+    )
+    result = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": operation})
+    assert result.workflow_job_template == 3
+    manager.lookup_resource_id.assert_not_called()
+
+
+def test_node_preserves_explicit_execution_environment_clear():
+    """Send an explicit empty relationship value without looking up an empty name."""
+    manager = MagicMock()
+    model = AnsibleWorkflowJobTemplateNode(identifier="leaf", workflow_job_template="3", execution_environment="")
+    result = WorkflowJobTemplateNodeTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": "update"})
+    assert result.execution_environment == ""
+    manager.lookup_resource_id.assert_not_called()
 
 
 if __name__ == "__main__":
