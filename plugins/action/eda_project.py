@@ -284,6 +284,7 @@ class ActionModule(BaseResourceActionPlugin):
                         "changed": True,
                         "failed": False,
                         self.MODULE_NAME: {"state": "absent", "id": existing["id"]},
+                        "id": existing["id"],
                     }
                 )
                 return result
