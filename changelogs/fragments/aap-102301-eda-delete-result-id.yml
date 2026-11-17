@@ -1,7 +1,7 @@
 ---
 bugfixes:
   - >-
-    Preserve flat resource fields in exists results and return existing IDs in check-mode
-    delete results from the shared action base. Also preserve top-level IDs after
-    successful deletes in custom EDA actions, matching legacy ansible.eda contracts.
+    Preserve flat resource fields in exists results, return IDs in shared-base and
+    eda_project check-mode delete results, and preserve top-level IDs after successful
+    deletes in custom EDA actions, matching legacy ansible.eda contracts.
 ...
