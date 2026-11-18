@@ -74,6 +74,7 @@ class SingletonMutationPlan:
 
     operations: List[str]
     result: Dict[str, Any]
+    api_data: Optional[Any] = None
 
 
 @dataclass

@@ -11,6 +11,7 @@
 7. [Directory Structure](#section-7-directory-structure)
 8. [Why a Separate Process](#section-8-why-a-separate-process)
 9. [Subscription and License Operations](#section-9-subscription-and-license-operations)
+10. [Settings Operations](#section-10-settings-operations)
 
 ---
 
@@ -762,3 +763,37 @@ implement `validate_mutation()` and `plan_mutation()`. A
 result; the shared executor validates, reads current state, and runs those steps.
 The mixin owns resource decisions, while the executor owns HTTP execution. Both
 clients use this same path, including check-mode prediction and error propagation.
+
+---
+
+## SECTION 10: Settings Operations
+
+Gateway `settings` and Controller `controller_settings` expose `find` and `update`
+through both SDK clients. Comparisons and legacy Controller conversion run in the
+mixins, so SDK callers receive the same decisions as Ansible tasks:
+
+```python
+client.execute("update", "settings", {"settings": {"SESSION_COOKIE_AGE": 3600}})
+client.execute("update", "controller_settings", {"name": "DEFAULT_JOB_TIMEOUT", "value": "7200"})
+```
+
+Only requested keys participate in comparisons. An unchanged subset returns
+`changed=False` without a write; real changes send only changed keys using Gateway
+PUT or Controller PATCH. Gateway preserves string comparisons. Controller preserves
+native comparisons, validates setting names, and converts legacy `name`/`value`
+strings to booleans, integers, lists, or mappings; `settings` values retain their
+supplied types. Read failures propagate and prevent writes.
+
+Pass `_platform_check_mode=True` to predict an update without writing. Results
+include current `settings`, `changed`, `old_values`, and `new_values`. Gateway old/new
+values contain changed keys. Controller old/new values contain all requested keys,
+with `diff` limited to changed keys. In check mode, `settings` remains server state.
+
+Settings mutation plans supply API data restricted to changed fields. The shared
+executor runs the existing PUT/PATCH transport path; action plugins format results
+and redact sensitive values in Ansible output. The SDK returns values to its caller.
+A server value of `$encrypted$` is a placeholder, so a supplied plaintext replacement
+is sent again because equality cannot be established.
+
+These settings fixes are tracked separately in
+[AAP-102130](https://redhat.atlassian.net/browse/AAP-102130).
