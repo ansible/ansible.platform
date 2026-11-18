@@ -7,9 +7,8 @@
 """
 Action plugin for ansible.platform.settings module.
 
-Settings is a singleton resource: manager.execute('find') reads the current state,
-manager.execute('update') patches only the changed keys.  Idempotency is handled
-at the action plugin level by comparing desired vs current values.
+The SDK reads current settings, compares requested values, and updates only
+changed keys. This action supplies Ansible check mode and formats the result.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -28,85 +27,21 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "settings"
 
     def run(self, tmp=None, task_vars=None):
-        if task_vars is None:
-            task_vars = dict()
-
-        self._task_vars = task_vars
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-
+        result = {}
         try:
-            validated_params = self._validate_action_input().validated_params
-            manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-            self._client = manager
+            prepared = self._prepare_action(tmp, task_vars)
+            result = prepared["result"]
+            validated_params = prepared["validated_params"]
+            manager = prepared["manager"]
 
-            if facts_to_set:
-                result["ansible_facts"] = facts_to_set
-                result["_ansible_facts_cacheable"] = True
-
-            desired_settings = validated_params.get("settings", {}) or {}
-
-            # GET current settings via manager.execute('find')
-            current_result = manager.execute(
-                operation="find",
-                module_name=self.MODULE_NAME,
-                ansible_data={"settings": {}},
-            )
-            current_settings = current_result.get("settings", {}) or {}
-
-            # Idempotency: check which desired keys differ from current
-            to_update = {k: v for k, v in desired_settings.items() if str(current_settings.get(k)) != str(v)}
-
-            if not to_update:
-                # Nothing to change
-                result.update(
-                    {
-                        "changed": False,
-                        "failed": False,
-                        self.MODULE_NAME: {
-                            "settings": current_settings,
-                            "old_values": {},
-                            "new_values": {},
-                            "changed": False,
-                        },
-                    }
-                )
-                return result
-
-            if self._task.check_mode:
-                result.update(
-                    {
-                        "changed": True,
-                        "failed": False,
-                        self.MODULE_NAME: {
-                            "settings": current_settings,
-                            "old_values": {k: current_settings.get(k) for k in to_update},
-                            "new_values": to_update,
-                            "changed": True,
-                        },
-                    }
-                )
-                return result
-
-            # PATCH only the changed keys via manager.execute('update')
-            update_settings = AnsibleSettings(settings=to_update)
-            update_result = manager.execute(
-                operation="update",
-                module_name=self.MODULE_NAME,
-                ansible_data=asdict(update_settings),
-            )
-            updated_settings = update_result.get("settings", {}) or {}
-
+            params = asdict(AnsibleSettings(settings=validated_params.get("settings") or {}))
+            params["_platform_check_mode"] = self._task.check_mode
+            sdk_result = manager.execute(operation="update", module_name=self.MODULE_NAME, ansible_data=params)
             result.update(
                 {
-                    "changed": True,
+                    "changed": sdk_result["changed"],
                     "failed": False,
-                    self.MODULE_NAME: {
-                        "settings": updated_settings,
-                        "old_values": {k: current_settings.get(k) for k in to_update},
-                        "new_values": to_update,
-                        "changed": True,
-                    },
+                    self.MODULE_NAME: {key: sdk_result[key] for key in ("settings", "old_values", "new_values", "changed")},
                 }
             )
 
