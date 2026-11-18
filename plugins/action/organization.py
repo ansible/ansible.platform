@@ -12,6 +12,7 @@ organization when those fields are supplied.
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
+from dataclasses import asdict
 from typing import Any, Dict, Optional
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -67,6 +68,8 @@ class ActionModule(BaseResourceActionPlugin):
         self._controller_update_template = None
         self._controller_settings = {}
         self._controller_associations = {}
+        self._has_cached_gateway_find_result = False
+        self._cached_gateway_find_result = None
         if params.get("state", "present") in ("absent", "exists"):
             return prepared
         settings = {field: params[field] for field in _CONTROLLER_SETTINGS if params.get(field) is not None}
@@ -94,11 +97,30 @@ class ActionModule(BaseResourceActionPlugin):
             if len(gateway_matches) > 1:
                 raise ValueError("Expected one Gateway organization named %r; found %d" % (params["name"], len(gateway_matches)))
             if gateway_matches:
-                gateway_id = gateway_matches[0].get("id")
-                gateway_data = manager.search_api("%s%s/" % (_GATEWAY_ORGANIZATION_PATH, gateway_id), service="gateway")
-                ansible_id = self._get_resource_ansible_id(gateway_data, "Gateway")
+                gateway_resource = gateway_matches[0]
+                if not str(params["name"]).strip().isdigit():
+                    self._cached_gateway_find_result = asdict(OrganizationTransformMixin_v1.from_api(gateway_resource, {"manager": manager}))
+                    self._has_cached_gateway_find_result = True
+                try:
+                    ansible_id = self._get_resource_ansible_id(gateway_resource, "Gateway")
+                except ValueError:
+                    gateway_id = gateway_resource.get("id")
+                    if gateway_id is None:
+                        raise ValueError("Gateway organization lookup result did not include an ID or shared ansible_id")
+                    gateway_data = manager.search_api("%s%s/" % (_GATEWAY_ORGANIZATION_PATH, gateway_id), service="gateway")
+                    ansible_id = self._get_resource_ansible_id(gateway_data, "Gateway")
                 self._controller_organization_id = self._find_controller_organization_id(manager, ansible_id)
+            elif not str(params["name"]).strip().isdigit():
+                self._cached_gateway_find_result = {}
+                self._has_cached_gateway_find_result = True
         return prepared
+
+    def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
+        """Reuse the Gateway result fetched during Controller mapping preflight."""
+        if self._has_cached_gateway_find_result:
+            self._has_cached_gateway_find_result = False
+            return self._cached_gateway_find_result
+        return super()._find_existing_resource(manager, resource_data)
 
     @staticmethod
     def _get_resource_ansible_id(resource: Dict[str, Any], service_name: str) -> str:

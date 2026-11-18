@@ -127,6 +127,95 @@ def test_prepare_action_uses_gateway_ansible_id_to_resolve_controller_org():
     assert manager.search_api.call_args_list[2].kwargs["query_params"] == {"resource__ansible_id": "org-uuid"}
 
 
+
+def test_prepare_action_uses_gateway_list_ansible_id_without_detail_request():
+    action = _make_action()
+    manager = MagicMock()
+    manager.search_api.side_effect = [
+        {
+            "results": [
+                {
+                    "id": 17,
+                    "name": "Example",
+                    "summary_fields": {"resource": {"ansible_id": "org-uuid"}},
+                }
+            ]
+        },
+        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}}]},
+    ]
+    prepared = {
+        "validated_params": {
+            "name": "Example",
+            "state": "present",
+            "max_hosts": 100,
+        },
+        "resource_data": {"name": "Example"},
+        "write_only_data": {},
+        "manager": manager,
+    }
+
+    with patch.object(BaseResourceActionPlugin, "_prepare_action", return_value=prepared):
+        action._prepare_action(task_vars={})
+
+    assert action._controller_organization_id == 31
+    assert manager.search_api.call_count == 2
+    assert manager.search_api.call_args_list[1].kwargs["query_params"] == {"resource__ansible_id": "org-uuid"}
+
+
+def test_prepare_action_reuses_gateway_result_for_base_find():
+    action = _make_action()
+    manager = MagicMock()
+    manager.search_api.side_effect = [
+        {
+            "results": [
+                {
+                    "id": 17,
+                    "name": "Example",
+                    "description": "Managed by Gateway",
+                    "summary_fields": {"resource": {"ansible_id": "org-uuid"}},
+                }
+            ]
+        },
+        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}}]},
+    ]
+    prepared = {
+        "validated_params": {"name": "Example", "state": "present", "max_hosts": 100},
+        "resource_data": {"name": "Example"},
+        "write_only_data": {},
+        "manager": manager,
+    }
+
+    with patch.object(BaseResourceActionPlugin, "_prepare_action", return_value=prepared):
+        action._prepare_action(task_vars={})
+
+    gateway_result = action._find_existing_resource(manager, prepared["resource_data"])
+
+    assert gateway_result["id"] == 17
+    assert gateway_result["name"] == "Example"
+    assert gateway_result["description"] == "Managed by Gateway"
+    manager.execute.assert_not_called()
+    assert manager.search_api.call_count == 2
+
+
+def test_prepare_action_reuses_gateway_not_found_for_base_find():
+    action = _make_action()
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": []}
+    prepared = {
+        "validated_params": {"name": "Example", "state": "present", "max_hosts": 100},
+        "resource_data": {"name": "Example"},
+        "write_only_data": {},
+        "manager": manager,
+    }
+
+    with patch.object(BaseResourceActionPlugin, "_prepare_action", return_value=prepared):
+        action._prepare_action(task_vars={})
+
+    assert action._find_existing_resource(manager, prepared["resource_data"]) == {}
+    manager.execute.assert_not_called()
+    manager.search_api.assert_called_once()
+
+
 def test_controller_fields_are_not_in_gateway_endpoint_payloads():
     operations = OrganizationTransformMixin_v1.get_endpoint_operations()
 
