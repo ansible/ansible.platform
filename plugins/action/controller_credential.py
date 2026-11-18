@@ -7,13 +7,17 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+from typing import Optional
+
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.controller_credential import (
     AnsibleControllerCredential,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_credential import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.team import TeamTransformMixin_v1
 
 _SERVICE = "controller"
+_GATEWAY_TEAM_PATH = TeamTransformMixin_v1.get_endpoint_operations()["get"].path
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -21,12 +25,48 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleControllerCredential
     LOOKUP_FIELD = "name"
 
-    _WRITE_ONLY_FIELDS = frozenset({"copy_from", "inputs"})
+    _WRITE_ONLY_FIELDS = frozenset({"copy_from", "inputs", "gateway_team_id"})
     _NO_LOG_FIELDS = frozenset({"inputs"})
     # update_secrets controls whether write-only credential inputs are sent on
     # update; it is not an API field and must not participate in idempotency.
     _ANSIBLE_DIRECTIVES = BaseResourceActionPlugin._ANSIBLE_DIRECTIVES | frozenset({"update_secrets"})
-    _MUTUALLY_EXCLUSIVE = [["organization", "user"], ["organization", "team"], ["user", "team"]]
+    _MUTUALLY_EXCLUSIVE = [["organization", "user", "team", "gateway_team_id"]]
+
+    def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
+        """Resolve a Gateway team ID to the Controller-owned team ID.
+
+        Args:
+            tmp: Temporary path passed through to the base preparation helper.
+            task_vars: Ansible variables used to initialize the API manager.
+
+        Returns:
+            dict: Prepared action data with a Controller team ID in resource_data.
+        """
+        prepared = super()._prepare_action(tmp, task_vars)
+        gateway_team_id = prepared["write_only_data"].get("gateway_team_id")
+        if gateway_team_id is None:
+            return prepared
+
+        manager = prepared["manager"]
+        gateway_team = manager.search_api(_GATEWAY_TEAM_PATH.format(id=gateway_team_id), service="gateway")
+        summary_fields = gateway_team.get("summary_fields") or {}
+        resource_summary = summary_fields.get("resource") or {}
+        ansible_id = resource_summary.get("ansible_id")
+        if not ansible_id:
+            raise ValueError("Gateway team %s response did not include summary_fields.resource.ansible_id" % gateway_team_id)
+
+        controller_team_id = manager.lookup_resource_id(
+            "teams",
+            "resource__ansible_id",
+            ansible_id,
+            service=_SERVICE,
+            require_unique=True,
+            numeric_is_id=False,
+        )
+        if controller_team_id is None:
+            raise ValueError("Controller team with ansible_id %r was not found" % ansible_id)
+        prepared["resource_data"]["team"] = str(controller_team_id)
+        return prepared
 
     def _resolve_relationship_ids(self, desired_data):
         """Resolve named credential relationships using the platform manager."""

@@ -142,3 +142,29 @@ uv run python /path/to/ansible.platform/docs/compatibility/batch2/prepare_legacy
 ```
 
 Run the emitted per-module playbooks with private authentication and collection paths configured. To reproduce the diagnostic continuations, use a separate output directory and add `--adapt-known-differences`; inspect the emitted assertion-omission manifest before interpreting results.
+
+## AAP-102302 follow-up classification — 2026-11-18
+
+This classification updates the organization replacement row above, which
+reflects the earlier 2026-11-11 snapshot. The original
+[`contract-audit.json`](contract-audit.json) remains historical evidence. Live
+validation below was run against AAP 2.7-next.
+
+| Legacy capability | Current disposition | Evidence and limits |
+|---|---|---|
+| Organization name, description, rename, and lifecycle | Supported by `ansible.platform.organization`; Gateway owns the resource and its returned ID. | The current module documents these fields and states. A Gateway organization ID is not a Controller ID. |
+| Controller organization `default_environment`, `max_hosts`, `instance_groups`, notification templates, and `galaxy_credentials` | Supported by the AAP-102302 changes. Optional Controller-owned fields resolve the Controller counterpart through the Gateway resource's shared `ansible_id`. Omitted associations are preserved; explicit `[]` clears them. | PR #396 includes live AAP 2.7-next evidence for settings, association preservation/clearing, check mode, and Controller validation errors. A webhook notification association was exercised; other notification template types were not individually tested. |
+| Legacy organization `custom_virtualenv` | No direct parameter. Migrate the required Python packages into an execution-environment image and select it with `default_environment`; a virtualenv path cannot be passed to the current API. | This is an execution-environment migration path, not a one-to-one path setting. |
+| Team name, description, organization, rename, and lifecycle | Supported by `ansible.platform.team`, which manages Gateway teams. The legacy Controller team module exposes the same core CRUD fields; Platform additionally supports moving a team with `new_organization` and `state: enforced`. | Team IDs returned by this module are Gateway IDs. Its organization argument resolves a Gateway organization. |
+| Team permissions and role assignments | Gateway RBAC is handled by `ansible.platform.role_team_assignment`; no Controller RBAC API was added. | The legacy `role` module distinguishes `team(s)` as the principal receiving permissions from `target_team(s)` as the team on which a user's role applies. This row covers the first case. `role_team_assignment` supports Gateway teams and Controller-owned target resources. |
+| User organization membership | Available through the Gateway role-assignment model. `ansible.platform.user.organizations` remains deprecated for compatibility; `ansible.platform.role_user_assignment` with the Organization Member role is the documented replacement. | The legacy Controller user module accepts one `organization`; it has no team-membership option. The Gateway assignment API models membership as an Organization Member role. |
+| User/team membership | Supported through `ansible.platform.role_user_assignment` using the Gateway `Team Member` role. | The legacy `awx.awx.role` module exposes `target_team(s)` and documents `user` + `target_team` + `role: member` as adding a user to a team. AAP 2.7-next live validation created and read back a `Team Member` assignment for a temporary Gateway team, then removed it. `role_team_assignment` gives permissions to the team as principal; it does not add a user to a team. |
+| Controller credential team ownership | The existing `team` option remains Controller-name/Controller-ID scoped. `gateway_team_id` maps a Gateway team ID to its Controller counterpart by `ansible_id`; the result returns the Controller team ID. | AAP 2.7-next live validation created a credential with the Gateway team ID, confirmed the Controller owner through `summary_fields.owners`, read it back through the collection, and verified a repeated task was idempotent. The Controller credential list API rejects `team` and `user` filters; lookup now uses supported filters and reads owner IDs from `summary_fields.owners`. |
+
+The live AAP 2.7-next checks also created a webhook notification template,
+associated it with a Gateway organization, confirmed an omitted field preserved
+the association, and confirmed an explicit empty list cleared it. The team
+membership and credential ownership paths were validated separately as recorded
+above. `custom_virtualenv` remains an execution-environment migration rather than
+a direct setting. Source classification and unit tests alone do not establish
+runtime parity.
