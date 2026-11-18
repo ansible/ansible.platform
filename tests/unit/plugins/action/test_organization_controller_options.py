@@ -127,7 +127,6 @@ def test_prepare_action_uses_gateway_ansible_id_to_resolve_controller_org():
     assert manager.search_api.call_args_list[2].kwargs["query_params"] == {"resource__ansible_id": "org-uuid"}
 
 
-
 def test_prepare_action_uses_gateway_list_ansible_id_without_detail_request():
     action = _make_action()
     manager = MagicMock()
