@@ -161,6 +161,37 @@ def test_prepare_action_uses_gateway_list_ansible_id_without_detail_request():
     assert manager.search_api.call_args_list[1].kwargs["query_params"] == {"resource__ansible_id": "org-uuid"}
 
 
+def test_prepare_action_resolves_numeric_name_as_gateway_id():
+    action = _make_action()
+    manager = MagicMock()
+    manager.search_api.side_effect = [
+        {
+            "id": 17,
+            "name": "Organization at ID 17",
+            "summary_fields": {"resource": {"ansible_id": "id-17-uuid"}},
+        },
+        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "id-17-uuid"}}}]},
+    ]
+    prepared = {
+        "validated_params": {"name": "17", "state": "present", "max_hosts": 100},
+        "resource_data": {"name": "17"},
+        "write_only_data": {},
+        "manager": manager,
+    }
+
+    with patch.object(BaseResourceActionPlugin, "_prepare_action", return_value=prepared):
+        action._prepare_action(task_vars={})
+
+    gateway_result = action._find_existing_resource(manager, prepared["resource_data"])
+
+    assert gateway_result["id"] == 17
+    assert gateway_result["name"] == "Organization at ID 17"
+    assert action._controller_organization_id == 31
+    assert manager.search_api.call_args_list[0].args[0].endswith("/17/")
+    assert manager.search_api.call_args_list[0].kwargs == {"service": "gateway"}
+    assert manager.search_api.call_args_list[1].kwargs["query_params"] == {"resource__ansible_id": "id-17-uuid"}
+
+
 def test_prepare_action_reuses_gateway_result_for_base_find():
     action = _make_action()
     manager = MagicMock()

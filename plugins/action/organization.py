@@ -87,20 +87,37 @@ class ActionModule(BaseResourceActionPlugin):
             else:
                 self._controller_update = {}
 
-            gateway_results = manager.search_api(
-                _GATEWAY_ORGANIZATION_PATH,
-                query_params={"name": params["name"]},
-                return_all=True,
-                service="gateway",
-            ).get("results", [])
-            gateway_matches = [item for item in gateway_results if item.get("name") == params["name"]]
-            if len(gateway_matches) > 1:
-                raise ValueError("Expected one Gateway organization named %r; found %d" % (params["name"], len(gateway_matches)))
-            if gateway_matches:
-                gateway_resource = gateway_matches[0]
-                if not str(params["name"]).strip().isdigit():
+            lookup_value = str(params["name"]).strip()
+            if lookup_value.isdigit():
+                gateway_id = int(lookup_value)
+                try:
+                    gateway_resource = manager.search_api("%s%s/" % (_GATEWAY_ORGANIZATION_PATH, gateway_id), service="gateway")
+                except Exception as exc:
+                    if not self._is_resource_not_found(exc):
+                        raise
+                    gateway_resource = None
+                if gateway_resource:
                     self._cached_gateway_find_result = asdict(OrganizationTransformMixin_v1.from_api(gateway_resource, {"manager": manager}))
                     self._has_cached_gateway_find_result = True
+            else:
+                gateway_results = manager.search_api(
+                    _GATEWAY_ORGANIZATION_PATH,
+                    query_params={"name": params["name"]},
+                    return_all=True,
+                    service="gateway",
+                ).get("results", [])
+                gateway_matches = [item for item in gateway_results if item.get("name") == params["name"]]
+                if len(gateway_matches) > 1:
+                    raise ValueError("Expected one Gateway organization named %r; found %d" % (params["name"], len(gateway_matches)))
+                gateway_resource = gateway_matches[0] if gateway_matches else None
+                if gateway_resource:
+                    self._cached_gateway_find_result = asdict(OrganizationTransformMixin_v1.from_api(gateway_resource, {"manager": manager}))
+                    self._has_cached_gateway_find_result = True
+                else:
+                    self._cached_gateway_find_result = {}
+                    self._has_cached_gateway_find_result = True
+
+            if gateway_resource:
                 try:
                     ansible_id = self._get_resource_ansible_id(gateway_resource, "Gateway")
                 except ValueError:
@@ -110,9 +127,6 @@ class ActionModule(BaseResourceActionPlugin):
                     gateway_data = manager.search_api("%s%s/" % (_GATEWAY_ORGANIZATION_PATH, gateway_id), service="gateway")
                     ansible_id = self._get_resource_ansible_id(gateway_data, "Gateway")
                 self._controller_organization_id = self._find_controller_organization_id(manager, ansible_id)
-            elif not str(params["name"]).strip().isdigit():
-                self._cached_gateway_find_result = {}
-                self._has_cached_gateway_find_result = True
         return prepared
 
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
