@@ -1101,10 +1101,11 @@ class DirectHTTPClient(BaseAPIClient):
         # Compute composite-key query params first so they can be used both in
         # ID-based validation and in the list-based fallback path.
         composite_params = {}
+        find_api_data = None
         if hasattr(mixin_class, "get_find_list_query_params"):
             try:
-                api_data_for_find = mixin_class.from_ansible_data(ansible_data, context)
-                composite_params = mixin_class.get_find_list_query_params(api_data_for_find) or {}
+                find_api_data = mixin_class.from_ansible_data(ansible_data, context)
+                composite_params = mixin_class.get_find_list_query_params(find_api_data) or {}
             except Exception as cp_exc:
                 logger.debug("DirectHTTPClient: composite params computation failed: %s", cp_exc)
                 raise
@@ -1158,7 +1159,10 @@ class DirectHTTPClient(BaseAPIClient):
             query_params[lookup_field] = lookup_value
         if composite_params:
             query_params.update(composite_params)
-        if getattr(mixin_class, "find_list_requires_all_results", False):
+        requires_all_results = getattr(mixin_class, "find_list_requires_all_results", False)
+        if callable(requires_all_results):
+            requires_all_results = requires_all_results(find_api_data)
+        if requires_all_results:
             response_data = self.search_api(
                 list_op.path,
                 query_params,
@@ -1194,6 +1198,7 @@ class DirectHTTPClient(BaseAPIClient):
                 response_data = {}
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
+        response_data = mixin_class.filter_find_results(response_data, find_api_data, lookup_field, lookup_value)
         api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
         # Some list endpoints omit fields needed for idempotency comparisons.
         # Match PlatformService by fetching the detail representation when
