@@ -414,9 +414,7 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     def test_destroy_current_nodes(self, mock_super_run):
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
         action = self._make_action({"name": "wf1", "state": "present", "destroy_current_nodes": True})
-        action._client.search_api.return_value = {
-            "results": [{"id": 100, "identifier": "n1"}, {"id": 101, "identifier": "n2"}]
-        }
+        action._client.search_api.return_value = {"results": [{"id": 100, "identifier": "n1"}, {"id": 101, "identifier": "n2"}]}
         action._client.manage_associations.return_value = False
         action._client.manage_sub_resource.return_value = False
 
@@ -424,12 +422,8 @@ class TestWorkflowNodesGraph(unittest.TestCase):
 
         self.assertTrue(result["changed"])
         self.assertEqual(action._client.direct_request.call_count, 2)
-        action._client.direct_request.assert_any_call(
-            "DELETE", "/api/controller/v2/workflow_job_template_nodes/100/"
-        )
-        action._client.direct_request.assert_any_call(
-            "DELETE", "/api/controller/v2/workflow_job_template_nodes/101/"
-        )
+        action._client.direct_request.assert_any_call("DELETE", "/api/controller/v2/workflow_job_template_nodes/100/")
+        action._client.direct_request.assert_any_call("DELETE", "/api/controller/v2/workflow_job_template_nodes/101/")
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_destroy_no_existing_nodes(self, mock_super_run):
@@ -445,16 +439,18 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     @patch.object(BaseResourceActionPlugin, "run")
     def test_workflow_nodes_create(self, mock_super_run):
         mock_super_run.return_value = {"changed": True, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {
-                    "identifier": "node1",
-                    "unified_job_template": {"name": "Demo JT", "type": "job_template", "organization": {"name": "Default"}},
-                },
-            ],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "node1",
+                        "unified_job_template": {"name": "Demo JT", "type": "job_template", "organization": {"name": "Default"}},
+                    },
+                ],
+            }
+        )
         # _find_node_in_workflow returns None (node doesn't exist yet)
         action._client.search_api.return_value = {"results": []}
         action._client.lookup_resource_id.side_effect = lambda ep, field, val, **kw: {
@@ -476,23 +472,21 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     @patch.object(BaseResourceActionPlugin, "run")
     def test_workflow_nodes_absent_state(self, mock_super_run):
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {"identifier": "old_node", "state": "absent"},
-            ],
-        })
-        action._client.search_api.return_value = {
-            "results": [{"id": 99, "identifier": "old_node"}]
-        }
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {"identifier": "old_node", "state": "absent"},
+                ],
+            }
+        )
+        action._client.search_api.return_value = {"results": [{"id": 99, "identifier": "old_node"}]}
 
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.direct_request.assert_called_once_with(
-            "DELETE", "/api/controller/v2/workflow_job_template_nodes/99/"
-        )
+        action._client.direct_request.assert_called_once_with("DELETE", "/api/controller/v2/workflow_job_template_nodes/99/")
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_workflow_nodes_check_mode(self, mock_super_run):
@@ -519,24 +513,26 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     @patch.object(BaseResourceActionPlugin, "run")
     def test_workflow_nodes_associations(self, mock_super_run):
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {
-                    "identifier": "node1",
-                    "unified_job_template": {"name": "JT", "type": "job_template"},
-                    "related": {
-                        "success_nodes": [{"identifier": "node2"}],
-                        "credentials": [{"name": "my_cred"}],
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "node1",
+                        "unified_job_template": {"name": "JT", "type": "job_template"},
+                        "related": {
+                            "success_nodes": [{"identifier": "node2"}],
+                            "credentials": [{"name": "my_cred"}],
+                        },
                     },
-                },
-                {
-                    "identifier": "node2",
-                    "unified_job_template": {"name": "JT2", "type": "job_template"},
-                },
-            ],
-        })
+                    {
+                        "identifier": "node2",
+                        "unified_job_template": {"name": "JT2", "type": "job_template"},
+                    },
+                ],
+            }
+        )
 
         node1_data = {"id": 50, "identifier": "node1"}
         node2_data = {"id": 51, "identifier": "node2"}
@@ -568,20 +564,22 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     @patch.object(BaseResourceActionPlugin, "run")
     def test_workflow_nodes_approval(self, mock_super_run):
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {
-                    "identifier": "approval1",
-                    "unified_job_template": {
-                        "name": "Approve Deploy",
-                        "type": "workflow_approval",
-                        "timeout": 900,
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "approval1",
+                        "unified_job_template": {
+                            "name": "Approve Deploy",
+                            "type": "workflow_approval",
+                            "timeout": 900,
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            }
+        )
         approval_node = {"id": 70, "identifier": "approval1"}
         action._client.search_api.return_value = {"results": [approval_node]}
         action._client.manage_workflow_approval.return_value = True
@@ -601,19 +599,19 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.manage_workflow_approval.assert_called_once_with(
-            70, {"name": "Approve Deploy", "timeout": 900}, check_mode=False
-        )
+        action._client.manage_workflow_approval.assert_called_once_with(70, {"name": "Approve Deploy", "timeout": 900}, check_mode=False)
 
     @patch.object(BaseResourceActionPlugin, "run")
     def test_workflow_nodes_skipped_on_absent(self, mock_super_run):
         mock_super_run.return_value = {"changed": True, "failed": False}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "absent",
-            "workflow_nodes": [{"identifier": "n1"}],
-            "destroy_current_nodes": True,
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "absent",
+                "workflow_nodes": [{"identifier": "n1"}],
+                "destroy_current_nodes": True,
+            }
+        )
 
         action.run(task_vars={})
 
@@ -623,11 +621,13 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     def test_schema_alias(self, mock_super_run):
         """The 'schema' alias resolves to workflow_nodes."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "schema": [{"identifier": "n1", "unified_job_template": {"name": "JT", "type": "job_template"}}],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "schema": [{"identifier": "n1", "unified_job_template": {"name": "JT", "type": "job_template"}}],
+            }
+        )
         action._client.search_api.return_value = {"results": []}
         action._client.lookup_resource_id.return_value = 42
 
@@ -640,11 +640,13 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     def test_missing_ujt_raises(self, mock_super_run):
         """Nodes without unified_job_template are rejected."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [{"identifier": "bad_node"}],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [{"identifier": "bad_node"}],
+            }
+        )
 
         result = action.run(task_vars={})
 
@@ -655,13 +657,15 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     def test_missing_ujt_name_raises(self, mock_super_run):
         """Nodes with UJT missing name are rejected."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {"identifier": "bad", "unified_job_template": {"type": "job_template"}},
-            ],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {"identifier": "bad", "unified_job_template": {"type": "job_template"}},
+                ],
+            }
+        )
 
         result = action.run(task_vars={})
 
@@ -672,13 +676,15 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     def test_missing_ujt_type_raises(self, mock_super_run):
         """Regular nodes with UJT missing type are rejected."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {"identifier": "bad", "unified_job_template": {"name": "JT"}},
-            ],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {"identifier": "bad", "unified_job_template": {"name": "JT"}},
+                ],
+            }
+        )
 
         result = action.run(task_vars={})
 
@@ -689,21 +695,25 @@ class TestWorkflowNodesGraph(unittest.TestCase):
     def test_approval_conversion_clears_ujt(self, mock_super_run):
         """Converting a regular node to approval clears unified_job_template."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {
-                    "identifier": "convert_me",
-                    "unified_job_template": {"name": "Approval", "type": "workflow_approval", "timeout": 300},
-                },
-            ],
-        })
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "convert_me",
+                        "unified_job_template": {"name": "Approval", "type": "workflow_approval", "timeout": 300},
+                    },
+                ],
+            }
+        )
         existing_node = {"id": 80, "identifier": "convert_me", "unified_job_template": 42}
 
         def search_side_effect(path, query_params=None, **kwargs):
             if query_params and query_params.get("identifier") == "convert_me":
                 return {"results": [existing_node]}
+            if "/workflow_approval_templates/42/" in path:
+                raise ValueError("Not found")
             return {"results": []}
 
         action._client.search_api.side_effect = search_side_effect
@@ -718,24 +728,62 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         self.assertIsNone(payload.get("unified_job_template"))
 
     @patch.object(BaseResourceActionPlugin, "run")
+    def test_approval_reapply_keeps_template(self, mock_super_run):
+        """Reapplying an approval node with existing approval template does not clear UJT."""
+        mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "approval1",
+                        "unified_job_template": {"name": "Approve", "type": "workflow_approval", "timeout": 600},
+                    },
+                ],
+            }
+        )
+        existing_node = {"id": 80, "identifier": "approval1", "unified_job_template": 55}
+
+        def search_side_effect(path, query_params=None, **kwargs):
+            if query_params and query_params.get("identifier") == "approval1":
+                return {"results": [existing_node]}
+            if "/workflow_approval_templates/55/" in path:
+                return {"type": "workflow_approval_template", "name": "Approve", "timeout": 600}
+            return {"results": []}
+
+        action._client.search_api.side_effect = search_side_effect
+        action._client.manage_workflow_approval.return_value = False
+
+        result = action.run(task_vars={})
+
+        self.assertFalse(result.get("failed", False))
+        # UJT should NOT have been cleared — no PATCH with None
+        for call in action._client.direct_request.call_args_list:
+            if call[0][0] == "PATCH" and len(call[0]) > 2:
+                self.assertNotIn("unified_job_template", call[0][2])
+
+    @patch.object(BaseResourceActionPlugin, "run")
     def test_org_scoped_credential_association(self, mock_super_run):
         """Credentials with organization context are resolved with org filter."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
-        action = self._make_action({
-            "name": "wf1",
-            "state": "present",
-            "workflow_nodes": [
-                {
-                    "identifier": "n1",
-                    "unified_job_template": {"name": "JT", "type": "job_template"},
-                    "related": {
-                        "credentials": [
-                            {"name": "my_cred", "organization": {"name": "OrgA"}},
-                        ],
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "n1",
+                        "unified_job_template": {"name": "JT", "type": "job_template"},
+                        "related": {
+                            "credentials": [
+                                {"name": "my_cred", "organization": {"name": "OrgA"}},
+                            ],
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            }
+        )
         node_data = {"id": 50, "identifier": "n1"}
 
         def search_side_effect(path, query_params=None, **kwargs):
@@ -754,18 +802,12 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         action.run(task_vars={})
 
         # Verify credential resolved with org filter
-        cred_lookup = [
-            c for c in action._client.lookup_resource_id.call_args_list
-            if c[0][0] == "credentials"
-        ]
+        cred_lookup = [c for c in action._client.lookup_resource_id.call_args_list if c[0][0] == "credentials"]
         self.assertEqual(len(cred_lookup), 1)
         self.assertEqual(cred_lookup[0].kwargs.get("extra_query_params"), {"organization": 5})
 
         # Verify manage_associations called with resolved ID
-        cred_assoc = [
-            c for c in action._client.manage_associations.call_args_list
-            if c[0][2] == "credentials"
-        ]
+        cred_assoc = [c for c in action._client.manage_associations.call_args_list if c[0][2] == "credentials"]
         self.assertEqual(len(cred_assoc), 1)
         self.assertEqual(cred_assoc[0][0][3], [99])
 
@@ -774,16 +816,47 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         """The 'destroy_current_schema' alias resolves to destroy_current_nodes."""
         mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
         action = self._make_action({"name": "wf1", "state": "present", "destroy_current_schema": True})
-        action._client.search_api.return_value = {
-            "results": [{"id": 100, "identifier": "n1"}]
-        }
+        action._client.search_api.return_value = {"results": [{"id": 100, "identifier": "n1"}]}
 
         result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
-        action._client.direct_request.assert_called_once_with(
-            "DELETE", "/api/controller/v2/workflow_job_template_nodes/100/"
+        action._client.direct_request.assert_called_once_with("DELETE", "/api/controller/v2/workflow_job_template_nodes/100/")
+
+    @patch.object(BaseResourceActionPlugin, "run")
+    def test_string_false_does_not_destroy(self, mock_super_run):
+        """String 'false' for destroy_current_nodes must not trigger deletion."""
+        mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
+        action = self._make_action({"name": "wf1", "state": "present", "destroy_current_nodes": "false"})
+
+        result = action.run(task_vars={})
+
+        self.assertFalse(result.get("changed", False))
+        action._client.direct_request.assert_not_called()
+
+    @patch.object(BaseResourceActionPlugin, "run")
+    def test_validate_before_destroy(self, mock_super_run):
+        """Invalid replacement nodes must fail before existing graph is destroyed."""
+        mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "destroy_current_nodes": True,
+                "workflow_nodes": [
+                    {"identifier": "bad_node", "unified_job_template": {"name": "Missing", "type": "job_template"}},
+                ],
+            }
         )
+        action._client.search_api.return_value = {"results": [{"id": 100, "identifier": "existing"}]}
+        action._client.lookup_resource_id.side_effect = ValueError("Not found")
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        # Verify destroy was NOT called — no DELETE requests
+        delete_calls = [c for c in action._client.direct_request.call_args_list if c[0][0] == "DELETE"]
+        self.assertEqual(len(delete_calls), 0)
 
 
 if __name__ == "__main__":
