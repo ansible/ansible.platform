@@ -1,0 +1,282 @@
+---
+- name: Verify workflow_nodes and destroy_current_nodes graph management
+  vars:
+    wn_project_name: "{{ name_prefix }}-WN-Project"
+    wn_jt1_name: "{{ name_prefix }}-WN-JT1"
+    wn_jt2_name: "{{ name_prefix }}-WN-JT2"
+  block:
+    - name: Create a project for workflow node tests
+      ansible.platform.controller_project:
+        name: "{{ wn_project_name }}"
+        organization: Default
+        scm_type: git
+        scm_url: "https://github.com/ansible/ansible-tower-samples.git"
+        state: present
+
+    - name: Wait for project sync
+      ansible.platform.controller_project:
+        name: "{{ wn_project_name }}"
+        organization: Default
+        state: exists
+      register: wn_project
+      until: wn_project is not failed
+      retries: 10
+      delay: 5
+
+    - name: Create job templates for workflow node tests
+      ansible.platform.job_template:
+        name: "{{ item }}"
+        organization: Default
+        project: "{{ wn_project_name }}"
+        playbook: hello_world.yml
+        inventory: Demo Inventory
+        state: present
+      loop:
+        - "{{ wn_jt1_name }}"
+        - "{{ wn_jt2_name }}"
+
+    # ── Create workflow with inline nodes ──
+    - name: Create workflow with workflow_nodes
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        workflow_nodes:
+          - identifier: start
+            unified_job_template:
+              name: "{{ wn_jt1_name }}"
+              type: job_template
+              organization:
+                name: Default
+            related:
+              success_nodes:
+                - identifier: finish
+          - identifier: finish
+            unified_job_template:
+              name: "{{ wn_jt2_name }}"
+              type: job_template
+              organization:
+                name: Default
+      register: wn_created
+
+    - name: Assert workflow nodes created
+      ansible.builtin.assert:
+        that:
+          - wn_created is changed
+
+    # ── Idempotency ──
+    - name: Reapply same workflow_nodes
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        workflow_nodes:
+          - identifier: start
+            unified_job_template:
+              name: "{{ wn_jt1_name }}"
+              type: job_template
+              organization:
+                name: Default
+            related:
+              success_nodes:
+                - identifier: finish
+          - identifier: finish
+            unified_job_template:
+              name: "{{ wn_jt2_name }}"
+              type: job_template
+              organization:
+                name: Default
+      register: wn_idempotent
+
+    - name: Assert idempotent
+      ansible.builtin.assert:
+        that:
+          - wn_idempotent is not changed
+
+    # ── Verify nodes via API ──
+    - name: List workflow nodes
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_template_nodes/?workflow_job_template={{ wn_created.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: wn_api_nodes
+
+    - name: Assert two nodes exist with correct identifiers
+      ansible.builtin.assert:
+        that:
+          - wn_api_nodes.json.count == 2
+          - "'start' in wn_api_nodes.json.results | map(attribute='identifier') | list"
+          - "'finish' in wn_api_nodes.json.results | map(attribute='identifier') | list"
+
+    # ── Check mode predicts changes without modifying ──
+    - name: Predict destroy and replace in check mode
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        destroy_current_nodes: true
+        workflow_nodes:
+          - identifier: check_only
+            unified_job_template:
+              name: "{{ wn_jt1_name }}"
+              type: job_template
+              organization:
+                name: Default
+      check_mode: true
+      register: wn_check
+
+    - name: Verify nodes unchanged after check mode
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_template_nodes/?workflow_job_template={{ wn_created.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: wn_after_check
+
+    - name: Assert check mode predicted change but did not apply
+      ansible.builtin.assert:
+        that:
+          - wn_check is changed
+          - wn_after_check.json.count == 2
+
+    # ── destroy_current_nodes replaces graph ──
+    - name: Replace graph with destroy_current_nodes
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        destroy_current_nodes: true
+        workflow_nodes:
+          - identifier: single
+            unified_job_template:
+              name: "{{ wn_jt1_name }}"
+              type: job_template
+              organization:
+                name: Default
+      register: wn_replaced
+
+    - name: Verify single node after replacement
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_template_nodes/?workflow_job_template={{ wn_created.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: wn_after_replace
+
+    - name: Assert graph replaced
+      ansible.builtin.assert:
+        that:
+          - wn_replaced is changed
+          - wn_after_replace.json.count == 1
+          - wn_after_replace.json.results[0].identifier == 'single'
+
+    # ── Remove node with state=absent ──
+    - name: Remove node with state absent
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        workflow_nodes:
+          - identifier: single
+            state: absent
+      register: wn_absent
+
+    - name: Verify node removed
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_template_nodes/?workflow_job_template={{ wn_created.id }}"
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+      delegate_to: localhost
+      register: wn_after_absent
+
+    - name: Assert node removed
+      ansible.builtin.assert:
+        that:
+          - wn_absent is changed
+          - wn_after_absent.json.count == 0
+
+    # ── Approval node ──
+    - name: Create workflow with approval node
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        workflow_nodes:
+          - identifier: approval
+            unified_job_template:
+              name: "{{ name_prefix }}-Approval"
+              type: workflow_approval
+              timeout: 600
+            related:
+              success_nodes:
+                - identifier: post_approval
+          - identifier: post_approval
+            unified_job_template:
+              name: "{{ wn_jt1_name }}"
+              type: job_template
+              organization:
+                name: Default
+      register: wn_approval
+
+    - name: Assert approval workflow created
+      ansible.builtin.assert:
+        that:
+          - wn_approval is changed
+
+    # ── Schema alias ──
+    - name: Destroy nodes to test schema alias
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        destroy_current_nodes: true
+      register: wn_clear
+
+    - name: Use schema alias
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        schema:
+          - identifier: alias_node
+            unified_job_template:
+              name: "{{ wn_jt1_name }}"
+              type: job_template
+              organization:
+                name: Default
+      register: wn_alias
+
+    - name: Assert schema alias works
+      ansible.builtin.assert:
+        that:
+          - wn_alias is changed
+
+    # ── destroy_current_schema alias ──
+    - name: Use destroy_current_schema alias
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        destroy_current_schema: true
+      register: wn_destroy_alias
+
+    - name: Assert destroy_current_schema alias works
+      ansible.builtin.assert:
+        that:
+          - wn_destroy_alias is changed
+
+  always:
+    - name: Clean up workflow nodes test resources
+      ansible.platform.workflow_job_template:
+        name: "{{ workflow_template_name }}"
+        destroy_current_nodes: true
+      failed_when: false
+
+    - name: Clean up job templates
+      ansible.platform.job_template:
+        name: "{{ item }}"
+        organization: Default
+        state: absent
+      loop:
+        - "{{ wn_jt1_name }}"
+        - "{{ wn_jt2_name }}"
+      failed_when: false
+
+    - name: Clean up project
+      ansible.platform.controller_project:
+        name: "{{ wn_project_name }}"
+        organization: Default
+        state: absent
+      failed_when: false
+...
