@@ -489,7 +489,7 @@ class TestAuthenticatorUserLookup(unittest.TestCase):
         action._task.args = {"authenticator_user_id": "42", "authenticator": "Destination", "state": "exists"}
         action._client = MagicMock()
         action._client.lookup_resource_id.side_effect = [9, 9]
-        base_result = {"changed": False, "exists": True, "authenticator_user": {"authenticator": "destination-slug"}}
+        base_result = {"changed": False, "failed": False, "exists": True, "authenticator_user": {"authenticator": "destination-slug"}}
 
         with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
             result = action.run(task_vars={})
@@ -498,7 +498,7 @@ class TestAuthenticatorUserLookup(unittest.TestCase):
         self.assertTrue(result["exists"])
         self.assertFalse(result["changed"])
         self.assertEqual(
-            [call.args[1:] for call in action._client.lookup_resource_id.call_args_list],
+            [call.args for call in action._client.lookup_resource_id.call_args_list],
             [("authenticators", "slug", "destination-slug"), ("authenticators", "name", "Destination")],
         )
 

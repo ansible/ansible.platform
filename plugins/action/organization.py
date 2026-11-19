@@ -159,7 +159,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     @staticmethod
     def _find_controller_organization_id(manager: Any, ansible_id: str) -> int:
-        """Find exactly one Controller organization with the shared UUID.
+        """Resolve the Controller organization using the shared lookup path.
 
         Args:
             manager: Platform API manager used for the Controller lookup.
@@ -169,23 +169,19 @@ class ActionModule(BaseResourceActionPlugin):
             int: Controller organization ID, in Controller's ID space.
 
         Raises:
-            ValueError: If zero or multiple matching organizations are found.
+            ValueError: If the shared lookup cannot find exactly one organization.
         """
-        response = manager.search_api(
-            CONTROLLER_ORGANIZATION_PATH,
-            query_params={"resource__ansible_id": ansible_id},
-            return_all=True,
+        controller_id = manager.lookup_resource_id(
+            "organizations",
+            "resource__ansible_id",
+            ansible_id,
             service=_CONTROLLER_SERVICE,
+            require_unique=True,
+            numeric_is_id=False,
         )
-        matches = []
-        for item in response.get("results", []):
-            summary_fields = item.get("summary_fields") or {}
-            resource_summary = summary_fields.get("resource") or {}
-            if resource_summary.get("ansible_id") == ansible_id:
-                matches.append(item)
-        if len(matches) != 1:
-            raise ValueError("Expected one Controller organization with ansible_id %r; found %d" % (ansible_id, len(matches)))
-        return matches[0]["id"]
+        if controller_id is None:
+            raise ValueError("Controller organization with ansible_id %r was not found" % ansible_id)
+        return controller_id
 
     def run(self, tmp: Optional[object] = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
         """Run Gateway organization CRUD, then reconcile requested Controller fields.
@@ -241,7 +237,7 @@ class ActionModule(BaseResourceActionPlugin):
 
                 if changed_fields:
                     if not self._task.check_mode:
-                        manager.direct_request("PATCH", path, data=payload)
+                        manager.direct_request("PATCH", path, data=changed_fields)
                     result["changed"] = True
 
             for field, (lookup_endpoint, lookup_field) in _CONTROLLER_ASSOCIATIONS.items():

@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from ansible.playbook.task import Task
@@ -10,10 +10,10 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.action.organization import (
     _CONTROLLER_ASSOCIATIONS,
     _CONTROLLER_SETTINGS,
-    CONTROLLER_ORGANIZATION_PATH,
     ActionModule,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.organization import AnsibleOrganization
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_organization import BASE_PATH as CONTROLLER_ORGANIZATION_PATH
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.organization import OrganizationTransformMixin_v1
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
@@ -36,36 +36,26 @@ def _make_action():
 
 def test_controller_organization_lookup_uses_shared_ansible_id():
     manager = MagicMock()
-    manager.search_api.return_value = {
-        "results": [
-            {
-                "id": 31,
-                "summary_fields": {"resource": {"ansible_id": "org-uuid"}},
-            }
-        ]
-    }
+    manager.lookup_resource_id.return_value = 31
 
     result = ActionModule._find_controller_organization_id(manager, "org-uuid")
 
     assert result == 31
-    manager.search_api.assert_called_once_with(
-        CONTROLLER_ORGANIZATION_PATH,
-        query_params={"resource__ansible_id": "org-uuid"},
-        return_all=True,
+    manager.lookup_resource_id.assert_called_once_with(
+        "organizations",
+        "resource__ansible_id",
+        "org-uuid",
         service="controller",
+        require_unique=True,
+        numeric_is_id=False,
     )
 
 
 def test_controller_organization_lookup_rejects_duplicate_shared_ids():
     manager = MagicMock()
-    manager.search_api.return_value = {
-        "results": [
-            {"id": 31, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}},
-            {"id": 32, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}},
-        ]
-    }
+    manager.lookup_resource_id.side_effect = ValueError("Resource 'organizations' with resource__ansible_id=org-uuid matched multiple resources")
 
-    with pytest.raises(ValueError, match="Expected one Controller organization"):
+    with pytest.raises(ValueError, match="matched multiple resources"):
         ActionModule._find_controller_organization_id(manager, "org-uuid")
 
 
@@ -102,9 +92,8 @@ def test_prepare_action_uses_gateway_ansible_id_to_resolve_controller_org():
     manager.search_api.side_effect = [
         {"results": [{"id": 17, "name": "Example"}]},
         {"summary_fields": {"resource": {"ansible_id": "org-uuid"}}},
-        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}}]},
     ]
-    manager.lookup_resource_id.return_value = 44
+    manager.lookup_resource_id.side_effect = [44, 31]
     prepared = {
         "validated_params": {
             "name": "Example",
@@ -123,8 +112,10 @@ def test_prepare_action_uses_gateway_ansible_id_to_resolve_controller_org():
     assert action._controller_organization_id == 31
     assert action._controller_update_template == CONTROLLER_ORGANIZATION_PATH + "/{id}/"
     assert action._controller_update == {"default_environment": 44, "max_hosts": 100}
-    manager.lookup_resource_id.assert_called_once_with("execution_environments", "name", "Production EE", service="controller")
-    assert manager.search_api.call_args_list[2].kwargs["query_params"] == {"resource__ansible_id": "org-uuid"}
+    assert manager.lookup_resource_id.call_args_list == [
+        call("execution_environments", "name", "Production EE", service="controller"),
+        call("organizations", "resource__ansible_id", "org-uuid", service="controller", require_unique=True, numeric_is_id=False),
+    ]
 
 
 def test_prepare_action_uses_gateway_list_ansible_id_without_detail_request():
@@ -139,9 +130,9 @@ def test_prepare_action_uses_gateway_list_ansible_id_without_detail_request():
                     "summary_fields": {"resource": {"ansible_id": "org-uuid"}},
                 }
             ]
-        },
-        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}}]},
+        }
     ]
+    manager.lookup_resource_id.return_value = 31
     prepared = {
         "validated_params": {
             "name": "Example",
@@ -157,8 +148,10 @@ def test_prepare_action_uses_gateway_list_ansible_id_without_detail_request():
         action._prepare_action(task_vars={})
 
     assert action._controller_organization_id == 31
-    assert manager.search_api.call_count == 2
-    assert manager.search_api.call_args_list[1].kwargs["query_params"] == {"resource__ansible_id": "org-uuid"}
+    assert manager.search_api.call_count == 1
+    manager.lookup_resource_id.assert_called_once_with(
+        "organizations", "resource__ansible_id", "org-uuid", service="controller", require_unique=True, numeric_is_id=False
+    )
 
 
 def test_prepare_action_resolves_numeric_name_as_gateway_id():
@@ -169,9 +162,9 @@ def test_prepare_action_resolves_numeric_name_as_gateway_id():
             "id": 17,
             "name": "Organization at ID 17",
             "summary_fields": {"resource": {"ansible_id": "id-17-uuid"}},
-        },
-        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "id-17-uuid"}}}]},
+        }
     ]
+    manager.lookup_resource_id.return_value = 31
     prepared = {
         "validated_params": {"name": "17", "state": "present", "max_hosts": 100},
         "resource_data": {"name": "17"},
@@ -189,7 +182,9 @@ def test_prepare_action_resolves_numeric_name_as_gateway_id():
     assert action._controller_organization_id == 31
     assert manager.search_api.call_args_list[0].args[0].endswith("/17/")
     assert manager.search_api.call_args_list[0].kwargs == {"service": "gateway"}
-    assert manager.search_api.call_args_list[1].kwargs["query_params"] == {"resource__ansible_id": "id-17-uuid"}
+    manager.lookup_resource_id.assert_called_once_with(
+        "organizations", "resource__ansible_id", "id-17-uuid", service="controller", require_unique=True, numeric_is_id=False
+    )
 
 
 def test_prepare_action_reuses_gateway_result_for_base_find():
@@ -205,9 +200,9 @@ def test_prepare_action_reuses_gateway_result_for_base_find():
                     "summary_fields": {"resource": {"ansible_id": "org-uuid"}},
                 }
             ]
-        },
-        {"results": [{"id": 31, "summary_fields": {"resource": {"ansible_id": "org-uuid"}}}]},
+        }
     ]
+    manager.lookup_resource_id.return_value = 31
     prepared = {
         "validated_params": {"name": "Example", "state": "present", "max_hosts": 100},
         "resource_data": {"name": "Example"},
@@ -224,7 +219,7 @@ def test_prepare_action_reuses_gateway_result_for_base_find():
     assert gateway_result["name"] == "Example"
     assert gateway_result["description"] == "Managed by Gateway"
     manager.execute.assert_not_called()
-    assert manager.search_api.call_count == 2
+    assert manager.search_api.call_count == 1
 
 
 def test_prepare_action_reuses_gateway_not_found_for_base_find():
@@ -311,6 +306,27 @@ def test_controller_update_preserves_gateway_id_in_result():
 
     assert result["id"] == 17
     assert result["organization"]["id"] == 17
+    action._client.direct_request.assert_called_once_with(
+        "PATCH",
+        CONTROLLER_ORGANIZATION_PATH + "/31/",
+        data={"max_hosts": 100},
+    )
+
+
+def test_controller_update_sends_only_changed_fields():
+    action = _make_action()
+    action._client = MagicMock()
+    action._controller_organization_id = 31
+    action._controller_update_template = CONTROLLER_ORGANIZATION_PATH + "/{id}/"
+    action._controller_update = {"max_hosts": 100, "default_environment": 44}
+    action._controller_settings = {"max_hosts": 100, "default_environment": 44}
+    action._controller_associations = {}
+    action._client.search_api.return_value = {"max_hosts": 10, "default_environment": {"id": 44}}
+
+    with patch.object(BaseResourceActionPlugin, "run", return_value={"changed": False, "failed": False}):
+        result = action.run(task_vars={})
+
+    assert result["changed"] is True
     action._client.direct_request.assert_called_once_with(
         "PATCH",
         CONTROLLER_ORGANIZATION_PATH + "/31/",
