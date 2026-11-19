@@ -566,10 +566,7 @@ class BaseResourceActionPlugin(ActionBase):
         for spec in argspec.get("argument_spec", {}).values():
             for alias in spec.get("aliases", []):
                 validated_params.pop(alias, None)
-        warnings = [
-            "Both option %s and its alias %s are set." % (warning["option"], warning["alias"])
-            for warning in getattr(validated_input, "_warnings", [])
-        ]
+        warnings = ["Both option %s and its alias %s are set." % (warning["option"], warning["alias"]) for warning in getattr(validated_input, "_warnings", [])]
         explicit_fields = getattr(self, "_explicit_fields_to_send", None)
         if getattr(self, "_preserve_explicit_nulls_for_update", False) and explicit_fields is not None:
             validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
