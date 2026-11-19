@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.workflow_job_template import ActionModule
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ResourceNotFoundError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 
 
 class TestWorkflowJobTemplateAssociations(unittest.TestCase):
@@ -712,11 +712,10 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         def search_side_effect(path, query_params=None, **kwargs):
             if query_params and query_params.get("identifier") == "convert_me":
                 return {"results": [existing_node]}
-            if "/workflow_approval_templates/42/" in path:
-                raise APIError(message="Not found", operation="search", resource="approval", status_code=404)
             return {"results": []}
 
         action._client.search_api.side_effect = search_side_effect
+        action._client.is_workflow_approval_template.return_value = False
         action._client.manage_workflow_approval.return_value = True
 
         result = action.run(task_vars={})
@@ -748,11 +747,10 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         def search_side_effect(path, query_params=None, **kwargs):
             if query_params and query_params.get("identifier") == "approval1":
                 return {"results": [existing_node]}
-            if "/workflow_approval_templates/55/" in path:
-                return {"type": "workflow_approval_template", "name": "Approve", "timeout": 600}
             return {"results": []}
 
         action._client.search_api.side_effect = search_side_effect
+        action._client.is_workflow_approval_template.return_value = True
         action._client.manage_workflow_approval.return_value = False
 
         result = action.run(task_vars={})
