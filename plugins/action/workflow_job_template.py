@@ -232,7 +232,10 @@ class ActionModule(BaseResourceActionPlugin):
             if ujt_data and ujt_data.get("type") == "workflow_approval":
                 approval_data = {k: ujt_data[k] for k in ("name", "description", "timeout") if ujt_data.get(k) is not None}
                 if approval_data:
-                    if check_mode:
+                    if existing_node:
+                        if manager.manage_workflow_approval(existing_node["id"], approval_data, check_mode=check_mode):
+                            changed = True
+                    elif check_mode:
                         changed = True
                     else:
                         node = self._find_node_in_workflow(manager, identifier, workflow_id)
@@ -258,6 +261,10 @@ class ActionModule(BaseResourceActionPlugin):
                 if not ujt_data.get("type"):
                     raise ValueError("Workflow node '%s' requires 'type' in 'unified_job_template'" % identifier)
                 self._resolve_ujt_id(manager, ujt_data)
+            if node_spec.get("inventory") is not None:
+                self._resolve_inventory_id(manager, node_spec["inventory"])
+            if node_spec.get("execution_environment") is not None:
+                self._resolve_ee_id(manager, node_spec["execution_environment"])
 
     def _manage_workflow_node_associations(self, manager, workflow_id, workflow_nodes, check_mode):
         """Wire up node-to-node and node-to-resource associations."""
