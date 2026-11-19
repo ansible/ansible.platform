@@ -97,6 +97,8 @@
           - wait_result is not failed
           - wait_result.id | int == launched_cmd.json.id | int
           - wait_result.status is defined
+          - wait_result.finished is boolean
+          - wait_result.finished_at is string
 
     - name: Wait for an already-finished command (idempotent)
       ansible.platform.ad_hoc_command_wait:
