@@ -856,6 +856,75 @@ class TestWorkflowNodesGraph(unittest.TestCase):
         delete_calls = [c for c in action._client.direct_request.call_args_list if c[0][0] == "DELETE"]
         self.assertEqual(len(delete_calls), 0)
 
+    @patch.object(BaseResourceActionPlugin, "run")
+    def test_validate_before_destroy_missing_inventory(self, mock_super_run):
+        """Missing inventory in replacement nodes must fail before destroy."""
+        mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "destroy_current_nodes": True,
+                "workflow_nodes": [
+                    {
+                        "identifier": "node1",
+                        "unified_job_template": {"name": "JT", "type": "job_template"},
+                        "inventory": {"name": "Missing Inventory"},
+                    },
+                ],
+            }
+        )
+        action._client.search_api.return_value = {"results": [{"id": 100, "identifier": "existing"}]}
+
+        def lookup_side_effect(ep, field, val, **kw):
+            if ep == "unified_job_templates":
+                return 42
+            if ep == "inventories":
+                raise ValueError("Not found")
+            return None
+
+        action._client.lookup_resource_id.side_effect = lookup_side_effect
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        delete_calls = [c for c in action._client.direct_request.call_args_list if c[0][0] == "DELETE"]
+        self.assertEqual(len(delete_calls), 0)
+
+    @patch.object(BaseResourceActionPlugin, "run")
+    def test_approval_check_mode_idempotent(self, mock_super_run):
+        """Existing unchanged approval node reports changed=False in check mode."""
+        mock_super_run.return_value = {"changed": False, "failed": False, "id": 10}
+        action = self._make_action(
+            {
+                "name": "wf1",
+                "state": "present",
+                "workflow_nodes": [
+                    {
+                        "identifier": "approval1",
+                        "unified_job_template": {"name": "Approve", "type": "workflow_approval", "timeout": 600},
+                    },
+                ],
+            },
+            check_mode=True,
+        )
+        existing_node = {"id": 80, "identifier": "approval1", "unified_job_template": 55}
+
+        def search_side_effect(path, query_params=None, **kwargs):
+            if query_params and query_params.get("identifier") == "approval1":
+                return {"results": [existing_node]}
+            return {"results": []}
+
+        action._client.search_api.side_effect = search_side_effect
+        action._client.is_workflow_approval_template.return_value = True
+        action._client.manage_workflow_approval.return_value = False
+
+        result = action.run(task_vars={})
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        action._client.manage_workflow_approval.assert_called_once_with(80, {"name": "Approve", "timeout": 600}, check_mode=True)
+
 
 if __name__ == "__main__":
     unittest.main()
