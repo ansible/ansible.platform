@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.workflow_job_template import ActionModule
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ResourceNotFoundError
 
 
 class TestWorkflowJobTemplateAssociations(unittest.TestCase):
@@ -713,7 +713,7 @@ class TestWorkflowNodesGraph(unittest.TestCase):
             if query_params and query_params.get("identifier") == "convert_me":
                 return {"results": [existing_node]}
             if "/workflow_approval_templates/42/" in path:
-                raise ValueError("Not found")
+                raise APIError(message="Not found", operation="search", resource="approval", status_code=404)
             return {"results": []}
 
         action._client.search_api.side_effect = search_side_effect
