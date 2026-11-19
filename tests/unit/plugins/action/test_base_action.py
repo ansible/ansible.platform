@@ -447,6 +447,61 @@ class TestRoleUserAssignmentExistsMiss(unittest.TestCase):
 class TestAuthenticatorUserLookup(unittest.TestCase):
     """Tests for authenticator-user lookup resolution."""
 
+    def _run_exists_check(self, base_result, authenticator_user_id="42", authenticator="7"):
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        action._task = MagicMock()
+        action._task.args = {
+            "authenticator_user_id": authenticator_user_id,
+            "authenticator": authenticator,
+            "state": "exists",
+        }
+        action._client = MagicMock()
+        with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
+            result = action.run(task_vars={})
+        return result, action._client
+
+    def test_exists_fails_when_authenticator_user_is_missing(self):
+        result, _manager = self._run_exists_check({"changed": False, "exists": False})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["exists"])
+        self.assertFalse(result["changed"])
+
+    def test_exists_fails_when_authenticator_does_not_match(self):
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        action._task = MagicMock()
+        action._task.args = {"authenticator_user_id": "42", "authenticator": "Destination", "state": "exists"}
+        action._client = MagicMock()
+        action._client.lookup_resource_id.side_effect = [12, 9]
+        base_result = {"changed": False, "exists": True, "authenticator_user": {"authenticator": "source-slug"}}
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["exists"])
+        self.assertFalse(result["changed"])
+        self.assertIn("not requested authenticator", result["msg"])
+
+    def test_exists_passes_when_authenticator_matches(self):
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        action._task = MagicMock()
+        action._task.args = {"authenticator_user_id": "42", "authenticator": "Destination", "state": "exists"}
+        action._client = MagicMock()
+        action._client.lookup_resource_id.side_effect = [9, 9]
+        base_result = {"changed": False, "failed": False, "exists": True, "authenticator_user": {"authenticator": "destination-slug"}}
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["exists"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(
+            [call.args for call in action._client.lookup_resource_id.call_args_list],
+            [("authenticators", "slug", "destination-slug"), ("authenticators", "name", "Destination")],
+        )
+
     def test_numeric_authenticator_user_id_populates_resource_id(self):
         """A numeric module ID is copied to the generic resource ID."""
         action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)

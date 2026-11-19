@@ -971,9 +971,10 @@ class PlatformService(BaseAPIClient):
         # Support composite-key lookups via get_find_list_query_params.
         # Use FK-resolved API data so query params contain IDs, not names.
         composite_params = {}
+        find_api_data = None
         if hasattr(mixin_class, "get_find_list_query_params"):
-            api_data = mixin_class.from_ansible_data(ansible_data, context)
-            composite_params = mixin_class.get_find_list_query_params(api_data) or {}
+            find_api_data = mixin_class.from_ansible_data(ansible_data, context)
+            composite_params = mixin_class.get_find_list_query_params(find_api_data) or {}
 
         if not unique_value and not composite_params:
             raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
@@ -1017,7 +1018,10 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            if getattr(mixin_class, "find_list_requires_all_results", False):
+            requires_all_results = getattr(mixin_class, "find_list_requires_all_results", False)
+            if callable(requires_all_results):
+                requires_all_results = requires_all_results(find_api_data)
+            if requires_all_results:
                 list_result = self.search_api(
                     list_op.path,
                     query_params,
@@ -1031,6 +1035,7 @@ class PlatformService(BaseAPIClient):
                 response = self._make_request("get", url, operation="find", resource=mixin_class.__name__)
                 list_result = response.json()
 
+            list_result = mixin_class.filter_find_results(list_result, find_api_data, lookup_field, unique_value)
             api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
 
             # Some API list endpoints return incomplete data for certain fields

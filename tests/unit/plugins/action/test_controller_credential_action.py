@@ -7,9 +7,11 @@ from __future__ import absolute_import, division, print_function
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.controller_credential import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.team import TeamTransformMixin_v1
 
 
 class TestControllerCredentialSecretUpdates(unittest.TestCase):
@@ -21,6 +23,39 @@ class TestControllerCredentialSecretUpdates(unittest.TestCase):
 
     def test_update_secrets_is_an_ansible_directive(self):
         self.assertIn("update_secrets", ActionModule._ANSIBLE_DIRECTIVES)
+
+    def test_gateway_team_id_resolves_linked_controller_team(self):
+        action = ActionModule.__new__(ActionModule)
+        manager = MagicMock()
+        manager.search_api.return_value = {"summary_fields": {"resource": {"ansible_id": "team-uuid"}}}
+        manager.lookup_resource_id.return_value = 31
+        prepared = {
+            "validated_params": {"name": "credential", "gateway_team_id": 17},
+            "resource_data": {"name": "credential", "credential_type": "1"},
+            "write_only_data": {"gateway_team_id": 17},
+            "manager": manager,
+        }
+
+        with patch.object(BaseResourceActionPlugin, "_prepare_action", return_value=prepared):
+            result = action._prepare_action()
+
+        self.assertEqual(result["resource_data"]["team"], "31")
+        self.assertNotIn("gateway_team_id", result["resource_data"])
+        manager.search_api.assert_called_once_with(
+            TeamTransformMixin_v1.get_endpoint_operations()["get"].path.format(id=17),
+            service="gateway",
+        )
+        manager.lookup_resource_id.assert_called_once_with(
+            "teams",
+            "resource__ansible_id",
+            "team-uuid",
+            service="controller",
+            require_unique=True,
+            numeric_is_id=False,
+        )
+
+    def test_gateway_team_id_is_mutually_exclusive_with_other_owners(self):
+        self.assertEqual(ActionModule._MUTUALLY_EXCLUSIVE, [["organization", "user", "team", "gateway_team_id"]])
 
     def test_update_secrets_false_resolves_relationship_names_before_comparison(self):
         manager = MagicMock()
