@@ -55,10 +55,11 @@ display = Display()
 
 
 class ValidatedActionInput(NamedTuple):
-    """Argument specification and validated parameters for an action plugin."""
+    """Argument specification, validated parameters, and validation warnings."""
 
     argspec: dict
     validated_params: dict
+    warnings: list[str]
 
 
 def _manager_process_entry(
@@ -505,6 +506,9 @@ class BaseResourceActionPlugin(ActionBase):
         validated_input = self._validate_action_input()
         argspec = validated_input.argspec
         validated_params = validated_input.validated_params
+        warnings = getattr(validated_input, "warnings", [])
+        if warnings:
+            result.setdefault("warnings", []).extend(warnings)
         manager, facts_to_set = self._get_or_spawn_manager(task_vars)
         self._client = manager
         if facts_to_set:
@@ -542,7 +546,8 @@ class BaseResourceActionPlugin(ActionBase):
         preparation path uses the same helper before it creates the manager.
 
         Returns:
-            ValidatedActionInput: The generated argument specification and validated parameters.
+            ValidatedActionInput: The generated argument specification, validated
+                parameters, and alias conflict warnings.
         """
         doc = self._get_documentation()
         argspec = self._build_argspec_from_docs(doc) if doc else None
@@ -561,10 +566,11 @@ class BaseResourceActionPlugin(ActionBase):
         for spec in argspec.get("argument_spec", {}).values():
             for alias in spec.get("aliases", []):
                 validated_params.pop(alias, None)
+        warnings = ["Both option %s and its alias %s are set." % (warning["option"], warning["alias"]) for warning in getattr(validated_input, "_warnings", [])]
         explicit_fields = getattr(self, "_explicit_fields_to_send", None)
         if getattr(self, "_preserve_explicit_nulls_for_update", False) and explicit_fields is not None:
             validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
-        return ValidatedActionInput(argspec=argspec, validated_params=validated_params)
+        return ValidatedActionInput(argspec=argspec, validated_params=validated_params, warnings=warnings)
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
