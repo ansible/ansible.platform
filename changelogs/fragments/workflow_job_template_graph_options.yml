@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - workflow_job_template - add ``workflow_nodes`` (alias ``schema``) and ``destroy_current_nodes`` (alias ``destroy_current_schema``) options for declarative inline workflow graph management, restoring migration compatibility with the legacy awx.awx collection (https://issues.redhat.com/browse/AAP-102299).
+
+...

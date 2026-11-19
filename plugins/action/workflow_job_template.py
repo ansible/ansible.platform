@@ -103,9 +103,7 @@ class ActionModule(BaseResourceActionPlugin):
             org_data = ujt_data.get("organization")
 
         if isinstance(org_data, dict) and org_data.get("name"):
-            extra["organization"] = manager.lookup_resource_id(
-                "organizations", "name", org_data["name"], service=_SERVICE
-            )
+            extra["organization"] = manager.lookup_resource_id("organizations", "name", org_data["name"], service=_SERVICE)
 
         return manager.lookup_resource_id(
             "unified_job_templates",
@@ -127,12 +125,8 @@ class ActionModule(BaseResourceActionPlugin):
             extra = {}
             org = inv_data.get("organization")
             if isinstance(org, dict) and org.get("name"):
-                extra["organization"] = manager.lookup_resource_id(
-                    "organizations", "name", org["name"], service=_SERVICE
-                )
-            return manager.lookup_resource_id(
-                "inventories", "name", name, service=_SERVICE, extra_query_params=extra or None
-            )
+                extra["organization"] = manager.lookup_resource_id("organizations", "name", org["name"], service=_SERVICE)
+            return manager.lookup_resource_id("inventories", "name", name, service=_SERVICE, extra_query_params=extra or None)
         return manager.lookup_resource_id("inventories", "name", str(inv_data), service=_SERVICE)
 
     @staticmethod
@@ -187,8 +181,15 @@ class ActionModule(BaseResourceActionPlugin):
             if not ujt_data.get("name"):
                 raise ValueError("Workflow node '%s' requires 'name' in 'unified_job_template'" % identifier)
             if ujt_data.get("type") == "workflow_approval":
-                if existing_node and existing_node.get("unified_job_template") is not None:
-                    node_fields["unified_job_template"] = None
+                existing_ujt_id = existing_node.get("unified_job_template") if existing_node else None
+                if existing_ujt_id is not None:
+                    try:
+                        tmpl = manager.search_api(f"/api/controller/v2/workflow_approval_templates/{existing_ujt_id}/")
+                        is_approval = tmpl.get("type") == "workflow_approval_template"
+                    except Exception:
+                        is_approval = False
+                    if not is_approval:
+                        node_fields["unified_job_template"] = None
             else:
                 if not ujt_data.get("type"):
                     raise ValueError("Workflow node '%s' requires 'type' in 'unified_job_template'" % identifier)
@@ -223,9 +224,7 @@ class ActionModule(BaseResourceActionPlugin):
                     node_fields[scalar] = val
 
             if existing_node:
-                needs_update = any(
-                    existing_node.get(k) != v for k, v in node_fields.items() if k not in ("identifier", "workflow_job_template")
-                )
+                needs_update = any(existing_node.get(k) != v for k, v in node_fields.items() if k not in ("identifier", "workflow_job_template"))
                 if needs_update:
                     if not check_mode:
                         manager.direct_request("PATCH", f"{node_path}{existing_node['id']}/", node_fields)
@@ -246,6 +245,24 @@ class ActionModule(BaseResourceActionPlugin):
                             changed = True
 
         return changed
+
+    def _validate_workflow_nodes(self, manager, workflow_nodes):
+        """Pre-validate all workflow node specs before any graph mutation."""
+        for node_spec in workflow_nodes:
+            identifier = node_spec.get("identifier")
+            if not identifier:
+                raise ValueError("Each workflow node must have an 'identifier'")
+            if node_spec.get("state") == "absent":
+                continue
+            ujt_data = node_spec.get("unified_job_template")
+            if not ujt_data:
+                raise ValueError("Workflow node '%s' requires 'unified_job_template'" % identifier)
+            if not ujt_data.get("name"):
+                raise ValueError("Workflow node '%s' requires 'name' in 'unified_job_template'" % identifier)
+            if ujt_data.get("type") != "workflow_approval":
+                if not ujt_data.get("type"):
+                    raise ValueError("Workflow node '%s' requires 'type' in 'unified_job_template'" % identifier)
+                self._resolve_ujt_id(manager, ujt_data)
 
     def _manage_workflow_node_associations(self, manager, workflow_id, workflow_nodes, check_mode):
         """Wire up node-to-node and node-to-resource associations."""
@@ -311,8 +328,11 @@ class ActionModule(BaseResourceActionPlugin):
                         org_name = org.get("name") if isinstance(org, dict) else str(org)
                         org_id = manager.lookup_resource_id("organizations", "name", org_name, service=_SERVICE)
                         rid = manager.lookup_resource_id(
-                            assoc_type, "name", entry.get("name", ""),
-                            service=_SERVICE, extra_query_params={"organization": org_id},
+                            assoc_type,
+                            "name",
+                            entry.get("name", ""),
+                            service=_SERVICE,
+                            extra_query_params={"organization": org_id},
                         )
                         desired.append(rid)
                     elif isinstance(entry, dict):
@@ -350,7 +370,11 @@ class ActionModule(BaseResourceActionPlugin):
             workflow_nodes = self._task.args.get("schema")
         destroy_current_nodes = self._task.args.get("destroy_current_nodes")
         if destroy_current_nodes is None:
-            destroy_current_nodes = self._task.args.get("destroy_current_schema", False)
+            destroy_current_nodes = self._task.args.get("destroy_current_schema")
+        if isinstance(destroy_current_nodes, str):
+            destroy_current_nodes = destroy_current_nodes.lower() in ("true", "yes", "1")
+        else:
+            destroy_current_nodes = bool(destroy_current_nodes) if destroy_current_nodes is not None else False
 
         name = self._task.args.get("name")
         state = self._task.args.get("state", "present")
@@ -422,6 +446,8 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
+            if workflow_nodes:
+                self._validate_workflow_nodes(manager, workflow_nodes)
             if destroy_current_nodes:
                 if self._destroy_workflow_nodes(manager, wjt_id, check_mode):
                     changed = True
