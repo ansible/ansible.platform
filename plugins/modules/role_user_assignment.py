@@ -60,7 +60,10 @@ options:
         type: str
     state:
       description:
-        - Desired state of the resource.
+        - C(present) creates the assignment if it does not exist (idempotent).
+        - C(absent) removes the assignment if it exists (idempotent).
+        - C(exists) asserts the assignment is present; the task fails if it is not
+          found.
       choices: ["present", "absent", "exists"]
       default: "present"
       type: str
