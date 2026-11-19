@@ -13,7 +13,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_job_template_node import (
     BASE_PATH as NODE_BASE_PATH,
 )
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ResourceNotFoundError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 
 _ASSOC_MAP = {
     "labels": ("labels", "name"),
@@ -183,15 +183,7 @@ class ActionModule(BaseResourceActionPlugin):
             if ujt_data.get("type") == "workflow_approval":
                 existing_ujt_id = existing_node.get("unified_job_template") if existing_node else None
                 if existing_ujt_id is not None:
-                    try:
-                        tmpl = manager.search_api(f"/api/controller/v2/workflow_approval_templates/{existing_ujt_id}/")
-                        is_approval = tmpl.get("type") == "workflow_approval_template"
-                    except APIError as exc:
-                        if exc.status_code == 404:
-                            is_approval = False
-                        else:
-                            raise
-                    if not is_approval:
+                    if not manager.is_workflow_approval_template(existing_ujt_id):
                         node_fields["unified_job_template"] = None
             else:
                 if not ujt_data.get("type"):
