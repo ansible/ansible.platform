@@ -9,7 +9,7 @@ Action plugin for ansible.platform.subscriptions module.
 
 Subscriptions is a singleton resource: manager.execute('find') posts credentials
 to the Controller API and returns the list of available subscriptions.
-Client-side filtering is applied in the action plugin.
+Client-side filtering is applied by the SDK transform mixin.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -72,26 +72,11 @@ class ActionModule(BaseResourceActionPlugin):
                 ansible_data=ansible_data,
             )
 
-            all_subscriptions = find_result.get("subscriptions", []) or []
-
-            # Apply client-side filters
-            filtered = []
-            for subscription in all_subscriptions:
-                add = True
-                for key, value in filters.items():
-                    if key not in subscription:
-                        continue
-                    if value not in str(subscription[key]):
-                        add = False
-                        break
-                if add:
-                    filtered.append(subscription)
-
             result.update(
                 {
                     "changed": False,
                     "failed": False,
-                    "subscriptions": filtered,
+                    "subscriptions": find_result.get("subscriptions", []) or [],
                 }
             )
 
