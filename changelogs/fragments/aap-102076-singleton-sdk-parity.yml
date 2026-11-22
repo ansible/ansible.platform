@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - direct HTTP client - propagate singleton response read and JSON parsing failures so license mutations do not proceed using unknown state.
+  - direct HTTP client - log operation names without request payload values when executing endpoint operations.
+  - subscriptions - apply client-side subscription filters through the shared SDK execution path in both clients, including non-string filter values.
+  - license - expose manifest submission, subscription attachment, and removal through the SDK, sharing already-licensed, force, and check-mode behavior with the Ansible action.
+...
