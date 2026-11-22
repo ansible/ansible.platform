@@ -86,3 +86,19 @@ class SubscriptionsTransformMixin_v2(BaseTransformMixin):
         if isinstance(api_data, list):
             return AnsibleSubscriptions(subscriptions=api_data)
         return AnsibleSubscriptions(subscriptions=[api_data] if api_data else [])
+
+    @classmethod
+    def from_find_result(cls, api_data, ansible_data, context):
+        """Apply the documented client-side filters to a subscription lookup.
+
+        Missing keys do not exclude a subscription. Existing keys must contain
+        the requested substring, and every applicable filter must match.
+        """
+        result = cls.from_api(api_data, context)
+        filters = ansible_data.filters or {}
+        result.subscriptions = [
+            subscription
+            for subscription in result.subscriptions
+            if all(key not in subscription or str(value) in str(subscription[key]) for key, value in filters.items())
+        ]
+        return result
