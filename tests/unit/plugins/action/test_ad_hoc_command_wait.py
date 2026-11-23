@@ -69,7 +69,8 @@ class TestCheckMode(unittest.TestCase):
         self.assertFalse(result["changed"])
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "successful")
-        self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
+        self.assertIs(result["finished"], True)
+        self.assertEqual(result["finished_at"], "2026-01-01T00:00:05Z")
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
             timeout=-1.0,
@@ -106,7 +107,8 @@ class TestWaitCommand(unittest.TestCase):
         self.assertEqual(result["status"], "successful")
         self.assertEqual(result["elapsed"], 5.2)
         self.assertEqual(result["started"], "2026-01-01T00:00:00Z")
-        self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
+        self.assertIs(result["finished"], True)
+        self.assertEqual(result["finished_at"], "2026-01-01T00:00:05Z")
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
             timeout=-1.0,
@@ -201,6 +203,9 @@ class TestWaitCommand(unittest.TestCase):
         self.assertIn("Timed out", result["msg"])
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "running")
+        self.assertEqual(result["elapsed"], 0.0)
+        self.assertIs(result["finished"], False)
+        self.assertIsNone(result["finished_at"])
 
     @patch.object(ActionModule, "_prepare_action")
     def test_wait_with_custom_interval(self, mock_prepare):
