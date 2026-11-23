@@ -154,8 +154,13 @@ class TestRulebookActivationAction(unittest.TestCase):
         manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
         result = self._run_action(action, manager, {"name": "test-activation", "state": "absent", "restart": False})
 
-        self.assertFalse(result.get("failed", False))
-        self.assertTrue(result["changed"])
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "rulebook_activation": {"state": "absent", "id": 42},
+            "id": 42,
+        }
+        self.assertEqual(result, expected_result)
         # Delete goes through the generic execute() dispatch, not direct_request
         manager.execute.assert_any_call(
             operation="delete",
@@ -254,6 +259,7 @@ class TestRulebookActivationAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
+        self.assertNotIn("id", result)
         manager.direct_request.assert_not_called()
 
     def test_check_mode_restart(self):
