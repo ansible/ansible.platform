@@ -17,6 +17,8 @@ options:
     - URL to automation platform gateway.
     - If value not set, will try environment variable C(GATEWAY_HOSTNAME), or E(AAP_HOSTNAME).
     - If value not specified by any means, the value of C(127.0.0.1) will be used
+    - The authentication environment variables documented on this option and the ones below are
+      read on the Ansible control node, and rank below task parameters and inventory variables.
     type: str
     aliases: [ gateway_hostname ]
   aap_username:

@@ -1,0 +1,9 @@
+---
+bugfixes:
+  - gateway auth - honour the documented ``GATEWAY_HOSTNAME``/``AAP_HOSTNAME``, ``GATEWAY_USERNAME``/``AAP_USERNAME``,
+    ``GATEWAY_PASSWORD``/``AAP_PASSWORD``, ``GATEWAY_API_TOKEN``/``AAP_TOKEN``, ``GATEWAY_VERIFY_SSL``/``AAP_VALIDATE_CERTS``
+    and ``GATEWAY_REQUEST_TIMEOUT``/``AAP_REQUEST_TIMEOUT`` environment variables in modules that resolve
+    connection settings through the action plugin. Previously only task parameters and inventory variables were
+    consulted, so exporting these variables failed with "gateway_url or gateway_hostname must be provided".
+    Environment variables rank below task parameters and inventory variables, and are read on the Ansible control node.
+...
