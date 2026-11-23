@@ -1,5 +1,11 @@
 # Ansible Platform Collection
 
+The `ansible.platform` collection centralizes resource management for Ansible Automation
+Platform Gateway, Automation Controller, and Event-Driven Ansible (EDA).
+
+See the [development module inventory](docs/README.md#collection-scope-and-module-inventory)
+and [unreleased changes](CHANGELOG.rst#unreleased) for work since the documented releases.
+
 ## Changelog for v2.7.20260313
 
 * Added OIDC User Identity support for Ansible Automation Platform Gateway
@@ -20,7 +26,10 @@ See the [AAP 2.7 documentation](https://docs.redhat.com/en/documentation/red_hat
 
 ## Description
 
-This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
+This collection provides Gateway, Controller, and EDA modules under the
+`ansible.platform` namespace. It includes platform identity and service configuration,
+Controller automation resources and job operations, and EDA resources and rulebook
+activations. Each module targets the service that owns its resource.
 
 ## Requirements
 
@@ -60,9 +69,21 @@ See [using Ansible collections](https://docs.ansible.com/ansible/devel/user_guid
 
 ## Use Cases
 
-This collection can be used to automate to the creation of resources inside of the Ansible Automation Platform. Things such as users, organizations and teams can be created using this collection.
+- **Gateway:** Manage users, organizations, teams, authentication, access control,
+  services, service nodes, and Gateway settings. Registering a service or node is
+  Gateway configuration.
+- **Controller:** Manage inventories, hosts, groups, projects, credentials, execution
+  environments, job templates, workflows, schedules, notifications, and Controller
+  settings. Launch, cancel, and wait for automation jobs.
+- **EDA:** Manage projects, credentials, credential types and input sources, Controller
+  tokens, decision environments, event streams, and rulebook activations.
 
-Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added.
+Service ownership remains distinct within the collection. For example,
+`ansible.platform.settings` manages Gateway settings, while
+`ansible.platform.controller_settings` manages Controller settings. Similarly,
+`ansible.platform.controller_project` and `ansible.platform.eda_project` manage
+projects in their respective services. See each module's documentation for its
+supported inputs and operations.
 
 ## Authenticating to AAP in a playbook
 

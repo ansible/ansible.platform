@@ -1,0 +1,7 @@
+---
+doc_changes:
+  - >-
+    Describe the centralized Gateway, Controller, and Event-Driven Ansible collection,
+    refresh the repository module inventory, and summarize centralization under
+    Unreleased without assigning it to an existing release.
+...

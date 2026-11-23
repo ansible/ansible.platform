@@ -5,6 +5,21 @@ ansible.platform Release Notes
 .. contents:: Topics
 
 
+Unreleased
+==========
+
+Major Changes
+-------------
+
+* Centralize Gateway, Automation Controller, and Event-Driven Ansible (EDA)
+  resource management in the ``ansible.platform`` collection.
+* Add Controller modules for inventories, hosts and groups, projects, credentials,
+  execution environments, job and workflow automation, schedules, notifications,
+  settings, and licensing.
+* Add EDA modules for projects, credentials and credential types, credential input
+  sources, Controller tokens, decision environments, event streams, and rulebook
+  activations, including activation copying.
+
 v2.7.20260313
 =============
 Added OIDC User Identity support for Ansible Automation Platform Gateway, enabling OpenID Connect integration for user authentication and authorization.
