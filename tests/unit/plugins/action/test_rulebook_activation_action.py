@@ -320,6 +320,35 @@ class TestRulebookActivationAction(unittest.TestCase):
         self.assertNotIn("id", create_call.kwargs["ansible_data"])
         manager.direct_request.assert_not_called()
 
+    def test_create_project_reference_accepts_both_spellings_and_prefers_project(self):
+        cases = (
+            ({"project": "short"}, "short", []),
+            ({"project_name": "legacy"}, "legacy", []),
+            ({"project": 42}, "42", []),
+            ({"project": None, "project_name": "legacy"}, "legacy", []),
+            ({"project": "short", "project_name": None}, "short", []),
+            ({"project_name": "legacy", "project": "short"}, "short", ["Both option project_name and its alias project are set."]),
+            ({"project": "short", "project_name": "legacy"}, "short", ["Both option project_name and its alias project are set."]),
+        )
+        for inputs, expected_project, warnings in cases:
+            with self.subTest(inputs=inputs):
+                action = self._make_action()
+                action._task.args = {"name": "new-activation", **inputs}
+                manager = self._make_manager()
+
+                with (
+                    patch.object(ActionBase, "run", return_value={}),
+                    patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+                ):
+                    result = action.run(task_vars={})
+
+                self.assertFalse(result["failed"], result.get("msg"))
+                create = manager.execute.call_args.kwargs
+                self.assertEqual(
+                    (create["operation"], create["ansible_data"].get("project_name"), result.get("warnings", [])),
+                    ("create", expected_project, warnings),
+                )
+
     def test_update_existing_activation_no_changes_is_idempotent(self):
         """An unchanged activation is not PATCHed or reported as changed."""
         action = self._make_action()

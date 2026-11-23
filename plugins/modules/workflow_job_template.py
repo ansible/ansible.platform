@@ -155,7 +155,7 @@ options:
 
   labels:
     description:
-      - List of label names to associate with this workflow job template.
+      - List of label names or IDs to associate with this workflow job template.
       - The association is synced — labels not in the list will be disassociated.
     type: list
     elements: str

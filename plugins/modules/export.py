@@ -36,88 +36,88 @@ options:
     default: false
   organizations:
     description:
-      - Organization names to export.
+      - Organization names or IDs to export.
       - Use C(all) to export all organizations.
     type: list
     elements: str
   users:
     description:
-      - User usernames to export.
+      - Usernames or user IDs to export.
       - Use C(all) to export all users.
     type: list
     elements: str
   teams:
     description:
-      - Team names to export.
+      - Team names or IDs to export.
       - Use C(all) to export all teams.
     type: list
     elements: str
   credential_types:
     description:
-      - Credential type names to export.
+      - Credential type names or IDs to export.
       - Use C(all) to export all credential types.
     type: list
     elements: str
   credentials:
     description:
-      - Credential names to export.
+      - Credential names or IDs to export.
       - Use C(all) to export all credentials.
     type: list
     elements: str
   execution_environments:
     description:
-      - Execution environment names to export.
+      - Execution environment names or IDs to export.
       - Use C(all) to export all execution environments.
     type: list
     elements: str
   notification_templates:
     description:
-      - Notification template names to export.
+      - Notification template names or IDs to export.
       - Use C(all) to export all notification templates.
     type: list
     elements: str
   projects:
     description:
-      - Project names to export.
+      - Project names or IDs to export.
       - Use C(all) to export all projects.
     type: list
     elements: str
   inventory:
     description:
-      - Inventory names to export.
+      - Inventory names or IDs to export.
       - Hosts and groups are included inline under each inventory.
       - Use C(all) to export all inventories.
     type: list
     elements: str
   inventory_sources:
     description:
-      - Inventory source names to export.
+      - Inventory source names or IDs to export.
       - Use C(all) to export all inventory sources.
     type: list
     elements: str
   job_templates:
     description:
-      - Job template names to export.
+      - Job template names or IDs to export.
       - Associations (credentials, labels, survey_spec) are included inline.
       - Use C(all) to export all job templates.
     type: list
     elements: str
   workflow_job_templates:
     description:
-      - Workflow job template names to export.
+      - Workflow job template names or IDs to export.
       - Associations (labels, survey_spec) are included inline.
       - Use C(all) to export all workflow job templates.
     type: list
     elements: str
   labels:
     description:
-      - Label names to export.
+      - Label names or IDs to export.
       - Use C(all) to export all labels.
     type: list
     elements: str
   schedules:
     description:
-      - Schedule names to export.
+      - Schedule names or IDs to export.
       - Use C(all) to export all schedules.
     type: list
     elements: str

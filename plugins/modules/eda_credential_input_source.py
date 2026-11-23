@@ -61,12 +61,13 @@ options:
         (e.g. vault path, secret key).
     type: dict
 
-  organization_name:
+  organization:
     description:
-      - The name of the organization.
+      - The name or ID of the organization associated with the credential input source.
+      - Credential name lookups are scoped to this organization when supplied.
     type: str
     aliases:
-      - organization
+      - organization_name
 
 seealso:
   - module: ansible.eda.credential_input_source

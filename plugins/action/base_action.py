@@ -279,6 +279,10 @@ class BaseResourceActionPlugin(ActionBase):
     _REQUIRED_ONE_OF: list = []
     _REQUIRED_IF: list = []
 
+    # Public reference names mapped to the existing runtime field. Keep the
+    # runtime alias order, conflict precedence, and result keys for migrated inputs.
+    _LEGACY_REFERENCE_FIELDS: dict[str, str] = {}
+
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
     _DEPRECATED_FIELDS: dict = {}
@@ -877,6 +881,13 @@ class BaseResourceActionPlugin(ActionBase):
             if fragment_options:
                 options.update(fragment_options)
         options.update(doc_data.get("options", {}))
+
+        for public_name, runtime_name in self._LEGACY_REFERENCE_FIELDS.items():
+            spec = options.pop(public_name)
+            options[runtime_name] = {
+                **spec,
+                "aliases": [public_name if alias == runtime_name else alias for alias in spec["aliases"]],
+            }
 
         for field in self._NO_LOG_FIELDS:
             if field in options:

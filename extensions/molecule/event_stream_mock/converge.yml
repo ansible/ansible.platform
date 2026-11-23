@@ -66,10 +66,11 @@
         that:
           - check_create is changed
 
-    - name: Create event stream
+    - name: Create event stream with credential taking precedence over its alias
       ansible.platform.event_stream:
         name: "{{ event_stream_name }}"
-        credential_name: "Molecule Mock Event Stream Credential"
+        credential: "Molecule Mock Event Stream Credential"
+        credential_name: "Conflicting credential alias"
         organization_name: "Default"
         state: present
       register: create_result
@@ -79,6 +80,7 @@
         that:
           - create_result is changed
           - create_result.event_stream.id is defined
+          - create_result.event_stream.credential_name == "Molecule Mock Event Stream Credential"
 
     - name: Re-create same event stream with identical parameters (idempotency)
       ansible.platform.event_stream:
