@@ -142,6 +142,21 @@ class TestEdaCredentialAction(unittest.TestCase):
         self.assertNotIn("credential_type_name", result["resource_data"])
         self.assertNotIn("organization_name", result["resource_data"])
 
+    def test_legacy_organization_alias_wins_when_both_names_are_supplied(self):
+        for organization, expected in (("Engineering", "Engineering"), (2, "2")):
+            with self.subTest(organization=organization):
+                action = self._make_action()
+                action._task.args = {"name": "my-cred", "organization_name": "Default", "organization": organization}
+                manager = MagicMock()
+
+                with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                    prepared = action._prepare_action(task_vars={})
+
+                self.assertEqual(prepared["validated_params"]["organization"], expected)
+                self.assertEqual(prepared["resource_data"]["organization"], expected)
+                self.assertNotIn("organization_name", prepared["resource_data"])
+                self.assertEqual(prepared["result"]["warnings"], ["Both option organization and its alias organization_name are set."])
+
     def test_create_new_credential(self):
         """Create credential when none exists (base class CRUD)."""
         action = self._make_action()
