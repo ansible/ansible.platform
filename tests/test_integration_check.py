@@ -4,7 +4,7 @@ import os
 from sys import exit
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-# CI provisions Gateway only. Run Controller live tests when CI has a routed Controller service.
+# Modules exempt from the live integration target coverage check.
 modules_without_live_integration = {
     "subscriptions": "requires dedicated Red Hat subscription-account credentials not available in the Gateway integration environment",
     "licenses": "requires a manifest or subscription ID not available in the Gateway integration environment",

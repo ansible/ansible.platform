@@ -1,6 +1,36 @@
 # `ansible.platform` Documentation
 
-This directory contains the canonical technical documentation for the `ansible.platform` collection for Ansible Automation Platform (AAP) Gateway.
+This directory contains the technical documentation for the `ansible.platform`
+collection, covering Ansible Automation Platform (AAP) Gateway, Automation Controller,
+and Event-Driven Ansible (EDA).
+
+## Collection Scope and Module Inventory
+
+The current development source tree contains **69 modules**. The
+[module source directory](../plugins/modules/) is the complete inventory; consult
+each module's documentation for supported inputs, operations, and return values.
+This is a source-tree inventory, not a statement that every module shipped in the
+latest documented release.
+
+- **Gateway:** Identity, authentication, access control, service registration and
+  routing, and platform configuration. Examples include `user`, `organization`,
+  `team`, `service`, and `settings`.
+- **Controller:** Inventories, hosts and groups, projects, credentials, execution
+  environments, jobs, workflows, schedules, notifications, settings, and licensing.
+  Examples include `inventory`, `controller_project`, `job_template`, `job_launch`,
+  and `controller_settings`.
+- **EDA:** Projects, credentials, credential types and input sources, Controller
+  tokens, decision environments, event streams, and rulebook activations. Examples
+  include `eda_project`, `eda_credential`, `event_stream`, and `rulebook_activation`.
+- **Import/export and metadata:** `import`, `export`, and `controller_meta` are also
+  included in the inventory. Import/export spans supported Gateway and Controller
+  resources; `controller_meta` reports collection metadata without API calls.
+
+Module names are not uniformly prefixed by service. Use the module documentation
+and [API landscape](12-api-landscape.md) to identify resource ownership. Shared SDK
+infrastructure and a common Gateway entry URL do not make Controller or EDA resources
+Gateway-owned. The [Gateway case study](10-case-study-aap-platform.md) describes the
+22 Gateway modules within this larger collection.
 
 ---
 
@@ -44,7 +74,7 @@ Compatibility audits: [Batch 2 — AAP-101589](compatibility/batch2/compat-statu
 | 07 | [07-adding-resources.md](07-adding-resources.md) | Feature devs | Step-by-step 7-file workflow, complete example, common patterns catalog, PR checklist |
 | 08 | [08-testing-strategy.md](08-testing-strategy.md) | All devs / QE | Three-layer strategy: unit (pytest), Molecule mock, integration; CI workflows; linting |
 | 09 | [09-agent-collaboration.md](09-agent-collaboration.md) | AI agents | Personas (Foundation Builder, Feature Developer), phase-by-phase guidance, coding standards, anti-patterns, troubleshooting |
-| 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Module map (all 22 modules), identity categories, API quirks, platform-specific challenges, version strategy |
+| 10 | [10-case-study-aap-platform.md](10-case-study-aap-platform.md) | Feature devs | Gateway module map, identity categories, API quirks, platform-specific challenges, version strategy |
 | 11 | [11-persistent-manager-idle-timeout.md](11-persistent-manager-idle-timeout.md) | Framework devs / operators | Persistent manager idle timeout: config, semantics, edge cases, tests |
 | 12 | [12-api-landscape.md](12-api-landscape.md) | Feature devs | **NEW**: Multi-service architecture (Gateway, EDA, Controller), resource overlap, naming conflicts, spec selection guide |
 | 13 | [13-pr-review-guidelines.md](13-pr-review-guidelines.md) | Maintainers / reviewers | PR review process, pre-merge CI checks, feature/bugfix/CI review checklists, security patterns, testing requirements |
@@ -156,7 +186,7 @@ Naïve 1:1 API endpoint → module mapping produces 100+ modules where a single 
 **Platform SDK** with:
 - **Persistent connection manager** — One HTTP session for the entire play
 - **Versioned data model** — Stable Ansible interface regardless of API version
-- **22 action plugins** — One per logical entity, not endpoint
+- **Resource and operation action plugins** — Ansible entry points for Gateway, Controller, and EDA functionality
 
 ### The Three Tiers
 ```
@@ -271,16 +301,15 @@ A: Yes, but it requires careful review. See [06-foundation-components.md](06-fou
 
 ---
 
-## Version History
+## Release History
 
-| Version | Date | Notable Changes |
-|---------|------|-----------------|
-| 1.0 | 2025-Q1 | Initial 22-module release; AAP 2.6 support |
-| 1.1 | 2025-Q2 | idle_timeout feature; integration test coverage; backward compat fixes |
-| 1.2 | 2025-Q3 | AAP 2.7 support via v2 transform mixins (when API changes ship) |
+See [CHANGELOG.rst](../CHANGELOG.rst) for recorded releases and the Unreleased
+centralization summary. Pending change details live in
+[`changelogs/fragments/`](../changelogs/fragments/). The development inventory above
+does not establish which release includes a module or a pending SDK fix.
 
 ---
 
 ## License
 
-See [LICENSE](../LICENSE).
+See [COPYING](../COPYING).
