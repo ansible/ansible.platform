@@ -135,14 +135,56 @@ class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
         return "name"
 
     @classmethod
+    def find_list_requires_all_results(cls, api_data: Optional[APIControllerCredential_v2]) -> bool:
+        """Fetch all candidate pages only when owner matching needs them."""
+        return api_data is not None and (api_data.team is not None or api_data.user is not None)
+
+    @classmethod
     def get_find_list_query_params(cls, api_data: APIControllerCredential_v2) -> Dict[str, Any]:
-        """Scope credential identity by its type and supplied owner."""
+        """Use credential-list filters supported by the Controller API.
+
+        The credentials list endpoint accepts ``credential_type`` and
+        ``organization`` filters, but rejects ``team`` and ``user``. Owner
+        identity is returned under ``summary_fields.owners`` and is restored
+        by :meth:`from_api` for result and idempotency comparisons.
+        """
         params = {}
-        for field in ("credential_type", "organization", "user", "team"):
+        for field in ("credential_type", "organization"):
             value = getattr(api_data, field, None)
             if value is not None:
                 params[field] = value
         return params
+
+    @classmethod
+    def filter_find_results(
+        cls,
+        list_result: Dict[str, Any],
+        api_data: Optional[APIControllerCredential_v2],
+        lookup_field: str,
+        lookup_value: Any,
+    ) -> Dict[str, Any]:
+        """Select credential candidates matching a requested team or user owner."""
+        if api_data is None or lookup_field != "name":
+            return list_result
+
+        owner_type = "team" if api_data.team is not None else "user" if api_data.user is not None else None
+        if owner_type is None:
+            return list_result
+        owner_id = str(getattr(api_data, owner_type))
+
+        matching_results = []
+        for result in list_result.get("results", []):
+            if str(result.get(lookup_field)) != str(lookup_value):
+                continue
+            owners = (result.get("summary_fields") or {}).get("owners") or []
+            if any(isinstance(owner, dict) and owner.get("type") == owner_type and str(owner.get("id")) == owner_id for owner in owners):
+                matching_results.append(result)
+
+        filtered_result = dict(list_result)
+        filtered_result["results"] = matching_results
+        filtered_result["count"] = len(matching_results)
+        filtered_result["next"] = None
+        return filtered_result
 
     @classmethod
     def from_api(cls, api_data: Dict[str, Any], context: Union[TransformContext, Dict[str, Any]]):
@@ -152,9 +194,11 @@ class ControllerCredentialTransformMixin_v2(BaseTransformMixin):
         credential_type_str = str(credential_type_val) if credential_type_val is not None else ""
         organization_val = api_data.get("organization")
         organization_str = str(organization_val) if organization_val is not None else None
-        user_val = api_data.get("user")
+        owners = (api_data.get("summary_fields") or {}).get("owners") or []
+        owner_ids = {owner.get("type"): owner.get("id") for owner in owners if isinstance(owner, dict)}
+        user_val = api_data.get("user") or owner_ids.get("user")
         user_str = str(user_val) if user_val is not None else None
-        team_val = api_data.get("team")
+        team_val = api_data.get("team") or owner_ids.get("team")
         team_str = str(team_val) if team_val is not None else None
 
         return AnsibleControllerCredential(
