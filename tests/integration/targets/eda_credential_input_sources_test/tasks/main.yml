@@ -136,8 +136,25 @@
         that:
           - exists_result is not changed
           - exists_result.exists | bool
+          - exists_result.input_field_name == "password"
 
     # <Delete> -------------------
+    - name: Check deleting the credential input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        organization_name: Default
+        state: absent
+      check_mode: true
+      register: check_delete_result
+
+    - name: Assert check-mode delete returns the existing ID
+      ansible.builtin.assert:
+        that:
+          - check_delete_result is changed
+          - check_delete_result.id == create_result.eda_credential_input_source.id
+
     - name: Delete credential input source
       ansible.platform.eda_credential_input_source:
         input_field_name: password
@@ -151,6 +168,7 @@
       ansible.builtin.assert:
         that:
           - delete_result is changed
+          - delete_result.id == create_result.eda_credential_input_source.id
 
     # <Delete absent — no-op> -------------------
     - name: Delete already absent credential input source
