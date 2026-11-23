@@ -277,6 +277,7 @@
       ansible.builtin.assert:
         that:
           - delete_result is changed
+          - delete_result.id == create_result.rulebook_activation.id
 
     # EDA may briefly return a recently deleted activation from the filtered
     # list endpoint. Wait for the same lookup used by the action to observe

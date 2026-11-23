@@ -208,6 +208,69 @@ class TestActionPreparation(unittest.TestCase):
         self.assertEqual(result["instance_id"], "i-abc123")
         self.assertEqual(result["host"]["instance_id"], "i-abc123")
 
+    def test_check_mode_delete_returns_existing_resource_id(self):
+        """A planned delete exposes the found ID without executing the delete."""
+        action = ExampleAction.__new__(ExampleAction)
+        action._task = MagicMock(args={"name": "resource", "state": "absent"}, check_mode=True)
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 42, "name": "resource", "value": 3}
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {}, "value": {}}},
+            "validated_params": {"name": "resource", "value": 3, "state": "absent"},
+            "resource_data": {"name": "resource", "value": 3},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            result = action.run(task_vars={})
+
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "example": {"state": "absent", "id": 42},
+            "id": 42,
+        }
+        self.assertEqual(result, expected_result)
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
+
+    def test_exists_returns_documented_resource_fields_flat_and_nested(self):
+        """An exists lookup preserves legacy flat resource fields and the nested result."""
+        action = ExampleAction.__new__(ExampleAction)
+        action._task = MagicMock(args={"name": "resource", "state": "exists"}, check_mode=False)
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        find_result = {"id": 42, "name": "resource", "value": 3}
+        manager.execute.return_value = find_result
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {}, "value": {}}},
+            "validated_params": {"name": "resource", "value": 3, "state": "exists"},
+            "resource_data": {"name": "resource", "value": 3},
+            "write_only_data": {},
+            "manager": manager,
+        }
+        formatted_fields = {"id": 42, "name": "resource", "value": 3}
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_format_resource_output", return_value=(formatted_fields, {})):
+                result = action.run(task_vars={})
+
+        expected_result = {
+            "id": 42,
+            "name": "resource",
+            "value": 3,
+            "changed": False,
+            "failed": False,
+            "exists": True,
+            "example": formatted_fields,
+        }
+        self.assertEqual(result, expected_result)
+
     def test_run_dispatches_to_build_resource_override(self):
         action = OverrideResourceAction.__new__(OverrideResourceAction)
         action._task = MagicMock()

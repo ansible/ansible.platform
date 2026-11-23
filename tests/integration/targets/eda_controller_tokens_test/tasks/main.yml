@@ -76,6 +76,7 @@
       ansible.builtin.assert:
         that:
           - delete_result is changed
+          - delete_result.id == recreate_result.eda_controller_token.id
 
     # <Delete absent — no-op> -------------------
     - name: Delete already absent token

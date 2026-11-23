@@ -346,8 +346,13 @@ class TestEdaProjectAction(unittest.TestCase):
             },
         )
 
-        self.assertFalse(result.get("failed", False))
-        self.assertTrue(result["changed"])
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "eda_project": {"state": "absent", "id": 99},
+            "id": 99,
+        }
+        self.assertEqual(result, expected_result)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
         self.assertEqual(calls, ["find", "delete"])
 
@@ -538,10 +543,15 @@ class TestEdaProjectAction(unittest.TestCase):
             },
         )
 
-        self.assertFalse(result.get("failed", False))
-        self.assertTrue(result["changed"])
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "eda_project": {"state": "absent", "id": 99},
+            "id": 99,
+        }
+        self.assertEqual(result, expected_result)
         calls = [c.kwargs["operation"] for c in manager.execute.call_args_list]
-        self.assertNotIn("delete", calls)
+        self.assertEqual(calls, ["find"])
 
     # ---- Sync tests ----
 
