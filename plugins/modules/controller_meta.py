@@ -45,7 +45,7 @@ EXAMPLES = """
 
 - name: Use the prefix to dynamically reference a lookup plugin
   ansible.builtin.debug:
-    msg: "{{ lookup(result.prefix + '.gateway_api', 'settings/ui') }}"
+    msg: "{{ lookup(result.prefix + '.platform_api', 'settings/ui') }}"
 ...
 """
 
