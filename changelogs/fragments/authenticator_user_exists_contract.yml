@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >-
+    ``authenticator_user`` - make ``state: exists`` fail when the user is
+    missing or linked to a different authenticator, matching the documented
+    behavior.
+...
