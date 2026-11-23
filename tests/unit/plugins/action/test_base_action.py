@@ -555,6 +555,7 @@ def test_real_preparation_normalizes_workflow_aliases(module, alias, canonical, 
 
 _RESOURCE_INPUTS = {
     "organization": {"name": "Resource"},
+    "job_template": {"name": "Resource"},
     "workflow_job_template": {"name": "Resource"},
     "execution_environment": {"name": "Resource"},
     "group": {"name": "Resource", "inventory": "1"},

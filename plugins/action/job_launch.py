@@ -30,16 +30,10 @@ class ActionModule(BaseResourceActionPlugin):
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-        self._task_vars = task_vars
-
-        params = self._validate_action_input().validated_params
-        manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-        self._client = manager
-        if facts_to_set:
-            result["ansible_facts"] = facts_to_set
-            result["_ansible_facts_cacheable"] = True
+        prepared = self._prepare_action(tmp, task_vars)
+        result = prepared["result"]
+        params = prepared["validated_params"]
+        manager = prepared["manager"]
 
         wait = params.pop("wait", False)
         interval = params.pop("interval", 2.0)
@@ -98,7 +92,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         ignored_fields = launch_result.get("ignored_fields", {})
         if ignored_fields:
-            result["warnings"] = [f"Launch ignored fields: {ignored_fields}"]
+            result.setdefault("warnings", []).append(f"Launch ignored fields: {ignored_fields}")
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})

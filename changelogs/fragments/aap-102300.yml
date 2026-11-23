@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - job_template - restore the 19 supported legacy parameter aliases for job-template options (https://issues.redhat.com/browse/AAP-102300).
+  - action plugins - report Ansible's alias-conflict warning when both an option and its alias are supplied.
+  - eda_credential - preserve the legacy organization alias value when both organization and organization_name are supplied.
+...
