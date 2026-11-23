@@ -89,12 +89,14 @@ class ActionModule(BaseResourceActionPlugin):
         job_status = launch_result.get("status", "unknown")
         job_detail_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["get"]
         job_url = launch_result.get("url", job_detail_operation.path.format(id=job_id))
+        self._update_launch_metadata(result, launch_result)
 
         ignored_fields = launch_result.get("ignored_fields", {})
         if ignored_fields:
             result.setdefault("warnings", []).append(f"Launch ignored fields: {ignored_fields}")
 
         if not wait:
+            self._fetch_launch_metadata(manager, result, job_url, params.get("name"))
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
             return result
 
@@ -106,6 +108,7 @@ class ActionModule(BaseResourceActionPlugin):
                 service="controller",
             )
             final_status = wait_result.get("status", "unknown")
+            self._update_launch_metadata(result, wait_result)
             self._set_job_timing(result, wait_result)
             failed = final_status in ("failed", "error", "canceled")
             result.update(
@@ -121,6 +124,7 @@ class ActionModule(BaseResourceActionPlugin):
                 result["msg"] = f"Job {job_id} finished with status: {final_status}"
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._update_launch_metadata(result, lr)
             self._set_job_timing(result, lr)
             result.update(
                 {
@@ -143,6 +147,33 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
         return result
+
+    @staticmethod
+    def _update_launch_metadata(result, job_data):
+        """Copy launch metadata exposed by Controller into the module result."""
+        if not isinstance(job_data, dict):
+            return
+
+        summary_fields = job_data.get("summary_fields") or {}
+        job_template = summary_fields.get("job_template") or summary_fields.get("unified_job_template")
+        created_by = summary_fields.get("created_by") or job_data.get("created_by")
+
+        if isinstance(job_template, dict) and job_template.get("name"):
+            result["job_template_name"] = job_template["name"]
+        if isinstance(created_by, dict) and created_by.get("username"):
+            result["user_name"] = created_by["username"]
+
+    @classmethod
+    def _fetch_launch_metadata(cls, manager, result, job_url, requested_name):
+        """Fetch metadata omitted from the asynchronous launch response."""
+        try:
+            job_data = manager.search_api(job_url, service="controller")
+        except Exception:
+            job_data = {}
+
+        cls._update_launch_metadata(result, job_data)
+        if "job_template_name" not in result and requested_name is not None and not str(requested_name).isdigit():
+            result["job_template_name"] = str(requested_name)
 
     @staticmethod
     def _validate_launch_prompts(manager, job_template_id, params):

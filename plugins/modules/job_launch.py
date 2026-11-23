@@ -216,6 +216,16 @@ job_data:
   returned: when waiting ends in a failed, error, or canceled status
   type: dict
 
+job_template_name:
+  description: Name of the job template used for the launch.
+  returned: when provided by Controller
+  type: str
+
+user_name:
+  description: Username recorded by Controller as the user who launched the job.
+  returned: when provided by Controller
+  type: str
+
 id:
   description: Job ID of the newly launched job.
   returned: success

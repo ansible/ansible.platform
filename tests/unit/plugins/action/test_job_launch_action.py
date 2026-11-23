@@ -4,7 +4,7 @@
 """Unit tests for the job_launch action plugin (Shape 2)."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from ansible.plugins.action import ActionBase
@@ -44,7 +44,10 @@ class TestJobLaunchAction(unittest.TestCase):
         self._patch_prepare(action)
 
         action._client.lookup_resource_id.return_value = 1
-        action._client.search_api.return_value = {"results": [{"id": 1, "name": "Demo"}]}
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {"summary_fields": {"job_template": {"name": "Demo"}, "created_by": {"username": "launch-user"}}},
+        ]
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
@@ -57,13 +60,21 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "pending")
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
         self.assertNotIn("finished_at", result)
         self.assertEqual(
             action._client.launch_resource.call_args.args,
             ("/api/controller/v2/job_templates/1/launch/", {}),
         )
         self.assertEqual(action._client.launch_resource.call_args.kwargs, {"service": "controller", "retry": False})
-        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/1/")
+        self.assertEqual(
+            action._client.search_api.call_args_list,
+            [
+                call("/api/controller/v2/job_templates/1/"),
+                call("/api/controller/v2/jobs/42/", service="controller"),
+            ],
+        )
         action._client.wait_for_completion.assert_not_called()
 
     def test_conflicting_legacy_alias_warns_and_uses_alias_value(self):
@@ -103,6 +114,7 @@ class TestJobLaunchAction(unittest.TestCase):
             "elapsed": 3.0,
             "started": "2026-11-11T10:00:00Z",
             "finished": "2026-11-11T10:00:03Z",
+            "summary_fields": {"job_template": {"name": "Demo"}, "created_by": {"username": "launch-user"}},
         }
 
         result = action.run(task_vars={})
@@ -114,6 +126,8 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(result["started"], "2026-11-11T10:00:00Z")
         self.assertIs(result["finished"], True)
         self.assertEqual(result["finished_at"], "2026-11-11T10:00:03Z")
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
 
         action._client.wait_for_completion.assert_called_once_with(
             "/api/controller/v2/jobs/42/",
