@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - job_launch - return the Controller job template name and launching username in the module result when available (https://issues.redhat.com/browse/AAPRFE-2341).
+...
