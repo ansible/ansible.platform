@@ -63,13 +63,15 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
             status = wait_result.get("status", "")
+            finished_at = wait_result.get("finished")
             result.update(
                 {
                     "changed": False,
                     "id": wait_result.get("id", command_id),
                     "elapsed": wait_result.get("elapsed", 0.0),
                     "started": wait_result.get("started", ""),
-                    "finished": wait_result.get("finished", ""),
+                    "finished": bool(finished_at),
+                    "finished_at": finished_at,
                     "status": status,
                 }
             )
@@ -80,11 +82,14 @@ class ActionModule(BaseResourceActionPlugin):
 
         except WaitTimeoutError as exc:
             last = exc.last_result or {}
+            finished_at = last.get("finished")
             result["failed"] = True
             result["msg"] = str(exc)
             result["id"] = last.get("id", command_id)
             result["status"] = last.get("status", "unknown")
             result["elapsed"] = last.get("elapsed", 0.0)
+            result["finished"] = bool(finished_at)
+            result["finished_at"] = finished_at
 
         except Exception as exc:
             import traceback as _tb
