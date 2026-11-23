@@ -49,6 +49,7 @@ def _pages():
             "next": None,
             "results": [{"id": 1001, "input_field_name": "password", "target_credential": 10, "source_credential": 20}],
         },
+        {"id": 1001, "input_field_name": "password", "target_credential": 10, "source_credential": 20, "description": ""},
     )
 
 
@@ -59,18 +60,20 @@ class TestEdaCredentialInputSourceFind(unittest.TestCase):
         service = PlatformService.__new__(PlatformService)
         service.base_url = "https://gateway.example"
         service.record_activity = MagicMock()
-        first_page, second_page = _pages()
-        service._make_request = MagicMock(side_effect=[_page_response(first_page), _page_response(second_page)])
+        first_page, second_page, detail = _pages()
+        service._make_request = MagicMock(side_effect=[_page_response(first_page), _page_response(second_page), _page_response(detail)])
 
         result = service._find_resource(_ansible_input_source(), EdaCredentialInputSourceTransformMixin_v1, _context(service))
 
         self.assertEqual(result["id"], 1001)
-        first_request, second_request = service._make_request.call_args_list
+        self.assertEqual(result["description"], "")
+        first_request, second_request, detail_request = service._make_request.call_args_list
         self.assertEqual(first_request.kwargs["params"]["target_credential"], 10)
         self.assertEqual(first_request.kwargs["params"]["source_credential"], 20)
         next_query = parse_qs(urlparse(second_request.args[1]).query)
         self.assertEqual(next_query["target_credential"], ["10"])
         self.assertEqual(next_query["source_credential"], ["20"])
+        self.assertIn("/credential-input-sources/1001/", detail_request.args[1])
 
     def test_direct_client_finds_match_on_later_scoped_page(self):
         client = DirectHTTPClient.__new__(DirectHTTPClient)
@@ -79,19 +82,23 @@ class TestEdaCredentialInputSourceFind(unittest.TestCase):
         client.api_versions = {"gateway": "1"}
         client.session = MagicMock()
         client.session.headers = {}
-        first_page, second_page = _pages()
-        client._make_request = MagicMock(side_effect=[_page_response(first_page, direct=True), _page_response(second_page, direct=True)])
+        first_page, second_page, detail = _pages()
+        client._make_request = MagicMock(
+            side_effect=[_page_response(first_page, direct=True), _page_response(second_page, direct=True), _page_response(detail, direct=True)]
+        )
 
         result = client._find_resource(_ansible_input_source(), EdaCredentialInputSourceTransformMixin_v1, _context(client))
 
         self.assertEqual(result["id"], 1001)
-        first_request, second_request = client._make_request.call_args_list
+        self.assertEqual(result["description"], "")
+        first_request, second_request, detail_request = client._make_request.call_args_list
         first_query = parse_qs(urlparse(first_request.args[1]).query)
         self.assertEqual(first_query["target_credential"], ["10"])
         self.assertEqual(first_query["source_credential"], ["20"])
         next_query = parse_qs(urlparse(second_request.args[1]).query)
         self.assertEqual(next_query["target_credential"], ["10"])
         self.assertEqual(next_query["source_credential"], ["20"])
+        self.assertIn("/credential-input-sources/1001/", detail_request.args[1])
 
 
 if __name__ == "__main__":

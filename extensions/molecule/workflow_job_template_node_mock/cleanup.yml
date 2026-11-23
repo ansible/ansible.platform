@@ -21,13 +21,6 @@
       vars:
         ansible_connection: local
 
-    - name: Remove manager survive flag
-      ansible.builtin.file:
-        path: /tmp/ap/.survive
-        state: absent
-      vars:
-        ansible_connection: local
-
 - name: Cleanup — delete node (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http
@@ -44,13 +37,6 @@
         identifier: "molecule-test-node-direct"
         workflow_job_template: "1"
         state: absent
-
-    - name: Remove manager survive flag
-      ansible.builtin.file:
-        path: /tmp/ap/.survive
-        state: absent
-      vars:
-        ansible_connection: local
 
 - name: Cleanup — delete node (mock, http persistent)
   hosts: localhost

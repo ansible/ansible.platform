@@ -71,4 +71,6 @@ action_groups:
     - job_launch
     - license
     - workflow_launch
+    - import
+    - export
 ...

@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - eda_project - use exact project-name matching when the EDA API returns partial name-filter matches.
+  - resource action plugins - avoid repeating an already-applied rename when ``new_name`` matches the current resource name.
+...

@@ -10,6 +10,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.wo
     AnsibleWorkflowJobTemplate,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_job_template import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
 
 _ASSOC_MAP = {
     "labels": ("labels", "name"),
@@ -52,9 +53,10 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        copy_from = self._task.args.pop("copy_from", None)
-        survey_spec = self._task.args.pop("survey_spec", None)
-        association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+        copy_from = self._task.args.get("copy_from")
+        if (survey_spec := self._task.args.get("survey_spec")) is None:
+            survey_spec = self._task.args.get("survey")
+        association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
 
         name = self._task.args.get("name")
         state = self._task.args.get("state", "present")
@@ -62,6 +64,10 @@ class ActionModule(BaseResourceActionPlugin):
 
         copied = False
         if copy_from and state not in ("absent", "exists") and not check_mode:
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             try:
                 super(BaseResourceActionPlugin, self).run(tmp, task_vars)
                 self._task_vars = task_vars
@@ -75,6 +81,8 @@ class ActionModule(BaseResourceActionPlugin):
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
+        if copy_from:
+            result["copied"] = copied
         if copied:
             result["changed"] = True
         if result.get("failed") or state in ("absent", "exists"):
@@ -82,12 +90,6 @@ class ActionModule(BaseResourceActionPlugin):
 
         wjt_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
         if not wjt_id:
-            return result
-
-        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
-        if check_mode:
-            if reconcile_fields or survey_spec is not None:
-                result["changed"] = True
             return result
 
         try:
@@ -99,9 +101,26 @@ class ActionModule(BaseResourceActionPlugin):
                 if desired is None:
                     continue
                 extra = {"organization": org_id} if field == "labels" and org_id is not None else None
-                if manager.manage_associations(BASE_PATH, wjt_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, extra_query_params=extra):
+                try:
+                    association_changed = manager.manage_associations(
+                        BASE_PATH,
+                        wjt_id,
+                        field,
+                        desired,
+                        lookup_endpoint,
+                        lookup_field,
+                        service=_SERVICE,
+                        extra_query_params=extra,
+                        check_mode=check_mode,
+                    )
+                except ResourceNotFoundError as exc:
+                    missing_reference = (exc.endpoint, exc.lookup_field, exc.service) == (lookup_endpoint, lookup_field, _SERVICE)
+                    if not check_mode or not missing_reference:
+                        raise
+                    association_changed = True
+                if association_changed:
                     changed = True
-            if survey_spec is not None and manager.manage_sub_resource(BASE_PATH, wjt_id, "survey_spec", survey_spec):
+            if survey_spec is not None and manager.manage_sub_resource(BASE_PATH, wjt_id, "survey_spec", survey_spec, check_mode=check_mode):
                 changed = True
         except Exception as exc:
             result["failed"] = True

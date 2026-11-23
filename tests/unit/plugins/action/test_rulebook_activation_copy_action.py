@@ -4,11 +4,11 @@
 """Unit tests for the rulebook_activation_copy action plugin."""
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.rulebook_activation_copy import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
 
 class TestRulebookActivationCopyAction(unittest.TestCase):
@@ -38,16 +38,11 @@ class TestRulebookActivationCopyAction(unittest.TestCase):
         return manager
 
     def _run_action(self, action, manager, validated_params):
-        doc = "module: rulebook_activation_copy"
-        argspec = {"argument_spec": {"name": {}, "copy_from": {}, "state": {"default": "present"}}}
-        validation = SimpleNamespace(validated_parameters=validated_params)
+        action._task.args = validated_params.copy()
 
         with patch.object(ActionBase, "run", return_value={}):
-            with patch.object(action, "_get_documentation", return_value=doc):
-                with patch.object(action, "_build_argspec_from_docs", return_value=argspec):
-                    with patch.object(action, "_validate_data", return_value=validation):
-                        with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
-                            return action.run(task_vars={})
+            with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                return action.run(task_vars={})
 
     def test_copy_existing_activation(self):
         """Copy an activation when the source exists."""
@@ -65,11 +60,17 @@ class TestRulebookActivationCopyAction(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 200)
-        # Should call direct_request with POST to copy endpoint
         manager.direct_request.assert_called_once()
         call_args = manager.direct_request.call_args
-        self.assertEqual(call_args[0][0], "POST")
-        self.assertIn("copy", call_args[0][1])
+        self.assertEqual(
+            {"method": call_args.args[0], "path": call_args.args[1], "body": call_args.kwargs["data"]},
+            {
+                "method": "POST",
+                "path": "/api/eda/v1/activations/42/copy/",
+                "body": {"name": "new-activation"},
+            },
+        )
+        self.assertEqual(call_args.kwargs["retry_config"].max_attempts, 1)
 
     def test_copy_nonexistent_activation_fails(self):
         """Fail when source activation does not exist."""
@@ -110,6 +111,32 @@ class TestRulebookActivationCopyAction(unittest.TestCase):
 
         self.assertTrue(result.get("failed", False))
         self.assertIn("copy_from", result["msg"])
+
+    def test_copy_duplicate_name_preserves_api_error_message(self):
+        """Return the API's duplicate-name message to callers."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "source-activation"})
+        manager.direct_request.side_effect = APIError(
+            "API request failed: HTTP 400",
+            operation="http_request",
+            resource="unknown",
+            details={
+                "status_code": 400,
+                "response_body": '{"__all__": ["Activation with name new-activation already exists"]}',
+            },
+            status_code=400,
+        )
+
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "new-activation", "copy_from": "source-activation"},
+        )
+
+        self.assertTrue(result.get("failed", False))
+        self.assertIn("API request failed: HTTP 400", result["msg"])
+        self.assertIn("Operation: http_request", result["msg"])
+        self.assertIn("Activation with name new-activation already exists", result["msg"])
 
 
 if __name__ == "__main__":

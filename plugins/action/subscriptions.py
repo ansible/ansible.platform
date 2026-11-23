@@ -9,7 +9,7 @@ Action plugin for ansible.platform.subscriptions module.
 
 Subscriptions is a singleton resource: manager.execute('find') posts credentials
 to the Controller API and returns the list of available subscriptions.
-Client-side filtering is applied in the action plugin.
+Client-side filtering is applied by the SDK transform mixin.
 """
 
 from __future__ import absolute_import, division, print_function
@@ -40,23 +40,13 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Could not load DOCUMENTATION for subscriptions module")
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            validated_params = self._validate_action_input().validated_params
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
             if facts_to_set:
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
-
-            validated_params = validated_input.validated_parameters
 
             username = validated_params.get("username")
             password = validated_params.get("password")
@@ -82,26 +72,11 @@ class ActionModule(BaseResourceActionPlugin):
                 ansible_data=ansible_data,
             )
 
-            all_subscriptions = find_result.get("subscriptions", []) or []
-
-            # Apply client-side filters
-            filtered = []
-            for subscription in all_subscriptions:
-                add = True
-                for key, value in filters.items():
-                    if key not in subscription:
-                        continue
-                    if value not in str(subscription[key]):
-                        add = False
-                        break
-                if add:
-                    filtered.append(subscription)
-
             result.update(
                 {
                     "changed": False,
                     "failed": False,
-                    "subscriptions": filtered,
+                    "subscriptions": find_result.get("subscriptions", []) or [],
                 }
             )
 

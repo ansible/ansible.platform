@@ -14,3 +14,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.cr
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "credential_input_source"
     MODEL_CLASS = AnsibleCredentialInputSource
+    _NO_LOG_FIELDS = frozenset({"metadata"})

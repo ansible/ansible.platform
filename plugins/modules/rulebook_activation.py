@@ -156,6 +156,11 @@ options:
     type: bool
     default: false
 
+  enabled:
+    description:
+      - Legacy compatibility option. Maps true to C(state=enabled) and false to C(state=disabled).
+    type: bool
+
   state:
     description:
       - Desired state of the resource.

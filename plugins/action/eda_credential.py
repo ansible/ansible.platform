@@ -23,9 +23,10 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential import AnsibleEdaCredential
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential import (
     BASE_PATH,
-    TEST_PATH,
+    EdaCredentialTransformMixin_v1,
     resolve_eda_credential_fk,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -37,7 +38,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     _ANSIBLE_DIRECTIVES = BaseResourceActionPlugin._ANSIBLE_DIRECTIVES | frozenset({"copy_from", "metadata", "update_secrets"})
     _WRITE_ONLY_FIELDS = frozenset({"inputs"})
-    _NO_LOG_FIELDS = frozenset({"inputs"})
+    _NO_LOG_FIELDS = frozenset({"inputs", "metadata"})
 
     def _prepare_action(self, tmp: Optional[object] = None, task_vars: Optional[dict] = None) -> dict:
         """Prepare validated input and retain intent for write-only fields.
@@ -51,6 +52,14 @@ class ActionModule(BaseResourceActionPlugin):
         """
         prepared = super()._prepare_action(tmp, task_vars)
         params = prepared["validated_params"]
+        if self._task.args.get("organization") is not None and self._task.args.get("organization_name") is not None:
+            # Legacy EDA treats organization as the alias, so it wins a conflict.
+            organization = str(self._task.args["organization"])
+            params["organization"] = organization
+            prepared["resource_data"]["organization"] = organization
+        for alias in ("credential_type_name", "organization_name"):
+            params.pop(alias, None)
+            prepared["resource_data"].pop(alias, None)
         self._inputs_provided = params.get("inputs") is not None
         self._update_secrets = params.get("update_secrets", False)
         return prepared
@@ -227,10 +236,12 @@ class ActionModule(BaseResourceActionPlugin):
 
             # POST to credential test endpoint
             metadata = params.get("metadata")
-            test_data = {"metadata": metadata} if metadata else {}
+            test_request = EdaCredentialTransformMixin_v1.to_test_request(credential_id, metadata if metadata else None)
+            test_operation = EdaCredentialTransformMixin_v1.get_endpoint_operations()["test"]
+            test_path, test_data = build_endpoint_request(test_operation, test_request)
             test_response = manager.direct_request(
-                "POST",
-                TEST_PATH.format(id=credential_id),
+                test_operation.method,
+                test_path,
                 data=test_data,
             )
 

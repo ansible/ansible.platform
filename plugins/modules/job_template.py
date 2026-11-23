@@ -74,6 +74,8 @@ options:
     force_handlers:
       type: bool
       description: Enable forcing playbook handlers to run even if a task fails.
+      aliases:
+        - force_handlers_enabled
     skip_tags:
       type: str
       description: Comma separated list of the tags to skip for the job template.
@@ -86,6 +88,8 @@ options:
     use_fact_cache:
       type: bool
       description: Enable use of fact caching for the job template.
+      aliases:
+        - fact_caching_enabled
     execution_environment:
       type: str
       description: Name or ID of the execution environment to use for the job template.
@@ -98,48 +102,78 @@ options:
     ask_diff_mode_on_launch:
       type: bool
       description: Prompt user to enable diff mode (show changes) to files when supported by modules.
+      aliases:
+        - ask_diff_mode
     ask_variables_on_launch:
       type: bool
       description: Prompt user for (extra_vars) on launch.
+      aliases:
+        - ask_extra_vars
     ask_limit_on_launch:
       type: bool
       description: Prompt user for a limit on launch.
+      aliases:
+        - ask_limit
     ask_tags_on_launch:
       type: bool
       description: Prompt user for job tags on launch.
+      aliases:
+        - ask_tags
     ask_skip_tags_on_launch:
       type: bool
       description: Prompt user for job tags to skip on launch.
+      aliases:
+        - ask_skip_tags
     ask_job_type_on_launch:
       type: bool
       description: Prompt user for job type on launch.
+      aliases:
+        - ask_job_type
     ask_verbosity_on_launch:
       type: bool
       description: Prompt user to choose a verbosity level on launch.
+      aliases:
+        - ask_verbosity
     ask_inventory_on_launch:
       type: bool
       description: Prompt user for inventory on launch.
+      aliases:
+        - ask_inventory
     ask_credential_on_launch:
       type: bool
       description: Prompt user for credential on launch.
+      aliases:
+        - ask_credential
     ask_execution_environment_on_launch:
       type: bool
       description: Prompt user for execution environment on launch.
+      aliases:
+        - ask_execution_environment
     ask_labels_on_launch:
       type: bool
       description: Prompt user for labels on launch.
+      aliases:
+        - ask_labels
     ask_forks_on_launch:
       type: bool
       description: Prompt user for forks on launch.
+      aliases:
+        - ask_forks
     ask_job_slice_count_on_launch:
       type: bool
       description: Prompt user for job slice count on launch.
+      aliases:
+        - ask_job_slice_count
     ask_timeout_on_launch:
       type: bool
       description: Prompt user for timeout on launch.
+      aliases:
+        - ask_timeout
     ask_instance_groups_on_launch:
       type: bool
       description: Prompt user for instance groups on launch.
+      aliases:
+        - ask_instance_groups
     survey_enabled:
       type: bool
       description: Enable a survey on the job template.
@@ -149,9 +183,13 @@ options:
     diff_mode:
       type: bool
       description: Enable diff mode for the job template.
+      aliases:
+        - diff_mode_enabled
     allow_simultaneous:
       type: bool
       description: Allow simultaneous runs of the job template.
+      aliases:
+        - concurrent_jobs_enabled
     job_slice_count:
       type: int
       description: The number of jobs to slice into at runtime. Will cause the Job Template to launch a workflow if value is greater than 1.

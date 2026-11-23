@@ -8,23 +8,11 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-BHD-{{ test_id }}"
 
-- name: Look up Default organization in Controller
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [200]
-  register: default_organization
-  delegate_to: localhost
-
-- name: Assert Default organization exists
+- name: Assert the cached Default organization is available
   ansible.builtin.assert:
     that:
-      - default_organization.json.count | int > 0
-    fail_msg: "Controller organization 'Default' was not found."
+      - controller_default_organization_id is defined
+    fail_msg: "The shared Default organization fixture was not found."
 
 - name: Create a test inventory for bulk host delete
   ansible.builtin.uri:
@@ -37,7 +25,7 @@
     body_format: json
     body:
       name: "{{ name_prefix }}-Inventory"
-      organization: "{{ default_organization.json.results[0].id }}"
+      organization: "{{ controller_default_organization_id }}"
     status_code: [201]
   register: test_inventory
   delegate_to: localhost

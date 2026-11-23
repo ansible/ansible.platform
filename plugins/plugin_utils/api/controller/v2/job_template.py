@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
-from .lookup import lookup_resource_id_with_scope
+from .execution_environment import lookup_execution_environment_id
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,8 @@ class APIJobTemplate_v2(BaseTransformMixin):
 class JobTemplateTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for JobTemplate API v2."""
 
+    _JSON_OBJECT_FIELDS = frozenset({"extra_vars"})
+
     @classmethod
     def get_update_value_from_current_data(cls, field: str, current_data: Dict[str, Any]) -> Any:
         """Use raw API IDs when the manager preserves related fields for a PATCH."""
@@ -141,12 +143,9 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
     ) -> "APIJobTemplate_v2":
         api_data: Dict[str, Any] = {}
 
-        resource_id = getattr(ansible_instance, "id", None)
-
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
         service = getattr(context, "service", "controller") if isinstance(context, TransformContext) else context.get("service", "controller")
-        api_version = getattr(context, "api_version", None) if isinstance(context, TransformContext) else context.get("api_version")
 
         # Create: use name; Update: use new_name if set, else echo back current name.
         name = getattr(ansible_instance, "name", None)
@@ -171,56 +170,48 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
                 raise TypeError(f"extra_vars must be dict, got {type(extra_vars).__name__}")
             api_data["extra_vars"] = json.dumps(extra_vars)
 
+        organization = getattr(ansible_instance, "organization", None)
+        organization_id = None
+        if organization is not None:
+            organization_id = (
+                int(organization)
+                if str(organization).strip().isdigit()
+                else manager.lookup_resource_id("organizations", "name", organization, service="controller")
+            )
+            if organization_id is None:
+                raise ValueError("Could not resolve organization %r to an ID" % organization)
+        organization_scope = {"organization": organization_id} if organization_id is not None else None
+        lookup_kwargs: Dict[str, Any] = {"service": service}
+        if organization_scope:
+            lookup_kwargs["extra_query_params"] = organization_scope
+
         inventory = getattr(ansible_instance, "inventory", None)
         if inventory is not None:
-            api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service=service)
+            api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, **lookup_kwargs)
 
         execution_environment = getattr(ansible_instance, "execution_environment", None)
         if execution_environment is not None:
-            api_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", execution_environment, service=service)
+            api_data["execution_environment"] = lookup_execution_environment_id(manager, execution_environment, organization_id, service=service)
 
         webhook_credential = getattr(ansible_instance, "webhook_credential", None)
         if webhook_credential is not None:
-            api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, service=service)
+            api_data["webhook_credential"] = manager.lookup_resource_id("credentials", "name", webhook_credential, **lookup_kwargs)
 
-        # project: organization (Gateway-owned, see docs/12-api-landscape.md) disambiguates
+        # project: Controller organization scope disambiguates
         # between same-named projects in different orgs, matching the legacy awx_collection
         # job_template module's get_one(..., data={"organization": organization_id}) lookup.
         project = getattr(ansible_instance, "project", None)
-        organization = getattr(ansible_instance, "organization", None)
         if project is not None:
             if str(project).isdigit():
                 api_data["project"] = int(project)
-            elif organization is not None:
-                org_id = manager.lookup_resource_id("organizations", "name", organization)
-                api_data["project"] = lookup_resource_id_with_scope(
-                    manager,
-                    endpoint="projects",
-                    lookup_field="name",
-                    lookup_value=project,
-                    scope_field="organization",
-                    scope_value=org_id,
-                    service=service,
-                    api_version=api_version,
-                )
             else:
-                api_data["project"] = manager.lookup_resource_id("projects", "name", project, service=service)
+                api_data["project"] = manager.lookup_resource_id("projects", "name", project, **lookup_kwargs)
 
         # Read-only fields from API (for building URL in execute).
         for field in ("id", "created", "modified", "url"):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
-
-        # PlatformService merges missing update fields from its Ansible-facing
-        # current state. Preserve wire-format IDs and JSON for fields omitted
-        # by the task so that merge cannot send names or dicts back to Controller.
-        if op == "update" and resource_id is not None and manager is not None:
-            current = manager.search_api(f"{BASE_PATH}/{resource_id}/")
-            if isinstance(current, dict):
-                for field in ("inventory", "project", "execution_environment", "webhook_credential", "extra_vars"):
-                    if field not in api_data and current.get(field) is not None:
-                        api_data[field] = current[field]
 
         # Read-only fields needed for URL construction (e.g. {id} in update/delete paths)
         for field in ("id", "created", "modified", "url"):

@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - project_update - preserve indefinite waiting when timeout is omitted or zero, matching the legacy Controller module.
+  - project_update - restore update timing and failed job data, exposing the finish timestamp as finished_at alongside Ansible's boolean finished flag.
+  - token - require exactly one deletion identifier for state absent, matching legacy validation.
+  - group - scope host and child group association lookups to the selected inventory.
+  - group - predict association-only changes in check mode without modifying the resource.
+  - notification_template and workflow_job_template - restore the copied result flag when copy_from is supplied.
+  - workflow_job_template - ignore unused inventory and webhook credential references when finding or deleting a template.
+...

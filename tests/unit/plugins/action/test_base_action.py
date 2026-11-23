@@ -6,13 +6,18 @@
 from __future__ import absolute_import, division, print_function
 
 import unittest
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.authenticator_user import ActionModule as AuthenticatorUserAction
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.action.host import ActionModule as HostAction
+from ansible_collections.ansible.platform.plugins.action.role_team_assignment import ActionModule as RoleTeamAssignmentAction
+from ansible_collections.ansible.platform.plugins.action.role_user_assignment import ActionModule as RoleUserAssignmentAction
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.authenticator_user import AnsibleAuthenticatorUser
 
 
@@ -32,6 +37,11 @@ class ExampleAction(BaseResourceActionPlugin):
 class OverrideResourceAction(ExampleAction):
     def _build_resource(self, resource_data):
         return Resource(name=resource_data["name"], value=resource_data.get("value", 0) + 1)
+
+
+class OutputFormattingAction(ExampleAction):
+    _EXTRA_RETURN_FIELDS = frozenset({"client_id"})
+    _SPACE_SEPARATED_LIST_FIELDS = frozenset({"labels"})
 
 
 class TestActionPreparation(unittest.TestCase):
@@ -92,6 +102,28 @@ class TestActionPreparation(unittest.TestCase):
 
         return result, manager
 
+    def test_should_update_repeated_rename_is_idempotent(self):
+        """A rename to the current name does not force another update."""
+        action = self._make_action()
+
+        self.assertFalse(
+            action._should_update(
+                {"name": "resource", "new_name": "resource", "value": 3},
+                {"name": "resource", "value": 3},
+            )
+        )
+
+    def test_should_update_detects_changed_rename(self):
+        """A rename to a different name still forces an update."""
+        action = self._make_action()
+
+        self.assertTrue(
+            action._should_update(
+                {"name": "resource", "new_name": "renamed-resource", "value": 3},
+                {"name": "resource", "value": 3},
+            )
+        )
+
     def test_prepare_action_reuses_documentation_validation_and_manager(self):
         action = self._make_action()
         manager = MagicMock()
@@ -116,6 +148,128 @@ class TestActionPreparation(unittest.TestCase):
         self.assertEqual(prepared["write_only_data"], {"write_only": "secret"})
         self.assertEqual(prepared["result"]["ansible_facts"], {"platform": "fact"})
         self.assertEqual(prepared["result"]["deprecations"][0]["version"], "2.0.0")
+
+    def test_format_resource_output_uses_validated_parameters_and_preserves_flat_extras(self):
+        action = OutputFormattingAction.__new__(OutputFormattingAction)
+        argspec = {"argument_spec": {"name": {}, "labels": {}}}
+        manager_result = {
+            "id": 7,
+            "name": "raw-name",
+            "labels": "raw labels",
+            "client_id": "client-123",
+            "unexpected": "discarded",
+        }
+        validation_result = SimpleNamespace(validated_parameters={"name": "normalized-name", "labels": "one two"})
+
+        with patch.object(action, "_validate_data", return_value=validation_result):
+            resource_output, flat_extras = action._format_resource_output(manager_result, argspec)
+
+        self.assertEqual(resource_output, {"id": 7, "name": "normalized-name", "labels": ["one", "two"]})
+        self.assertEqual(flat_extras, {"client_id": "client-123"})
+
+    def test_format_resource_output_fallback_keeps_argspec_filter_and_conversions(self):
+        action = OutputFormattingAction.__new__(OutputFormattingAction)
+        argspec = {"argument_spec": {"name": {}, "labels": {}}}
+        manager_result = {
+            "id": 7,
+            "name": "raw-name",
+            "labels": "one two",
+            "client_id": "client-123",
+            "unexpected": "discarded",
+            "changed": True,
+        }
+
+        with patch.object(action, "_validate_data", side_effect=ValueError("output validation failed")):
+            resource_output, flat_extras = action._format_resource_output(manager_result, argspec)
+
+        self.assertEqual(resource_output, {"id": 7, "name": "raw-name", "labels": ["one", "two"]})
+        self.assertEqual(flat_extras, {"client_id": "client-123"})
+
+    def test_unchanged_host_result_preserves_instance_id(self):
+        action = HostAction.__new__(HostAction)
+        action._task = MagicMock()
+        action._display = MagicMock()
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 7, "name": "host-a", "inventory": 3, "instance_id": "i-abc123"}
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {"type": "str"}, "inventory": {"type": "str"}, "instance_id": {"type": "str"}}},
+            "validated_params": {"name": "host-a", "inventory": "3", "state": "present"},
+            "resource_data": {"name": "host-a", "inventory": "3"},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_should_update", return_value=False):
+                result = action.run(task_vars={})
+
+        self.assertFalse(result["changed"])
+        self.assertEqual(result["instance_id"], "i-abc123")
+        self.assertEqual(result["host"]["instance_id"], "i-abc123")
+
+    def test_check_mode_delete_returns_existing_resource_id(self):
+        """A planned delete exposes the found ID without executing the delete."""
+        action = ExampleAction.__new__(ExampleAction)
+        action._task = MagicMock(args={"name": "resource", "state": "absent"}, check_mode=True)
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 42, "name": "resource", "value": 3}
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {}, "value": {}}},
+            "validated_params": {"name": "resource", "value": 3, "state": "absent"},
+            "resource_data": {"name": "resource", "value": 3},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            result = action.run(task_vars={})
+
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "example": {"state": "absent", "id": 42},
+            "id": 42,
+        }
+        self.assertEqual(result, expected_result)
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
+
+    def test_exists_returns_documented_resource_fields_flat_and_nested(self):
+        """An exists lookup preserves legacy flat resource fields and the nested result."""
+        action = ExampleAction.__new__(ExampleAction)
+        action._task = MagicMock(args={"name": "resource", "state": "exists"}, check_mode=False)
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        find_result = {"id": 42, "name": "resource", "value": 3}
+        manager.execute.return_value = find_result
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"name": {}, "value": {}}},
+            "validated_params": {"name": "resource", "value": 3, "state": "exists"},
+            "resource_data": {"name": "resource", "value": 3},
+            "write_only_data": {},
+            "manager": manager,
+        }
+        formatted_fields = {"id": 42, "name": "resource", "value": 3}
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_format_resource_output", return_value=(formatted_fields, {})):
+                result = action.run(task_vars={})
+
+        expected_result = {
+            "id": 42,
+            "name": "resource",
+            "value": 3,
+            "changed": False,
+            "failed": False,
+            "exists": True,
+            "example": formatted_fields,
+        }
+        self.assertEqual(result, expected_result)
 
     def test_run_dispatches_to_build_resource_override(self):
         action = OverrideResourceAction.__new__(OverrideResourceAction)
@@ -170,6 +324,58 @@ class TestActionPreparation(unittest.TestCase):
         self.assertIn("503 Service Unavailable", result["msg"])
         manager.execute.assert_called_once_with(operation="find", module_name="example", ansible_data={"name": "resource", "value": 3})
 
+    def test_role_team_assignment_preserves_scalar_object_id_in_results(self):
+        action = RoleTeamAssignmentAction.__new__(RoleTeamAssignmentAction)
+        action._task = MagicMock()
+        action._task.args = {}
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager_result = {"id": 1, "role_definition": "5", "team": "7", "object_id": 202, "changed": True}
+        manager.execute.side_effect = [{}, manager_result]
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"role_definition": {}, "team": {}, "object_id": {}}},
+            "validated_params": {"role_definition": "5", "team": "7", "object_id": 202, "state": "present"},
+            "resource_data": {"role_definition": "5", "team": "7", "object_id": 202},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_validate_data", return_value=SimpleNamespace(validated_parameters=manager_result)):
+                result = action.run(task_vars={})
+
+        self.assertEqual(result["role_team_assignment"]["object_id"], 202)
+        self.assertEqual(result["object_id"], 202)
+
+    def test_role_user_assignment_preserves_scalar_object_id_in_results(self):
+        action = RoleUserAssignmentAction.__new__(RoleUserAssignmentAction)
+        action._task = MagicMock()
+        action._task.args = {}
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        manager = MagicMock()
+        manager_result = {"id": 1, "role_definition": "5", "user": "alice", "object_id": 202, "changed": True}
+        manager.execute.side_effect = [{}, manager_result]
+        prepared = {
+            "result": {},
+            "argspec": {"argument_spec": {"role_definition": {}, "user": {}, "object_id": {}}},
+            "validated_params": {"role_definition": "5", "user": "alice", "object_id": 202, "state": "present"},
+            "resource_data": {"role_definition": "5", "user": "alice", "object_id": 202},
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+        with patch.object(action, "_prepare_action", return_value=prepared):
+            with patch.object(action, "_validate_data", return_value=SimpleNamespace(validated_parameters=manager_result)):
+                result = action.run(task_vars={})
+
+        self.assertEqual(result["role_user_assignment"]["object_id"], 202)
+        self.assertEqual(result["object_id"], 202)
+
     def test_prepare_action_rejects_missing_documentation(self):
         action = self._make_action()
 
@@ -188,8 +394,176 @@ class TestActionPreparation(unittest.TestCase):
         self.assertEqual(result["msg"], "invalid documentation")
 
 
+class TestRoleTeamAssignmentMultiObject(unittest.TestCase):
+    def _action(self, assignment_objects, manager):
+        action = RoleTeamAssignmentAction.__new__(RoleTeamAssignmentAction)
+        action._task = MagicMock()
+        action._task.args = {"assignment_objects": assignment_objects}
+        action._task.check_mode = False
+        action._display = MagicMock()
+        action._display.verbosity = 0
+        prepared = {
+            "result": {},
+            "validated_params": {
+                "role_definition": "404",
+                "team": "7",
+                "state": "absent",
+                "assignment_objects": assignment_objects,
+            },
+            "manager": manager,
+        }
+        return action, prepared
+
+    def test_deleted_numeric_role_does_not_block_object_id_cleanup(self):
+        assignment_objects = [{"object_id": 202}]
+        action, prepared = self._action(assignment_objects, MagicMock())
+
+        def execute(**kwargs):
+            if kwargs["operation"] == "find":
+                return {"id": 11, "object_id": "202"}
+            return {}
+
+        prepared["manager"].execute.side_effect = execute
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=prepared["validated_params"])):
+                with patch.object(action, "_get_or_spawn_manager", return_value=(prepared["manager"], None)):
+                    result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["changed"])
+        self.assertEqual(
+            [call.kwargs["module_name"] for call in prepared["manager"].execute.call_args_list],
+            ["role_team_assignment", "role_team_assignment"],
+        )
+
+    def test_name_type_selector_preserves_role_lookup_errors(self):
+        assignment_objects = [{"name": "target", "type": "organizations"}]
+        action, prepared = self._action(assignment_objects, MagicMock())
+        prepared["manager"].execute.side_effect = ValueError("503 Service Unavailable")
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=prepared["validated_params"])):
+                with patch.object(action, "_get_or_spawn_manager", return_value=(prepared["manager"], None)):
+                    result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("503 Service Unavailable", result["msg"])
+        prepared["manager"].execute.assert_called_once_with(
+            operation="find",
+            module_name="role_definition",
+            ansible_data={"name": "404"},
+        )
+
+    def test_name_type_selector_keeps_content_type_validation(self):
+        assignment_objects = [{"name": "target", "type": "teams"}]
+        action, prepared = self._action(assignment_objects, MagicMock())
+        prepared["manager"].execute.return_value = {"content_type": "shared.organization"}
+
+        with patch.object(ActionBase, "run", return_value={}):
+            with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=prepared["validated_params"])):
+                with patch.object(action, "_get_or_spawn_manager", return_value=(prepared["manager"], None)):
+                    result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("requires type 'organizations'", result["msg"])
+        prepared["manager"].execute.assert_called_once_with(
+            operation="find",
+            module_name="role_definition",
+            ansible_data={"name": "404"},
+        )
+
+
+class TestRoleUserAssignmentExistsMiss(unittest.TestCase):
+    def test_scalar_and_list_selector_misses_share_failure_result(self):
+        selectors = (
+            {"object_id": 202},
+            {"object_ansible_id": "object-uuid"},
+            {"object_ids": [202]},
+        )
+        expected = {
+            "changed": False,
+            "failed": True,
+            "exists": False,
+            "role_user_assignment": {},
+            "msg": "No role_user_assignment found matching the given criteria",
+        }
+
+        for selector in selectors:
+            with self.subTest(selector=selector):
+                action = RoleUserAssignmentAction.__new__(RoleUserAssignmentAction)
+                action._task = MagicMock()
+                action._task.args = dict(selector, state="exists")
+                action._display = MagicMock()
+                action._display.verbosity = 0
+                manager = MagicMock()
+                manager.execute.return_value = {}
+                validated_params = dict(selector, role_definition="5", user="alice", state="exists")
+
+                with patch.object(ActionBase, "run", return_value={}):
+                    with patch.object(action, "_validate_action_input", return_value=SimpleNamespace(validated_params=validated_params)):
+                        with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                            result = action.run(task_vars={})
+
+                self.assertEqual(result, expected)
+
+
 class TestAuthenticatorUserLookup(unittest.TestCase):
     """Tests for authenticator-user lookup resolution."""
+
+    def _run_exists_check(self, base_result, authenticator_user_id="42", authenticator="7"):
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        action._task = MagicMock()
+        action._task.args = {
+            "authenticator_user_id": authenticator_user_id,
+            "authenticator": authenticator,
+            "state": "exists",
+        }
+        action._client = MagicMock()
+        with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
+            result = action.run(task_vars={})
+        return result, action._client
+
+    def test_exists_fails_when_authenticator_user_is_missing(self):
+        result, _manager = self._run_exists_check({"changed": False, "exists": False})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["exists"])
+        self.assertFalse(result["changed"])
+
+    def test_exists_fails_when_authenticator_does_not_match(self):
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        action._task = MagicMock()
+        action._task.args = {"authenticator_user_id": "42", "authenticator": "Destination", "state": "exists"}
+        action._client = MagicMock()
+        action._client.lookup_resource_id.side_effect = [12, 9]
+        base_result = {"changed": False, "exists": True, "authenticator_user": {"authenticator": "source-slug"}}
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["exists"])
+        self.assertFalse(result["changed"])
+        self.assertIn("not requested authenticator", result["msg"])
+
+    def test_exists_passes_when_authenticator_matches(self):
+        action = AuthenticatorUserAction.__new__(AuthenticatorUserAction)
+        action._task = MagicMock()
+        action._task.args = {"authenticator_user_id": "42", "authenticator": "Destination", "state": "exists"}
+        action._client = MagicMock()
+        action._client.lookup_resource_id.side_effect = [9, 9]
+        base_result = {"changed": False, "failed": False, "exists": True, "authenticator_user": {"authenticator": "destination-slug"}}
+
+        with patch.object(BaseResourceActionPlugin, "run", return_value=base_result):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertTrue(result["exists"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(
+            [call.args for call in action._client.lookup_resource_id.call_args_list],
+            [("authenticators", "slug", "destination-slug"), ("authenticators", "name", "Destination")],
+        )
 
     def test_numeric_authenticator_user_id_populates_resource_id(self):
         """A numeric module ID is copied to the generic resource ID."""
@@ -212,6 +586,112 @@ class TestAuthenticatorUserLookup(unittest.TestCase):
 
         self.assertIsNone(resource.id)
         self.assertNotIn("id", resource_data)
+
+
+@pytest.mark.parametrize(
+    "module,alias,canonical,extra",
+    [("workflow_launch", "workflow_template", "name", {}), ("workflow_job_template_node", "workflow", "workflow_job_template", {"identifier": "leaf"})],
+)
+def test_real_preparation_normalizes_workflow_aliases(module, alias, canonical, extra):
+    """Pass only canonical validated keys into models when aliases are used."""
+    from importlib import import_module
+
+    action_type = import_module("ansible_collections.ansible.platform.plugins.action." + module).ActionModule
+    action = action_type.__new__(action_type)
+    action._task = MagicMock(args={alias: "Workflow", **extra})
+    action._display = MagicMock()
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(MagicMock(), None)):
+        prepared = action._prepare_action(None, {})
+    assert alias not in prepared["validated_params"]
+    assert alias not in prepared["resource_data"]
+    model = action.MODEL_CLASS(**prepared["resource_data"])
+    assert getattr(model, canonical) == "Workflow"
+
+
+_RESOURCE_INPUTS = {
+    "organization": {"name": "Resource"},
+    "job_template": {"name": "Resource"},
+    "workflow_job_template": {"name": "Resource"},
+    "execution_environment": {"name": "Resource"},
+    "group": {"name": "Resource", "inventory": "1"},
+    "token": {},
+    "job_wait": {"job_id": 1},
+    "settings": {"settings": {}},
+    "controller_settings": {"settings": {}},
+    "notification_template": {"name": "Resource"},
+    "job_launch": {"name": "Resource"},
+    "inventory": {"name": "Resource", "organization": "1"},
+    "host": {"name": "Resource", "inventory": "1"},
+    "inventory_source_update": {"name": "Resource", "inventory": "1"},
+    "schedule": {"name": "Resource"},
+    "inventory_source": {"name": "Resource", "inventory": "1"},
+    "project_update": {"name": "Resource"},
+}
+
+
+def _make_resource_action(module, args=None, check_mode=False):
+    """Build an action while retaining its real argument validation."""
+    cls = import_module("ansible_collections.ansible.platform.plugins.action." + module).ActionModule
+    action = cls.__new__(cls)
+    action._task = MagicMock(args=dict(_RESOURCE_INPUTS.get(module, {}), **(args or {})), check_mode=check_mode)
+    action._display = MagicMock()
+    action._display.verbosity = 0
+    action._client = MagicMock()
+    return action
+
+
+def _resource_transform(module):
+    """Load the concrete transform for a resource."""
+    service, version = ("gateway", "1") if module == "organization" else ("controller", "2")
+    imported = import_module(f"ansible_collections.ansible.platform.plugins.plugin_utils.api.{service}.v{version}.{module}")
+    return next(value for name, value in vars(imported).items() if name.endswith("TransformMixin_v" + version))
+
+
+@pytest.mark.parametrize("module", _RESOURCE_INPUTS)
+def test_real_validation_retains_canonical_inputs_and_removes_alias_keys(module):
+    """Normalize supported aliases through actual Ansible argument validation."""
+    action = _make_resource_action(module)
+    baseline = action._validate_action_input()
+    specs = baseline.argspec["argument_spec"]
+    for canonical, spec in specs.items():
+        if canonical in action._AUTH_PARAMS:
+            continue
+        for alias in spec.get("aliases", []):
+            value = {"bool": False, "dict": {}, "list": []}.get(spec.get("type"), "Resource")
+            args = dict(_RESOURCE_INPUTS[module])
+            args.pop(canonical, None)
+            args[alias] = value
+            action._task.args = args
+            validated = action._validate_action_input().validated_params
+            assert alias not in validated
+            assert validated[canonical] == value
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["organization", "workflow_job_template", "execution_environment", "group", "notification_template", "inventory", "host", "inventory_source", "schedule"],
+)
+def test_empty_description_round_trip_does_not_predict_an_update(module):
+    """Preserve stored empty descriptions when comparing repeated tasks."""
+    action = _make_resource_action(module)
+    transform = _resource_transform(module)
+    raw = {"id": 7, "name": "Resource", "description": "", "inventory": 1, "organization": 1}
+    manager = MagicMock()
+    manager.search_api.return_value = {"id": 1, "name": "Resource"}
+    manager.lookup_organization_names.return_value = ["Resource"]
+    current = asdict(transform.from_api(raw, {"manager": manager}))
+    assert current["description"] == ""
+    assert not action._should_update({"description": ""}, current)
+
+
+@pytest.mark.parametrize(
+    "module,field", [("schedule", "inventory"), ("schedule", "execution_environment"), ("workflow_job_template_node", "execution_environment")]
+)
+@pytest.mark.parametrize("current,changed", [(None, False), ("", False), (7, True), ("7", True), ("Existing", True)])
+def test_nullable_reference_clear_is_idempotent_after_api_returns_null(module, field, current, changed):
+    """Clear assigned relationships, including numeric-string IDs, but retain cleared values."""
+    action = _make_resource_action(module)
+    assert action._should_update({field: ""}, {field: current}) is changed
 
 
 if __name__ == "__main__":

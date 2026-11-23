@@ -20,15 +20,12 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleInventorySource
 
     _WRITE_ONLY_FIELDS = frozenset(_NOTIFICATION_FIELDS)
+    _JSON_OBJECT_FIELDS = frozenset({"source_vars"})
 
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")
 
-        association_data = {}
-        for field in _NOTIFICATION_FIELDS:
-            val = self._task.args.pop(field, None)
-            if val is not None:
-                association_data[field] = val
+        association_data = {field: self._task.args.get(field) for field in _NOTIFICATION_FIELDS}
 
         result = super().run(tmp, task_vars)
         if result.get("failed"):
@@ -36,7 +33,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
 
-        if resource_id and state not in ("absent", "deleted", "exists") and association_data and not self._task.check_mode:
+        if resource_id and state not in ("absent", "deleted", "exists") and association_data:
             for field, (lookup_ep, lookup_field) in _NOTIFICATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
@@ -48,6 +45,7 @@ class ActionModule(BaseResourceActionPlugin):
                         lookup_ep,
                         lookup_field,
                         service="controller",
+                        check_mode=self._task.check_mode,
                     ):
                         result["changed"] = True
 

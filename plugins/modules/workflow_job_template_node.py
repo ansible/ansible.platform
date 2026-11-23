@@ -34,8 +34,7 @@ options:
 
   organization:
     description:
-      - Organization name or ID to scope the workflow_job_template and
-        unified_job_template lookups by name.
+      - Organization name or ID to scope the workflow_job_template lookup by name.
       - Required when multiple resources share the same name across organizations.
     type: str
 
@@ -51,7 +50,31 @@ options:
     description:
       - Name or ID of the unified job template to run in this workflow node.
       - Can be a job template, project, inventory source, etc.
+      - Mutually exclusive with C(approval_node).
     type: str
+
+  lookup_organization:
+    description:
+      - Organization name or ID to scope the unified_job_template lookup independently of the parent workflow.
+      - If omitted, unified job templates are looked up without an organization filter.
+    type: str
+
+  approval_node:
+    description:
+      - Create or update the approval template attached to this node.
+      - Mutually exclusive with C(unified_job_template).
+    type: dict
+    suboptions:
+      name:
+        description: Name of the workflow approval template.
+        type: str
+        required: true
+      description:
+        description: Description of the workflow approval template.
+        type: str
+      timeout:
+        description: Seconds before the approval expires and fails. Zero means no expiry.
+        type: int
 
   all_parents_must_converge:
     description:
@@ -208,6 +231,11 @@ EXAMPLES = """
 """
 
 RETURN = """
+workflow_node_id:
+  description: ID of the workflow node whose approval template was reconciled.
+  returned: when approval_node is supplied for an existing or newly created node
+  type: int
+
 changed:
   description: Whether the node was created, updated, or deleted.
   returned: always

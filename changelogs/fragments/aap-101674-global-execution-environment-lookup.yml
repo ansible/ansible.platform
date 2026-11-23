@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >-
+    ``job_template`` and ``job_launch`` - resolve execution environment names
+    within the template organization first, then fall back to a matching global
+    environment (https://issues.redhat.com/browse/AAP-101674).
+...

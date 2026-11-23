@@ -64,7 +64,7 @@ class TestInventoryTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventory(name="inv", organization="Default")
         api = InventoryTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller", numeric_is_id=False)
         self.assertEqual(api.organization, 42)
 
     def test_create_with_org_id_skips_lookup(self):
@@ -72,16 +72,44 @@ class TestInventoryTransform(unittest.TestCase):
         api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
         self.assertEqual(api.organization, 42)
 
-    def test_org_lookup_uses_default_service_not_controller(self):
-        """Organization is Gateway-owned, so lookup_resource_id should NOT pass service='controller'."""
+    def test_create_with_signed_numeric_organization_name_resolves_via_manager(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+        ansible = AnsibleInventory(name="inv", organization="+42")
+
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "+42", service="controller", numeric_is_id=False)
+        self.assertEqual(api.organization, 42)
+
+    def test_create_with_unicode_digit_name_resolves_organization(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+        ansible = AnsibleInventory(name="inv", organization="²")
+
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "²", service="controller", numeric_is_id=False)
+        self.assertEqual(api.organization, 42)
+
+    def test_create_with_numeric_organization_id_does_not_lookup(self):
+        mock_manager = MagicMock()
+        ansible = AnsibleInventory(name="inv", organization="42")
+
+        api = InventoryTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_not_called()
+        self.assertEqual(api.organization, 42)
+
+    def test_org_lookup_uses_controller_service(self):
+        """Controller foreign keys must use the organization ID from Controller."""
         mock_manager = MagicMock()
         mock_manager.lookup_resource_id.return_value = 1
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventory(name="inv", organization="Default")
         InventoryTransformMixin_v2.from_ansible_data(ansible, context)
         call_kwargs = mock_manager.lookup_resource_id.call_args
-        # Should NOT have service="controller" — organization is gateway-owned
-        self.assertNotIn("controller", str(call_kwargs))
+        self.assertEqual(call_kwargs.kwargs.get("service"), "controller")
 
     def test_update_with_new_name(self):
         ansible = AnsibleInventory(name="old", organization="1", new_name="new")
@@ -133,8 +161,21 @@ class TestInventoryTransform(unittest.TestCase):
 
         ansible = InventoryTransformMixin_v2.from_api({"name": "Production", "organization": 5}, {"manager": mock_manager})
 
-        mock_manager.lookup_organization_names.assert_called_once_with([5])
+        mock_manager.lookup_organization_names.assert_called_once_with([5], service="controller")
         self.assertEqual(ansible.organization, "Default")
+
+    def test_idempotency_resolves_unicode_digit_organization_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 42
+
+        value = InventoryTransformMixin_v2.get_idempotency_value_from_current_data(
+            "organization",
+            {"organization": "²"},
+            {"manager": mock_manager},
+        )
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "²", service="controller", numeric_is_id=False)
+        self.assertEqual(value, 42)
 
     def test_from_api_preserves_missing_organization_as_empty_string(self):
         mock_manager = MagicMock()

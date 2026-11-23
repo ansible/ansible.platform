@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - rulebook_activation_copy - preserve duplicate-name API errors in the module result message.
+...

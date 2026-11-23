@@ -231,19 +231,10 @@ class TestCancelCommand(unittest.TestCase):
             wait=True,
         )
 
-    @patch.object(ActionModule, "_prepare_action")
-    def test_missing_command_id(self, mock_prepare):
+    def test_missing_command_id_is_rejected_by_shared_validation(self):
         module = _make_module(args={})
-        mock_prepare.return_value = {
-            "result": {},
-            "validated_params": {"command_id": None, "fail_if_not_running": False},
-            "manager": _make_manager(),
-        }
-
-        result = module.run(task_vars={})
-
-        self.assertTrue(result["failed"])
-        self.assertIn("command_id is required", result["msg"])
+        with self.assertRaisesRegex(Exception, "command_id"):
+            module._validate_action_input()
 
     @patch.object(ActionModule, "_prepare_action")
     def test_command_not_found(self, mock_prepare):

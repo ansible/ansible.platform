@@ -7,6 +7,7 @@ __metaclass__ = type
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 
 
 @pytest.fixture
@@ -32,6 +33,28 @@ def action_module():
 class TestWorkflowLaunchActionModule:
     """Tests for workflow_launch action plugin."""
 
+    @pytest.mark.parametrize("resource_data", [{}, {"wait": False}, {"name": ""}])
+    def test_missing_name_fails_before_remote_requests(self, action_module, resource_data):
+        mock_manager = MagicMock()
+
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {},
+                "resource_data": resource_data,
+                "manager": mock_manager,
+                "argspec": {},
+                "write_only_data": {},
+            }
+            result = action_module.run(task_vars={})
+
+        assert result["failed"] is True
+        assert result["msg"] == "name is required"
+        mock_manager.search_api.assert_not_called()
+        mock_manager.lookup_resource_id.assert_not_called()
+        mock_manager.launch_resource.assert_not_called()
+        mock_manager.wait_for_completion.assert_not_called()
+
     def test_module_name(self, action_module):
         assert action_module.MODULE_NAME == "workflow_launch"
 
@@ -47,18 +70,8 @@ class TestWorkflowLaunchActionModule:
         action_module._task.args = {"name": "Test Workflow", "inventory": "Production"}
 
         mock_manager = MagicMock()
-        mock_manager.search_api.side_effect = [
-            {"count": 1, "results": [{"id": 7, "name": "Production"}]},
-            {
-                "results": [
-                    {
-                        "id": 10,
-                        "name": "Test Workflow",
-                        "ask_inventory_on_launch": True,
-                    }
-                ]
-            },
-        ]
+        mock_manager.lookup_resource_id.return_value = 7
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test Workflow", "ask_inventory_on_launch": True}]}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
             mock_prepare.return_value = {
@@ -85,12 +98,10 @@ class TestWorkflowLaunchActionModule:
 
         assert result["changed"] is True
         assert "check mode" in result["msg"]
-        assert mock_manager.search_api.call_args_list[0].args[0] == "/api/controller/v2/inventories/"
-        assert mock_manager.search_api.call_args_list[0].kwargs == {
-            "query_params": {"name": "Production"},
-            "return_all": True,
-        }
-        assert mock_manager.search_api.call_args_list[1].kwargs == {"query_params": {"name": "Test Workflow"}, "return_all": True}
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "inventories", "name", "Production", service="controller", extra_query_params=None, require_unique=True
+        )
+        mock_manager.search_api.assert_called_once_with("/api/controller/v2/workflow_job_templates/", query_params={"name": "Test Workflow"}, return_all=True)
         mock_manager.launch_resource.assert_not_called()
         mock_manager.wait_for_completion.assert_not_called()
 
@@ -207,7 +218,7 @@ class TestWorkflowLaunchActionModule:
         assert result["workflow_launch"]["id"] == 42
         assert result["job_info"]["id"] == 42
         mock_manager.launch_resource.assert_called_once_with(
-            "workflow_job_templates/10/launch",
+            "/api/controller/v2/workflow_job_templates/10/launch/",
             {},
             service="controller",
             retry=False,
@@ -290,7 +301,7 @@ class TestWorkflowLaunchActionModule:
         assert result["job_info"]["id"] == 42
         assert result.get("failed") is not True
         mock_manager.wait_for_completion.assert_called_once_with(
-            "workflow_jobs/42",
+            "/api/controller/v2/workflow_jobs/42/",
             timeout=600.0,
             interval=2.0,
             service="controller",
@@ -326,11 +337,22 @@ class TestWorkflowLaunchActionModule:
             }
             result = action_module.run(task_vars={})
 
-        assert result["failed"] is True
-        assert result["status"] == "failed"
-        assert result["id"] == 42
+        assert result == {
+            "changed": True,
+            "failed": True,
+            "msg": "Workflow job 42 finished with status 'failed'",
+            "id": 42,
+            "status": "failed",
+            "workflow_launch": {"id": 42, "status": "failed"},
+            "job_info": {"id": 42},
+            "job_data": {"id": 42, "status": "failed"},
+            "elapsed": None,
+            "started": None,
+            "finished": False,
+            "finished_at": None,
+        }
         mock_manager.wait_for_completion.assert_called_once_with(
-            "workflow_jobs/42",
+            "/api/controller/v2/workflow_jobs/42/",
             timeout=-1,
             interval=2.0,
             service="controller",
@@ -529,26 +551,18 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        call_args = mock_manager.launch_resource.call_args
-        payload = call_args[0][1]
-        assert payload["job_tags"] == "web,deploy"
-        assert payload["skip_tags"] == "debug"
+        mock_manager.launch_resource.assert_called_once_with(
+            "/api/controller/v2/workflow_job_templates/10/launch/",
+            {"job_tags": "web,deploy", "skip_tags": "debug"},
+            service="controller",
+            retry=False,
+        )
 
     def test_inventory_fk_resolution(self, action_module):
         """Inventory name should be resolved to a unique Controller inventory ID."""
         mock_manager = MagicMock()
-        mock_manager.search_api.side_effect = [
-            {"count": 1, "results": [{"id": 7, "name": "Production"}]},
-            {
-                "results": [
-                    {
-                        "id": 10,
-                        "name": "Test WJT",
-                        "ask_inventory_on_launch": True,
-                    }
-                ]
-            },
-        ]
+        mock_manager.lookup_resource_id.return_value = 7
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test WJT", "ask_inventory_on_launch": True}]}
         mock_manager.launch_resource.return_value = {"id": 42, "status": "pending"}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
@@ -575,11 +589,9 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        assert mock_manager.search_api.call_args_list[0].args[0] == "/api/controller/v2/inventories/"
-        assert mock_manager.search_api.call_args_list[0].kwargs == {
-            "query_params": {"name": "Production"},
-            "return_all": True,
-        }
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "inventories", "name", "Production", service="controller", extra_query_params=None, require_unique=True
+        )
         call_args = mock_manager.launch_resource.call_args
         payload = call_args[0][1]
         assert payload["inventory"] == 7
@@ -587,13 +599,7 @@ class TestWorkflowLaunchActionModule:
     def test_inventory_name_ambiguity_fails(self, action_module):
         """An inventory name matching multiple organizations must fail safely."""
         mock_manager = MagicMock()
-        mock_manager.search_api.return_value = {
-            "count": 2,
-            "results": [
-                {"id": 7, "name": "Production", "organization": 1},
-                {"id": 8, "name": "Production", "organization": 2},
-            ],
-        }
+        mock_manager.lookup_resource_id.side_effect = ValueError("Resource 'inventories' with name=Production matched multiple resources")
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
             mock_prepare.return_value = {
@@ -619,17 +625,15 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["failed"] is True
-        assert "More than one inventory matched" in result["msg"]
+        assert "matched multiple resources" in result["msg"]
+        mock_manager.search_api.assert_not_called()
         mock_manager.launch_resource.assert_not_called()
 
     def test_named_urls_resolve_organization_and_inventory(self, action_module):
         """Legacy named URL references should resolve before querying or launching."""
         mock_manager = MagicMock()
-        mock_manager.search_api.side_effect = [
-            {"id": 3, "name": "Default"},
-            {"id": 7, "name": "Production"},
-            {"results": [{"id": 10, "name": "Test WJT", "ask_inventory_on_launch": True}]},
-        ]
+        mock_manager.lookup_resource_id.side_effect = [3, 7]
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test WJT", "ask_inventory_on_launch": True}]}
         mock_manager.launch_resource.return_value = {"id": 42, "status": "pending"}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
@@ -656,12 +660,19 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        assert mock_manager.search_api.call_args_list[0].args[0] == "/api/gateway/v1/organizations/Default++/"
-        assert mock_manager.search_api.call_args_list[1].args[0] == "/api/controller/v2/inventories/Production++/"
-        assert mock_manager.search_api.call_args_list[2].kwargs == {
-            "query_params": {"name": "Test WJT", "organization": 3},
-            "return_all": True,
+        assert mock_manager.lookup_resource_id.call_args_list[0].kwargs == {
+            "service": "controller",
+            "extra_query_params": None,
+            "require_unique": True,
         }
+        assert mock_manager.lookup_resource_id.call_args_list[1].kwargs == {
+            "service": "controller",
+            "extra_query_params": {"organization": 3},
+            "require_unique": True,
+        }
+        mock_manager.search_api.assert_called_once_with(
+            "/api/controller/v2/workflow_job_templates/", query_params={"name": "Test WJT", "organization": 3}, return_all=True
+        )
         assert mock_manager.launch_resource.call_args.args[1] == {"inventory": 7}
 
     def test_organization_lookup_for_wjt(self, action_module):
@@ -695,7 +706,9 @@ class TestWorkflowLaunchActionModule:
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_called_once_with(
+            "organizations", "name", "Default", service="controller", extra_query_params=None, require_unique=True
+        )
         mock_manager.search_api.assert_called_once_with(
             "/api/controller/v2/workflow_job_templates/",
             query_params={"name": "Test WJT", "organization": 3},
@@ -739,3 +752,82 @@ class TestWorkflowLaunchActionModule:
         assert result["failed"] is True
         assert "specify an organization" in result["msg"]
         mock_manager.launch_resource.assert_not_called()
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("wait", [False, True])
+def test_workflow_launch_negative_timeout_respects_wait_and_check_mode(check_mode, wait):
+    """Only wait on negative timeouts after a real launch when requested."""
+    from ansible_collections.ansible.platform.plugins.action.workflow_launch import ActionModule
+
+    action = ActionModule.__new__(ActionModule)
+    action._task = MagicMock(check_mode=check_mode)
+    action._display = MagicMock(verbosity=0)
+    manager = MagicMock()
+    manager.search_api.return_value = {"results": [{"id": 3}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    action._prepare_action = MagicMock(
+        return_value={"result": {}, "validated_params": {"name": "Workflow", "timeout": -5, "wait": wait}, "resource_data": {}, "manager": manager}
+    )
+    result = action.run(task_vars={})
+    assert not result.get("failed"), result.get("msg")
+    if check_mode:
+        manager.launch_resource.assert_not_called()
+    else:
+        manager.launch_resource.assert_called_once()
+    if wait and not check_mode:
+        assert manager.wait_for_completion.call_args.kwargs["timeout"] == 0.0
+    else:
+        manager.wait_for_completion.assert_not_called()
+
+
+@pytest.mark.parametrize("timeout,expected", [(None, -1.0), (0, -1.0), (-1, 0.0), (-5, 0.0), (30, 30.0)])
+def test_launch_wait_timeout_normalization(action_module, timeout, expected):
+    """Use unlimited zero/omitted waits and immediate negative-timeout waits."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": timeout}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    assert not result.get("failed")
+    assert manager.wait_for_completion.call_args.kwargs["timeout"] == expected
+
+
+@pytest.mark.parametrize("status", ["running", "successful"])
+def test_negative_launch_timeout_polls_once_using_real_waiter(action_module, status):
+    """Stop after the first unfinished response while accepting a terminal job."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": -5}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    client = DirectHTTPClient.__new__(DirectHTTPClient)
+    client.base_url = "https://gateway.example"
+    client.api_versions = {"controller": "2"}
+    client._get_json = MagicMock(side_effect=[{"id": 42, "status": status}, AssertionError("Waiter polled more than once")])
+    manager.wait_for_completion = client.wait_for_completion
+    with (
+        patch("ansible.plugins.action.ActionBase.run", return_value={}),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep") as sleep,
+    ):
+        result = action.run(task_vars={})
+    assert {
+        "changed": result["changed"],
+        "failed": result.get("failed", False),
+        "id": result["id"],
+        "status": result["status"],
+    } == {"changed": True, "failed": status == "running", "id": 42, "status": status}, result.get("msg")
+    client._get_json.assert_called_once()
+    manager.launch_resource.assert_called_once()
+    sleep.assert_not_called()

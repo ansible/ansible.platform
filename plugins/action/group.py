@@ -30,28 +30,22 @@ _PRESERVE_ALIASES = {
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "group"
     MODEL_CLASS = AnsibleGroup
+    _JSON_OBJECT_FIELDS = frozenset({"variables"})
 
     _WRITE_ONLY_FIELDS = frozenset(list(_ASSOCIATION_FIELDS) + list(_PRESERVE_FIELDS.values()) + list(_ASSOCIATION_ALIASES) + list(_PRESERVE_ALIASES))
 
     def run(self, tmp=None, task_vars=None):
         state = self._task.args.get("state", "present")
 
-        association_data = {}
-        preserve_flags = {}
+        association_data = {field: self._task.args.get(field) for field in _ASSOCIATION_FIELDS}
         for alias, canonical in _ASSOCIATION_ALIASES.items():
-            val = self._task.args.pop(alias, None)
-            if val is not None:
-                self._task.args.setdefault(canonical, val)
-        for field in _ASSOCIATION_FIELDS:
-            val = self._task.args.pop(field, None)
-            if val is not None:
-                association_data[field] = val
-        for alias, canonical in _PRESERVE_ALIASES.items():
-            val = self._task.args.pop(alias, None)
-            if val is not None:
-                self._task.args.setdefault(canonical, val)
+            if association_data.get(canonical) is None:
+                association_data[canonical] = self._task.args.get(alias)
+
+        preserve_flags = {}
         for assoc_field, preserve_field in _PRESERVE_FIELDS.items():
-            preserve_flags[assoc_field] = self._task.args.pop(preserve_field, False)
+            alias = next((key for key, value in _PRESERVE_ALIASES.items() if value == preserve_field), None)
+            preserve_flags[assoc_field] = self._task.args.get(preserve_field, self._task.args.get(alias, False))
 
         result = super().run(tmp, task_vars)
         if result.get("failed"):
@@ -59,10 +53,13 @@ class ActionModule(BaseResourceActionPlugin):
 
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
 
-        if resource_id and state not in ("absent", "deleted", "exists") and association_data and not self._task.check_mode:
+        if resource_id and state not in ("absent", "deleted", "exists") and association_data:
+            inventory_id = None
             for field, (lookup_ep, lookup_field) in _ASSOCIATION_FIELDS.items():
                 desired = association_data.get(field)
                 if desired is not None:
+                    if inventory_id is None:
+                        inventory_id = self._client.lookup_resource_id("inventories", "name", self._task.args["inventory"], service="controller")
                     if self._client.manage_associations(
                         "groups",
                         resource_id,
@@ -71,7 +68,9 @@ class ActionModule(BaseResourceActionPlugin):
                         lookup_ep,
                         lookup_field,
                         service="controller",
+                        extra_query_params={"inventory": inventory_id},
                         preserve_existing=preserve_flags.get(field, False),
+                        check_mode=self._task.check_mode,
                     ):
                         result["changed"] = True
 

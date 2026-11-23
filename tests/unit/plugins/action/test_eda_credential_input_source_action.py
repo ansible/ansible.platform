@@ -116,7 +116,7 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         """An explicit organization scopes both credential name lookups."""
         context = self._make_context(
             {
-                ("organizations", "Default"): 1,
+                ("organizations", "Default"): 901,
                 ("eda-credentials", "my_target"): 10,
                 ("eda-credentials", "my_source"): 20,
             }
@@ -130,11 +130,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
         api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
 
-        self.assertEqual(api_obj.organization_id, 1)
+        self.assertEqual(api_obj.organization_id, 901)
         credential_calls = [call for call in context.manager.lookup_resource_id.call_args_list if call.args[0] == "eda-credentials"]
         self.assertEqual(len(credential_calls), 2)
         for call in credential_calls:
-            self.assertEqual(call.kwargs["extra_query_params"], {"organization": 1})
+            self.assertEqual(call.kwargs["extra_query_params"], {"organization": 901})
             self.assertTrue(call.kwargs["require_unique"])
 
     def test_from_ansible_data_accepts_named_url_references(self):
@@ -193,11 +193,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
         context.manager.lookup_resource_id.assert_not_called()
 
     def test_from_ansible_data_resolves_organization(self):
-        """Organization name resolves via organizations endpoint (gateway service)."""
+        """Organization name resolves via the EDA organizations endpoint."""
         lookup_map = {
             ("eda-credentials", "my_target"): 10,
             ("eda-credentials", "my_source"): 20,
-            ("organizations", "Default"): 1,
+            ("organizations", "Default"): 901,
         }
         context = self._make_context(lookup_map)
 
@@ -210,11 +210,11 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
         api_obj = EdaCredentialInputSourceTransformMixin_v1.from_ansible_data(ansible_obj, context)
 
-        self.assertEqual(api_obj.organization_id, 1)
-        # Organization lookup uses Gateway and rejects ambiguous names.
+        self.assertEqual(api_obj.organization_id, 901)
+        # Organization lookup uses EDA's service-local ID and rejects ambiguous names.
         org_call = [c for c in context.manager.lookup_resource_id.call_args_list if c.args[0] == "organizations"]
         self.assertEqual(len(org_call), 1)
-        self.assertEqual(org_call[0].kwargs["service"], "gateway")
+        self.assertEqual(org_call[0].kwargs["service"], "eda")
         self.assertTrue(org_call[0].kwargs["require_unique"])
 
     def test_from_ansible_data_optional_fields(self):
@@ -326,6 +326,26 @@ class TestEdaCredentialInputSourceTransform(unittest.TestCase):
 
                 self.assertEqual(current.metadata, desired["metadata"])
                 self.assertFalse(action._should_update(desired, vars(current)))
+
+    def test_description_comparison_skips_equal_empty_value_and_keeps_changed_value(self):
+        """An empty stored description is compared as a value, not as missing data."""
+        action = ActionModule.__new__(ActionModule)
+        desired = {
+            "input_field_name": "password",
+            "target_credential": "target",
+            "source_credential": "source",
+            "description": "",
+        }
+        current = {
+            "input_field_name": "password",
+            "target_credential": 10,
+            "source_credential": 20,
+            "description": "",
+        }
+
+        self.assertFalse(action._should_update(desired, current))
+        desired["description"] = "Updated description"
+        self.assertTrue(action._should_update(desired, current))
 
     def test_from_api_missing_optional_fields(self):
         """from_api handles missing optional fields gracefully."""
@@ -440,6 +460,29 @@ class TestEdaCredentialInputSourceActionPlugin(unittest.TestCase):
 
         self.assertFalse(action._should_update({"organization_name": "Default"}, {"organization_name": None}))
 
+    def test_output_preserves_integer_credential_ids(self):
+        """Output IDs stay integers although input options accept names as strings."""
+        action = ActionModule.__new__(ActionModule)
+        action._display = MagicMock()
+        argspec = {
+            "argument_spec": {
+                "input_field_name": {"type": "str"},
+                "target_credential": {"type": "str"},
+                "source_credential": {"type": "str"},
+            }
+        }
+        manager_result = {
+            "id": 42,
+            "input_field_name": "password",
+            "target_credential": 1,
+            "source_credential": 2,
+        }
+
+        resource_output, flat_extras = action._format_resource_output(manager_result, argspec)
+
+        self.assertEqual(resource_output, manager_result)
+        self.assertEqual(flat_extras, {})
+
     def test_same_metadata_with_different_mapping_type_and_key_order_is_idempotent(self):
         """Tagged task dictionaries compare structurally with API dictionaries."""
 
@@ -503,12 +546,12 @@ class TestEdaCredentialInputSourceEnforcedUpdate(unittest.TestCase):
         response.raise_for_status.return_value = None
         service._find_resource = MagicMock(return_value=self.current)
         service._build_url = MagicMock(return_value="https://gateway.example/api/eda/v1/credential-input-sources/42/")
-        service._request_with_auth_recovery = MagicMock(return_value=response)
+        service._make_request = MagicMock(return_value=response)
         self.context.manager = service
 
         service._update_resource(self.resource, EdaCredentialInputSourceTransformMixin_v1, self.context)
 
-        request_data = service._request_with_auth_recovery.call_args.kwargs["json"]
+        request_data = service._make_request.call_args.kwargs["json"]
         self.assertEqual(request_data, {"description": None, "metadata": None})
 
     def test_direct_client_patch_includes_explicit_nulls(self):

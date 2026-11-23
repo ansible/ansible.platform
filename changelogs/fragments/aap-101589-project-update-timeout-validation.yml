@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - project_update - reject negative timeout values before launching an update instead of treating them as an unlimited wait (https://github.com/ansible/ansible.platform/pull/390).
+...

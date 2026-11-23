@@ -3,17 +3,32 @@
   ansible.builtin.set_fact:
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
 
-- name: Set unique host names
+- name: Set unique test resource names
   ansible.builtin.set_fact:
+    test_inventory_name: "AAP-Collection-Test-BulkHost-{{ test_id }}-Inventory"
     test_host_names:
       - "AAP-Collection-Test-BulkHost-{{ test_id }}-1"
       - "AAP-Collection-Test-BulkHost-{{ test_id }}-2"
+
+- name: Copy Demo Inventory for this test run
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  ansible.platform.inventory:
+    name: "{{ test_inventory_name }}"
+    copy_from: "{{ controller_demo_inventory_id }}"
+    organization: Default
+    state: present
+  register: test_inventory
 
 - name: Run the bulk host create integration test
   block:
     - name: Create both hosts in one request
       ansible.platform.bulk_host_create:
-        inventory: Demo Inventory
+        inventory: "{{ test_inventory.inventory.id }}"
         hosts:
           - name: "{{ test_host_names[0] }}"
             description: Bulk host create integration test
@@ -67,5 +82,13 @@
       loop: "{{ created_host_lookups.results | default([]) }}"
       when: item.json.results | default([]) | length > 0
       delegate_to: localhost
+      failed_when: false
+
+    - name: Delete test inventory
+      ansible.platform.inventory:
+        name: "{{ test_inventory_name }}"
+        organization: Default
+        state: absent
+      when: test_inventory is defined
       failed_when: false
 ...

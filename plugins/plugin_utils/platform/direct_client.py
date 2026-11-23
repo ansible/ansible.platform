@@ -12,7 +12,7 @@ import logging
 import re
 import threading
 from typing import Any, Dict, Optional
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
 from ansible.module_utils.six.moves.urllib.error import HTTPError
@@ -23,9 +23,10 @@ from ansible.module_utils.urls import ConnectionError, Request, SSLValidationErr
 from .base_client import BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
-from .exceptions import APIError, AuthenticationError
+from .exceptions import APIError, AuthenticationError, format_error_response_body
+from .idempotency import canonical_json_object
 from .retry import RetryConfig
-from .types import TransformContext
+from .types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -502,88 +503,9 @@ class DirectHTTPClient(BaseAPIClient):
 
         return url
 
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str,
-        service: str = "gateway",
-        extra_query_params: dict = None,
-        require_unique: bool = False,
-    ):
-        """
-        Resolve a resource name to ID by GET list with filter.
-        Compatible with PlatformService.lookup_resource_id interface.
-        Used by API mixins to resolve FKs (e.g. authenticator name -> id).
-
-        Args:
-            endpoint: API resource endpoint name (e.g. 'authenticators', 'service_clusters')
-            lookup_field: Field to filter on (e.g. 'name')
-            lookup_value: Value to look up
-            service: Service to route the lookup through (e.g. 'gateway', 'controller')
-            extra_query_params: Additional filter params (e.g. {'organization': 42} for org-scoped resources)
-            require_unique: Raise ValueError when the lookup matches multiple resources
-
-        Returns:
-            Resource ID (int) or None
-        """
-        if not lookup_value:
-            return None
-        if str(lookup_value).isdigit():
-            return int(lookup_value)
-
-        # AWX accepts Controller named URLs (for example, organization++inventory)
-        # as a direct resource path. Try that before a potentially ambiguous name query.
-        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
-            svc_version = self.get_api_version(service)
-            self._prepare_resource_lookup(service)
-            named_path = f"/api/{service}/v{svc_version}/{endpoint}/{quote(str(lookup_value), safe='+')}/"
-            try:
-                named_response = self._make_request("GET", self._build_url(named_path), operation="lookup", resource=endpoint)
-            except APIError as exc:
-                if exc.status_code != 404:
-                    raise
-            else:
-                named_resource_id = json.loads(named_response.read()).get("id")
-                if named_resource_id is not None:
-                    return named_resource_id
-
-        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value), extra_query_params)
-        # A cached first match cannot prove that the lookup is unique.
-        if not require_unique and cache_key in self.cache:
-            return self.cache[cache_key]
-
-        svc_version = self.get_api_version(service)
-        self._prepare_resource_lookup(service)
-
-        api_path = f"/api/{service}/v{svc_version}/{endpoint}/"
-        query = {lookup_field: lookup_value}
-        if extra_query_params:
-            query.update(extra_query_params)
-        url = self._build_url(api_path, query)
-
-        response = self._make_request("GET", url, operation="lookup", resource=endpoint)
-
-        response_data = json.loads(response.read())
-
-        results = response_data.get("results", [])
-        if not results:
-            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
-        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
-            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
-
-        rid = results[0].get("id")
-        if rid is not None and not require_unique:
-            self.cache[cache_key] = rid
-        return rid
-
     def _resource_lookup_cache_key(self, service: str, endpoint: str, lookup_field: str, lookup_value: str, extra_query_params: dict = None) -> str:
         """Preserve the direct client's resource-lookup cache key format."""
-        key = f"lookup:{service}:{endpoint}:{lookup_field}:{lookup_value}"
-        if extra_query_params:
-            suffix = "&".join(f"{k}={v}" for k, v in sorted(extra_query_params.items()))
-            key = f"{key}:{suffix}"
-        return key
+        return "lookup:" + super()._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
 
     def _prepare_resource_lookup(self, service: str) -> None:
         """Set the Gateway API version header used by direct requests."""
@@ -608,6 +530,7 @@ class DirectHTTPClient(BaseAPIClient):
         service: str = "gateway",
         extra_query_params: dict = None,
         preserve_existing: bool = False,
+        check_mode: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -617,6 +540,7 @@ class DirectHTTPClient(BaseAPIClient):
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
         current associations, and associates/disassociates to reconcile. Set
         preserve_existing=True to retain already-associated items.
+        Set check_mode=True to predict changes without modifying associations.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -641,6 +565,9 @@ class DirectHTTPClient(BaseAPIClient):
         if preserve_existing:
             desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
+
+        if check_mode:
+            return desired_ids != current_ids
 
         changed = False
         for rid in desired_ids - current_ids:
@@ -673,7 +600,7 @@ class DirectHTTPClient(BaseAPIClient):
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], check_mode: bool = False) -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -681,6 +608,7 @@ class DirectHTTPClient(BaseAPIClient):
         rather than writing bespoke get/compare/post logic per resource. data is None:
         no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
         POST only if different.
+        Check mode compares current state without POST or DELETE requests.
 
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
@@ -691,7 +619,20 @@ class DirectHTTPClient(BaseAPIClient):
         self._ensure_authenticated()
         sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
 
+        try:
+            response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
+        except (APIError, HTTPError) as err:
+            status = err.status_code if isinstance(err, APIError) else err.code
+            if data == {} and status == 404:
+                return False
+            raise
+        current = json.loads(response.read())
+        if current == data:
+            return False
+
         if data == {}:
+            if check_mode:
+                return True
             try:
                 self._make_request("DELETE", sub_url, operation="delete_sub_resource", resource=sub_path)
             except APIError as err:
@@ -706,12 +647,8 @@ class DirectHTTPClient(BaseAPIClient):
                 raise
             return True
 
-        response = self._make_request("GET", sub_url, operation="get_sub_resource", resource=sub_path)
-        current = json.loads(response.read())
-        if current == data:
-            return False
-
-        self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
+        if not check_mode:
+            self._make_request("POST", sub_url, operation="update_sub_resource", resource=sub_path, json=data)
         return True
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
@@ -775,16 +712,6 @@ class DirectHTTPClient(BaseAPIClient):
         url = self._build_url(endpoint, service=service)
         self._make_request("DELETE", url, operation="delete_resource", resource="config")
         return {}
-
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the Controller bulk/host_create endpoint."""
-        self._ensure_authenticated()
-        url = self._build_url("/bulk/host_create/", service=service)
-        payload = {"inventory": inventory_id, "hosts": hosts}
-        response = self._make_request("POST", url, operation="bulk_host_create", resource="bulk", json=payload)
-        response_body = response.read()
-        response_data = json.loads(response_body) if response_body else {}
-        return response_data
 
     def search_api(
         self,
@@ -925,8 +852,13 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Load version-appropriate classes (shared layer)
         AnsibleClass, APIClass, MixinClass = self.loader.load_classes_for_module(module_name, service_version)
+        ansible_data_dict = dict(ansible_data_dict)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        force_update = ansible_data_dict.pop("_platform_force_update", False)
+        check_mode = ansible_data_dict.pop("_platform_check_mode", False)
+        if not isinstance(check_mode, bool):
+            raise ValueError("_platform_check_mode must be a boolean")
 
         # Reconstruct Ansible dataclass
         ansible_instance = AnsibleClass(**ansible_data_dict)
@@ -940,11 +872,18 @@ class DirectHTTPClient(BaseAPIClient):
             service=service,
             operation=operation,
             include_nulls_for_update=include_nulls,
+            force_update=force_update,
+            check_mode=check_mode,
         )
 
         # Execute operation (shared CRUD logic)
         try:
-            if operation == "create":
+            has_mutation_plan = getattr(MixinClass, "is_singleton", False) and hasattr(MixinClass, "plan_mutation")
+            if check_mode and operation != "find" and not has_mutation_plan:
+                raise ValueError("Check mode through execute() is not supported for this operation")
+            if has_mutation_plan and operation in {"create", "update", "delete"}:
+                result = self._execute_singleton_mutation(module_name, ansible_instance, MixinClass, context)
+            elif operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
@@ -1015,6 +954,21 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Get endpoint operations from mixin
         operations = mixin_class.get_endpoint_operations()
+        update_op = operations.get("update")
+        missing_required_fields = []
+        if update_op:
+            for field in update_op.required_fields:
+                current_value = current_data.get(field) if current_data else None
+                if current_data and hasattr(mixin_class, "get_update_value_from_current_data"):
+                    current_value = mixin_class.get_update_value_from_current_data(field, current_data)
+                if getattr(api_data, field, None) is None:
+                    if current_value is None:
+                        missing_required_fields.append(field)
+                    else:
+                        setattr(api_data, field, current_value)
+        if missing_required_fields:
+            missing = ", ".join(sorted(missing_required_fields))
+            raise ValueError("Cannot update resource: required update field(s) unavailable from task and current resource data: %s" % missing)
 
         fields_to_null = set()
         if hasattr(mixin_class, "get_fields_to_null_for_update"):
@@ -1025,15 +979,28 @@ class DirectHTTPClient(BaseAPIClient):
         # Timestamps (modified, created, url) change on every PATCH so they
         # must be excluded from the comparison.
         _skip_for_idempotency = {"modified", "created", "url", "state"}
-        update_op = operations.get("update")
-        if update_op and update_op.fields and current_data:
+        if update_op and update_op.fields and current_data and not context.force_update:
             would_update = {}
+            json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
+            get_idempotency_value = getattr(mixin_class, "get_idempotency_value_from_current_data", None)
             for field in update_op.fields:
                 value = getattr(api_data, field, None)
                 if value is not None:
                     would_update[field] = value
+
+            def _current_value(field):
+                if get_idempotency_value:
+                    return get_idempotency_value(field, current_data, context)
+                return current_data.get(field)
+
+            current_values = {field: _current_value(field) for field in set(would_update) | fields_to_null}
             needs_update = any(
-                str(current_data.get(f)) != str(would_update[f])
+                current_values[f] is None
+                or (
+                    canonical_json_object(current_values[f]) != canonical_json_object(would_update[f])
+                    if f in json_object_fields
+                    else str(current_values[f]) != str(would_update[f])
+                )
                 for f in would_update
                 if f not in _skip_for_idempotency
                 # Skip encrypted/write-only fields: the API returns "$encrypted$"
@@ -1041,10 +1008,10 @@ class DirectHTTPClient(BaseAPIClient):
                 # can never be meaningfully compared to the plaintext desired value,
                 # so we always treat them as already correct and skip the PATCH for
                 # that field — same logic as AAPModule.fields_could_be_same().
-                and current_data.get(f) != "$encrypted$"
+                and current_values[f] != "$encrypted$"
             )
             if not needs_update:
-                needs_update = any(current_data.get(field) is not None for field in fields_to_null)
+                needs_update = any(current_values[field] is not None for field in fields_to_null)
             if not needs_update:
                 # Nothing to change — return current state with changed=False
                 result = dict(current_data)
@@ -1088,16 +1055,16 @@ class DirectHTTPClient(BaseAPIClient):
         # lookup and deletion (or already absent by ID) is a no-op.
         try:
             self._make_request(delete_op.method, url, operation="delete", resource=mixin_class.__name__)
-        except APIError as exc:
-            if exc.status_code == 404:
-                return {"changed": False, "id": resource_id}
-            raise
-        except HTTPError as exc:
-            if exc.code == 404:
-                return {"changed": False, "id": resource_id}
-            raise
+        except (APIError, HTTPError) as exc:
+            status_code = exc.status_code if isinstance(exc, APIError) else exc.code
+            if status_code != 404:
+                raise
+            self._invalidate_resource_lookup_cache(context.service, delete_op.path)
+            return {"changed": False, "id": resource_id}
 
-        return {"changed": True, "deleted": True}
+        self._invalidate_resource_lookup_cache(context.service, delete_op.path)
+
+        return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
         """Find resource by lookup field.
@@ -1125,12 +1092,12 @@ class DirectHTTPClient(BaseAPIClient):
                 api_data = mixin_class.from_ansible_data(ansible_data, context)
                 request_kwargs["json"] = {f: getattr(api_data, f) for f in get_op.fields if getattr(api_data, f, None) is not None}
             response = self._make_request(get_op.method, url, **request_kwargs)
-            try:
-                response_body = response.read()
-                api_result = json.loads(response_body) if response_body else {}
-            except Exception:
-                api_result = {}
-            ansible_instance = mixin_class.from_api(api_result, context)
+            response_body = response.read()
+            api_result = json.loads(response_body) if response_body else {}
+            # Singleton result transforms may depend on original request inputs,
+            # such as client-side filters that are never sent to the API.
+            find_transform = getattr(mixin_class, "from_find_result", None)
+            ansible_instance = find_transform(api_result, ansible_data, context) if find_transform else mixin_class.from_api(api_result, context)
             from dataclasses import asdict
 
             return asdict(ansible_instance)
@@ -1144,10 +1111,11 @@ class DirectHTTPClient(BaseAPIClient):
         # Compute composite-key query params first so they can be used both in
         # ID-based validation and in the list-based fallback path.
         composite_params = {}
+        find_api_data = None
         if hasattr(mixin_class, "get_find_list_query_params"):
             try:
-                api_data_for_find = mixin_class.from_ansible_data(ansible_data, context)
-                composite_params = mixin_class.get_find_list_query_params(api_data_for_find) or {}
+                find_api_data = mixin_class.from_ansible_data(ansible_data, context)
+                composite_params = mixin_class.get_find_list_query_params(find_api_data) or {}
             except Exception as cp_exc:
                 logger.debug("DirectHTTPClient: composite params computation failed: %s", cp_exc)
                 raise
@@ -1201,7 +1169,10 @@ class DirectHTTPClient(BaseAPIClient):
             query_params[lookup_field] = lookup_value
         if composite_params:
             query_params.update(composite_params)
-        if getattr(mixin_class, "find_list_requires_all_results", False):
+        requires_all_results = getattr(mixin_class, "find_list_requires_all_results", False)
+        if callable(requires_all_results):
+            requires_all_results = requires_all_results(find_api_data)
+        if requires_all_results:
             response_data = self.search_api(
                 list_op.path,
                 query_params,
@@ -1237,6 +1208,7 @@ class DirectHTTPClient(BaseAPIClient):
                 response_data = {}
         results = response_data.get("results", [])
         logger.info("DirectHTTPClient: Results for %s: %s", mixin_class.__name__, results)
+        response_data = mixin_class.filter_find_results(response_data, find_api_data, lookup_field, lookup_value)
         api_data = mixin_class.select_find_result(response_data, lookup_field, lookup_value)
         # Some list endpoints omit fields needed for idempotency comparisons.
         # Match PlatformService by fetching the detail representation when
@@ -1264,7 +1236,7 @@ class DirectHTTPClient(BaseAPIClient):
         """
         results = {}
         fields_to_null = fields_to_null or set()
-        logger.info("DirectHTTPClient: Executing operations for %s: %s", operations, api_data)
+        logger.info("DirectHTTPClient: Executing operations: %s", list(operations))
 
         # Filter operations by required_for
         relevant_ops = {name: op for name, op in operations.items() if op.required_for == required_for or required_for is None}
@@ -1277,36 +1249,19 @@ class DirectHTTPClient(BaseAPIClient):
             if endpoint_op.depends_on and endpoint_op.depends_on not in results:
                 continue
             logger.info("DirectHTTPClient: Checking dependencies for %s: %s", endpoint_op, endpoint_op.depends_on)
-            # Build URL
-            url = endpoint_op.path
-            logger.info("DirectHTTPClient: Building URL for %s: %s", endpoint_op, url)
-            if endpoint_op.path_params:
-                # Replace path parameters
-                for param in endpoint_op.path_params:
-                    param_value = results.get("id") or getattr(api_data, "id", None)
-                    if param_value:
-                        url = url.replace(f"{{{param}}}", str(param_value))
-            logger.info("DirectHTTPClient: URL after replacing path parameters: %s", url)
+            path, request_data = build_endpoint_request(
+                endpoint_op,
+                api_data,
+                context,
+                path_values=results,
+                fields_to_null=fields_to_null,
+                omit_empty_strings=True,
+            )
+            body_fields = list(request_data) if isinstance(request_data, dict) else "flattened body"
+            logger.info("DirectHTTPClient: Built endpoint request path %s with fields %s", path, body_fields)
+            url = path
             url = self._build_url(url, service=context.service, api_version=context.api_version)
             logger.info("DirectHTTPClient: URL after building URL: %s", url)
-            # Prepare request data; include "" on update so enforced can clear e.g. email
-            request_data = {}
-            if endpoint_op.fields:
-                for field in endpoint_op.fields:
-                    value = getattr(api_data, field, None)
-                    if value is None:
-                        if field in fields_to_null or (
-                            context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
-                        ):
-                            request_data[field] = None
-                        continue
-                    if value == "" and not (field == "description" and context.operation == "update"):
-                        continue
-                    request_data[field] = value
-
-            # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
-                request_data = next(iter(request_data.values()))
 
             # Skip secondary (dependent) operations that have no data to send.
             # This prevents calling e.g. /users/{id}/organizations/ when organizations is not set.
@@ -1326,6 +1281,9 @@ class DirectHTTPClient(BaseAPIClient):
                     resource=endpoint_op.path.split("/")[-2] if "/" in endpoint_op.path else "unknown",
                 )
 
+                if endpoint_op.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                    self._invalidate_resource_lookup_cache(context.service, endpoint_op.path)
+
             except Exception as e:
                 logger.error("DirectHTTPClient: API call failed: %s", e)
                 if hasattr(e, "code"):
@@ -1333,6 +1291,9 @@ class DirectHTTPClient(BaseAPIClient):
                 elif hasattr(e, "response") and e.response is not None:
                     status = getattr(e.response, "status", getattr(e.response, "code", "unknown"))
                     logger.error("Response status: %s", status)
+                body_formatted = format_error_response_body(e)
+                if body_formatted and body_formatted not in str(e):
+                    raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
             # Store result - Ansible's Request response uses .read() to get body
@@ -1350,18 +1311,6 @@ class DirectHTTPClient(BaseAPIClient):
 
         # Return main result
         return results.get("create") or results.get("update") or results.get("get") or results
-
-    def lookup_organization_ids(self, names: list) -> list:
-        """Lookup organization IDs from names (shared helper)."""
-        # TODO: Implement lookup using cache
-        # This should use the cache to avoid repeated lookups
-        pass
-
-    def lookup_organization_names(self, ids: list) -> list:
-        """Lookup organization names from IDs (shared helper)."""
-        # TODO: Implement lookup using cache
-        # This should use the cache to avoid repeated lookups
-        pass
 
     def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:
         """

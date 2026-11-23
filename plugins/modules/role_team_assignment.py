@@ -31,6 +31,10 @@ notes:
     Controller and will fail or resolve the wrong resource.
   - For Controller/EDA resources whose names are not globally unique, set
     C(organization) on each C(assignment_objects) item to scope the name lookup.
+  - Team names are not globally unique across organizations. When more than one
+    team shares a name, set top-level C(organization) to disambiguate, or pass
+    the team's numeric ID / C(team_ansible_id). Without a unique match the
+    module fails instead of picking an arbitrary team.
 options:
     role_definition:
         description:
@@ -41,11 +45,21 @@ options:
         description:
           - Name or numeric ID of the team receiving the role.
           - Mutually exclusive with I(team_ansible_id).
+          - When using a name that exists in more than one organization, also set
+            I(organization) (or pass a numeric ID / I(team_ansible_id)).
         required: false
         type: str
     team_ansible_id:
         description:
           - Ansible resource ID (UUID) of the team. Alternative to I(team).
+        required: false
+        type: str
+    organization:
+        description:
+          - Organization name or ID used to disambiguate the receiving team when
+            I(team) is given as a name.
+          - Lookup-only; not sent to the role assignment API.
+          - Ignored when I(team) is numeric or when I(team_ansible_id) is used.
         required: false
         type: str
     assignment_objects:
@@ -150,6 +164,17 @@ EXAMPLES = """
       - name: "mco - preprod"
         type: awx.jobtemplate
         organization: "Preprod"
+    state: present
+
+# Disambiguate the receiving team when the same team name exists in multiple orgs
+- name: Assign role to J Team in OrgB only
+  ansible.platform.role_team_assignment:
+    role_definition: Organization Inventory Admin
+    team: "J Team"
+    organization: "OrgB"
+    assignment_objects:
+      - name: "OrgA"
+        type: organizations
     state: present
 
 # Assign an EDA project role to a team (eda.project routes to EDA, awx.project routes to Controller)

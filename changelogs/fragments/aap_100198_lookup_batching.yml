@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - lookup - Batch instance peer and workflow-node identifier lookups to reduce API requests (https://issues.redhat.com/browse/AAP-100198).
+bugfixes:
+  - lookup - Preserve integer zero as a lookup value when numeric identifiers are treated as names.
+  - lookup - Honor ``allow_missing`` for unmatched named keys while keeping scope and duplicate errors.
+...

@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
+from .execution_environment import lookup_execution_environment_id
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class APISchedule_v2(BaseTransformMixin):
     unified_job_template: Optional[int] = None
     enabled: Optional[bool] = None
     extra_data: Optional[str] = None
-    inventory: Optional[int] = None
+    inventory: Optional[Union[int, str]] = None
     scm_branch: Optional[str] = None
     job_type: Optional[str] = None
     job_tags: Optional[str] = None
@@ -37,12 +38,14 @@ class APISchedule_v2(BaseTransformMixin):
     forks: Optional[int] = None
     job_slice_count: Optional[int] = None
     timeout: Optional[int] = None
-    execution_environment: Optional[int] = None
+    execution_environment: Optional[Union[int, str]] = None
     id: Optional[int] = None
 
 
 class ScheduleTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for Schedule API v2."""
+
+    _JSON_OBJECT_FIELDS = frozenset({"extra_data"})
 
     @classmethod
     def from_ansible_data(cls, ansible_instance, context: Union[TransformContext, Dict[str, Any]]) -> "APISchedule_v2":
@@ -63,10 +66,17 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
                 api_data["name"] = name
 
         ujt = getattr(ansible_instance, "unified_job_template", None)
+        organization_id = None
         if ujt is not None:
             manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
             if manager is not None and not str(ujt).strip().isdigit():
-                api_data["unified_job_template"] = manager.lookup_resource_id("unified_job_templates", "name", ujt, service="controller")
+                organization = getattr(ansible_instance, "organization", None)
+                if organization is not None:
+                    organization_id = cls._lookup_organization_id(manager, organization)
+                lookup_kwargs = {"service": "controller", "require_unique": True}
+                if organization_id is not None:
+                    lookup_kwargs["extra_query_params"] = {"organization": organization_id}
+                api_data["unified_job_template"] = manager.lookup_resource_id("unified_job_templates", "name", ujt, **lookup_kwargs)
             else:
                 api_data["unified_job_template"] = int(ujt) if ujt is not None else None
 
@@ -101,16 +111,23 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
 
         inventory = getattr(ansible_instance, "inventory", None)
-        if inventory is not None:
+        if inventory == "" and op not in ("find", "delete"):
+            api_data["inventory"] = ""
+        elif inventory is not None and op not in ("find", "delete"):
             if manager is not None and not str(inventory).strip().isdigit():
                 api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, service="controller")
             else:
                 api_data["inventory"] = int(inventory)
 
         execution_environment = getattr(ansible_instance, "execution_environment", None)
-        if execution_environment is not None:
+        if execution_environment == "" and op not in ("find", "delete"):
+            api_data["execution_environment"] = ""
+        elif execution_environment is not None and op not in ("find", "delete"):
             if manager is not None and not str(execution_environment).strip().isdigit():
-                api_data["execution_environment"] = manager.lookup_resource_id("execution_environments", "name", execution_environment, service="controller")
+                organization = getattr(ansible_instance, "organization", None)
+                if organization_id is None and organization is not None:
+                    organization_id = cls._lookup_organization_id(manager, organization)
+                api_data["execution_environment"] = lookup_execution_environment_id(manager, execution_environment, organization_id=organization_id)
             else:
                 api_data["execution_environment"] = int(execution_environment)
 
@@ -120,6 +137,21 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
                 api_data[field] = val
 
         return APISchedule_v2(**api_data)
+
+    @staticmethod
+    def _lookup_organization_id(manager, organization: str) -> Optional[int]:
+        """Resolve a schedule organization without conflating it with a missing schedule."""
+        if not str(organization).strip():
+            raise ValueError("organization must be a non-empty name or ID")
+        if str(organization).strip().isdigit():
+            return int(organization)
+        try:
+            organization_id = manager.lookup_resource_id("organizations", "name", organization, service="controller")
+        except Exception as exc:
+            raise ValueError(f"Failed to resolve schedule organization {organization!r}: {exc}") from exc
+        if organization_id is None or (isinstance(organization_id, str) and not organization_id.strip()):
+            raise ValueError("organization could not be resolved to a non-empty ID")
+        return organization_id
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
@@ -262,11 +294,11 @@ class ScheduleTransformMixin_v2(BaseTransformMixin):
             enabled=api_data.get("enabled"),
             extra_data=extra_data,
             inventory=inventory,
-            scm_branch=api_data.get("scm_branch") or None,
+            scm_branch=api_data.get("scm_branch"),
             job_type=api_data.get("job_type") or None,
-            job_tags=api_data.get("job_tags") or None,
-            skip_tags=api_data.get("skip_tags") or None,
-            limit=api_data.get("limit") or None,
+            job_tags=api_data.get("job_tags"),
+            skip_tags=api_data.get("skip_tags"),
+            limit=api_data.get("limit"),
             diff_mode=api_data.get("diff_mode"),
             verbosity=api_data.get("verbosity"),
             forks=api_data.get("forks"),

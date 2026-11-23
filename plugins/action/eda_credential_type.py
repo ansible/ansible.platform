@@ -20,7 +20,9 @@ from typing import Any, Optional
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.eda_credential_type import AnsibleEdaCredentialType
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_type import EDA_CREDENTIAL_TYPE_TEST_ENDPOINT
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.eda_credential_type import EdaCredentialTypeTransformMixin_v1
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import format_error_response_body
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -31,7 +33,7 @@ class ActionModule(BaseResourceActionPlugin):
     # test_inputs and test_metadata are only used with state=test and must
     # be stripped before the base class builds MODEL_CLASS for CRUD states.
     _WRITE_ONLY_FIELDS = frozenset({"test_inputs", "test_metadata"})
-    _NO_LOG_FIELDS = frozenset({"test_inputs"})
+    _NO_LOG_FIELDS = frozenset({"test_inputs", "test_metadata"})
     _RENAME_IDENTITY_FIELDS = ("inputs", "injectors")
 
     def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
@@ -163,10 +165,11 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
 
             name = validated_params.get("name")
-            test_inputs = write_only_data.get("test_inputs")
+            # Legacy ansible.eda behavior lets the API validate omitted or
+            # empty test inputs after resolving the credential type.  Keep
+            # that order so missing inputs do not mask a not-found error.
+            test_inputs = write_only_data.get("test_inputs") or None
             test_metadata = write_only_data.get("test_metadata")
-            if not test_inputs:
-                raise AnsibleError("test_inputs must be provided and non-empty when state=test")
 
             # Find the credential type by name
             try:
@@ -175,8 +178,8 @@ class ActionModule(BaseResourceActionPlugin):
                     module_name=self.MODULE_NAME,
                     ansible_data={"name": name},
                 )
-            except (ValueError, Exception) as e:
-                if "not found" in str(e).lower() or "404" in str(e):
+            except Exception as e:
+                if self._is_resource_not_found(e):
                     raise AnsibleError("Credential type '%s' not found, cannot test" % name) from e
                 raise
 
@@ -186,25 +189,27 @@ class ActionModule(BaseResourceActionPlugin):
             credential_type_id = find_result["id"]
 
             if self._task.check_mode:
+                test_result = {
+                    "success": True,
+                    "message": "Check mode - test would be performed",
+                    "details": {"check_mode": True},
+                }
                 result.update(
                     {
                         "changed": False,
                         "failed": False,
                         self.MODULE_NAME: find_result,
-                        "test_result": {"msg": "check mode, test not executed"},
+                        "test_result": test_result,
                     }
                 )
                 return result
 
-            # Build test payload matching EDA API format
-            test_payload = {}
-            if test_inputs:
-                test_payload["inputs"] = test_inputs
-            if test_metadata:
-                test_payload["metadata"] = test_metadata
-
-            # POST to the test sub-endpoint via the SDK launch_resource method
-            test_url = EDA_CREDENTIAL_TYPE_TEST_ENDPOINT.format(id=credential_type_id)
+            test_operation = EdaCredentialTypeTransformMixin_v1.get_endpoint_operations()["test"]
+            # Build the request from the transform's test endpoint declaration.
+            test_request = EdaCredentialTypeTransformMixin_v1.to_test_request(credential_type_id, test_inputs, test_metadata)
+            test_url, test_payload = build_endpoint_request(test_operation, test_request)
+            if test_operation.method != "POST":
+                raise AnsibleError("Credential type test endpoint operation must use POST")
             test_response = manager.launch_resource(
                 launch_url=test_url,
                 payload=test_payload,
@@ -235,7 +240,11 @@ class ActionModule(BaseResourceActionPlugin):
 
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
-            result["msg"] = str(e)
+            error_message = str(e)
+            response_body = format_error_response_body(e)
+            if response_body and response_body not in error_message:
+                error_message = "%s: %s" % (error_message, response_body)
+            result["msg"] = error_message
             if self._display.verbosity >= 3:
                 result["exception"] = traceback.format_exc()
 

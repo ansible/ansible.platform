@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from ansible_collections.ansible.platform.plugins.action.eda_credential_type import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 
 
 class TestEdaCredentialTypeTestState(unittest.TestCase):
@@ -117,6 +118,8 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
         self.assertTrue(argspec["argument_spec"]["test_inputs"]["no_log"])
         defaulted = action._validate_data({"name": "My Cred Type"}, argspec, "input")
         self.assertEqual(defaulted.validated_parameters["state"], "present")
+        test_without_inputs = action._validate_data({"name": "My Cred Type", "state": "test"}, argspec, "input")
+        self.assertEqual(test_without_inputs.validated_parameters["state"], "test")
 
         action._task.args = {
             "name": "My Cred Type",
@@ -186,11 +189,13 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
         self.assertFalse(result.get("failed", False))
         self.assertFalse(result["changed"])
         self.assertIn("test_result", result)
-        self.assertIn("check mode", result["test_result"]["msg"])
+        self.assertTrue(result["test_result"]["success"])
+        self.assertEqual(result["test_result"]["message"], "Check mode - test would be performed")
+        self.assertEqual(result["test_result"]["details"], {"check_mode": True})
         manager.launch_resource.assert_not_called()
 
-    def test_test_requires_nonempty_test_inputs(self):
-        """Missing or empty test_inputs fails before making API requests."""
+    def test_test_allows_missing_or_empty_test_inputs(self):
+        """Missing or empty test_inputs are passed to the API after lookup."""
         for test_inputs in (None, {}):
             with self.subTest(test_inputs=test_inputs):
                 action = self._make_action()
@@ -211,10 +216,40 @@ class TestEdaCredentialTypeTestState(unittest.TestCase):
                     },
                 )
 
-                self.assertTrue(result["failed"])
-                self.assertIn("test_inputs must be provided and non-empty", result["msg"])
-                manager.execute.assert_not_called()
-                manager.launch_resource.assert_not_called()
+                self.assertFalse(result.get("failed", False))
+                manager.execute.assert_called_once()
+                manager.launch_resource.assert_called_once()
+                self.assertEqual(manager.launch_resource.call_args.kwargs["payload"], {})
+
+    def test_test_preserves_api_validation_response_body(self):
+        """API validation details remain available in the legacy-style error message."""
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 200, "name": "Another Type"})
+        manager.launch_resource.side_effect = APIError(
+            "400 Client Error",
+            operation="http_request",
+            resource="unknown",
+            details={"response_body": '{"inputs": ["This field is required."]}'},
+            status_code=400,
+        )
+
+        result = self._run_test_action(
+            action,
+            manager,
+            {
+                "name": "Another Type",
+                "state": "test",
+                "test_inputs": None,
+                "test_metadata": None,
+                "new_name": None,
+                "description": None,
+                "inputs": None,
+                "injectors": None,
+            },
+        )
+
+        self.assertTrue(result["failed"])
+        self.assertIn("This field is required", result["msg"])
 
     def test_find_reraises_non_not_found_errors(self):
         """ValueError not related to 'not found' is re-raised."""

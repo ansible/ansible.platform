@@ -76,7 +76,7 @@ class TestControllerSettingsTransformMixin(unittest.TestCase):
         response = MagicMock()
         response.json.return_value = {"DEFAULT_JOB_TIMEOUT": 3600}
         response.raise_for_status.return_value = None
-        service._request_with_auth_recovery = MagicMock(return_value=response)
+        service._make_request = MagicMock(return_value=response)
 
         context = TransformContext(
             manager=service,
@@ -92,7 +92,7 @@ class TestControllerSettingsTransformMixin(unittest.TestCase):
             context,
         )
 
-        service._request_with_auth_recovery.assert_called_once_with(
+        service._make_request.assert_called_once_with(
             "GET",
             "https://controller.example.com/api/controller/v2/settings/all/",
             operation="find",
@@ -125,6 +125,23 @@ class TestControllerSettingsTransformMixin(unittest.TestCase):
         args, kwargs = service._execute_operations.call_args
         self.assertEqual(kwargs["required_for"], "update")
         self.assertEqual(args[1].settings, {"DEFAULT_JOB_TIMEOUT": 3600})
+
+
+class TestControllerSettingsCoercion(unittest.TestCase):
+    def test_coerce_type(self):
+        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("true"), True)
+        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("42"), 42)
+        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("[a, b]"), ["a", "b"])
+        self.assertEqual(ControllerSettingsTransformMixin_v2.coerce_value("plain"), "plain")
+
+    def test_malformed_yaml_error_is_sanitized(self):
+        with self.assertRaises(ValueError) as raised:
+            ControllerSettingsTransformMixin_v2.coerce_value("{PASSWORD: [super-secret}")
+
+        self.assertEqual(str(raised.exception), "Unable to parse setting value as YAML at line 1, column 25")
+        self.assertNotIn("super-secret", str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+        self.assertIsNone(raised.exception.__context__)
 
 
 if __name__ == "__main__":

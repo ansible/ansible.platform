@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - lookup - standardize service-aware resource lookup, including organization-scoped names and Controller named URLs (https://issues.redhat.com/browse/AAP-100192).
+...

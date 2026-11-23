@@ -104,6 +104,10 @@
         validate_certs: "{{ gateway_validate_certs | bool }}"
         status_code: [202, 204]
       delegate_to: localhost
+      register: inventory_cleanup
+      until: inventory_cleanup.status in [202, 204]
+      retries: 30
+      delay: 2
       when:
         - test_inventory is defined
         - test_inventory.json is defined

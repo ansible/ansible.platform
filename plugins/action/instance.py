@@ -21,18 +21,15 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        cap_adj = self._task.args.get("capacity_adjustment")
-        if cap_adj is not None:
-            try:
-                self._task.args["capacity_adjustment"] = float(cap_adj)
-            except (ValueError, TypeError):
-                pass
-
-        peers = self._task.args.pop("peers", None)
+        peers = self._task.args.get("peers")
         state = self._task.args.get("state", "present")
         check_mode = self._task.check_mode
 
         if state in ("absent", "deleted"):
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             self._task.args["state"] = "exists"
             result = super().run(tmp, task_vars)
             if result.get("failed"):
@@ -84,12 +81,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     @staticmethod
     def _resolve_peers(manager, peers):
-        resolved = []
-        for p in peers:
-            p_str = str(p).strip()
-            if p_str.isdigit():
-                resolved.append(int(p_str))
-            else:
-                peer_id = manager.lookup_resource_id("receptor_addresses", "address", p_str, service=_SERVICE)
-                resolved.append(peer_id)
-        return resolved
+        peer_values = [str(peer).strip() for peer in peers]
+        addresses = list(dict.fromkeys(value for value in peer_values if value and not value.isdigit()))
+        resolved_addresses = manager.lookup_resource_ids("receptor_addresses", "address", addresses, service=_SERVICE) if addresses else {}
+        return [int(value) if value.isdigit() else resolved_addresses.get(value) if value else None for value in peer_values]

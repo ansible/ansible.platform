@@ -9,7 +9,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 
 __metaclass__ = type
 
@@ -26,6 +29,7 @@ def _service(base_url="https://gw.example.com"):
     service.ca_bundle = None
     service.lookup_resource_id = MagicMock()
     service.search_api = MagicMock()
+    service._make_request = MagicMock()
     return service
 
 
@@ -38,32 +42,71 @@ def _resp(status_code=200, json_data=None):
 
 
 class TestManageAssociations(unittest.TestCase):
+    def test_check_mode_compares_without_writes(self):
+        """Dry-run comparisons detect additions, removals, and unchanged sets."""
+        service = _service()
+        service.search_api.return_value = {"results": [{"id": 1}]}
+        for desired, preserve, expected in (([2], False, True), ([], False, True), ([1], False, False), ([], True, False)):
+            with self.subTest(desired=desired, preserve=preserve):
+                changed = service.manage_associations(
+                    "/api/controller/v2/groups", 42, "hosts", desired, "hosts", "name", preserve_existing=preserve, check_mode=True
+                )
+                self.assertEqual(changed, expected)
+        service.session.post.assert_not_called()
+        service._make_request.assert_not_called()
+
     def setUp(self):
         self.svc = _service()
 
     def test_lookup_resource_id_rejects_ambiguous_name_when_unique_required(self):
-        self.svc.lookup_resource_id = PlatformService.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.search_api = PlatformService.search_api.__get__(self.svc, PlatformService)
         self.svc.get_api_version = MagicMock(return_value="2")
         cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.svc.cache[cache_key] = 10
-        self.svc.session.get.return_value = _resp(json_data={"count": 2, "results": [{"id": 10, "name": "shared"}, {"id": 20, "name": "shared"}]})
+        self.svc._make_request.return_value = _resp(json_data={"count": 2, "results": [{"id": 10, "name": "shared"}, {"id": 20, "name": "shared"}]})
 
         with self.assertRaisesRegex(ValueError, "matched multiple resources"):
             self.svc.lookup_resource_id("inventories", "name", "shared", service="controller", require_unique=True)
 
-        self.svc.session.get.assert_called_once()
+        self.svc._make_request.assert_called_once()
         self.assertEqual(self.svc.cache[cache_key], 10)
 
     def test_unique_lookup_does_not_cache_result(self):
-        self.svc.lookup_resource_id = PlatformService.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.search_api = PlatformService.search_api.__get__(self.svc, PlatformService)
         self.svc.get_api_version = MagicMock(return_value="2")
-        self.svc.session.get.return_value = _resp(json_data={"count": 1, "results": [{"id": 15, "name": "shared"}]})
+        self.svc._make_request.return_value = _resp(json_data={"count": 1, "results": [{"id": 15, "name": "shared"}]})
 
         result = self.svc.lookup_resource_id("inventories", "name", "shared", service="controller", require_unique=True)
 
         cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.assertEqual(result, 15)
         self.assertNotIn(cache_key, self.svc.cache)
+
+    def test_lookup_refreshes_resource_id_after_delete(self):
+        self.svc.lookup_resource_id = PlatformService.lookup_resource_id.__get__(self.svc, PlatformService)
+        self.svc.search_api = PlatformService.search_api.__get__(self.svc, PlatformService)
+        self.svc.get_api_version = MagicMock(return_value="2")
+        cache_key = self.svc._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
+        self.svc.cache[cache_key] = 14
+        self.svc._make_request.side_effect = [
+            _resp(),
+            _resp(json_data={"count": 1, "results": [{"id": 29, "name": "recreated"}]}),
+        ]
+        context = SimpleNamespace(service="controller", api_version="2")
+
+        self.svc._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
+        resource_id = self.svc.lookup_resource_id("inventories", "name", "recreated", service="controller", require_unique=False)
+
+        self.assertEqual(resource_id, 29)
+        self.assertEqual(self.svc._make_request.call_count, 2)
+        delete_call, lookup_call = self.svc._make_request.call_args_list
+        self.assertEqual(delete_call.args[0], "delete")
+        self.assertIn("/inventories/14/", delete_call.args[1])
+        self.assertEqual(lookup_call.args[0], "get")
+        self.assertEqual(lookup_call.kwargs["params"], {"name": "recreated"})
+        self.assertEqual(self.svc.cache[cache_key], 29)
 
     def test_associates_and_disassociates_to_reconcile(self):
         self.svc.search_api.return_value = {"results": [{"id": 1}, {"id": 2}]}
@@ -291,12 +334,14 @@ class TestManageSubResource(unittest.TestCase):
         self.svc.session.get.assert_not_called()
 
     def test_empty_dict_deletes(self):
+        self.svc.session.get.return_value = _resp(json_data={"name": "Existing"})
         self.svc.session.delete.return_value = _resp(status_code=200)
         changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertTrue(changed)
         self.svc.session.delete.assert_called_once_with("https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", timeout=30, verify=True)
 
     def test_empty_dict_delete_404_is_not_changed(self):
+        self.svc.session.get.return_value = _resp(json_data={"name": "Existing"})
         self.svc.session.delete.return_value = _resp(status_code=404)
         changed = self.svc.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
@@ -348,6 +393,33 @@ class TestCopyResource(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             self.svc.copy_resource("job_template", "missing", "copied", "/api/controller/v2/job_templates")
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current,desired,changed",
+    [({}, {}, False), ({"name": "Old"}, {}, True), ({"name": "Same"}, {"name": "Same"}, False), ({"name": "Old"}, {"name": "New"}, True)],
+)
+def test_subresource_comparison_and_clear_idempotency(check_mode, current, desired, changed):
+    """Compare sub-resource state without writing during check mode."""
+    client = _service()
+    client.session.get.return_value.status_code = 200
+    client.session.get.return_value.json.return_value = current
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", desired, check_mode=check_mode) is changed
+    if check_mode or not changed:
+        client.session.post.assert_not_called()
+        client.session.delete.assert_not_called()
+    else:
+        method = client.session.delete if desired == {} else client.session.post
+        method.assert_called_once()
+
+
+def test_subresource_clear_dry_run_handles_absent_survey():
+    """Treat a missing survey as an unchanged dry-run clear."""
+    client = _service()
+    client.session.get.return_value.status_code = 404
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", {}, check_mode=True) is False
+    client.session.delete.assert_not_called()
 
 
 if __name__ == "__main__":

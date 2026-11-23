@@ -9,10 +9,9 @@ __metaclass__ = type
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.project_update import (
-    CONTROLLER_PROJECTS_ENDPOINT,
-)
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.controller_project import ControllerProjectTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _SERVICE = "controller"
 
@@ -32,6 +31,10 @@ class ActionModule(BaseResourceActionPlugin):
         interval = params.get("interval", 2.0)
         timeout = params.get("timeout")
 
+        if timeout is not None and timeout < 0:
+            result.update({"changed": False, "failed": True, "msg": "timeout must be 0 or greater"})
+            return result
+
         try:
             project_id = self._resolve_project(manager, name, organization)
         except Exception as exc:
@@ -47,10 +50,16 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            project_data = manager.search_api(CONTROLLER_PROJECTS_ENDPOINT + str(project_id) + "/")
+            operations = ControllerProjectTransformMixin_v2.get_endpoint_operations()
+            detail_path = build_endpoint_request(operations["get"], {"id": project_id})[0]
+            project_data = manager.search_api(detail_path)
             scm_revision_original = project_data.get("scm_revision", "")
 
-            launch_result = manager.launch_resource("projects/%d/update" % project_id, {}, service=_SERVICE)
+            sync_operation = operations["sync"]
+            if sync_operation.method != "POST":
+                raise AnsibleError("Controller project sync endpoint operation must use POST")
+            sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": project_id})
+            launch_result = manager.launch_resource(sync_path, sync_payload, service=_SERVICE)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
             return result
@@ -69,7 +78,7 @@ class ActionModule(BaseResourceActionPlugin):
         try:
             wait_result = manager.wait_for_completion(
                 job_url,
-                timeout=float(timeout) if timeout is not None else None,
+                timeout=float(timeout) if timeout else -1.0,
                 interval=float(interval),
                 service=_SERVICE,
             )
@@ -80,10 +89,13 @@ class ActionModule(BaseResourceActionPlugin):
             changed = scm_revision_new != scm_revision_original
 
             result.update({"changed": changed, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
+            self._set_job_timing(result, wait_result)
             if failed:
+                result["job_data"] = wait_result
                 result["msg"] = "Project update %s finished with status: %s" % (job_id, final_status)
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._set_job_timing(result, lr)
             result.update(
                 {
                     "changed": True,
@@ -110,23 +122,14 @@ class ActionModule(BaseResourceActionPlugin):
         if str(name).isdigit():
             return int(name)
 
-        query_params = {"name": name}
-        scope = ""
+        lookup_kwargs: dict = {"service": _SERVICE, "require_unique": True}
         if organization:
             org_id = manager.lookup_resource_id("organizations", "name", organization, service=_SERVICE)
-            query_params["organization"] = org_id
-            scope = " in organization '%s'" % organization
+            if org_id is None:
+                raise AnsibleError("Organization '%s' not found" % organization)
+            lookup_kwargs["extra_query_params"] = {"organization": org_id}
 
-        data = manager.search_api(CONTROLLER_PROJECTS_ENDPOINT, query_params=query_params, return_all=True)
-        matches = [project for project in data.get("results", []) if project.get("name") == name]
-        if not matches:
-            raise AnsibleError("Project '%s' not found%s" % (name, scope))
-        if len(matches) > 1:
-            if organization:
-                raise AnsibleError("Multiple projects named '%s' found in organization '%s'" % (name, organization))
-            raise AnsibleError("Multiple projects named '%s' found; specify organization to disambiguate" % name)
-
-        project_id = matches[0].get("id")
-        if project_id is None:
-            raise AnsibleError("Project '%s' has no ID%s" % (name, scope))
-        return project_id
+        try:
+            return manager.lookup_resource_id("projects", "name", name, **lookup_kwargs)
+        except ValueError as exc:
+            raise AnsibleError(str(exc)) from exc

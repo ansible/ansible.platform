@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -61,7 +63,7 @@ class TestExecutionEnvironmentTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleExecutionEnvironment(name="ee", organization="Default")
         api = ExecutionEnvironmentTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
         self.assertEqual(api.organization, 42)
 
     def test_create_with_credential_name_resolves_with_controller_service(self):
@@ -175,7 +177,7 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
         response = MagicMock()
         response.content = b'{"id": 12}'
         response.json.return_value = {"id": 12}
-        service.session.patch.return_value = response
+        service._make_request = MagicMock(return_value=response)
         service._lock = threading.Lock()
         service._activity_lock = threading.Lock()
         service._http_request_count = 0
@@ -198,33 +200,50 @@ class TestExecutionEnvironmentUpdatePayload(unittest.TestCase):
     def test_platform_service_enforced_update_sends_null_associations(self):
         service = self._platform_service()
         service._execute_operations(self._operation(), self._api_data(self._context(True)), self._context(True), required_for="update")
-        self.assertEqual(service.session.patch.call_args.kwargs["json"], {"image": "quay.io/example/ee", "organization": None, "credential": None})
+        self.assertEqual(service._make_request.call_args.kwargs["json"], {"image": "quay.io/example/ee", "organization": None, "credential": None})
 
     def test_platform_service_partial_update_omits_associations(self):
         service = self._platform_service()
         service._execute_operations(self._operation(), self._api_data(self._context(False)), self._context(False), required_for="update")
-        self.assertEqual(service.session.patch.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
+        self.assertEqual(service._make_request.call_args.kwargs["json"], {"image": "quay.io/example/ee"})
 
-    def _update_payload(self, enforced):
+    def _update_payload(self, enforced, current_image="quay.io/example/ee"):
         service = self._platform_service()
-        service._find_resource = MagicMock(return_value={"id": 12, "name": "ee", "image": "quay.io/example/ee", "organization": 5, "credential": 9})
+        service._find_resource = MagicMock(return_value={"id": 12, "name": "ee", "image": current_image, "organization": 5, "credential": 9})
         desired = AnsibleExecutionEnvironment(name="ee", image="quay.io/example/ee", id=12)
 
-        service._update_resource(desired, ExecutionEnvironmentTransformMixin_v2, self._context(enforced))
+        result = service._update_resource(desired, ExecutionEnvironmentTransformMixin_v2, self._context(enforced))
 
-        return service.session.patch.call_args.kwargs["json"]
+        return service, result
 
     def test_platform_service_enforced_update_clears_omitted_associations_after_merge(self):
         self.assertEqual(
-            self._update_payload(enforced=True),
+            self._update_payload(enforced=True)[0]._make_request.call_args.kwargs["json"],
             {"name": "ee", "image": "quay.io/example/ee", "description": "", "organization": None, "credential": None},
         )
 
-    def test_platform_service_partial_update_preserves_associations_after_merge(self):
-        self.assertEqual(
-            self._update_payload(enforced=False),
-            {"name": "ee", "image": "quay.io/example/ee", "organization": 5, "credential": 9},
-        )
+    def test_platform_service_partial_update_omits_unset_associations(self):
+        service = self._update_payload(enforced=False, current_image="quay.io/example/old-ee")[0]
+
+        self.assertEqual(service._make_request.call_args.kwargs["json"], {"name": "ee", "image": "quay.io/example/ee"})
+
+    def test_platform_service_partial_update_skips_unchanged_resource(self):
+        service, result = self._update_payload(enforced=False)
+
+        service._make_request.assert_not_called()
+        self.assertIs(result["changed"], False)
+
+
+@pytest.mark.parametrize("field", ["credential"])
+@pytest.mark.parametrize("operation", ["find", "delete"])
+def test_unused_write_reference_does_not_block_find_or_delete(field, operation):
+    """Do not mistake an invalid unused reference for an absent resource."""
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = ValueError("unused reference must not be resolved")
+    model = AnsibleExecutionEnvironment(name="Resource", **{field: "Missing Reference"})
+    data = ExecutionEnvironmentTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": operation})
+    assert getattr(data, field) is None
+    manager.lookup_resource_id.assert_not_called()
 
 
 if __name__ == "__main__":

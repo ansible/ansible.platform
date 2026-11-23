@@ -134,30 +134,22 @@ class TestInstancePeerResolution(unittest.TestCase):
         manager = MagicMock()
         result = ActionModule._resolve_peers(manager, ["42", "99"])
         self.assertEqual(result, [42, 99])
-        manager.lookup_resource_id.assert_not_called()
+        manager.lookup_resource_ids.assert_not_called()
 
-    def test_resolve_address_to_id(self):
+    def test_resolve_addresses_in_one_scoped_lookup_and_preserve_order(self):
         from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
 
         manager = MagicMock()
-        manager.lookup_resource_id.return_value = 10
-        result = ActionModule._resolve_peers(manager, ["peer1.example.com"])
-        self.assertEqual(result, [10])
-        manager.lookup_resource_id.assert_called_once_with("receptor_addresses", "address", "peer1.example.com", service="controller")
-
-    def test_resolve_mixed_ids_and_addresses(self):
-        from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
-
-        manager = MagicMock()
-        manager.lookup_resource_id.return_value = 20
-        result = ActionModule._resolve_peers(manager, ["42", "hop.example.com"])
-        self.assertEqual(result, [42, 20])
+        manager.lookup_resource_ids.return_value = {"peer1.example.com": 10, "hop.example.com": 20}
+        result = ActionModule._resolve_peers(manager, ["peer1.example.com", "42", "hop.example.com", "peer1.example.com"])
+        self.assertEqual(result, [10, 42, 20, 10])
+        manager.lookup_resource_ids.assert_called_once_with("receptor_addresses", "address", ["peer1.example.com", "hop.example.com"], service="controller")
 
     def test_resolve_unknown_address_raises(self):
         from ansible_collections.ansible.platform.plugins.action.instance import ActionModule
 
         manager = MagicMock()
-        manager.lookup_resource_id.side_effect = ValueError("Not found")
+        manager.lookup_resource_ids.side_effect = ValueError("Not found")
         with self.assertRaises(ValueError):
             ActionModule._resolve_peers(manager, ["unknown.example.com"])
 

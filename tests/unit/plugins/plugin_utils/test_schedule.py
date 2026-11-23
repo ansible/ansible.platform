@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -39,13 +41,45 @@ class TestScheduleTransform(unittest.TestCase):
         mock_manager.lookup_resource_id.return_value = 42
         ansible = AnsibleSchedule(name="s", unified_job_template="Demo Job Template")
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
-        mock_manager.lookup_resource_id.assert_called_once_with("unified_job_templates", "name", "Demo Job Template", service="controller")
+        mock_manager.lookup_resource_id.assert_called_once_with("unified_job_templates", "name", "Demo Job Template", service="controller", require_unique=True)
         self.assertEqual(api.unified_job_template, 42)
 
     def test_ujt_id_skips_lookup(self):
         ansible = AnsibleSchedule(name="s", unified_job_template="42")
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
         self.assertEqual(api.unified_job_template, 42)
+
+    def test_ujt_name_lookup_is_scoped_by_organization(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.side_effect = [9, 42]
+        ansible = AnsibleSchedule(name="s", unified_job_template="Shared Template", organization="Engineering")
+
+        api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.unified_job_template, 42)
+        self.assertEqual(
+            mock_manager.lookup_resource_id.call_args_list[1].kwargs,
+            {"service": "controller", "require_unique": True, "extra_query_params": {"organization": 9}},
+        )
+
+    def test_empty_organization_is_rejected_before_lookup(self):
+        mock_manager = MagicMock()
+        ansible = AnsibleSchedule(name="s", unified_job_template="Shared Template", organization=" ")
+
+        with self.assertRaisesRegex(ValueError, "organization must be a non-empty"):
+            ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_not_called()
+
+    def test_unresolved_organization_does_not_fall_back_to_unscoped_lookup(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = None
+        ansible = AnsibleSchedule(name="s", unified_job_template="Shared Template", organization="Missing Org")
+
+        with self.assertRaisesRegex(ValueError, "organization could not be resolved"):
+            ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Missing Org", service="controller")
 
     def test_update_with_new_name(self):
         ansible = AnsibleSchedule(name="old", new_name="new")
@@ -81,6 +115,28 @@ class TestScheduleTransform(unittest.TestCase):
         ansible = AnsibleSchedule(name="s", id=99)
         api = ScheduleTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.id, 99)
+
+
+@pytest.mark.parametrize("field", ["inventory", "execution_environment"])
+@pytest.mark.parametrize("operation", ["find", "delete"])
+def test_unused_write_reference_does_not_block_find_or_delete(field, operation):
+    """Do not mistake an invalid unused reference for an absent resource."""
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = ValueError("unused reference must not be resolved")
+    model = AnsibleSchedule(name="Resource", **{field: "Missing Reference"})
+    data = ScheduleTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": operation})
+    assert getattr(data, field) is None
+    manager.lookup_resource_id.assert_not_called()
+
+
+@pytest.mark.parametrize("field", ["inventory", "execution_environment"])
+def test_schedule_preserves_explicit_reference_clear_in_update_payload(field):
+    """Send empty relationship clears without looking up an empty name."""
+    manager = MagicMock()
+    model = AnsibleSchedule(name="Resource", **{field: ""})
+    data = ScheduleTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": "update"})
+    assert getattr(data, field) == ""
+    manager.lookup_resource_id.assert_not_called()
 
 
 if __name__ == "__main__":

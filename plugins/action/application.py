@@ -5,6 +5,8 @@
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
+from typing import Any
+
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.application import AnsibleApplication
 
@@ -19,3 +21,18 @@ class ActionModule(BaseResourceActionPlugin):
 
     # redirect_uris fields are stored as space-separated strings by the API; split to list on output.
     _SPACE_SEPARATED_LIST_FIELDS = frozenset({"redirect_uris", "post_logout_redirect_uris"})
+
+    def _find_existing_resource(self, manager: Any, resource_data: dict) -> dict:
+        """Find an application and omit the Gateway's masked secret placeholder.
+
+        Args:
+            manager: Client used to query the API.
+            resource_data: Validated application fields used for the lookup.
+
+        Returns:
+            dict: The matching application without a masked client secret.
+        """
+        found = super()._find_existing_resource(manager, resource_data)
+        if found.get("client_secret") == "$encrypted$":
+            found.pop("client_secret")
+        return found

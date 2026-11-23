@@ -57,6 +57,8 @@ no_endpoint_for_module = [
     "eda_credential_input_source",
     "eda_credential_type",
     "event_stream",
+    "export",
+    "import",
 ]
 
 # Module params that exist in the module but not in the controller API POST schema.
@@ -66,9 +68,13 @@ controller_no_api_parameter_ok = {
     "job_template": ["organization", "survey_spec"],
     "workflow_job_template": ["organization", "survey_spec"],
     "host": [],
+    # Gateway team IDs are resolved to Controller team IDs before the request.
+    "controller_credential": ["gateway_team_id"],
     "controller_credential_type": [],
     "controller_project": ["wait", "update_project", "interval"],
-    "workflow_job_template_node": ["organization"],
+    "inventory_source": ["organization"],
+    "schedule": ["organization"],
+    "workflow_job_template_node": ["organization", "lookup_organization", "approval_node"],
     "ad_hoc_command": ["wait", "interval", "timeout"],
     # These are client-side inputs for the dynamic settings/all singleton,
     # whose arbitrary setting keys cannot be compared against a static schema.
@@ -99,8 +105,22 @@ ignore_api_parameters = {
 no_api_parameter_ok = {
     # Existing_token and id are for working with an existing tokens
     "token": ["existing_token", "existing_token_id", "organization"],
+    # Controller-only organization options are applied to the linked Controller
+    # organization; they are not fields on the Gateway organization endpoint.
+    "organization": [
+        "default_environment",
+        "max_hosts",
+        "instance_groups",
+        "notification_templates_started",
+        "notification_templates_success",
+        "notification_templates_error",
+        "notification_templates_approvals",
+        "galaxy_credentials",
+    ],
     # These control polling behavior rather than the Controller launch payload.
     "bulk_job_launch": ["wait", "interval", "timeout"],
+    # organization scopes receiving-team name lookup only (AAP-92255); not an API field
+    "role_team_assignment": ["organization"],
 }
 
 # Modules that need to be developed. If the module is found on the file system it will auto-detect

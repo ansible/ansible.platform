@@ -12,10 +12,7 @@ from typing import Optional
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ad_hoc_command import AnsibleAdHocCommand
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command import (
-    AD_HOC_COMMANDS_DETAIL_ENDPOINT,
-    AdHocCommandTransformMixin_v2,
-)
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.ad_hoc_command import AdHocCommandTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 _SERVICE = "controller"
@@ -80,7 +77,8 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
             return result
 
-        job_url = AD_HOC_COMMANDS_DETAIL_ENDPOINT.format(id=job_id)
+        detail_operation = AdHocCommandTransformMixin_v2.get_endpoint_operations()["get"]
+        job_url = detail_operation.path.format(id=job_id)
         try:
             wait_result = manager.wait_for_completion(
                 job_url,

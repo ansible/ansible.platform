@@ -7,11 +7,15 @@ from __future__ import absolute_import, division, print_function
 
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, ValidationError
 
 __metaclass__ = type
 
@@ -38,6 +42,17 @@ def _http_resp(status=200, body=None):
 
 
 class TestManageAssociations(unittest.TestCase):
+    def test_check_mode_compares_without_writes(self):
+        """Dry-run comparisons detect additions, removals, and unchanged sets."""
+        client = _client()
+        client._make_request = MagicMock()
+        client.search_api.return_value = {"results": [{"id": 1}]}
+        for desired, preserve, expected in (([2], False, True), ([], False, True), ([1], False, False), ([], True, False)):
+            with self.subTest(desired=desired, preserve=preserve):
+                changed = client.manage_associations("groups", 42, "hosts", desired, "hosts", "name", preserve_existing=preserve, check_mode=True)
+                self.assertEqual(changed, expected)
+        client._make_request.assert_not_called()
+
     def setUp(self):
         self.client = _client()
 
@@ -247,8 +262,30 @@ class TestManageAssociations(unittest.TestCase):
         batch_call = self.client.search_api.call_args_list[0]
         self.assertEqual(batch_call.kwargs["query_params"], {"name__in": "label-a,label-b", "organization": 42})
 
+    def test_batch_lookup_rejects_duplicate_names_without_scope(self):
+        self.client.api_versions["controller"] = "2"
+        self.client.search_api.return_value = {
+            "count": 3,
+            "results": [
+                {"id": 7, "name": "shared"},
+                {"id": 8, "name": "shared"},
+                {"id": 9, "name": "other"},
+            ],
+        }
+
+        with self.assertRaisesRegex(ValidationError, "name=shared matched multiple resources"):
+            self.client._lookup_resource_ids("inventories", "name", ["shared", "other"], service="controller")
+
+        self.client.search_api.assert_called_once_with(
+            "/api/controller/v2/inventories/",
+            query_params={"name__in": "shared,other"},
+            return_all=True,
+            max_objects=100000,
+        )
+
     def test_same_name_inventory_lookups_are_scoped_by_organization(self):
-        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         inventories = [
             {"id": 10, "name": "shared", "organization": 1},
@@ -278,7 +315,8 @@ class TestManageAssociations(unittest.TestCase):
         self.assertEqual(query_filters, [{"name": ["shared"], "organization": ["1"]}, {"name": ["shared"], "organization": ["2"]}])
 
     def test_lookup_rejects_ambiguous_name_when_unique_required(self):
-        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.client.cache[cache_key] = 10
@@ -292,7 +330,8 @@ class TestManageAssociations(unittest.TestCase):
         self.assertEqual(self.client.cache[cache_key], 10)
 
     def test_unique_lookup_does_not_cache_result(self):
-        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.lookup_resource_id = BaseAPIClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
         self.client.get_api_version = MagicMock(return_value="2")
         response = _http_resp(body={"count": 1, "results": [{"id": 15, "name": "shared"}]})
 
@@ -302,6 +341,39 @@ class TestManageAssociations(unittest.TestCase):
         cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "shared")
         self.assertEqual(result, 15)
         self.assertNotIn(cache_key, self.client.cache)
+
+    def test_lookup_refreshes_resource_id_after_delete(self):
+        self.client.lookup_resource_id = DirectHTTPClient.lookup_resource_id.__get__(self.client, DirectHTTPClient)
+        self.client.search_api = DirectHTTPClient.search_api.__get__(self.client, DirectHTTPClient)
+        self.client.get_api_version = MagicMock(return_value="2")
+        cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
+        self.client.cache[cache_key] = 14
+        self.client._make_request = MagicMock(
+            side_effect=[
+                _http_resp(),
+                _http_resp(body={"count": 1, "results": [{"id": 29, "name": "recreated"}]}),
+            ]
+        )
+        context = SimpleNamespace(service="controller", api_version="2")
+
+        self.client._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
+        resource_id = self.client.lookup_resource_id("inventories", "name", "recreated", service="controller", require_unique=False)
+
+        self.assertEqual(resource_id, 29)
+        self.assertEqual(self.client._make_request.call_count, 2)
+        self.assertEqual(self.client.cache[cache_key], 29)
+
+    def test_delete_404_is_unchanged_and_invalidates_lookup_cache(self):
+        cache_key = self.client._resource_lookup_cache_key("controller", "inventories", "name", "recreated")
+        self.client.cache[cache_key] = 14
+        self.client._make_request = MagicMock(side_effect=APIError("Resource not found", status_code=404))
+        context = SimpleNamespace(service="controller", api_version="2")
+
+        result = self.client._delete_resource(SimpleNamespace(id=14), InventoryTransformMixin_v2, context)
+
+        self.assertEqual(result, {"changed": False, "id": 14})
+        self.assertNotIn(cache_key, self.client.cache)
+        self.client._make_request.assert_called_once()
 
 
 class TestManageSubResource(unittest.TestCase):
@@ -315,16 +387,17 @@ class TestManageSubResource(unittest.TestCase):
         mock_request.assert_not_called()
 
     def test_empty_dict_deletes(self):
-        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(status=200)) as mock_request:
+        with unittest.mock.patch.object(self.client, "_make_request", return_value=_http_resp(body={"name": "Existing"}, status=200)) as mock_request:
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertTrue(changed)
-        mock_request.assert_called_once_with(
+        self.assertEqual(mock_request.call_count, 2)
+        mock_request.assert_called_with(
             "DELETE", "https://gw.example.com/api/controller/v2/job_templates/42/survey_spec/", operation="delete_sub_resource", resource="survey_spec"
         )
 
     def test_empty_dict_delete_404_is_not_changed(self):
         not_found = APIError("API request failed: HTTP 404", operation="delete_sub_resource", resource="survey_spec", status_code=404)
-        with unittest.mock.patch.object(self.client, "_make_request", side_effect=not_found):
+        with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body={"name": "Existing"}), not_found]):
             changed = self.client.manage_sub_resource("/api/controller/v2/job_templates", 42, "survey_spec", {})
         self.assertFalse(changed)
 
@@ -452,6 +525,32 @@ class TestSearchApi(unittest.TestCase):
         with unittest.mock.patch.object(self.client, "_make_request", side_effect=[_http_resp(body=page1), _http_resp(body=page2)]):
             with self.assertRaisesRegex(ValueError, "max_objects=3"):
                 self.client.search_api("/api/controller/v2/job_templates/42/credentials/", return_all=True, max_objects=3)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize(
+    "current,desired,changed",
+    [({}, {}, False), ({"name": "Old"}, {}, True), ({"name": "Same"}, {"name": "Same"}, False), ({"name": "Old"}, {"name": "New"}, True)],
+)
+def test_subresource_comparison_and_clear_idempotency(check_mode, current, desired, changed):
+    """Compare sub-resource state without writing during check mode."""
+    client = _client()
+    client._ensure_authenticated = MagicMock()
+    client._make_request = MagicMock(return_value=_http_resp(body=current))
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", desired, check_mode=check_mode) is changed
+    expected_methods = ["GET"]
+    if changed and not check_mode:
+        expected_methods.append("DELETE" if desired == {} else "POST")
+    assert [call.args[0] for call in client._make_request.call_args_list] == expected_methods
+
+
+def test_subresource_clear_dry_run_handles_absent_survey():
+    """Treat a missing survey as an unchanged dry-run clear."""
+    client = _client()
+    client._ensure_authenticated = MagicMock()
+    client._make_request = MagicMock(side_effect=APIError("Not found", status_code=404))
+    assert client.manage_sub_resource("/api/controller/v2/workflow_job_templates", 7, "survey_spec", {}, check_mode=True) is False
+    client.session.delete.assert_not_called()
 
 
 if __name__ == "__main__":

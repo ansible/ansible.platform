@@ -80,6 +80,9 @@
         that:
           - idempotent_update_wjt is not changed
 
+    - name: Check survey idempotency and association check mode
+      ansible.builtin.include_tasks: survey_and_associations.yml
+
     - name: Rename workflow job template
       ansible.platform.workflow_job_template:
         name: "{{ workflow_template_name }}"
@@ -117,9 +120,11 @@
         that:
           - delete_missing_wjt is not changed
 
-    - name: Delete workflow job template
+    - name: Delete workflow job template with unused invalid references
       ansible.platform.workflow_job_template:
         name: "{{ renamed_workflow_template_name }}"
+        inventory: "{{ name_prefix }}-Missing-Inventory"
+        webhook_credential: "{{ name_prefix }}-Missing-Credential"
         state: absent
       register: deleted_wjt
 

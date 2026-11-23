@@ -408,7 +408,8 @@ class TestBulkJobLaunchActionModule:
         mock_manager.execute.assert_not_called()
         mock_manager.wait_for_completion.assert_not_called()
 
-    def test_omitted_wait_timeout_preserves_indefinite_wait(self, action_module):
+    @pytest.mark.parametrize("timeout", [None, 0])
+    def test_unlimited_wait_timeout_preserves_indefinite_wait(self, action_module, timeout):
         mock_manager = MagicMock()
         mock_manager.execute.return_value = _launch_result()
         mock_manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
@@ -429,7 +430,7 @@ class TestBulkJobLaunchActionModule:
                     "skip_tags": None,
                     "wait": True,
                     "interval": 5.0,
-                    "timeout": None,
+                    "timeout": timeout,
                 },
                 "resource_data": {},
                 "write_only_data": {},
@@ -444,6 +445,29 @@ class TestBulkJobLaunchActionModule:
             interval=5.0,
             service="controller",
         )
+
+    def test_zero_timeout_waits_across_a_running_response(self, action_module):
+        """Use the real SDK waiter to prove zero survives a nonterminal poll."""
+        from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+
+        client = DirectHTTPClient.__new__(DirectHTTPClient)
+        client._build_url = MagicMock(return_value="https://example.invalid/api/controller/v2/workflow_jobs/42/")
+        client._get_json = MagicMock(side_effect=[{"id": 42, "status": "running"}, {"id": 42, "status": "successful"}])
+        manager = MagicMock()
+        manager.execute.return_value = _launch_result()
+        manager.wait_for_completion = MagicMock(wraps=client.wait_for_completion)
+        prepared = {
+            "result": {},
+            "manager": manager,
+            "validated_params": {"jobs": [{"unified_job_template": 7}], "wait": True, "interval": 0.01, "timeout": 0},
+        }
+        with patch.object(action_module, "_prepare_action", return_value=prepared):
+            with patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep"):
+                result = action_module.run(task_vars={})
+
+        assert not result.get("failed", False)
+        assert result["status"] == "successful"
+        assert client._get_json.call_count == 2
 
     def test_negative_wait_timeout_fails_before_launch(self, action_module):
         mock_manager = MagicMock()

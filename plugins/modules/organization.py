@@ -39,6 +39,60 @@ options:
       - The description of the Organization
     type: str
 
+  default_environment:
+    description:
+      - Default execution environment for Controller jobs run by this organization.
+      - This is updated on the Controller organization associated with the Gateway organization.
+    type: str
+
+  max_hosts:
+    description:
+      - Maximum number of hosts allowed in Controller inventories for this organization.
+      - This is updated on the Controller organization associated with the Gateway organization.
+    type: int
+
+  instance_groups:
+    description:
+      - Controller instance groups associated with this organization.
+      - Accepts names, IDs, or named URLs.
+    type: list
+    elements: str
+
+  notification_templates_started:
+    description:
+      - Controller notification templates to send when organization jobs start.
+      - Accepts names, IDs, or named URLs.
+    type: list
+    elements: str
+
+  notification_templates_success:
+    description:
+      - Controller notification templates to send when organization jobs succeed.
+      - Accepts names, IDs, or named URLs.
+    type: list
+    elements: str
+
+  notification_templates_error:
+    description:
+      - Controller notification templates to send when organization jobs fail.
+      - Accepts names, IDs, or named URLs.
+    type: list
+    elements: str
+
+  notification_templates_approvals:
+    description:
+      - Controller notification templates to send for organization approvals.
+      - Accepts names, IDs, or named URLs.
+    type: list
+    elements: str
+
+  galaxy_credentials:
+    description:
+      - Controller Galaxy credentials associated with this organization.
+      - Accepts names, IDs, or named URLs.
+    type: list
+    elements: str
+
   state:
     description:
       - Desired state of the organization.
@@ -61,6 +115,16 @@ EXAMPLES = """
     name: Ansible Product Development
     description: Organization for ansible developers
   register: created_org
+
+- name: Configure Controller organization settings and associations
+  ansible.platform.organization:
+    name: Ansible Product Development
+    default_environment: Production Execution Environment
+    max_hosts: 100
+    instance_groups:
+      - Default
+    galaxy_credentials:
+      - Ansible Galaxy
 
 - name: Idempotent re-run — no change expected
   ansible.platform.organization:
@@ -113,5 +177,35 @@ organization:
     description:
       description: Description of the organization.
       type: str
+    default_environment:
+      description: Default Controller execution environment, by name or ID.
+      type: str
+    max_hosts:
+      description: Maximum number of Controller inventory hosts.
+      type: int
+    instance_groups:
+      description: Controller instance groups associated with the organization.
+      type: list
+      elements: str
+    notification_templates_started:
+      description: Controller notifications sent when organization jobs start.
+      type: list
+      elements: str
+    notification_templates_success:
+      description: Controller notifications sent when organization jobs succeed.
+      type: list
+      elements: str
+    notification_templates_error:
+      description: Controller notifications sent when organization jobs fail.
+      type: list
+      elements: str
+    notification_templates_approvals:
+      description: Controller notifications sent for organization approvals.
+      type: list
+      elements: str
+    galaxy_credentials:
+      description: Controller Galaxy credentials associated with the organization.
+      type: list
+      elements: str
 ...
 """

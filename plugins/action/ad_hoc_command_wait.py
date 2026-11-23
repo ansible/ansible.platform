@@ -53,9 +53,6 @@ class ActionModule(BaseResourceActionPlugin):
             elif wait_timeout < 0:
                 raise AnsibleError("timeout must be 0 or greater")
 
-            if not command_id:
-                raise AnsibleError("command_id is required")
-
             resource_url = AD_HOC_COMMANDS_DETAIL_ENDPOINT.format(id=command_id)
 
             wait_result = manager.wait_for_completion(

@@ -28,12 +28,10 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.rulebook_activation import AnsibleRulebookActivation
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.rulebook_activation import (
-    ACTIVATION_DISABLE_ENDPOINT,
-    ACTIVATION_ENABLE_ENDPOINT,
-    ACTIVATION_RESTART_ENDPOINT,
     RulebookActivationTransformMixin_v1,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.retry import RetryConfig
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 # Restart/enable/disable are non-idempotent POSTs: retrying a lost response
 # could double-execute the action, so they disable the manager's default
@@ -48,6 +46,24 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "rulebook_activation"
     MODEL_CLASS = AnsibleRulebookActivation
+
+    def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
+        """Normalize the legacy enabled parameter to the platform state model."""
+        prepared = super()._prepare_action(tmp, task_vars)
+        params = prepared["validated_params"]
+        enabled = params.pop("enabled", None)
+        prepared["resource_data"].pop("enabled", None)
+        self._legacy_enabled_provided = enabled is not None
+        if enabled is not None:
+            mapped_state = "enabled" if enabled else "disabled"
+            explicit_state = self._task.args.get("state")
+            if explicit_state == "absent":
+                mapped_state = "absent"
+            elif explicit_state not in (None, "present", mapped_state):
+                raise AnsibleError("enabled cannot be combined with state=%s" % explicit_state)
+            params["state"] = mapped_state
+            prepared["resource_data"]["state"] = mapped_state
+        return prepared
 
     def run(self, tmp: object = None, task_vars: Optional[Dict[str, Any]] = None) -> dict:
         """Execute rulebook activation management.
@@ -85,7 +101,12 @@ class ActionModule(BaseResourceActionPlugin):
                 return self._handle_absent(manager, name, existing, result)
 
             if state in ("enabled", "disabled") and existing:
-                return self._handle_state_transition(manager, state, existing, result)
+                state_result = self._handle_state_transition(manager, state, existing, result)
+                if self._legacy_enabled_provided and self._has_legacy_enabled_update_fields():
+                    state_changed = state_result.get("changed", False)
+                    result = self._handle_create_or_update(manager, params, state, name, new_name, existing, state_result)
+                    result["changed"] = state_changed or result.get("changed", False)
+                return result
 
             return self._handle_create_or_update(manager, params, state, name, new_name, existing, result)
 
@@ -99,6 +120,11 @@ class ActionModule(BaseResourceActionPlugin):
                 result["exception"] = traceback.format_exc()
 
         return result
+
+    def _has_legacy_enabled_update_fields(self) -> bool:
+        """Return whether enabled was combined with explicit CRUD fields."""
+        ignored = {"enabled", "name", "state", "restart"}
+        return any(field not in ignored for field in self._task.args if field in _ANSIBLE_MODEL_FIELDS)
 
     def _find_activation(self, manager: Any, name: Optional[str]) -> Optional[dict]:
         """Find an existing activation by name.
@@ -140,7 +166,12 @@ class ActionModule(BaseResourceActionPlugin):
         if self._task.check_mode:
             result.update({"changed": True, "failed": False, self.MODULE_NAME: existing})
             return result
-        manager.direct_request("POST", ACTIVATION_RESTART_ENDPOINT.format(id=existing["id"]), retry_config=_NO_RETRY)
+        operation = RulebookActivationTransformMixin_v1.get_endpoint_operations()["restart"]
+        endpoint, payload = build_endpoint_request(operation, {"id": existing["id"]})
+        if payload:
+            manager.direct_request(operation.method, endpoint, data=payload, retry_config=_NO_RETRY)
+        else:
+            manager.direct_request(operation.method, endpoint, retry_config=_NO_RETRY)
         result.update(
             {
                 "changed": True,
@@ -192,6 +223,7 @@ class ActionModule(BaseResourceActionPlugin):
                 "changed": True,
                 "failed": False,
                 self.MODULE_NAME: {"state": "absent", "id": existing["id"]},
+                "id": existing["id"],
             }
         )
         return result
@@ -220,8 +252,13 @@ class ActionModule(BaseResourceActionPlugin):
             if self._task.check_mode:
                 result.update({"changed": True, "failed": False, self.MODULE_NAME: existing})
                 return result
-            endpoint = ACTIVATION_ENABLE_ENDPOINT if need_enable else ACTIVATION_DISABLE_ENDPOINT
-            manager.direct_request("POST", endpoint.format(id=existing["id"]), retry_config=_NO_RETRY)
+            operation_name = "enable" if need_enable else "disable"
+            operation = RulebookActivationTransformMixin_v1.get_endpoint_operations()[operation_name]
+            endpoint, payload = build_endpoint_request(operation, {"id": existing["id"]})
+            if payload:
+                manager.direct_request(operation.method, endpoint, data=payload, retry_config=_NO_RETRY)
+            else:
+                manager.direct_request(operation.method, endpoint, retry_config=_NO_RETRY)
             activation_result = dict(existing)
             activation_result["is_enabled"] = state == "enabled"
             result.update(

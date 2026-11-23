@@ -9,6 +9,8 @@ from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
+ACTIVATION_COPY_ENDPOINT = "/api/eda/v1/activations/{id}/copy/"
+
 
 @dataclass
 class APIRulebookActivationCopy_v1(BaseTransformMixin):
@@ -48,6 +50,14 @@ class RulebookActivationCopyTransformMixin_v1(BaseTransformMixin):
                 method="GET",
                 fields=[],
                 required_for="find",
+                order=1,
+            ),
+            "copy": EndpointOperation(
+                path=ACTIVATION_COPY_ENDPOINT,
+                method="POST",
+                fields=["name"],
+                path_params=["id"],
+                required_for="copy",
                 order=1,
             ),
         }

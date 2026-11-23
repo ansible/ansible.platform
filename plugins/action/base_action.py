@@ -19,7 +19,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
@@ -29,6 +29,8 @@ from ansible.utils.display import Display
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.rpc_client import ManagerRPCClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.idempotency import canonical_json_object
 
 # ---------------------------------------------------------------------------
 # Logging strategy for action plugins
@@ -50,6 +52,14 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_c
 # Ansible correctly wires up the file handler.
 # ---------------------------------------------------------------------------
 display = Display()
+
+
+class ValidatedActionInput(NamedTuple):
+    """Argument specification, validated parameters, and validation warnings."""
+
+    argspec: dict
+    validated_params: dict
+    warnings: list[str]
 
 
 def _manager_process_entry(
@@ -253,6 +263,10 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override with module-specific fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
 
+    # Selector IDs that are user-visible response fields. Other ``*_id`` fields
+    # are stripped from final output because they are internal resolved FKs.
+    _PRESERVE_RESULT_ID_FIELDS: frozenset = frozenset()
+
     # Fields the API stores as space-separated strings but argument_spec declares as list.
     # Conversion is applied in the output layer only so the internal update path is unaffected.
     # Subclasses override with module-specific fields.
@@ -277,12 +291,25 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses override this to list mutable FK fields for their resource.
     _MUTABLE_FK_FIELDS: frozenset = frozenset()
 
+    # Nullable relationships accepting an empty string to clear the reference.
+    # APIs return null after clearing; these values compare as equivalent.
+    _NULLABLE_FK_FIELDS: frozenset = frozenset()
+
     # Fields where list order does not matter for idempotency comparison.
     # By default, list comparison is order-sensitive (safer).  Subclasses
     # opt in specific fields where the API may return items in a different
     # order than the user specified (e.g. permissions lists).
     # Example:  _ORDER_INSENSITIVE_FIELDS = frozenset({"permissions"})
     _ORDER_INSENSITIVE_FIELDS: frozenset = frozenset()
+
+    # Fields represented as dictionaries in task arguments and JSON object
+    # strings by some API responses. Subclasses opt in only fields whose API
+    # contract treats both representations as the same object.
+    _JSON_OBJECT_FIELDS: frozenset = frozenset()
+
+    # Result fields whose API types intentionally differ from their input
+    # argument types. These retain the manager's API-normalized values.
+    _PRESERVE_OUTPUT_FIELDS: frozenset = frozenset()
 
     _AUTH_PARAMS = frozenset(
         {
@@ -338,6 +365,19 @@ class BaseResourceActionPlugin(ActionBase):
         """
 
     @staticmethod
+    def _set_job_timing(result: dict, job_data: dict) -> None:
+        """Populate Controller timing fields with Ansible's boolean finished flag.
+
+        Args:
+            result: Action result to update in place.
+            job_data: Controller job response containing timing fields.
+        """
+        for field in ("elapsed", "started"):
+            result[field] = job_data.get(field)
+        result["finished"] = bool(job_data.get("finished"))
+        result["finished_at"] = job_data.get("finished")
+
+    @staticmethod
     def _is_resource_not_found(exc: Exception) -> bool:
         """Return whether a find error represents an ordinary missing resource.
 
@@ -347,6 +387,8 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             bool: True when the error uses a recognized not-found response.
         """
+        if isinstance(exc, ResourceNotFoundError):
+            return True
         status_code = getattr(exc, "status_code", None)
         if status_code is None:
             details = getattr(exc, "details", None)
@@ -404,6 +446,13 @@ class BaseResourceActionPlugin(ActionBase):
         Returns:
             dict: Data to pass as ``ansible_data`` to manager.execute().
         """
+        explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+        if explicit_fields is not None:
+            data = {field: getattr(resource, field) for field in explicit_fields if hasattr(resource, field)}
+            if getattr(resource, "id", None) is not None:
+                data["id"] = resource.id
+            return data
+
         from dataclasses import asdict
 
         return asdict(resource)
@@ -454,20 +503,25 @@ class BaseResourceActionPlugin(ActionBase):
         result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
         del tmp
 
-        doc = self._get_documentation()
-        argspec = self._build_argspec_from_docs(doc) if doc else None
-        if not argspec:
-            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
-
-        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
+        validated_input = self._validate_action_input()
+        argspec = validated_input.argspec
+        validated_params = validated_input.validated_params
+        warnings = getattr(validated_input, "warnings", [])
+        if warnings:
+            result.setdefault("warnings", []).extend(warnings)
         manager, facts_to_set = self._get_or_spawn_manager(task_vars)
         self._client = manager
         if facts_to_set:
             result["ansible_facts"] = facts_to_set
             result["_ansible_facts_cacheable"] = True
 
-        validated_params = validated_input.validated_parameters
-        resource_data = {k: v for k, v in validated_params.items() if v is not None and k not in self._AUTH_PARAMS}
+        explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+        preserve_explicit_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False)
+        resource_data = {
+            k: v
+            for k, v in validated_params.items()
+            if k not in self._AUTH_PARAMS and (v is not None or (preserve_explicit_nulls and explicit_fields is not None and k in explicit_fields))
+        }
 
         for field, (msg, version) in self._DEPRECATED_FIELDS.items():
             if resource_data.pop(field, None) is not None:
@@ -483,6 +537,40 @@ class BaseResourceActionPlugin(ActionBase):
             "write_only_data": write_only_data,
             "manager": manager,
         }
+
+    def _validate_action_input(self) -> ValidatedActionInput:
+        """Validate the original task arguments against the module documentation.
+
+        This input-only helper lets custom action plugins validate before they
+        extract control fields or perform a preparatory API request. The shared
+        preparation path uses the same helper before it creates the manager.
+
+        Returns:
+            ValidatedActionInput: The generated argument specification, validated
+                parameters, and alias conflict warnings.
+        """
+        doc = self._get_documentation()
+        argspec = self._build_argspec_from_docs(doc) if doc else None
+        if not argspec:
+            raise AnsibleError("Could not load DOCUMENTATION for %s module" % self.MODULE_NAME)
+
+        # Ansible's required and conditional constraints check whether a key is
+        # present, even when its value is None. Normal resource payloads omit
+        # None, so treat it as absent during validation; composite imports opt
+        # into restoring explicitly supplied nulls after validation below.
+        validation_args = {key: value for key, value in self._task.args.items() if value is not None}
+        validated_input = self._validate_data(validation_args, argspec, "input")
+        validated_params = dict(validated_input.validated_parameters)
+        # Ansible retains supplied aliases alongside their canonical names.
+        # Resource models accept only the canonical fields.
+        for spec in argspec.get("argument_spec", {}).values():
+            for alias in spec.get("aliases", []):
+                validated_params.pop(alias, None)
+        warnings = ["Both option %s and its alias %s are set." % (warning["option"], warning["alias"]) for warning in getattr(validated_input, "_warnings", [])]
+        explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+        if getattr(self, "_preserve_explicit_nulls_for_update", False) and explicit_fields is not None:
+            validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
+        return ValidatedActionInput(argspec=argspec, validated_params=validated_params, warnings=warnings)
 
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
@@ -508,6 +596,12 @@ class BaseResourceActionPlugin(ActionBase):
             AnsibleError: If gateway URL is missing or connection plugin doesn't support get_client()
             RuntimeError: If manager fails to start
         """
+        # Composite actions such as ``import`` may delegate resource work to a
+        # resource action plugin while sharing their already-open manager.
+        manager_override = getattr(self, "_manager_override", None)
+        if manager_override is not None:
+            return manager_override, None
+
         # Import platform SDK modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import extract_gateway_config
 
@@ -1101,29 +1195,51 @@ class BaseResourceActionPlugin(ActionBase):
           desired is a non-numeric str (a name) and current is a digit str
           (an int FK that from_api converted to str), the comparison is
           skipped — e.g. authenticator='my-auth' vs '3100'.
-        - new_name: always triggers an update (it's a rename operation).
+        - new_name: triggers an update only when it differs from the current name.
         - Dict/list fields are compared structurally, regardless of concrete
           container subclass.
+        - Resource-specific JSON object fields compare dictionaries and JSON
+          object strings using the same sorted-key representation.
+        - Explicit nulls are ignored by default; composite import actions can
+          opt in to treating a null as a change when the current value is set.
         """
-        if desired_data.get("new_name"):
+        new_name = desired_data.get("new_name")
+        if new_name and str(new_name) != str(current_data.get("name")):
             return True
 
         skip_keys = self._AUTH_PARAMS | self._ANSIBLE_DIRECTIVES | self._READ_ONLY_FIELDS | self._WRITE_ONLY_FIELDS
 
         for key, desired_val in desired_data.items():
-            if key in skip_keys or desired_val is None:
+            if key in skip_keys:
+                continue
+            if desired_val is None:
+                explicit_fields = getattr(self, "_explicit_fields_to_send", None)
+                if (
+                    getattr(self, "_preserve_explicit_nulls_for_update", False)
+                    and explicit_fields is not None
+                    and key in explicit_fields
+                    and current_data.get(key) is not None
+                ):
+                    return True
                 continue
             if key not in current_data:
                 # Field not returned by API — cannot compare, assume no change
                 continue
             current_val = current_data[key]
+            if key in self._NULLABLE_FK_FIELDS and desired_val == "":
+                if current_val not in (None, ""):
+                    return True
+                continue
             if (
                 key not in self._MUTABLE_FK_FIELDS
                 and isinstance(desired_val, str)
-                and isinstance(current_val, str)
                 and not desired_val.isdigit()
-                and current_val.isdigit()
+                and (isinstance(current_val, str) and current_val.isdigit())
             ):
+                continue
+            if key in self._JSON_OBJECT_FIELDS:
+                if canonical_json_object(desired_val) != canonical_json_object(current_val):
+                    return True
                 continue
             # Compare structured values by contents instead of stringifying
             # concrete subclasses such as Ansible's tagged dictionaries.
@@ -1153,6 +1269,58 @@ class BaseResourceActionPlugin(ActionBase):
                     return True
 
         return False
+
+    def _format_resource_output(self, manager_result: dict, argspec: dict) -> Tuple[dict, dict]:
+        """Format manager output for nested and flat module results.
+
+        Args:
+            manager_result: Resource data returned by the manager.
+            argspec: Validated argument specification for the resource module.
+
+        Returns:
+            Tuple[dict, dict]: Validated resource fields and flat-only extra fields.
+        """
+        strip_from_resource = self._ANSIBLE_DIRECTIVES | (self._READ_ONLY_FIELDS - {"id"}) | {"changed"}
+        argspec_fields = set(argspec.get("argument_spec", {}).keys())
+        argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
+        filtered = {k: v for k, v in manager_result.items() if k in argspec_resource_fields}
+        # The API returns these URI lists as whitespace-separated strings. Split
+        # them before Ansible's list validator can treat URI commas as separators.
+        for field in self._SPACE_SEPARATED_LIST_FIELDS:
+            value = filtered.get(field)
+            if isinstance(value, str):
+                filtered[field] = value.split() if value.strip() else None
+        try:
+            validation_result = self._validate_data(
+                {k: v for k, v in filtered.items() if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},
+                argspec,
+                "output",
+            )
+            validated_output = {k: v for k, v in validation_result.validated_parameters.items() if k in filtered}
+            if "id" in filtered:
+                validated_output["id"] = filtered["id"]
+            for field in self._JSON_OBJECT_FIELDS | self._PRESERVE_OUTPUT_FIELDS:
+                if field in filtered:
+                    validated_output[field] = filtered[field]
+        except Exception:
+            validated_output = filtered.copy()
+
+        validated_output = {
+            k: v
+            for k, v in validated_output.items()
+            if k not in strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id" and k not in self._PRESERVE_RESULT_ID_FIELDS)
+        }
+        for field in self._SPACE_SEPARATED_LIST_FIELDS:
+            value = validated_output.get(field)
+            if isinstance(value, list):
+                match value:
+                    case [single_value] if isinstance(single_value, str):
+                        value = single_value
+            if isinstance(value, str):
+                validated_output[field] = value.split() if value.strip() else None
+
+        extra_flat = {k: manager_result[k] for k in self._EXTRA_RETURN_FIELDS if k in manager_result and manager_result[k] is not None}
+        return validated_output, extra_flat
 
     def run(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """
@@ -1210,13 +1378,16 @@ class BaseResourceActionPlugin(ActionBase):
                     if not (self._is_resource_not_found(exc) or self._is_resource_scope_mismatch(exc)):
                         raise
                     find_result, exists = {}, False
+                flat_fields, extra_flat = self._format_resource_output(find_result, argspec) if exists else ({}, {})
                 result.update(
                     {
+                        **flat_fields,
+                        **extra_flat,
                         "changed": False,
                         "failed": False,
                         "exists": exists,
-                        self.MODULE_NAME: find_result if exists else {},
-                        "id": find_result.get("id") if exists else None,
+                        self.MODULE_NAME: flat_fields,
+                        "id": flat_fields.get("id") if exists else None,
                     }
                 )
                 return result
@@ -1227,12 +1398,15 @@ class BaseResourceActionPlugin(ActionBase):
                     find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
                         if not self._should_update(resource_data, find_result):
+                            flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
                             # Nothing changed — return current state without touching API
                             result.update(
                                 {
+                                    **flat_fields,
+                                    **extra_flat,
                                     "changed": False,
                                     "failed": False,
-                                    self.MODULE_NAME: find_result,
+                                    self.MODULE_NAME: flat_fields,
                                     "id": find_result.get("id"),
                                 }
                             )
@@ -1298,11 +1472,14 @@ class BaseResourceActionPlugin(ActionBase):
                     merged.setdefault(self.LOOKUP_FIELD, lookup_val)
                     # Short-circuit if the merged desired state matches current
                     if not self._should_update(merged, find_result):
+                        flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
                         result.update(
                             {
+                                **flat_fields,
+                                **extra_flat,
                                 "changed": False,
                                 "failed": False,
-                                self.MODULE_NAME: find_result,
+                                self.MODULE_NAME: flat_fields,
                             }
                         )
                         return result
@@ -1313,16 +1490,24 @@ class BaseResourceActionPlugin(ActionBase):
 
             # ---- check mode ------------------------------------------------
             ansible_data = self._build_ansible_data(resource, validated_params, operation)
-            if operation == "update" and state == "enforced":
+            preserve_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False) and any(
+                value is None for key, value in ansible_data.items() if key != "id"
+            )
+            if operation == "update" and (state == "enforced" or preserve_nulls):
                 ansible_data["_platform_enforced"] = True
 
             if self._task.check_mode and operation in ("create", "update", "delete"):
                 if operation == "delete":
+                    resource_id = getattr(resource, "id", None)
+                    resource_output = {"state": "absent"}
+                    if resource_id is not None:
+                        resource_output["id"] = resource_id
                     result.update(
                         {
-                            "changed": bool(getattr(resource, "id", None)),
+                            "changed": bool(resource_id),
                             "failed": False,
-                            self.MODULE_NAME: {"state": "absent"},
+                            self.MODULE_NAME: resource_output,
+                            **({"id": resource_id} if resource_id is not None else {}),
                         }
                     )
                 else:
@@ -1371,57 +1556,7 @@ class BaseResourceActionPlugin(ActionBase):
                 raise
 
             # ---- build clean result ----------------------------------------
-            # Keys that must NEVER appear in the nested resource dict
-            # (ANSTRAT-1640): Ansible directives, read-only API metadata, and
-            # internal debug keys.
-            _strip_from_resource = (
-                self._ANSIBLE_DIRECTIVES
-                | (self._READ_ONLY_FIELDS - {"id"})  # keep id, strip created/modified/url
-                | {"changed"}
-            )
-
-            argspec_fields = set(argspec.get("argument_spec", {}).keys())
-            argspec_resource_fields = (argspec_fields - self._ANSIBLE_DIRECTIVES) | {"id"}
-            filtered = {k: v for k, v in manager_result.items() if k in argspec_resource_fields}
-            try:
-                validated_output = self._validate_data(
-                    {k: v for k, v in filtered.items() if k in argspec_fields and k not in self._ANSIBLE_DIRECTIVES},
-                    argspec,
-                    "output",
-                )
-                if "id" in filtered:
-                    validated_output["id"] = filtered["id"]
-            except Exception:
-                validated_output = {k: v for k, v in manager_result.items() if k not in _strip_from_resource}
-                if "id" in manager_result:
-                    validated_output["id"] = manager_result["id"]
-
-            # Final pass: strip any banned keys that slipped through argspec
-            # validation (e.g. read-only fields declared in module DOCUMENTATION
-            # but not writable by the user).
-            # Also strip:
-            #   - 'new_*' fields (rename/move directives, e.g. new_organization)
-            #   - '*_id' fields that are internal resolved FK integers
-            #     (e.g. organization_id) — the resolved FK is not a user-visible
-            #     return value; the user sees the original name field instead.
-            validated_output = {
-                k: v
-                for k, v in validated_output.items()
-                if k not in _strip_from_resource and not k.startswith("new_") and not (k.endswith("_id") and k != "id")
-            }
-
-            # Output-layer type conversion: space-separated API strings - lists.
-            for _field in self._SPACE_SEPARATED_LIST_FIELDS:
-                if _field in validated_output:
-                    _raw = validated_output[_field]
-                    if isinstance(_raw, str):
-                        validated_output[_field] = _raw.split() if _raw.strip() else None
-
-            # Extra non-argspec fields (e.g. client_id for application).
-            # These are returned flat only — never nested — because they are not
-            # valid module inputs and would break round-trip if included in
-            # the MODULE_NAME dict.
-            extra_flat = {k: manager_result[k] for k in self._EXTRA_RETURN_FIELDS if k in manager_result and manager_result[k] is not None}
+            validated_output, extra_flat = self._format_resource_output(manager_result, argspec)
 
             result.update(
                 {

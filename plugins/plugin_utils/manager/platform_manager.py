@@ -10,11 +10,10 @@ import base64
 import logging
 import threading
 import time
-from dataclasses import asdict
 from multiprocessing.managers import BaseManager
 from socketserver import ThreadingMixIn
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-from urllib.parse import quote, urlencode, urljoin
+from urllib.parse import urlencode, urljoin
 
 if TYPE_CHECKING:
     import requests
@@ -22,9 +21,10 @@ if TYPE_CHECKING:
 from ..platform.base_client import BaseAPIClient
 from ..platform.config import GatewayConfig
 from ..platform.credential_manager import get_credential_manager
-from ..platform.exceptions import AuthenticationError
+from ..platform.exceptions import APIError, AuthenticationError, PlatformError, ResourceNotFoundError, format_error_response_body
+from ..platform.idempotency import canonical_json_object
 from ..platform.retry import RetryConfig, retry_http_request
-from ..platform.types import TransformContext
+from ..platform.types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,7 @@ class PlatformService(BaseAPIClient):
         self._last_auth_error = None
         # Authentication records activity before the service is fully initialized.
         self._activity_lock = threading.Lock()
+        self._active_waits = 0
         self._last_activity_monotonic = time.monotonic()
 
         try:
@@ -134,7 +135,30 @@ class PlatformService(BaseAPIClient):
         with self._shutdown_lock:
             if self._shutdown_requested:
                 return False
-        return self.seconds_since_last_activity() >= self.config.idle_timeout
+        with self._activity_lock:
+            if self._active_waits:
+                return False
+            return time.monotonic() - self._last_activity_monotonic >= self.config.idle_timeout
+
+    def _register_active_wait(self) -> None:
+        """Keep the manager alive while a completion wait is in progress."""
+        with self._activity_lock:
+            self._active_waits += 1
+            self._last_activity_monotonic = time.monotonic()
+
+    def _release_active_wait(self) -> None:
+        """Release a completion wait and restart the idle timeout."""
+        with self._activity_lock:
+            self._active_waits -= 1
+            self._last_activity_monotonic = time.monotonic()
+
+    def wait_for_completion(self, resource_url: str, timeout: Optional[float] = None, interval: Optional[float] = None, service: str = "gateway") -> dict:
+        """Wait for a resource while preventing idle shutdown between polls."""
+        self._register_active_wait()
+        try:
+            return super().wait_for_completion(resource_url, timeout=timeout, interval=interval, service=service)
+        finally:
+            self._release_active_wait()
 
     def _make_request(
         self,
@@ -180,9 +204,9 @@ class PlatformService(BaseAPIClient):
     def _request_with_auth_recovery(self, method: str, url: str, operation: str, resource: str, **kwargs) -> "requests.Response":
         """Send one request, recovering once from an expired authentication token.
 
-        Unlike :meth:`_make_request`, this helper does not retry transient
-        failures. It is used by SDK endpoint operations that preserve their
-        existing single-attempt behavior while sharing the manager's 401 recovery.
+        This helper does not retry transient failures itself. :meth:`_make_request`
+        wraps it with the shared retry policy, keeping transport and auth recovery
+        separate from retry decisions.
         """
         self.record_activity()
         request_kwargs = kwargs.copy()
@@ -528,8 +552,13 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
         logger.info("Executing %s on %s", operation, module_name)
 
+        ansible_data_dict = dict(ansible_data_dict)
         # Pop action-only flags before building dataclass (action sets _platform_enforced for enforced state)
         include_nulls = ansible_data_dict.pop("_platform_enforced", False)
+        force_update = ansible_data_dict.pop("_platform_force_update", False)
+        check_mode = ansible_data_dict.pop("_platform_check_mode", False)
+        if not isinstance(check_mode, bool):
+            raise ValueError("_platform_check_mode must be a boolean")
 
         service = self.registry.get_service_for_module(module_name)
         if not service:
@@ -546,10 +575,17 @@ class PlatformService(BaseAPIClient):
             service=service,
             operation=operation,
             include_nulls_for_update=include_nulls,
+            force_update=force_update,
+            check_mode=check_mode,
         )
 
         try:
-            if operation == "create":
+            has_mutation_plan = getattr(MixinClass, "is_singleton", False) and hasattr(MixinClass, "plan_mutation")
+            if check_mode and operation != "find" and not has_mutation_plan:
+                raise ValueError("Check mode through execute() is not supported for this operation")
+            if has_mutation_plan and operation in {"create", "update", "delete"}:
+                result = self._execute_singleton_mutation(module_name, ansible_instance, MixinClass, context)
+            elif operation == "create":
                 result = self._create_resource(ansible_instance, MixinClass, context)
             elif operation == "update":
                 result = self._update_resource(ansible_instance, MixinClass, context)
@@ -567,12 +603,11 @@ class PlatformService(BaseAPIClient):
 
             return result
 
+        except ResourceNotFoundError as e:
+            logger.debug("Operation %s on %s: %s", operation, module_name, e)
+            raise
         except ValueError as e:
-            # "Resource not found" is expected during idempotency checks
-            if "not found" in str(e):
-                logger.debug("Operation %s on %s: %s", operation, module_name, e)
-            else:
-                logger.error("Operation %s on %s failed: %s", operation, module_name, e)
+            logger.error("Operation %s on %s failed: %s", operation, module_name, e)
             raise
         except Exception as e:
             logger.error("Operation %s on %s failed: %s", operation, module_name, e, exc_info=True)
@@ -645,17 +680,23 @@ class PlatformService(BaseAPIClient):
                 if getattr(api_data, field, None) is None:
                     user_unset_fields.add(field)
 
-        # For update, some APIs require all required fields in the PATCH body (e.g. http_port
-        # requires "number"). Merge current resource values for any update-operation field
-        # that is missing/None in api_data so the request body is valid.
-        if update_op and current_data:
-            current_dict = current_data if isinstance(current_data, dict) else current_data
-            for field in getattr(update_op, "fields", []) or []:
-                current_value = current_dict.get(field)
-                if hasattr(mixin_class, "get_update_value_from_current_data"):
+        # Restore only fields that the endpoint requires in every PATCH. Other
+        # omitted fields stay out of the request and retain their stored values.
+        missing_required_fields = []
+        if update_op:
+            current_dict = current_data if isinstance(current_data, dict) else {}
+            for field in update_op.required_fields:
+                current_value = current_dict.get(field) if current_data else None
+                if current_data and hasattr(mixin_class, "get_update_value_from_current_data"):
                     current_value = mixin_class.get_update_value_from_current_data(field, current_dict)
-                if getattr(api_data, field, None) is None and current_value is not None:
-                    setattr(api_data, field, current_value)
+                if getattr(api_data, field, None) is None:
+                    if current_value is None:
+                        missing_required_fields.append(field)
+                    else:
+                        setattr(api_data, field, current_value)
+        if missing_required_fields:
+            missing = ", ".join(sorted(missing_required_fields))
+            raise ValueError("Cannot update resource: required update field(s) unavailable from task and current resource data: %s" % missing)
 
         # Enforced updates must clear omitted organization and credential
         # associations after the merge restores values from the current resource.
@@ -678,6 +719,41 @@ class PlatformService(BaseAPIClient):
                 if field in user_unset_fields:
                     fields_to_null.add(field)
                     setattr(api_data, field, None)  # keep api_data consistent
+
+        # Avoid issuing PATCH when every requested update field already matches
+        # the current resource. Keep this aligned with DirectHTTPClient so the
+        # two supported client modes have the same idempotency contract.
+        if update_op and update_op.fields and current_data and not context.force_update:
+            would_update = {}
+            json_object_fields = getattr(mixin_class, "_JSON_OBJECT_FIELDS", frozenset())
+            get_idempotency_value = getattr(mixin_class, "get_idempotency_value_from_current_data", None)
+            for field in update_op.fields:
+                value = getattr(api_data, field, None)
+                if value is not None:
+                    would_update[field] = value
+
+            def _current_value(field):
+                if get_idempotency_value:
+                    return get_idempotency_value(field, current_data, context)
+                return current_data.get(field)
+
+            current_values = {field: _current_value(field) for field in set(would_update) | fields_to_null}
+            needs_update = any(
+                current_values[field] is None
+                or (
+                    canonical_json_object(current_values[field]) != canonical_json_object(would_update[field])
+                    if field in json_object_fields
+                    else str(current_values[field]) != str(would_update[field])
+                )
+                for field in would_update
+                if field not in {"modified", "created", "url", "state"} and current_values[field] != "$encrypted$"
+            )
+            if not needs_update:
+                needs_update = any(current_values[field] is not None for field in fields_to_null)
+            if not needs_update:
+                result = dict(current_data)
+                result["changed"] = False
+                return result
 
         api_result = self._execute_operations(operations, api_data, context, required_for="update", fields_to_null=fields_to_null)
 
@@ -850,10 +926,13 @@ class PlatformService(BaseAPIClient):
 
         url = self._build_url(path, service=context.service, api_version=context.api_version)
         logger.debug("Calling DELETE %s", url)
-        response = self.session.delete(url, timeout=self.request_timeout, verify=self.requests_verify)
-        if response.status_code == 404:
-            return {"changed": False, "id": resource_id}
-        response.raise_for_status()
+        try:
+            self._make_request("delete", url, operation="delete", resource=mixin_class.__name__)
+        except APIError as exc:
+            if exc.status_code == 404:
+                return {"changed": False, "id": resource_id}
+            raise
+        self._invalidate_resource_lookup_cache(context.service, delete_op.path)
         return {"changed": True, "id": resource_id}
 
     def _find_resource(self, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
@@ -889,10 +968,12 @@ class PlatformService(BaseAPIClient):
                 api_data = mixin_class.from_ansible_data(ansible_data, context)
                 payload = {f: getattr(api_data, f) for f in (get_op.fields or []) if getattr(api_data, f, None) is not None}
                 kwargs["json"] = payload
-            response = self._request_with_auth_recovery(method, url, operation="find", resource=mixin_class.__name__, **kwargs)
-            response.raise_for_status()
+            response = self._make_request(method, url, operation="find", resource=mixin_class.__name__, **kwargs)
             api_result = response.json()
-            ansible_instance = mixin_class.from_api(api_result, context)
+            # Singleton result transforms may depend on original request inputs,
+            # such as client-side filters that are never sent to the API.
+            find_transform = getattr(mixin_class, "from_find_result", None)
+            ansible_instance = find_transform(api_result, ansible_data, context) if find_transform else mixin_class.from_api(api_result, context)
             from dataclasses import asdict
 
             return asdict(ansible_instance)
@@ -903,9 +984,10 @@ class PlatformService(BaseAPIClient):
         # Support composite-key lookups via get_find_list_query_params.
         # Use FK-resolved API data so query params contain IDs, not names.
         composite_params = {}
+        find_api_data = None
         if hasattr(mixin_class, "get_find_list_query_params"):
-            api_data = mixin_class.from_ansible_data(ansible_data, context)
-            composite_params = mixin_class.get_find_list_query_params(api_data) or {}
+            find_api_data = mixin_class.from_ansible_data(ansible_data, context)
+            composite_params = mixin_class.get_find_list_query_params(find_api_data) or {}
 
         if not unique_value and not composite_params:
             raise ValueError(f"Cannot find resource: no {lookup_field} or id provided")
@@ -924,8 +1006,7 @@ class PlatformService(BaseAPIClient):
             if not get_op:
                 raise ValueError("No GET operation defined for this resource")
             url = self._build_url(get_op.path.replace("{id}", str(resolved_id)), service=context.service, api_version=context.api_version)
-            response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
-            response.raise_for_status()
+            response = self._make_request("get", url, operation="find", resource=mixin_class.__name__)
             api_result = response.json()
 
             # Validate composite-key constraints against the fetched resource.
@@ -950,7 +1031,10 @@ class PlatformService(BaseAPIClient):
                 query_params[lookup_field] = unique_value
             if composite_params:
                 query_params.update(composite_params)
-            if getattr(mixin_class, "find_list_requires_all_results", False):
+            requires_all_results = getattr(mixin_class, "find_list_requires_all_results", False)
+            if callable(requires_all_results):
+                requires_all_results = requires_all_results(find_api_data)
+            if requires_all_results:
                 list_result = self.search_api(
                     list_op.path,
                     query_params,
@@ -961,10 +1045,10 @@ class PlatformService(BaseAPIClient):
             else:
                 url = self._build_url(list_op.path, query_params=query_params, service=context.service, api_version=context.api_version)
                 logger.debug("Calling GET %s to find %s=%s (query_params=%s)", url, lookup_field, unique_value, query_params)
-                response = self._request_with_auth_recovery("get", url, operation="find", resource=mixin_class.__name__)
-                response.raise_for_status()
+                response = self._make_request("get", url, operation="find", resource=mixin_class.__name__)
                 list_result = response.json()
 
+            list_result = mixin_class.filter_find_results(list_result, find_api_data, lookup_field, unique_value)
             api_result = mixin_class.select_find_result(list_result, lookup_field, unique_value)
 
             # Some API list endpoints return incomplete data for certain fields
@@ -975,7 +1059,7 @@ class PlatformService(BaseAPIClient):
             if getattr(mixin_class, "full_resource_lookup", False) and api_result.get("id") and get_op:
                 full_url = self._build_url(get_op.path.replace("{id}", str(api_result["id"])), service=context.service, api_version=context.api_version)
                 logger.debug("full_resource_lookup: GET %s for complete resource data", full_url)
-                full_response = self._request_with_auth_recovery("get", full_url, operation="find", resource=mixin_class.__name__)
+                full_response = self._make_request("get", full_url, operation="find", resource=mixin_class.__name__)
                 if full_response.ok:
                     api_result = full_response.json()
 
@@ -1007,78 +1091,73 @@ class PlatformService(BaseAPIClient):
         sorted_ops = self._sort_operations(relevant_ops)
 
         results = {}
-        api_data_dict = asdict(api_data)
         _fields_to_null = fields_to_null or set()
 
         for op_name in sorted_ops:
             endpoint_op = relevant_ops[op_name]
 
-            # For update: include "" (empty string) so enforced can clear fields like email
-            request_data = {}
-            for field in endpoint_op.fields:
-                if field not in api_data_dict:
-                    continue
-                val = api_data_dict[field]
-                if val is None:
-                    # Include as explicit null only for fields declared by the mixin
-                    # as needing to be cleared, or for associations in enforced updates.
-                    if field in _fields_to_null or (
-                        context.operation == "update" and context.include_nulls_for_update and field in {"organization", "credential"}
-                    ):
-                        request_data[field] = None
-                    continue
-                request_data[field] = val
-
-            # flatten_body: send the dict field value as the body directly (e.g. settings)
-            if getattr(endpoint_op, "flatten_body", False) and len(request_data) == 1:
-                request_data = next(iter(request_data.values()))
+            path, request_data = build_endpoint_request(
+                endpoint_op,
+                api_data,
+                context,
+                path_values=results,
+                fields_to_null=_fields_to_null,
+                omit_empty_strings=True,
+            )
 
             if not request_data:
                 logger.debug("Skipping %s - no data", op_name)
                 continue
-
-            path = endpoint_op.path
-            if endpoint_op.path_params:
-                for param in endpoint_op.path_params:
-                    if param in results:
-                        path = path.replace(f"{{{param}}}", str(results[param]))
-                    elif param == "id" and "id" in api_data_dict:
-                        path = path.replace(f"{{{param}}}", str(api_data_dict["id"]))
 
             url = self._build_url(path, service=context.service, api_version=context.api_version)
 
             logger.debug("Calling %s %s", endpoint_op.method, url)
 
             try:
-                response = self._request_with_auth_recovery(
+                # POST operations may create a second resource if a transient
+                # failure occurs after the server has accepted the first request.
+                # Keep them single-attempt; the default retry policy is safe for
+                # reads and idempotent updates/deletes.
+                retry_config = RetryConfig(max_attempts=1) if endpoint_op.method.upper() == "POST" else None
+                response = self._make_request(
                     endpoint_op.method,
                     url,
                     operation=op_name,
                     resource=endpoint_op.path,
+                    retry_config=retry_config,
                     json=request_data,
                 )
-                response.raise_for_status()
+
+                if endpoint_op.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                    self._invalidate_resource_lookup_cache(context.service, endpoint_op.path)
 
             except Exception as e:
                 logger.error("API call failed: %s", e)
-                if hasattr(e, "response") and e.response is not None:
-                    logger.error("Response status: %s", e.response.status_code)
-                    logger.error("Response body: %s", e.response.text)
-                    # Include response body in message so callers (e.g. tests) can assert on
-                    # validation errors.  Parse as JSON and use str() so the output uses
-                    # Python's single-quote repr (e.g. {'triggers': ['Triggers must be a
-                    # valid dict']}) rather than raw JSON double-quotes.  Tests written
-                    # against the old AAPModule architecture relied on this format.
-                    body_text = getattr(e.response, "text", "") or ""
-                    if body_text:
-                        import json as _json
-
-                        try:
-                            body_formatted = str(_json.loads(body_text))
-                        except (_json.JSONDecodeError, ValueError):
-                            body_formatted = body_text[:1000]
-                        if body_formatted not in str(e):
-                            raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
+                response = getattr(e, "response", None)
+                details = getattr(e, "details", None) or {}
+                status_code = getattr(response, "status_code", None) or details.get("status_code")
+                if status_code is not None:
+                    logger.error("Response status: %s", status_code)
+                body_formatted = format_error_response_body(e)
+                if body_formatted:
+                    logger.error("Response body: %s", body_formatted)
+                    if body_formatted not in str(e):
+                        if isinstance(e, APIError):
+                            details = dict(e.details or {})
+                            details.setdefault("response_body", body_formatted)
+                            enriched_error = APIError(
+                                message=f"{e.message}\nResponse body: {body_formatted}",
+                                operation=e.operation,
+                                resource=e.resource,
+                                details=details,
+                                status_code=e.status_code,
+                                response_body=e.response_body,
+                            )
+                            enriched_error.retryable = e.retryable
+                            raise enriched_error from e
+                        if isinstance(e, PlatformError):
+                            raise
+                        raise ValueError(f"{e}\nResponse body: {body_formatted}") from e
                 raise
 
             result_data = response.json() if response.content else {}
@@ -1115,7 +1194,7 @@ class PlatformService(BaseAPIClient):
 
         return sorted_ops
 
-    def lookup_org_ids(self, org_names: list) -> list:
+    def lookup_org_ids(self, org_names: list, service: str = "gateway") -> list:
         """
         Convert organization names to IDs.
 
@@ -1125,28 +1204,9 @@ class PlatformService(BaseAPIClient):
         Returns:
             List of organization IDs
         """
-        ids = []
-        for name in org_names:
-            cache_key = f"org_name:{name}"
-            if cache_key in self.cache:
-                ids.append(self.cache[cache_key])
-                continue
+        return self.lookup_organization_ids(org_names, service=service)
 
-            url = self._build_url("organizations", query_params={"name": name})
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
-            results = response.json().get("results", [])
-
-            if results:
-                org_id = results[0]["id"]
-                self.cache[cache_key] = org_id
-                ids.append(org_id)
-            else:
-                raise ValueError(f"Organization '{name}' not found")
-
-        return ids
-
-    def lookup_org_names(self, org_ids: list) -> list:
+    def lookup_org_names(self, org_ids: list, service: str = "gateway") -> list:
         """
         Convert organization IDs to names.
 
@@ -1156,85 +1216,7 @@ class PlatformService(BaseAPIClient):
         Returns:
             List of organization names
         """
-        names = []
-        for org_id in org_ids:
-            cache_key = f"org_id:{org_id}"
-            if cache_key in self.cache:
-                names.append(self.cache[cache_key])
-                continue
-
-            url = self._build_url(f"organizations/{org_id}/")
-            response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
-            response.raise_for_status()
-            org = response.json()
-
-            name = org["name"]
-            self.cache[cache_key] = name
-            self.cache[f"org_name:{name}"] = org_id
-            names.append(name)
-
-        return names
-
-    # Aliases for consistency with transform mixins
-    def lookup_organization_ids(self, names: list) -> list:
-        """Alias for lookup_org_ids."""
-        return self.lookup_org_ids(names)
-
-    def lookup_organization_names(self, ids: list) -> list:
-        """Alias for lookup_org_names."""
-        return self.lookup_org_names(ids)
-
-    def lookup_resource_id(
-        self,
-        endpoint: str,
-        lookup_field: str,
-        lookup_value: str,
-        service: str = "gateway",
-        extra_query_params: dict = None,
-        require_unique: bool = False,
-    ) -> Optional[int]:
-        """
-        Resolve a resource name to ID by GET list with filter.
-        Used by mixins to resolve FKs (e.g. service_cluster name -> id).
-        """
-        self.record_activity()
-        if not lookup_value:
-            return None
-        if str(lookup_value).isdigit():
-            return int(lookup_value)
-
-        # AWX accepts Controller named URLs (for example, organization++inventory)
-        # as a direct resource path. Try that before a potentially ambiguous name query.
-        if lookup_field == "name" and "++" in str(lookup_value) and not extra_query_params:
-            named_url = self._build_url(f"/{endpoint}/{quote(str(lookup_value), safe='+')}", service=service)
-            named_response = self.session.get(named_url, timeout=self.request_timeout, verify=self.requests_verify)
-            if named_response.status_code == 200:
-                named_resource_id = named_response.json().get("id")
-                if named_resource_id is not None:
-                    return named_resource_id
-            elif named_response.status_code != 404:
-                named_response.raise_for_status()
-
-        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, lookup_value, extra_query_params)
-        # A cached first match cannot prove that the lookup is unique.
-        if not require_unique and cache_key in self.cache:
-            return self.cache[cache_key]
-        query = {lookup_field: lookup_value}
-        if extra_query_params:
-            query.update(extra_query_params)
-        url = self._build_url(f"/{endpoint}", query_params=query, service=service)
-        response = self.session.get(url, timeout=self.request_timeout, verify=self.requests_verify)
-        response.raise_for_status()
-        response_data = response.json()
-        results = response_data.get("results", [])
-        if not results:
-            raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
-        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
-            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
-        rid = results[0].get("id")
-        if rid is not None and not require_unique:
-            self.cache[cache_key] = rid
-        return rid
+        return self.lookup_organization_names(org_ids, service=service)
 
     def manage_associations(
         self,
@@ -1247,6 +1229,7 @@ class PlatformService(BaseAPIClient):
         service: str = "gateway",
         extra_query_params: dict = None,
         preserve_existing: bool = False,
+        check_mode: bool = False,
     ) -> bool:
         """
         Sync an association sub-endpoint (e.g. job_templates/{id}/credentials/) to desired_items.
@@ -1256,6 +1239,7 @@ class PlatformService(BaseAPIClient):
         resource. Resolves names/IDs in desired_items via lookup_resource_id(), diffs against
         current associations, and associates/disassociates to reconcile. Set
         preserve_existing=True to retain already-associated items.
+        Set check_mode=True to predict changes without modifying associations.
 
         This read-then-write reconciliation is not atomic. Concurrent changes from another
         client can interleave with the read and individual POSTs, leaving final state different
@@ -1281,6 +1265,9 @@ class PlatformService(BaseAPIClient):
             desired_ids.update(current_ids)
         assoc_url = self._build_url(assoc_path, service=service)
 
+        if check_mode:
+            return desired_ids != current_ids
+
         changed = False
         for rid in desired_ids - current_ids:
             try:
@@ -1298,7 +1285,7 @@ class PlatformService(BaseAPIClient):
             changed = True
         return changed
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], check_mode: bool = False) -> bool:
         """
         Manage a secondary singleton sub-endpoint (e.g. job_templates/{id}/survey_spec/).
 
@@ -1306,6 +1293,7 @@ class PlatformService(BaseAPIClient):
         rather than writing bespoke get/compare/post logic per resource. data is None:
         no-op. data == {}: DELETE the sub-resource. Otherwise: GET current state, compare,
         POST only if different.
+        Check mode compares current state without POST or DELETE requests.
 
         Intended for Pattern C action plugins (custom orchestration run(), see
         docs/02-action-plugin-pattern.md) that need post-CRUD sub-resource management beyond
@@ -1316,20 +1304,25 @@ class PlatformService(BaseAPIClient):
         self.record_activity()
         sub_url = self._build_url(f"{base_path}/{resource_id}/{sub_path}/")
 
+        current_response = self.session.get(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
+        if data == {} and current_response.status_code == 404:
+            return False
+        current_response.raise_for_status()
+        if current_response.json() == data:
+            return False
+
         if data == {}:
+            if check_mode:
+                return True
             response = self.session.delete(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
             if response.status_code == 404:
                 return False
             response.raise_for_status()
             return True
 
-        current_response = self.session.get(sub_url, timeout=self.request_timeout, verify=self.requests_verify)
-        current_response.raise_for_status()
-        if current_response.json() == data:
-            return False
-
-        response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
-        response.raise_for_status()
+        if not check_mode:
+            response = self.session.post(sub_url, json=data, timeout=self.request_timeout, verify=self.requests_verify)
+            response.raise_for_status()
         return True
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
@@ -1400,27 +1393,6 @@ class PlatformService(BaseAPIClient):
             retry_config=RetryConfig(max_attempts=1),
             json=payload,
         )
-        return response.json()
-
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the Controller bulk/host_create endpoint.
-
-        Retries are disabled: this is a non-idempotent POST — retrying a lost
-        response could create duplicate hosts or trigger 400 errors.
-        """
-        self.record_activity()
-        url = self._build_url("/bulk/host_create/", service=service)
-        payload = {"inventory": inventory_id, "hosts": hosts}
-        response = self._make_request(
-            "post",
-            url,
-            operation="bulk_host_create",
-            resource="bulk",
-            retry_config=RetryConfig(max_attempts=1),
-            json=payload,
-        )
-        if response.status_code != 201:
-            raise ValueError(f"Bulk host create failed (HTTP {response.status_code}): {response.text}")
         return response.json()
 
     def direct_request(self, method: str, path: str, data=None, retry_config: Optional[RetryConfig] = None) -> dict:

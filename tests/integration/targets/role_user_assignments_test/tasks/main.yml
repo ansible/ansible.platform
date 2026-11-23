@@ -269,6 +269,9 @@
       ansible.builtin.assert:
         that:
           - role_definition_exists_check_team3 is failed
+          - role_definition_exists_check_team3 is not changed
+          - not role_definition_exists_check_team3.exists
+          - role_definition_exists_check_team3.role_user_assignment == {}
 
     - name: Delete Role User Assignments for Organization Admin with object_ansible_id
       ansible.platform.role_user_assignment:
@@ -296,6 +299,9 @@
       ansible.builtin.assert:
         that:
           - role_definition_exists_check_org2 is failed
+          - role_definition_exists_check_org2 is not changed
+          - not role_definition_exists_check_org2.exists
+          - role_definition_exists_check_org2.role_user_assignment == {}
 
     - name: Delete Role User Assignments for Organization Admin
       ansible.platform.role_user_assignment:
@@ -318,6 +324,9 @@
       ansible.builtin.assert:
         that:
           - role_definition_exists_check is failed
+          - role_definition_exists_check is not changed
+          - not role_definition_exists_check.exists
+          - role_definition_exists_check.role_user_assignment == {}
 
     - name: Assert that removing user as org admin worked
       ansible.builtin.assert:

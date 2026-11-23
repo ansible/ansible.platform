@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - bulk_job_launch - treat an omitted or zero client wait timeout as unlimited, preserving legacy behavior without changing server-side jobs[].timeout values.
+...
