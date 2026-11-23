@@ -141,6 +141,48 @@ class TestCredentialsFromEnv(unittest.TestCase):
         self.assertIsNone(cfg.oauth_token)
         self.assertEqual(cfg.username, "admin")
 
+    def test_env_username_does_not_suppress_inventory_token(self):
+        """Regression: an exported GATEWAY_USERNAME must not discard the inventory
+        aap_token fact.  The environment ranks below inventory, so suppressing the
+        token would leave a username with no password and no token."""
+        cfg = extract_gateway_config(
+            task_args={},
+            host_vars={"gateway_hostname": "https://gw.example", "aap_token": {"token": "host-tok", "id": 1}},
+            env={"GATEWAY_USERNAME": "admin"},
+        )
+        self.assertEqual(cfg.oauth_token, "host-tok")
+
+    def test_env_credentials_do_not_suppress_inventory_token(self):
+        """Same guard with both username and password exported."""
+        cfg = extract_gateway_config(
+            task_args={},
+            host_vars={"gateway_hostname": "https://gw.example", "aap_token": {"token": "host-tok", "id": 1}},
+            env={"GATEWAY_USERNAME": "admin", "GATEWAY_PASSWORD": "secret"},
+        )
+        self.assertEqual(cfg.oauth_token, "host-tok")
+
+    def test_task_credentials_still_suppress_inventory_token(self):
+        """The original guard is preserved: explicit task credentials win over the fact."""
+        cfg = extract_gateway_config(
+            task_args={"gateway_username": "admin", "gateway_password": "secret"},
+            host_vars={"gateway_hostname": "https://gw.example", "aap_token": {"token": "host-tok", "id": 1}},
+            env={},
+        )
+        self.assertIsNone(cfg.oauth_token)
+
+    def test_inventory_credentials_still_suppress_inventory_token(self):
+        cfg = extract_gateway_config(
+            task_args={},
+            host_vars={
+                "gateway_hostname": "https://gw.example",
+                "gateway_username": "admin",
+                "gateway_password": "secret",
+                "aap_token": {"token": "host-tok", "id": 1},
+            },
+            env={},
+        )
+        self.assertIsNone(cfg.oauth_token)
+
 
 class TestValidateCertsFromEnv(unittest.TestCase):
     """GATEWAY_VERIFY_SSL is a string: bool('false') is True, so it must be parsed."""
@@ -201,6 +243,24 @@ class TestValidateCertsFromEnv(unittest.TestCase):
                 host_vars={},
                 env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": "maybe"},
             )
+
+    def test_invalid_env_boolean_is_not_parsed_when_task_overrides(self):
+        """Regression: the environment value must only be parsed when it is used.
+        An unparsable GATEWAY_VERIFY_SSL must not break a task that sets the value."""
+        cfg = extract_gateway_config(
+            task_args={"gateway_hostname": "https://gw.example", "validate_certs": False},
+            host_vars={},
+            env={"GATEWAY_VERIFY_SSL": "maybe"},
+        )
+        self.assertFalse(cfg.verify_ssl)
+
+    def test_invalid_env_boolean_is_not_parsed_when_inventory_overrides(self):
+        cfg = extract_gateway_config(
+            task_args={},
+            host_vars={"gateway_hostname": "https://gw.example", "aap_validate_certs": True},
+            env={"GATEWAY_VERIFY_SSL": "maybe"},
+        )
+        self.assertTrue(cfg.verify_ssl)
 
 
 class TestRequestTimeoutFromEnv(unittest.TestCase):

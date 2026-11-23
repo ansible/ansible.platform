@@ -140,6 +140,42 @@ def _env_boolean(value: str) -> bool:
     raise ValueError(f"Invalid boolean value for gateway validate_certs environment variable: {value!r}")
 
 
+def _resolve_validate_certs(
+    task_args: Dict[str, Any],
+    host_vars: Dict[str, Any],
+    env: Mapping[str, str],
+) -> Any:
+    """Return the TLS verification setting from task, inventory or environment scope.
+
+    Uses ``key in dict`` rather than ``a or b`` chaining so that an explicit
+    ``False`` is honoured.  The environment is consulted — and parsed — only
+    when neither task nor inventory supplies a value, so an unparsable
+    ``GATEWAY_VERIFY_SSL`` cannot break a run that overrides it.
+
+    Aliases: aap_validate_certs (primary), gateway_validate_certs, validate_certs (legacy).
+
+    Args:
+        task_args: Task/command arguments (highest priority).
+        host_vars: Host/inventory variables (middle priority).
+        env: Environment mapping (lowest priority).
+
+    Returns:
+        The resolved value, defaulting to True (verify TLS certificates).
+
+    Raises:
+        ValueError: If the environment value is used and is not a valid boolean.
+    """
+    keys = ("aap_validate_certs", "gateway_validate_certs", "validate_certs")
+    for scope in (task_args, host_vars):
+        for key in keys:
+            if key in scope:
+                return scope[key]
+    env_value = _env_first(env, "validate_certs")
+    if env_value is not None:
+        return _env_boolean(env_value)
+    return True  # default: verify SSL
+
+
 def _extract_persistent_manager_idle_timeout(
     task_args: Dict[str, Any],
     host_vars: Dict[str, Any],
@@ -250,6 +286,22 @@ def extract_gateway_config(
         or host_vars.get("gateway_password")
         or _env_first(env, "password")
     )
+
+    # Only credentials given explicitly in the task or inventory suppress the
+    # token fallbacks below.  Environment credentials must NOT, because the
+    # environment ranks below inventory: an exported GATEWAY_USERNAME left over
+    # in a developer shell would otherwise discard an inventory aap_token and
+    # leave a username with no password and no token.
+    has_explicit_credentials = bool(
+        task_args.get("aap_username")
+        or task_args.get("gateway_username")
+        or host_vars.get("aap_username")
+        or host_vars.get("gateway_username")
+        or task_args.get("aap_password")
+        or task_args.get("gateway_password")
+        or host_vars.get("aap_password")
+        or host_vars.get("gateway_password")
+    )
     gateway_token_raw = (
         task_args.get("aap_token")
         or task_args.get("gateway_token")
@@ -260,10 +312,10 @@ def extract_gateway_config(
         # in aap_token after creation; picking it up here would cause all
         # subsequent tasks in the same play to authenticate as that limited token
         # instead of the admin user, leading to 403 errors.
-        (host_vars.get("aap_token") if not gateway_username and not gateway_password else None)
+        (host_vars.get("aap_token") if not has_explicit_credentials else None)
         # Same guard for the environment: an exported token must not override
         # username/password credentials supplied by the task or inventory.
-        or (_env_first(env, "token") if not gateway_username and not gateway_password else None)
+        or (_env_first(env, "token") if not has_explicit_credentials else None)
     )
     # The token module sets aap_token as a dict ({"token": "...", "id": ...}).
     # Extract the actual token string if we got a dict.
@@ -272,20 +324,7 @@ def extract_gateway_config(
     else:
         gateway_token = gateway_token_raw
 
-    # Resolve validate_certs aliases using 'in' checks — NOT 'or' chaining —
-    # because False is a valid meaningful value that 'or' would silently skip.
-    # Aliases: aap_validate_certs (primary), gateway_validate_certs, validate_certs (legacy).
-    # Priority: task_args, then host_vars, then environment; first matching key wins.
-    # The environment value is a string and must be parsed: bool("false") is True.
-    _validate_certs_keys = ("aap_validate_certs", "gateway_validate_certs", "validate_certs")
-    _validate_certs_env = _env_first(env, "validate_certs")
-    gateway_validate_certs = next(
-        (task_args[k] for k in _validate_certs_keys if k in task_args),
-        next(
-            (host_vars[k] for k in _validate_certs_keys if k in host_vars),
-            _env_boolean(_validate_certs_env) if _validate_certs_env is not None else True,  # default: verify SSL
-        ),
-    )
+    gateway_validate_certs = _resolve_validate_certs(task_args, host_vars, env)
 
     # Resolve request_timeout aliases: aap_request_timeout (primary), gateway_request_timeout,
     # request_timeout (legacy).  Environment values are strings, so cast to float.
