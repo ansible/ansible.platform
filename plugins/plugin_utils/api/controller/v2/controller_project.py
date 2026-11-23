@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 from ....platform.base_transform import BaseTransformMixin
+from ....platform.exceptions import ResourceNotFoundError
 from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,13 @@ class ControllerProjectTransformMixin_v2(BaseTransformMixin):
         credential = getattr(ansible_instance, "credential", None)
         if credential is not None:
             if manager is not None and not str(credential).strip().isdigit():
-                api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, **lookup_kwargs)
+                try:
+                    api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, **lookup_kwargs)
+                except ResourceNotFoundError:
+                    # Credentials owned by a user/team may be global rather
+                    # than organization-scoped. Retry only for a scoped miss;
+                    # authentication, transport, and API errors must surface.
+                    api_data["credential"] = manager.lookup_resource_id("credentials", "name", credential, service="controller")
             else:
                 api_data["credential"] = int(credential) if credential is not None else None
 

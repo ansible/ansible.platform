@@ -40,6 +40,13 @@ options:
       - Use C(all) to export all organizations.
     type: list
     elements: str
+  controller_organizations:
+    description:
+      - Controller organization overlays to export. These include max_hosts,
+        default_environment, Galaxy credentials, and instance-group associations.
+      - Use C(all) to export all Controller organizations.
+    type: list
+    elements: str
   users:
     description:
       - Usernames or user IDs to export.
@@ -52,6 +59,24 @@ options:
       - Use C(all) to export all teams.
     type: list
     elements: str
+  authenticators:
+    description:
+      - Gateway authenticator names to export.
+      - Use C(all) to export all authenticators.
+    type: list
+    elements: str
+  authenticator_maps:
+    description:
+      - Gateway authenticator-map names to export.
+      - Use C(all) to export all authenticator maps.
+    type: list
+    elements: str
+  tokens:
+    description:
+      - Gateway token IDs to export as masked metadata. Token values cannot be restored.
+      - Use C(all) to export token metadata.
+    type: list
+    elements: str
   credential_types:
     description:
       - Credential type names or IDs to export.
@@ -62,6 +87,24 @@ options:
     description:
       - Credential names or IDs to export.
       - Use C(all) to export all credentials.
+    type: list
+    elements: str
+  instance_groups:
+    description:
+      - Controller instance-group names to export, including instance associations.
+      - Use C(all) to export all instance groups.
+    type: list
+    elements: str
+  role_user_assignments:
+    description:
+      - Gateway role-user assignment IDs to export.
+      - Use C(all) to export all role-user assignments.
+    type: list
+    elements: str
+  role_team_assignments:
+    description:
+      - Gateway role-team assignment IDs to export.
+      - Use C(all) to export all role-team assignments.
     type: list
     elements: str
   execution_environments:
@@ -170,7 +213,7 @@ EXAMPLES = """
 RETURN = """
 assets:
     description:
-      - The exported assets in native ansible.platform format.
+      - The restorable assets in native ansible.platform format.
       - Top-level keys are resource type names; values are lists of resource dicts.
       - Can be passed directly to the C(ansible.platform.import) module.
       - Credential input values are API-masked (for example, C($encrypted$));
@@ -185,6 +228,13 @@ assets:
         - name: My Cred
           credential_type: Machine
           organization: Default
+non_restorable:
+    description:
+      - Resources excluded from assets because their secrets or token values are API-masked/write-only.
+      - Supply replacement secret values before importing these resources.
+    returned: when masked or write-only resources are present
+    type: dict
+
 changed:
     description: Always false. Export is read-only.
     returned: success

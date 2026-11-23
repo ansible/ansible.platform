@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    export/import - make clean-slate platform exports portable by normalizing
+    references, preserving Controller organization overlays, handling masked
+    secrets safely, and resolving Gateway/Controller role assignments through
+    target-instance names and IDs (https://issues.redhat.com/browse/AAP-102792).
+...

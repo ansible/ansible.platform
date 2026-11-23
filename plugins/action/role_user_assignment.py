@@ -22,6 +22,8 @@ class ActionModule(BaseResourceActionPlugin):
         ["object_id", "object_ids"],
         ["object_id", "object_ansible_id"],
         ["object_ids", "object_ansible_id"],
+        ["object_id", "object_name"],
+        ["object_ansible_id", "object_name"],
         ["user", "user_ansible_id"],
     ]
 

@@ -86,6 +86,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
         include_nulls = (
             getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
         )
+        manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
 
         for field in simple_fields:
             value = getattr(ansible_instance, field, None)
@@ -102,6 +103,19 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 # Enforced update only: send empty string to clear (Gateway API expects "" not null, per UI payload)
                 api_data[field] = ""
                 logger.debug("Mapped field %s: '' (enforced clear)", field)
+
+        # Convert portable authenticator names back to Gateway IDs. The
+        # exporter deliberately emits names so the asset can move between
+        # environments whose authenticator IDs differ.
+        associated_authenticators = getattr(ansible_instance, "associated_authenticators", None)
+        if associated_authenticators:
+            resolved_authenticators = {}
+            for authenticator, data in associated_authenticators.items():
+                authenticator_id = authenticator
+                if manager is not None and not str(authenticator).isdigit():
+                    authenticator_id = manager.lookup_resource_id("authenticators", "name", authenticator, service="gateway")
+                resolved_authenticators[str(authenticator_id)] = data
+            api_data["associated_authenticators"] = resolved_authenticators
 
         # Complex transformation: organizations (names -> IDs)
         if ansible_instance.organizations:
@@ -184,7 +198,7 @@ class UserTransformMixin_v1(BaseTransformMixin):
                 path="/api/gateway/v1/users/",
                 method="POST",
                 # is_platform_auditor omitted: managed via role_user_assignment (see plugins/action/user.py)
-                fields=["username", "email", "first_name", "last_name", "password", "is_superuser"],
+                fields=["username", "email", "first_name", "last_name", "password", "is_superuser", "associated_authenticators"],
                 required_for="create",
                 order=1,
             ),

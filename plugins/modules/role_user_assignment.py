@@ -46,6 +46,18 @@ options:
             - This option is mutually exclusive with I(user_ansible_id).
         required: False
         type: str
+    object_name:
+        description:
+            - Portable name of the target object. Requires C(object_type).
+        type: str
+    object_type:
+        description:
+            - Portable assignment object type, such as C(awx.credential) or C(teams).
+        type: str
+    organization:
+        description:
+            - Organization used to scope portable object-name lookup.
+        type: str
     object_ansible_id:
         description:
             - UUID of the object(team/organization) this role applies to. Alternative to the object_id/object_ids field.

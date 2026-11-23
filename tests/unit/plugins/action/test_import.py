@@ -366,3 +366,174 @@ def test_malformed_resource_item_is_reported(action):
     assert result["failed"] is True
     assert result["results"]["organizations"]["failed"] == 1
     assert result["failed_resources"][0]["name"] == "[0]"
+
+
+def test_import_skips_write_only_tokens(action):
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {"assets": {"tokens": [{"description": "one", "scope": "write"}]}},
+            "manager": Mock(),
+        }
+    )
+    action._import_inventory_children = Mock(return_value=({"changed": 0, "ok": 0, "failed": 0}, {"changed": 0, "ok": 0, "failed": 0}))
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is False
+    assert result["changed"] is False
+    assert result["results"]["tokens"]["skipped"] == 1
+
+
+def test_build_role_assignment_cache_fetches_target_resources():
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {"results": [{"name": "Team Member", "id": 1}, {"name": "Org Admin", "id": 2}]},
+        {"results": [{"username": "alice", "id": 10}, {"username": "bob", "id": 11}]},
+        {"results": [{"name": "Default", "id": 100}]},
+        {"results": [{"name": "Default", "id": 200}]},
+        {"results": [{"name": "DevTeam", "id": 50, "organization": 100}]},
+        {"results": [{"name": "Demo Project", "id": 300, "organization": 200}]},
+    ]
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    assets = {
+        "role_user_assignments": [
+            {"role_definition": "Team Member", "user": "alice", "object_name": "DevTeam", "object_type": "teams", "organization": "Default"},
+            {"role_definition": "Org Admin", "user": "bob", "object_name": "Demo Project", "object_type": "awx.project", "organization": "Default"},
+        ],
+    }
+    cache = action._build_role_assignment_cache(manager, assets)
+
+    assert cache["role_definitions"] == {"Team Member": 1, "Org Admin": 2}
+    assert cache["users"] == {"alice": 10, "bob": 11}
+    assert cache["gateway_orgs"] == {"Default": 100}
+    assert cache["controller_orgs"] == {"Default": 200}
+    assert cache["teams"] == {("DevTeam", 100): 50}
+    assert cache["awx.project"] == {("Demo Project", 200): 300}
+
+
+def test_build_role_assignment_cache_skips_eda_objects(action):
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {"results": []},
+        {"results": []},
+        {"results": []},
+        {"results": []},
+        {"results": []},
+    ]
+    action._display = Mock()
+
+    action._build_role_assignment_cache(
+        manager,
+        {"role_user_assignments": [{"object_name": "Activation", "object_type": "eda.activation"}]},
+    )
+
+    called_endpoints = [call.kwargs.get("endpoint") for call in manager.search_api.call_args_list]
+    assert all(not (endpoint or "").startswith("/api/eda/") for endpoint in called_endpoints)
+
+
+def test_pre_resolve_role_user_assignment_replaces_names_with_ids():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Team Member": 1},
+        "users": {"alice": 10},
+        "gateway_orgs": {"Eng": 100},
+        "teams": {("DevTeam", 100): 50},
+        "teams_unscoped": {"DevTeam": 50},
+    }
+    clean_data = {
+        "role_definition": "Team Member",
+        "user": "alice",
+        "object_name": "DevTeam",
+        "object_type": "teams",
+        "organization": "Eng",
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
+
+    assert resolved["role_definition"] == 1
+    assert resolved["user"] == 10
+    assert resolved["object_id"] == 50
+    assert "object_name" not in resolved
+    assert "object_type" not in resolved
+    assert "organization" not in resolved
+
+
+def test_pre_resolve_falls_back_on_cache_miss():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Team Member": 1},
+        "users": {},
+        "gateway_orgs": {},
+        "teams": {},
+        "teams_unscoped": {},
+    }
+    clean_data = {
+        "role_definition": "Team Member",
+        "user": "unknown_user",
+        "object_name": "MissingTeam",
+        "object_type": "teams",
+        "organization": "MissingOrg",
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
+
+    assert resolved["role_definition"] == 1
+    assert resolved["user"] == "unknown_user"
+    assert resolved["object_name"] == "MissingTeam"
+    assert resolved["object_type"] == "teams"
+    assert "object_id" not in resolved
+
+
+def test_pre_resolve_role_team_assignment_resolves_assignment_objects():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Team Admin": 2},
+        "gateway_orgs": {"Eng": 100},
+        "controller_orgs": {},
+        "teams": {("Platform", 100): 60},
+        "teams_unscoped": {"Platform": 60},
+    }
+    clean_data = {
+        "role_definition": "Team Admin",
+        "team": "Platform",
+        "assignment_objects": [{"name": "Eng", "type": "organizations"}],
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_team_assignments")
+
+    assert resolved["role_definition"] == 2
+    assert resolved["team"] == 60
+    assert resolved["assignment_objects"] == [{"object_id": 100}]
+
+
+def test_pre_resolve_controller_object_with_org_scope():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Inventory Admin": 5},
+        "users": {"carol": 30},
+        "gateway_orgs": {},
+        "controller_orgs": {"Production": 200},
+        "awx.inventory": {("Prod Hosts", 200): 400},
+        "awx.inventory:unscoped": {"Prod Hosts": 400},
+    }
+    clean_data = {
+        "role_definition": "Inventory Admin",
+        "user": "carol",
+        "object_name": "Prod Hosts",
+        "object_type": "awx.inventory",
+        "organization": "Production",
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
+
+    assert resolved["object_id"] == 400
+    assert "object_name" not in resolved

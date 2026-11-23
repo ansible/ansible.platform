@@ -22,17 +22,23 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 
 CONTROLLER_ORGANIZATION_ENDPOINT = "api/controller/v2/organizations/"
 GATEWAY_ORGANIZATION_ENDPOINT = "api/gateway/v1/organizations/"
+ROLE_DEFINITION_ENDPOINT = "api/gateway/v1/role_definitions/"
 
 # Resource types and their API endpoints (in export order).
 # Gateway resources (orgs, users, teams) use api/gateway/v1/.
 # Controller resources use api/controller/v2/.
 EXPORTABLE_RESOURCES = [
     ("organizations", "api/gateway/v1/organizations/", "name"),
+    ("controller_organizations", CONTROLLER_ORGANIZATION_ENDPOINT, "name"),
     ("users", "api/gateway/v1/users/", "username"),
     ("teams", "api/gateway/v1/teams/", "name"),
+    ("authenticators", "api/gateway/v1/authenticators/", "name"),
+    ("authenticator_maps", "api/gateway/v1/authenticator_maps/", "name"),
+    ("tokens", "api/gateway/v1/tokens/", "id"),
     ("credential_types", "api/controller/v2/credential_types/", "name"),
     ("credentials", "api/controller/v2/credentials/", "name"),
     ("execution_environments", "api/controller/v2/execution_environments/", "name"),
+    ("instance_groups", "api/controller/v2/instance_groups/", "name"),
     ("notification_templates", "api/controller/v2/notification_templates/", "name"),
     ("projects", "api/controller/v2/projects/", "name"),
     ("labels", "api/controller/v2/labels/", "name"),
@@ -41,8 +47,38 @@ EXPORTABLE_RESOURCES = [
     ("job_templates", "api/controller/v2/job_templates/", "name"),
     ("workflow_job_templates", "api/controller/v2/workflow_job_templates/", "name"),
     ("schedules", "api/controller/v2/schedules/", "name"),
+    ("role_user_assignments", "api/gateway/v1/role_user_assignments/", "id"),
+    ("role_team_assignments", "api/gateway/v1/role_team_assignments/", "id"),
 ]
-GATEWAY_RESOURCE_TYPES = frozenset({"organizations", "users", "teams"})
+GATEWAY_RESOURCE_TYPES = frozenset(
+    {"organizations", "users", "teams", "authenticators", "authenticator_maps", "tokens", "role_user_assignments", "role_team_assignments"}
+)
+
+MANAGED_CREDENTIAL_NAMES = frozenset({"Ansible Galaxy"})
+MANAGED_EXECUTION_ENVIRONMENT_NAMES = frozenset(
+    {
+        "Control Plane Execution Environment",
+        "Default execution environment",
+        "Minimal execution environment",
+        "Hub Default execution environment",
+        "Hub Minimal execution environment",
+    }
+)
+
+ROLE_OBJECT_TYPE_MAP = {
+    ("shared", "organization"): ("organizations", "api/gateway/v1/organizations/"),
+    ("shared", "team"): ("teams", "api/gateway/v1/teams/"),
+    ("gateway", "organization"): ("organizations", "api/gateway/v1/organizations/"),
+    ("gateway", "team"): ("teams", "api/gateway/v1/teams/"),
+    ("awx", "project"): ("awx.project", "api/controller/v2/projects/"),
+    ("awx", "inventory"): ("awx.inventory", "api/controller/v2/inventories/"),
+    ("awx", "credential"): ("awx.credential", "api/controller/v2/credentials/"),
+    ("awx", "jobtemplate"): ("awx.jobtemplate", "api/controller/v2/job_templates/"),
+    ("awx", "workflowjobtemplate"): ("awx.workflowjobtemplate", "api/controller/v2/workflow_job_templates/"),
+    ("awx", "executionenvironment"): ("awx.executionenvironment", "api/controller/v2/execution_environments/"),
+    ("awx", "instancegroup"): ("awx.instancegroup", "api/controller/v2/instance_groups/"),
+    ("awx", "notificationtemplate"): ("awx.notificationtemplate", "api/controller/v2/notification_templates/"),
+}
 
 # FK fields and the endpoint to resolve them against.
 # (field_name, api_endpoint, identifier_field)
@@ -50,6 +86,9 @@ FK_RESOLUTION_MAP = {
     # Controller resources store Controller organization IDs. Gateway teams and
     # user organization_ids are resolved separately through Gateway below.
     "organization": (CONTROLLER_ORGANIZATION_ENDPOINT, "name"),
+    "authenticator": ("api/gateway/v1/authenticators/", "name"),
+    "role_definition": (ROLE_DEFINITION_ENDPOINT, "name"),
+    "role": (ROLE_DEFINITION_ENDPOINT, "name"),
     "inventory": ("api/controller/v2/inventories/", "name"),
     "project": ("api/controller/v2/projects/", "name"),
     "credential_type": ("api/controller/v2/credential_types/", "name"),
@@ -103,6 +142,21 @@ STRIP_FIELDS = frozenset(
         "last_updated",
         "last_job_host_summary",
         "next_schedule",
+        "last_login",
+        "last_login_from",
+        "last_login_results",
+        "dtstart",
+        "dtend",
+        "next_run",
+        "timezone",
+        "until",
+        "capacity",
+        "consumed_capacity",
+        "percent_capacity_remaining",
+        "jobs_running",
+        "jobs_total",
+        "instances",
+        "sso_login_url",
         # Credential type internal fields
         "managed",
         "namespace",
@@ -113,7 +167,6 @@ STRIP_FIELDS = frozenset(
         "custom_virtualenv",
         "last_job",
         # Organization computed fields
-        "max_hosts",
         # General computed/internal
         "opa_query_path",
         "launch_type",
@@ -167,6 +220,14 @@ RESOURCE_ASSOCIATIONS = {
         ("hosts", "hosts/", "names"),
         ("children", "children/", "names"),
     ],
+    "controller_organizations": [
+        ("galaxy_credentials", "galaxy_credentials/", "names"),
+        ("instance_groups", "instance_groups/", "names"),
+    ],
+    "credentials": [
+        ("user", "owner_users/", "names_or_usernames"),
+        ("team", "owner_teams/", "names_or_usernames"),
+    ],
     "schedules": [
         ("credentials", "credentials/", "names"),
         ("labels", "labels/", "names"),
@@ -188,6 +249,17 @@ GROUP_EXPORT_FIELDS = {"name", "description", "variables"}
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "export"
 
+    @staticmethod
+    def _contains_masked_secret(value):
+        """Return true when an object contains an API-masked secret sentinel."""
+        if isinstance(value, str):
+            return value == "$encrypted$"
+        if isinstance(value, dict):
+            return any(ActionModule._contains_masked_secret(item) for item in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(ActionModule._contains_masked_secret(item) for item in value)
+        return False
+
     def run(self, tmp=None, task_vars=None):
         """Export resources from the platform."""
         result = {}
@@ -208,6 +280,7 @@ class ActionModule(BaseResourceActionPlugin):
             name_cache = self._build_name_cache(manager, max_objects)
 
             assets = {}
+            non_restorable = {"tokens": [], "authenticators": [], "authenticator_maps": [], "credentials": []}
             for res_type, endpoint, id_field in EXPORTABLE_RESOURCES:
                 filter_values = validated_params.get(res_type)
 
@@ -218,13 +291,48 @@ class ActionModule(BaseResourceActionPlugin):
                 names_filter = None if should_export_all else filter_values
 
                 self._display.vvv("Exporting %s..." % res_type)
-                exported = self._export_resource_type(manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects)
+                if res_type == "tokens":
+                    exported = self._export_resource_type(manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects)
+                    non_restorable["tokens"].extend(exported)
+                    continue
+                if res_type in ("role_user_assignments", "role_team_assignments"):
+                    exported = self._export_role_assignments(manager, res_type, endpoint, names_filter, name_cache, max_objects)
+                else:
+                    exported = self._export_resource_type(manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects)
+                if res_type in ("authenticators", "credentials"):
+                    restorable = []
+                    field = "configuration" if res_type == "authenticators" else "inputs"
+                    for item in exported:
+                        if self._contains_masked_secret(item.get(field)):
+                            non_restorable[res_type].append(item)
+                        else:
+                            restorable.append(item)
+                    exported = restorable
                 if exported:
                     assets[res_type] = exported
 
+            if "authenticator_maps" in assets and "authenticators" in assets:
+                # Only filter maps when the export also contains the
+                # authenticator set. Selective map exports may intentionally
+                # reference authenticators supplied by the target environment.
+                valid_authenticators = {item.get("name") for item in assets["authenticators"]}
+                kept_maps = []
+                for item in assets["authenticator_maps"]:
+                    if item.get("authenticator") in valid_authenticators:
+                        kept_maps.append(item)
+                    else:
+                        non_restorable["authenticator_maps"].append(item)
+                if kept_maps:
+                    assets["authenticator_maps"] = kept_maps
+                else:
+                    assets.pop("authenticator_maps", None)
+
+            non_restorable = {key: value for key, value in non_restorable.items() if value}
             result["changed"] = False
             result["failed"] = False
             result["assets"] = assets
+            if non_restorable:
+                result["non_restorable"] = non_restorable
 
         except Exception as exc:
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
@@ -320,6 +428,83 @@ class ActionModule(BaseResourceActionPlugin):
 
         return {"results": results}
 
+    def _export_role_assignments(self, manager, res_type, endpoint, names_filter, name_cache, max_objects):
+        """Export assignments using portable role/object names."""
+        response = self._search_resources(manager, endpoint, "id", names_filter, max_objects)
+        exported = []
+        object_cache = {}
+        role_definition_cache = {}
+        role_definitions = manager.search_api(
+            endpoint=ROLE_DEFINITION_ENDPOINT,
+            return_all=True,
+            max_objects=max_objects,
+        ).get("results", [])
+        role_definition_cache = {str(entry.get("id")): entry for entry in role_definitions if entry.get("id") is not None}
+        for assignment in response.get("results", []):
+            summary = assignment.get("summary_fields", {})
+            role = summary.get("role_definition", {})
+            user = summary.get("user", {})
+            team = summary.get("team", {})
+            content = summary.get("content_object", {})
+            service = content.get("service")
+            model = content.get("model_name")
+            role_content_type = role.get("content_type")
+            role_id = role.get("id")
+            if not role_content_type and role_id is not None:
+                role_content_type = role_definition_cache.get(str(role_id), {}).get("content_type")
+            if not (service and model) and isinstance(role_content_type, str) and "." in role_content_type:
+                service, model = role_content_type.split(".", 1)
+            object_type_path = ROLE_OBJECT_TYPE_MAP.get((service, model))
+            item = {
+                "role_definition": role.get("name", assignment.get("role_definition")),
+            }
+            if res_type == "role_user_assignments":
+                item["user"] = user.get("username", assignment.get("user"))
+            else:
+                item["team"] = team.get("name", assignment.get("team"))
+            object_id = assignment.get("object_id") or content.get("pk") or content.get("id")
+            object_ansible_id = assignment.get("object_ansible_id")
+            if object_type_path and (object_id is not None or object_ansible_id):
+                object_type, object_endpoint = object_type_path
+                if object_endpoint not in object_cache:
+                    lookup = manager.search_api(endpoint=object_endpoint, return_all=True, max_objects=max_objects)
+                    entries = lookup.get("results", [])
+                    by_id = {str(entry.get("id")): entry for entry in entries if entry.get("id") is not None}
+                    by_ansible_id = {}
+                    for entry in entries:
+                        ansible_id = entry.get("ansible_id") or ((entry.get("summary_fields") or {}).get("resource") or {}).get("ansible_id")
+                        if ansible_id:
+                            by_ansible_id[str(ansible_id)] = entry
+                    object_cache[object_endpoint] = {"by_id": by_id, "by_ansible_id": by_ansible_id}
+                cached_objects = object_cache[object_endpoint]
+                detail = cached_objects["by_id"].get(str(object_id)) if object_id is not None else cached_objects["by_ansible_id"].get(str(object_ansible_id))
+                if isinstance(detail, dict) and detail.get("name"):
+                    object_data = {"name": detail["name"], "type": object_type}
+                    organization = detail.get("organization")
+                    if isinstance(organization, int):
+                        organization_cache_endpoint = (
+                            GATEWAY_ORGANIZATION_ENDPOINT if object_endpoint.startswith("api/gateway/") else CONTROLLER_ORGANIZATION_ENDPOINT
+                        )
+                        organization = name_cache.get(organization_cache_endpoint, {}).get(organization)
+                    if organization:
+                        object_data["organization"] = organization
+                    if res_type == "role_user_assignments":
+                        item.update({"object_name": object_data["name"], "object_type": object_data["type"]})
+                        if organization:
+                            item["organization"] = organization
+                    else:
+                        item["assignment_objects"] = [object_data]
+                elif assignment.get("object_ansible_id"):
+                    item["object_ansible_id"] = assignment["object_ansible_id"]
+                else:
+                    item["object_id"] = object_id
+            elif assignment.get("object_ansible_id"):
+                item["object_ansible_id"] = assignment["object_ansible_id"]
+            elif object_id is not None:
+                item["object_id"] = object_id
+            exported.append(item)
+        return exported
+
     def _export_resource_type(self, manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects):
         """Export all (or filtered) resources of one type."""
         response = self._search_resources(manager, endpoint, id_field, names_filter, max_objects)
@@ -329,11 +514,34 @@ class ActionModule(BaseResourceActionPlugin):
 
         exported = []
         for resource in results:
-            if resource.get("managed"):
+            # Managed credential types are implementation details, but managed
+            # organizations (for example Gateway's Default organization) are
+            # still portable metadata and must remain in the export.
+            if res_type == "credential_types" and resource.get("managed"):
+                continue
+            if res_type == "users" and resource.get("username") == "admin":
+                # The built-in admin account owns the import connection and
+                # must not have its password changed by a portable import.
+                continue
+            if res_type == "credentials" and resource.get("name") in MANAGED_CREDENTIAL_NAMES:
+                # Managed credentials cannot be modified by the Controller API.
+                continue
+            if res_type == "execution_environments" and resource.get("name") in MANAGED_EXECUTION_ENVIRONMENT_NAMES:
+                # Managed execution environments only permit a limited pull-field
+                # update and should be supplied by the target installation.
+                continue
+            if res_type == "job_templates" and not resource.get("project"):
+                # Controller cannot create a job template without a project;
+                # omit invalid legacy/orphaned templates from portable assets.
                 continue
 
             cleaned = self._clean_resource(resource, name_cache, res_type)
             self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
+            if res_type == "credentials":
+                # _clean_resource strips API response owners before association
+                # fetching; repeat after fetching because owner associations are
+                # added back by _fetch_associations.
+                self._strip_credential_owner_fields(cleaned)
             exported.append(cleaned)
 
         return exported
@@ -342,6 +550,44 @@ class ActionModule(BaseResourceActionPlugin):
         """Strip internal fields and resolve FK IDs to names."""
         cleaned = {}
         for key, value in resource.items():
+            if resource_type == "credentials" and key in {"cloud", "kind", "kubernetes"}:
+                # Controller response metadata; these are not controller_credential
+                # module parameters and cause import validation failures.
+                continue
+            if resource_type == "instance_groups" and key in {"policy_instance_list", "instances"}:
+                # Instance assignments and policy lists refer to the source
+                # Controller's runtime nodes and are not portable.
+                continue
+            if resource_type == "job_templates" and key == "organization":
+                # Organization is lookup-only for job templates. Keeping it
+                # would incorrectly scope otherwise valid cross-organization
+                # inventory/project references during import.
+                continue
+            if resource_type in {"job_templates", "workflow_job_templates", "inventory_sources"} and key in {"extra_vars", "source_vars"}:
+                cleaned[key] = self._normalize_variables(value)
+                continue
+            if resource_type in {"job_templates", "workflow_job_templates"} and key == "webhook_service" and value in (None, ""):
+                # Empty API values are not valid for the module's choice field.
+                continue
+            if resource_type == "execution_environments" and key == "pull" and value in (None, ""):
+                # The module default is the valid Controller value: missing.
+                continue
+            if resource_type == "projects" and key == "scm_type" and value == "":
+                # Controller represents manual projects with an empty string.
+                cleaned[key] = "manual"
+                continue
+            if resource_type == "authenticators" and key == "slug":
+                # Slugs are instance-local identifiers; authenticator maps use
+                # the portable authenticator name instead.
+                continue
+            if resource_type == "users" and key in {"authenticator_uid", "authenticators"}:
+                # The associated_authenticators mapping below is the portable
+                # representation. Do not emit the deprecated ID-based fields.
+                continue
+            if resource_type == "users" and key == "associated_authenticators":
+                authenticator_cache = name_cache.get("api/gateway/v1/authenticators/", {})
+                cleaned[key] = {str(authenticator_cache.get(int(auth_id), auth_id)): data for auth_id, data in (value or {}).items()}
+                continue
             if key == "organization_ids":
                 organization_cache = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {})
                 cleaned["organizations"] = [str(organization_cache.get(org_id, org_id)) for org_id in (value or [])]
@@ -356,7 +602,31 @@ class ActionModule(BaseResourceActionPlugin):
                 cleaned[key] = self._normalize_variables(value)
             else:
                 cleaned[key] = value
+        if resource_type == "credentials":
+            # First pass: remove organization-scoped RBAC owners from the raw
+            # API representation. A second pass after association fetching is
+            # required because _fetch_associations can re-add those fields.
+            self._strip_credential_owner_fields(cleaned)
+        if resource_type == "projects":
+            # Do not launch or wait for source-control sync during import.
+            cleaned["wait"] = False
+        if resource_type == "job_templates" and cleaned.get("inventory") is None:
+            # The Controller API requires either an inventory or a launch-time
+            # inventory prompt. Preserve such templates in an importable form.
+            cleaned["ask_inventory_on_launch"] = True
         return cleaned
+
+    @staticmethod
+    def _strip_credential_owner_fields(resource):
+        """Remove owner fields when organization scope is present.
+
+        Controller returns both organization scope and RBAC owner associations,
+        while controller_credential accepts only one ownership mode. Owners are
+        recreated later by the portable role-assignment assets.
+        """
+        if resource.get("organization") is not None:
+            resource.pop("user", None)
+            resource.pop("team", None)
 
     @staticmethod
     def _normalize_variables(value):
@@ -403,6 +673,23 @@ class ActionModule(BaseResourceActionPlugin):
                     if names:
                         cleaned[assoc_key] = names
 
+                elif mode in ("names_or_usernames", "names_or_hostnames"):
+                    results = response.get("results", [])
+                    preferred = "username" if mode == "names_or_usernames" else "hostname"
+                    names = [r.get(preferred, r.get("name", str(r.get("id", "")))) for r in results]
+                    if names:
+                        if mode == "names_or_hostnames":
+                            cleaned[assoc_key] = names
+                        else:
+                            # Credential ownership is singular in the Controller
+                            # credential input contract; retain the first owner.
+                            if len(names) > 1:
+                                self._display.vvv(
+                                    "Credential '%s' has %d owners; exporting only the first owner '%s' "
+                                    "because controller_credential accepts one owner." % (cleaned.get("name", "<unnamed>"), len(names), names[0])
+                                )
+                            cleaned[assoc_key] = names[0]
+
                 elif mode == "dict":
                     if response and response.get("name") is not None:
                         cleaned[assoc_key] = response
@@ -426,7 +713,19 @@ class ActionModule(BaseResourceActionPlugin):
                                     group_data["variables"] = self._normalize_variables(group_data["variables"])
                                 self._fetch_associations(manager, "group", r, group_data, name_cache, "api/controller/v2/groups/", max_objects)
                                 objects.append(group_data)
-                            cleaned[assoc_key] = objects
+                            group_by_name = {group.get("name"): group for group in objects}
+
+                            def group_depth(group_name, visiting=()):
+                                if group_name in visiting:
+                                    return 0
+                                next_visiting = visiting + (group_name,)
+                                group = group_by_name.get(group_name, {})
+                                children = group.get("children") or []
+                                return max((group_depth(child, next_visiting) for child in children), default=0) + 1
+
+                            # Create child groups before parents so their
+                            # association lookups succeed on a clean target.
+                            cleaned[assoc_key] = sorted(objects, key=lambda group: group_depth(group.get("name")))
 
             except Exception as exc:
                 self._display.vvvv("Failed to fetch %s for %s/%d: %s" % (assoc_key, res_type, resource_id, exc))

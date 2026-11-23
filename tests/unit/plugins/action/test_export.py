@@ -447,3 +447,222 @@ def test_export_resolves_non_name_selectors(reference, expected):
         manager.lookup_resource_id.assert_called_once_with("projects", "name", reference, service="controller")
     else:
         manager.lookup_resource_id.assert_not_called()
+
+
+def test_managed_gateway_organization_is_exported():
+    manager = Mock()
+    manager.search_api.return_value = {"results": [{"id": 1, "name": "Default", "description": "", "managed": True}]}
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    exported = action._export_resource_type(
+        manager,
+        "organizations",
+        "api/gateway/v1/organizations/",
+        "name",
+        {},
+        None,
+        10,
+    )
+
+    assert exported == [{"name": "Default", "description": ""}]
+
+
+def test_managed_credential_type_is_still_skipped():
+    manager = Mock()
+    manager.search_api.return_value = {"results": [{"id": 1, "name": "Machine", "managed": True}]}
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    exported = action._export_resource_type(
+        manager,
+        "credential_types",
+        "api/controller/v2/credential_types/",
+        "name",
+        {},
+        None,
+        10,
+    )
+
+    assert exported == []
+
+
+def test_credential_owner_associations_are_flattened():
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {"results": [{"username": "alice"}]},
+        {"results": [{"name": "Build Team"}]},
+    ]
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+    cleaned = {"name": "Build Credential"}
+
+    action._fetch_associations(
+        manager,
+        "credentials",
+        {"id": 5},
+        cleaned,
+        {},
+        "api/controller/v2/credentials/",
+        10,
+    )
+
+    assert cleaned["user"] == "alice"
+    assert cleaned["team"] == "Build Team"
+
+
+def test_instance_group_instances_are_not_exported():
+    manager = Mock()
+    manager.search_api.return_value = {"results": [{"name": "node-1"}]}
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+    cleaned = {"name": "Execution"}
+
+    action._fetch_associations(
+        manager,
+        "instance_groups",
+        {"id": 9},
+        cleaned,
+        {},
+        "api/controller/v2/instance_groups/",
+        10,
+    )
+
+    assert "instances" not in cleaned
+
+
+def test_export_normalizes_import_sensitive_fields():
+    credential = clean_resource(
+        {
+            "name": "Credential",
+            "organization": 1,
+            "user": "alice",
+            "cloud": True,
+            "kind": "ssh",
+            "kubernetes": False,
+        },
+        {"api/controller/v2/organizations/": {1: "Default"}},
+        "credentials",
+    )
+    assert credential == {"name": "Credential", "organization": "Default"}
+
+    execution_environment = clean_resource({"name": "EE", "pull": ""}, {}, "execution_environments")
+    assert execution_environment == {"name": "EE"}
+
+    project = clean_resource({"name": "Manual", "scm_type": ""}, {}, "projects")
+    assert project["scm_type"] == "manual"
+    assert project["wait"] is False
+
+    job_template = clean_resource(
+        {"name": "JT", "inventory": None, "extra_vars": '{"answer": 42}'},
+        {},
+        "job_templates",
+    )
+    assert job_template["extra_vars"] == {"answer": 42}
+    assert job_template["ask_inventory_on_launch"] is True
+
+    inventory_source = clean_resource({"name": "Source", "source_vars": "---\nkey: value\n"}, {}, "inventory_sources")
+    assert inventory_source["source_vars"] == {"key": "value"}
+
+
+def test_masked_authenticator_configuration_is_detected():
+    action = ActionModule.__new__(ActionModule)
+    assert action._contains_masked_secret({"nested": [{"SECRET": "$encrypted$"}]})
+    assert not action._contains_masked_secret({"PUBLIC_KEY": "public"})
+
+
+def test_user_authenticator_references_are_exported_by_name():
+    raw = {
+        "username": "alice",
+        "authenticator_uid": "alice",
+        "authenticators": [7],
+        "associated_authenticators": {"7": {"uid": "alice"}},
+    }
+    result = clean_resource(
+        raw,
+        {"api/gateway/v1/authenticators/": {7: "Local Database Authenticator"}},
+        "users",
+    )
+
+    assert "authenticators" not in result
+    assert "authenticator_uid" not in result
+    assert result["associated_authenticators"] == {"Local Database Authenticator": {"uid": "alice"}}
+
+
+def test_role_user_assignment_resolves_gateway_object_name_from_role_content_type():
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {
+            "results": [
+                {
+                    "summary_fields": {
+                        "role_definition": {"id": 4, "name": "Organization Admin"},
+                        "user": {"username": "alice"},
+                        "content_object": {"id": 10, "name": "Engineering"},
+                    },
+                    "object_ansible_id": "source-org-uuid",
+                }
+            ]
+        },
+        {"results": [{"id": 4, "name": "Organization Admin", "content_type": "shared.organization"}]},
+        {"results": [{"id": 10, "name": "Engineering"}]},
+    ]
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    result = action._export_role_assignments(
+        manager,
+        "role_user_assignments",
+        "api/gateway/v1/role_user_assignments/",
+        None,
+        {},
+        100,
+    )
+
+    assert result == [
+        {
+            "role_definition": "Organization Admin",
+            "user": "alice",
+            "object_name": "Engineering",
+            "object_type": "organizations",
+        }
+    ]
+
+
+def test_role_team_assignment_resolves_gateway_object_name_from_role_content_type():
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {
+            "results": [
+                {
+                    "summary_fields": {
+                        "role_definition": {"id": 3, "name": "Team Admin"},
+                        "team": {"name": "Platform"},
+                        "content_object": {"id": 20, "name": "Engineering"},
+                    },
+                    "object_ansible_id": "source-team-uuid",
+                }
+            ]
+        },
+        {"results": [{"id": 3, "name": "Team Admin", "content_type": "shared.team"}]},
+        {"results": [{"id": 20, "name": "Engineering"}]},
+    ]
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    result = action._export_role_assignments(
+        manager,
+        "role_team_assignments",
+        "api/gateway/v1/role_team_assignments/",
+        None,
+        {},
+        100,
+    )
+
+    assert result == [
+        {
+            "role_definition": "Team Admin",
+            "team": "Platform",
+            "assignment_objects": [{"name": "Engineering", "type": "teams"}],
+        }
+    ]

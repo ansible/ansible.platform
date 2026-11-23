@@ -78,6 +78,15 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         if user_ansible_id is not None:
             api_data["user_ansible_id"] = user_ansible_id
 
+        object_name = getattr(ansible_instance, "object_name", None)
+        object_type = getattr(ansible_instance, "object_type", None)
+        if object_name and object_type:
+            from .role_team_assignment import _resolve_named_object_id
+
+            api_data["object_id"] = _resolve_named_object_id(
+                manager, {"name": object_name, "type": object_type, "organization": getattr(ansible_instance, "organization", None)}
+            )
+
         object_id = getattr(ansible_instance, "object_id", None)
         if object_id is not None:
             # Ensure object_id is always an integer for the API.

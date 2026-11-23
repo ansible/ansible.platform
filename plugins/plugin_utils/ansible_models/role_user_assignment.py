@@ -21,6 +21,9 @@ class AnsibleRoleUserAssignment:
     object_id: Optional[int] = None
     object_ids: Optional[List[str]] = None
     object_ansible_id: Optional[str] = None
+    object_name: Optional[str] = None
+    object_type: Optional[str] = None
+    organization: Optional[str] = None
 
     state: str = "present"
 
