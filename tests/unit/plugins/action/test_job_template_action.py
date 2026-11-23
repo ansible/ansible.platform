@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.job_template import BASE_PATH, ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import JobTemplateTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
 
 __metaclass__ = type
 
@@ -23,6 +25,91 @@ def _action(task_args, check_mode=False):
     action._task.check_mode = check_mode
     action._display = MagicMock()
     return action
+
+
+_LEGACY_ALIASES = (
+    ("force_handlers_enabled", "force_handlers"),
+    ("fact_caching_enabled", "use_fact_cache"),
+    ("ask_diff_mode", "ask_diff_mode_on_launch"),
+    ("ask_extra_vars", "ask_variables_on_launch"),
+    ("ask_limit", "ask_limit_on_launch"),
+    ("ask_tags", "ask_tags_on_launch"),
+    ("ask_skip_tags", "ask_skip_tags_on_launch"),
+    ("ask_job_type", "ask_job_type_on_launch"),
+    ("ask_verbosity", "ask_verbosity_on_launch"),
+    ("ask_inventory", "ask_inventory_on_launch"),
+    ("ask_credential", "ask_credential_on_launch"),
+    ("ask_execution_environment", "ask_execution_environment_on_launch"),
+    ("ask_forks", "ask_forks_on_launch"),
+    ("ask_instance_groups", "ask_instance_groups_on_launch"),
+    ("ask_job_slice_count", "ask_job_slice_count_on_launch"),
+    ("ask_timeout", "ask_timeout_on_launch"),
+    ("ask_labels", "ask_labels_on_launch"),
+    ("diff_mode_enabled", "diff_mode"),
+    ("concurrent_jobs_enabled", "allow_simultaneous"),
+)
+
+
+def _prepare_job_template(resource_fields, check_mode=False):
+    action = _action({"name": "Ping", **resource_fields}, check_mode=check_mode)
+    manager = MagicMock()
+    with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        prepared = action._prepare_action(None, {})
+    return action, prepared, manager
+
+
+def _to_api_data(action, resource_data, manager):
+    resource = action.MODEL_CLASS(**resource_data)
+    context = TransformContext(
+        manager=manager,
+        session=MagicMock(),
+        cache={},
+        api_version="2",
+        service="controller",
+        operation="create",
+    )
+    return JobTemplateTransformMixin_v2.from_ansible_data(resource, context)
+
+
+class TestLegacyParameterAliases(unittest.TestCase):
+    def test_aliases_and_canonical_options_produce_equivalent_api_data(self):
+        for alias, canonical in _LEGACY_ALIASES:
+            for value in (False, True):
+                with self.subTest(alias=alias, value=value):
+                    alias_action, alias_prepared, alias_manager = _prepare_job_template({alias: value})
+                    canonical_action, canonical_prepared, canonical_manager = _prepare_job_template({canonical: value})
+                    alias_resource_data = alias_prepared["resource_data"]
+                    canonical_resource_data = canonical_prepared["resource_data"]
+
+                    self.assertNotIn(alias, alias_resource_data)
+                    self.assertIs(alias_resource_data[canonical], value)
+                    self.assertIs(canonical_resource_data[canonical], value)
+                    alias_api_data = _to_api_data(alias_action, alias_resource_data, alias_manager)
+                    canonical_api_data = _to_api_data(canonical_action, canonical_resource_data, canonical_manager)
+                    self.assertEqual(alias_api_data, canonical_api_data)
+                    self.assertIs(getattr(alias_api_data, canonical), value)
+
+    def test_conflicting_alias_and_canonical_values_preserve_alias_precedence(self):
+        action, prepared, manager = _prepare_job_template({"ask_variables_on_launch": True, "ask_extra_vars": False})
+
+        self.assertIs(prepared["resource_data"]["ask_variables_on_launch"], False)
+        self.assertEqual(prepared["result"]["warnings"], ["Both option ask_variables_on_launch and its alias ask_extra_vars are set."])
+        api_data = _to_api_data(action, prepared["resource_data"], manager)
+        self.assertIs(api_data.ask_variables_on_launch, False)
+
+    def test_alias_is_validated_in_check_mode_without_api_write(self):
+        action = _action({"name": "Ping", "ask_variables_on_launch": True, "ask_extra_vars": False}, check_mode=True)
+        manager = MagicMock()
+        manager.execute.side_effect = ValueError("not found")
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run(task_vars={})
+
+        self.assertTrue(result["changed"])
+        self.assertFalse(result["failed"])
+        self.assertEqual(result["warnings"], ["Both option ask_variables_on_launch and its alias ask_extra_vars are set."])
+        manager.execute.assert_called_once()
+        self.assertEqual(manager.execute.call_args.kwargs["operation"], "find")
+        self.assertIs(manager.execute.call_args.kwargs["ansible_data"]["ask_variables_on_launch"], False)
 
 
 class TestAssociationReconciliation(unittest.TestCase):
