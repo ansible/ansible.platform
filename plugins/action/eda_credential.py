@@ -52,6 +52,11 @@ class ActionModule(BaseResourceActionPlugin):
         """
         prepared = super()._prepare_action(tmp, task_vars)
         params = prepared["validated_params"]
+        if self._task.args.get("organization") is not None and self._task.args.get("organization_name") is not None:
+            # Legacy EDA treats organization as the alias, so it wins a conflict.
+            organization = str(self._task.args["organization"])
+            params["organization"] = organization
+            prepared["resource_data"]["organization"] = organization
         for alias in ("credential_type_name", "organization_name"):
             params.pop(alias, None)
             prepared["resource_data"].pop(alias, None)

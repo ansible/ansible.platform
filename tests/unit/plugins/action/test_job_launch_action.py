@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.job_launch import ActionModule
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
@@ -64,6 +65,27 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(action._client.launch_resource.call_args.kwargs, {"service": "controller", "retry": False})
         action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/1/")
         action._client.wait_for_completion.assert_not_called()
+
+    def test_conflicting_legacy_alias_warns_and_uses_alias_value(self):
+        action = self._make_action({"name": "Canonical", "job_template": "Alias", "wait": False})
+        manager = action._client
+        manager.lookup_resource_id.return_value = 1
+        manager.search_api.return_value = {"results": [{"id": 1, "name": "Alias"}]}
+        manager.launch_resource.return_value = {"id": 42, "status": "pending", "ignored_fields": {"limit": "web"}}
+
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertEqual(result["id"], 42)
+        self.assertEqual(
+            result["warnings"],
+            [
+                "Both option name and its alias job_template are set.",
+                "Launch ignored fields: {'limit': 'web'}",
+            ],
+        )
+        manager.lookup_resource_id.assert_called_once_with("job_templates", "name", "Alias", service="controller", require_unique=True)
 
     def test_launch_with_wait_successful(self):
         action = self._make_action({"name": "Demo", "wait": True, "interval": 1.0})
