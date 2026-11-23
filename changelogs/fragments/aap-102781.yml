@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - ad_hoc_command_wait - return the finish timestamp as finished_at and use a boolean finished result (https://issues.redhat.com/browse/AAP-102781).
+...
