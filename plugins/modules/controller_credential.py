@@ -54,20 +54,28 @@ options:
   organization:
     description:
       - Organization name or ID that should own the credential.
-      - Mutually exclusive with C(user) and C(team).
+      - Mutually exclusive with C(user), C(team), and C(gateway_team_id).
     type: str
 
   user:
     description:
       - User name or ID that should own this credential.
-      - Mutually exclusive with C(organization) and C(team).
+      - Mutually exclusive with C(organization), C(team), and C(gateway_team_id).
     type: str
 
   team:
     description:
-      - Team name or ID that should own this credential.
-      - Mutually exclusive with C(organization) and C(user).
+      - Controller team name or ID that should own this credential.
+      - Mutually exclusive with C(organization), C(user), and C(gateway_team_id).
     type: str
+
+  gateway_team_id:
+    description:
+      - Gateway ID of the team that should own this Controller credential.
+      - The module resolves the linked Controller team by the shared C(ansible_id).
+      - Use this option with the ID returned by C(ansible.platform.team).
+      - Mutually exclusive with C(organization), C(user), and C(team).
+    type: int
 
   inputs:
     description:
@@ -112,6 +120,13 @@ EXAMPLES = """
     organization: Default
     state: present
 
+- name: Assign a credential to a Gateway team
+  ansible.platform.controller_credential:
+    name: Team API credential
+    credential_type: Machine
+    gateway_team_id: 42
+    state: present
+
 - name: Delete a credential
   ansible.platform.controller_credential:
     name: Team Credential
@@ -144,5 +159,8 @@ controller_credential:
     credential_type:
       description: Credential type (ID).
       type: int
+    team:
+      description: Controller team ID that owns the credential, returned as a string.
+      type: str
 ...
 """

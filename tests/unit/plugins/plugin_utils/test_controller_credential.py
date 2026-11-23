@@ -125,6 +125,32 @@ class TestControllerCredentialTransform(unittest.TestCase):
         self.assertEqual(ansible.credential_type, "5")
         self.assertIsNone(ansible.inputs)
 
+    def test_from_api_reads_team_owner_from_summary_fields(self):
+        api_data = {
+            "id": 99,
+            "name": "Cred",
+            "credential_type": 5,
+            "summary_fields": {"owners": [{"id": 31, "name": "Ops", "type": "team"}]},
+        }
+
+        ansible = ControllerCredentialTransformMixin_v2.from_api(api_data, {})
+
+        self.assertEqual(ansible.team, "31")
+        self.assertIsNone(ansible.user)
+
+    def test_from_api_reads_user_owner_from_summary_fields(self):
+        api_data = {
+            "id": 99,
+            "name": "Cred",
+            "credential_type": 5,
+            "summary_fields": {"owners": [{"id": 42, "name": "operator", "type": "user"}]},
+        }
+
+        ansible = ControllerCredentialTransformMixin_v2.from_api(api_data, {})
+
+        self.assertEqual(ansible.user, "42")
+        self.assertIsNone(ansible.team)
+
     def test_endpoint_paths(self):
         ops = ControllerCredentialTransformMixin_v2.get_endpoint_operations()
         for op_name, op in ops.items():
@@ -133,11 +159,11 @@ class TestControllerCredentialTransform(unittest.TestCase):
     def test_lookup_field(self):
         self.assertEqual(ControllerCredentialTransformMixin_v2.get_lookup_field(), "name")
 
-    def test_find_query_params_include_credential_type_and_owner_scope(self):
+    def test_find_query_params_use_only_controller_supported_filters(self):
         cases = (
             ("organization", "20", {"credential_type": 2, "organization": 20}),
-            ("user", "30", {"credential_type": 2, "user": 30}),
-            ("team", "40", {"credential_type": 2, "team": 40}),
+            ("user", "30", {"credential_type": 2}),
+            ("team", "40", {"credential_type": 2}),
         )
 
         for owner_field, owner_value, expected in cases:

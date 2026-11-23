@@ -67,6 +67,14 @@ class BaseTransformMixin(ABC):
         return payload
 
     @classmethod
+    def filter_find_results(cls, list_result: dict, api_data: Any, lookup_field: str, lookup_value: Any) -> dict:
+        """Apply request-side constraints before selecting a unique list result.
+
+        Most resources rely on API-side filters and do not need local filtering.
+        """
+        return list_result
+
+    @classmethod
     def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
         """Select the resource returned by a list-based find operation.
 

@@ -153,18 +153,19 @@
         that:
           - flag_after_check.value == "True"
 
-    # Test error handling - non-existent flag
-    - name: Try to access non-existent feature flag
+    # Test read-only existence check for a missing flag
+    - name: Check a non-existent feature flag
       ansible.platform.feature_flag:
         name: "FEATURE_NONEXISTENT_ENABLED"
         state: exists
       register: flag_not_found
-      ignore_errors: true
 
-    - name: Assert that non-existent flag fails appropriately
+    - name: Assert that a non-existent flag is reported absent without changes
       ansible.builtin.assert:
         that:
-          - flag_not_found is failed
+          - flag_not_found is not failed
+          - flag_not_found is not changed
+          - not flag_not_found.exists
 
     # Test error handling - invalid value for boolean flag
     - name: Try to set invalid boolean value

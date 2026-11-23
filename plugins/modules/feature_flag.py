@@ -34,6 +34,7 @@ options:
         - The desired state of the feature flag.
         - Use 'present' to ensure the feature flag exists with the specified value.
         - Use 'exists' to check if the feature flag exists without modifying it.
+        - A missing flag returns C(exists=false).
         - Use 'absent' to remove the feature flag (not typically supported for system flags).
         - Use 'enforced' to ensure the feature flag value matches exactly.
       choices: ["present", "absent", "exists", "enforced"]
