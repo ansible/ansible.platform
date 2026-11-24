@@ -528,9 +528,7 @@ class BaseResourceActionPlugin(ActionBase):
         merged = dict(extra_vars or {})
         overridden = [k for k in metadata if k in merged and merged[k] != metadata[k]]
         if overridden:
-            display.warning(
-                "Controller job metadata overrode user-provided extra_vars key(s): %s" % ", ".join(sorted(overridden))
-            )
+            display.warning("Controller job metadata overrode user-provided extra_vars key(s): %s" % ", ".join(sorted(overridden)))
         merged.update(metadata)
         return merged
 

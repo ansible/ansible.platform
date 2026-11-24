@@ -202,7 +202,6 @@ class TestJobWaitAction(unittest.TestCase):
         )
         self.assertFalse(result["failed"])
 
-
     def test_wait_result_includes_metadata_from_summary_fields(self):
         params = {"job_id": 42, "job_type": "jobs", "interval": 2, "timeout": 10}
         manager = MagicMock()
