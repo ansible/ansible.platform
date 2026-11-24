@@ -76,6 +76,42 @@ def test_import_strips_api_only_fields_from_legacy_resource_data(action):
     action._import_single_resource.assert_called_once_with(manager, "controller_project", {"name": "Demo"}, {})
 
 
+def test_import_preserves_authenticator_type(action):
+    manager = Mock()
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {
+                "assets": {
+                    "authenticators": [
+                        {
+                            "id": 7,
+                            "name": "OIDC",
+                            "type": "ansible_base.authentication.authenticator_plugins.oidc",
+                            "url": "/api/gateway/v1/authenticators/7/",
+                        }
+                    ]
+                }
+            },
+            "manager": manager,
+        }
+    )
+    action._import_single_resource = Mock(return_value=False)
+    action._import_inventory_children = Mock(return_value=({"changed": 0, "ok": 0, "failed": 0}, {"changed": 0, "ok": 0, "failed": 0}))
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is False
+    action._import_single_resource.assert_called_once_with(
+        manager,
+        "authenticator",
+        {"name": "OIDC", "type": "ansible_base.authentication.authenticator_plugins.oidc"},
+        {},
+    )
+
+
 def test_job_template_import_runs_real_action_and_reconciles_exported_fields(action):
     manager = Mock()
     manager.execute.side_effect = [

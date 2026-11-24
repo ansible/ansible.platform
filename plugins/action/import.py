@@ -72,6 +72,12 @@ STRIP_FIELDS = frozenset(
     }
 )
 
+# ``type`` is API metadata for most resources, but it is a required input for
+# authenticator resources and must survive the import cleanup step.
+RESOURCE_FIELDS_TO_PRESERVE = {
+    "authenticators": frozenset({"type"}),
+}
+
 # Fields that are inline children, not direct module params — popped and handled separately.
 INLINE_CHILDREN_FIELDS = frozenset({"hosts", "groups"})
 IMPORT_CONTROL_FIELDS = frozenset({"state"})
@@ -145,7 +151,11 @@ class ActionModule(BaseResourceActionPlugin):
                         continue
 
                     clean_data = {
-                        k: v for k, v in resource_data.items() if k not in STRIP_FIELDS and k not in INLINE_CHILDREN_FIELDS and k not in IMPORT_CONTROL_FIELDS
+                        k: v
+                        for k, v in resource_data.items()
+                        if (k not in STRIP_FIELDS or k in RESOURCE_FIELDS_TO_PRESERVE.get(export_key, frozenset()))
+                        and k not in INLINE_CHILDREN_FIELDS
+                        and k not in IMPORT_CONTROL_FIELDS
                     }
                     if export_key in _ROLE_ASSIGNMENT_TYPES and _role_cache is not None:
                         clean_data = self._pre_resolve_role_assignment(clean_data, _role_cache, export_key)

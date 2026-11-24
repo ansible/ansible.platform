@@ -50,6 +50,20 @@ class TestCleanResource:
         assert result["name"] == "Test"
         assert result["description"] == "A test org"
 
+    def test_preserves_authenticator_type(self):
+        resource = {
+            "id": 1,
+            "name": "OIDC",
+            "type": "ansible_base.authentication.authenticator_plugins.oidc",
+            "slug": "oidc",
+        }
+
+        result = clean_resource(resource, {}, "authenticators")
+
+        assert result["type"] == "ansible_base.authentication.authenticator_plugins.oidc"
+        assert "id" not in result
+        assert "slug" not in result
+
     def test_resolves_fk_ids_to_names(self):
         resource = {"name": "My JT", "inventory": 42, "project": 7, "organization": 1}
         name_cache = {

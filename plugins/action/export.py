@@ -186,6 +186,12 @@ STRIP_FIELDS = frozenset(
     }
 )
 
+# ``type`` is normally API metadata, but authenticators use it as the
+# required plugin discriminator accepted by the authenticator module.
+RESOURCE_FIELDS_TO_PRESERVE = {
+    "authenticators": frozenset({"type"}),
+}
+
 # Association sub-endpoints to fetch per resource type.
 # (export_key, sub_endpoint_suffix, mode)
 # mode: "names" = extract name list, "dict" = include raw dict
@@ -597,7 +603,7 @@ class ActionModule(BaseResourceActionPlugin):
                 organization_cache = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {})
                 cleaned["organizations"] = [str(organization_cache.get(org_id, org_id)) for org_id in (value or [])]
                 continue
-            if key in STRIP_FIELDS:
+            if key in STRIP_FIELDS and key not in RESOURCE_FIELDS_TO_PRESERVE.get(resource_type, frozenset()):
                 continue
             if key in FK_RESOLUTION_MAP:
                 resource_service = "gateway" if resource_type in GATEWAY_RESOURCE_TYPES else "controller"

@@ -14,6 +14,7 @@ class AnsibleControllerOrganization:
     """
 
     name: Optional[str] = None
+    description: Optional[str] = None
     default_environment: Optional[str] = None
     max_hosts: Optional[int] = None
     id: Optional[int] = None

@@ -31,6 +31,14 @@ class TestControllerOrganizationTransform(unittest.TestCase):
         self.assertEqual(api.name, "Default")
         self.assertIsNone(api.default_environment)
         self.assertIsNone(api.max_hosts)
+        self.assertIsNone(api.description)
+
+    def test_description_is_preserved_in_update_payload(self):
+        ansible = AnsibleControllerOrganization(name="Default", description="Managed by Controller")
+
+        api = ControllerOrganizationTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
+
+        self.assertEqual(api.description, "Managed by Controller")
 
     def test_default_environment_name_resolves_in_controller(self):
         manager = MagicMock()
@@ -57,9 +65,17 @@ class TestControllerOrganizationTransform(unittest.TestCase):
 
         self.assertEqual(operations["update"].path, BASE_PATH + "/{id}/")
         self.assertEqual(operations["update"].method, "PATCH")
-        self.assertEqual(operations["update"].fields, ["default_environment", "max_hosts"])
+        self.assertEqual(operations["update"].fields, ["description", "default_environment", "max_hosts"])
         self.assertNotIn("create", operations)
         self.assertNotIn("delete", operations)
+
+    def test_description_is_preserved_from_api(self):
+        ansible = ControllerOrganizationTransformMixin_v2.from_api(
+            {"id": 31, "name": "Default", "description": "Managed by Controller"},
+            {},
+        )
+
+        self.assertEqual(ansible.description, "Managed by Controller")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ class APIControllerOrganization_v2(BaseTransformMixin):
     """API v2 fields used to update an existing Controller organization."""
 
     name: Optional[str] = None
+    description: Optional[str] = None
     default_environment: Optional[Any] = None
     max_hosts: Optional[int] = None
     id: Optional[int] = None
@@ -48,6 +49,10 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
         name = getattr(ansible_instance, "name", None)
         if name is not None:
             api_data["name"] = name
+
+        description = getattr(ansible_instance, "description", None)
+        if description is not None:
+            api_data["description"] = description
 
         default_environment = getattr(ansible_instance, "default_environment", None)
         if default_environment is not None:
@@ -84,7 +89,7 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
             "update": EndpointOperation(
                 path=BASE_PATH + "/{id}/",
                 method="PATCH",
-                fields=["default_environment", "max_hosts"],
+                fields=["description", "default_environment", "max_hosts"],
                 path_params=["id"],
                 required_for="update",
                 order=1,
@@ -117,6 +122,7 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
             default_environment = default_environment.get("id")
         return AnsibleControllerOrganization(
             name=api_data.get("name"),
+            description=api_data.get("description"),
             default_environment=str(default_environment) if default_environment is not None else None,
             max_hosts=api_data.get("max_hosts"),
             id=api_data.get("id"),
