@@ -725,7 +725,7 @@ def test_present_defaults_apply_to_create_and_explicit_updates(module, inputs, d
     """Verify omission through runtime validation, state comparison, and API request building."""
     registry = APIVersionRegistry()
     service = registry.get_service_for_module(module)
-    model, _, transform = DynamicClassLoader(registry).load_classes_for_module(module, registry.get_latest_version(service))
+    model, _api_model, transform = DynamicClassLoader(registry).load_classes_for_module(module, registry.get_latest_version(service))
     action = _make_resource_action(module, {"name": "Resource", **inputs})
     manager = action._client
     manager.lookup_resource_id.return_value = 2
@@ -747,7 +747,7 @@ def test_present_defaults_apply_to_create_and_explicit_updates(module, inputs, d
         context = {"operation": operation, "manager": manager}
         api_data = transform.from_ansible_data(model(**write["ansible_data"]), context)
         endpoint = next(endpoint for endpoint in transform.get_endpoint_operations().values() if endpoint.required_for == operation)
-        _, payload = build_endpoint_request(endpoint, api_data)
+        _request_path, payload = build_endpoint_request(endpoint, api_data)
         return {key: payload[key] for key in defaults if key in payload}
 
     assert run() == (False, [])
@@ -763,6 +763,34 @@ def test_present_defaults_apply_to_create_and_explicit_updates(module, inputs, d
     changed, (write,) = run(exists=False)
     assert changed and write["operation"] == "create"
     assert audited_request_fields(write) == defaults
+
+
+@pytest.mark.parametrize(
+    "options,expected",
+    [({}, {}), ({"remove_users": False}, {"remove_users": False}), ({"remove_members": False}, {"remove_users": False})],
+)
+def test_present_direct_id_update_omits_defaults(options, expected):
+    """A validated ID bypasses the name lookup and still keeps the update sparse."""
+    action = _make_resource_action("authenticator", {"name": "Auth", "id": 7, "create_objects": False, **options})
+    argspec = action._build_argspec_from_docs(action._get_documentation())
+    argspec["argument_spec"]["id"] = {"type": "int"}
+    argspec["argument_spec"]["remove_users"]["aliases"] = ["remove_members"]
+    manager = action._client
+    manager.execute.return_value = {"id": 7, "changed": True}
+
+    with (
+        patch.object(ActionBase, "run", return_value={}),
+        patch.object(action, "_build_argspec_from_docs", return_value=argspec),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+    ):
+        result = action.run()
+
+    assert not result["failed"], result
+    manager.execute.assert_called_once()
+    request = manager.execute.call_args.kwargs
+    data = request["ansible_data"]
+    audited = {key: data[key] for key in ("remove_users", "configuration") if key in data}
+    assert (request["operation"], data["id"], data["create_objects"], audited) == ("update", 7, False, expected)
 
 
 @pytest.mark.parametrize("check_mode", [False, True])
@@ -785,7 +813,7 @@ def test_team_enforced_detects_an_omitted_reset(description, changed, check_mode
     if changed and not check_mode:
         write = calls[-1]["ansible_data"]
         registry = APIVersionRegistry()
-        model, _, transform = DynamicClassLoader(registry).load_classes_for_module("team", registry.get_latest_version("gateway"))
+        model, _api_model, transform = DynamicClassLoader(registry).load_classes_for_module("team", registry.get_latest_version("gateway"))
         api_data = transform.from_ansible_data(model(**write), {"operation": "update"})
         assert build_endpoint_request(transform.get_endpoint_operations()["update"], api_data) == (
             "/api/gateway/v1/teams/7/",
@@ -808,7 +836,7 @@ def test_enforced_description_reset_leaves_omitted_associations_out_of_patch():
     write = manager.execute.call_args.kwargs["ansible_data"]
     api = _resource_transform("execution_environment")
     api_data = api.from_ansible_data(action.MODEL_CLASS(**write), {"operation": "update"})
-    _, payload = build_endpoint_request(api.get_endpoint_operations()["update"], api_data)
+    _request_path, payload = build_endpoint_request(api.get_endpoint_operations()["update"], api_data)
     assert payload == {"name": "Resource", "description": "", "pull": "missing"}
 
 

@@ -1417,19 +1417,19 @@ class BaseResourceActionPlugin(ActionBase):
                 return result
 
             omitted_defaults = set()
+            if state == "present":
+                option_specs = argspec.get("argument_spec", {})
+                for field in self._DEFAULT_FIELDS_TO_OMIT_ON_UPDATE:
+                    option_names = (field, *option_specs.get(field, {}).get("aliases", ()))
+                    explicitly_null = field in resource_data and resource_data[field] is None
+                    if not explicitly_null and all(self._task.args.get(name) is None for name in option_names):
+                        omitted_defaults.add(field)
             text_reset_only = False
             # ---- present: idempotent create (find -> compare ->  update only if changed) -----
             if operation == "create" and state == "present":
                 try:
                     find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
-                        if self._DEFAULT_FIELDS_TO_OMIT_ON_UPDATE:
-                            option_specs = argspec.get("argument_spec", {})
-                            for field in self._DEFAULT_FIELDS_TO_OMIT_ON_UPDATE:
-                                option_names = (field, *option_specs.get(field, {}).get("aliases", ()))
-                                explicitly_null = field in resource_data and resource_data[field] is None
-                                if not explicitly_null and all(self._task.args.get(name) is None for name in option_names):
-                                    omitted_defaults.add(field)
                         desired_update = {key: value for key, value in resource_data.items() if key not in omitted_defaults}
                         if not self._should_update(desired_update, find_result):
                             flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
@@ -1541,8 +1541,9 @@ class BaseResourceActionPlugin(ActionBase):
 
             # ---- check mode ------------------------------------------------
             ansible_data = self._build_ansible_data(resource, validated_params, operation)
-            for field in omitted_defaults:
-                ansible_data.pop(field, None)
+            if operation == "update":
+                for field in omitted_defaults:
+                    ansible_data.pop(field, None)
             preserve_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False) and any(
                 value is None for key, value in ansible_data.items() if key != "id"
             )
