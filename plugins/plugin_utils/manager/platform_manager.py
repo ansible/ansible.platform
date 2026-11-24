@@ -766,11 +766,12 @@ class PlatformService(BaseAPIClient):
             current_dict = current_data if isinstance(current_data, dict) else {}
             read_only_fields = {"id", "created", "modified", "url", "changed"}
 
-            # Merge current + PATCH response; don't let None from sparse response
-            # overwrite existing values (e.g. associated_authenticators: {} -> None).
+            # Keep stored values for fields missing from a sparse response.
+            # A confirmed null for a requested clear is a real state change.
             merged = dict(current_dict)
             for k, v in new_dict.items():
-                if v is not None or k not in merged:
+                cleared = k in fields_to_null and k in api_result and api_result[k] is None
+                if v is not None or k not in merged or cleared:
                     merged[k] = v
             new_dict = merged
 

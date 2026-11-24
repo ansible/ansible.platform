@@ -19,7 +19,7 @@ class AnsibleUIPluginRoute:
     ui_plugin_path: Optional[str] = None
     http_port: Optional[Union[str, int]] = None
     service_cluster: Optional[Union[str, int]] = None
-    is_service_https: Optional[bool] = False
+    is_service_https: Optional[bool] = None
     service_port: Optional[int] = None
     node_tags: Optional[str] = None
     order: Optional[int] = None

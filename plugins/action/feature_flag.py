@@ -12,3 +12,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.fe
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "feature_flag"
     MODEL_CLASS = AnsibleFeatureFlag
+    _UNSUPPORTED_OPERATIONS = frozenset({"create", "delete"})

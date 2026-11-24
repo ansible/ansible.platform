@@ -59,6 +59,7 @@ options:
       - Metadata for the credential input source lookup.
       - The contents depend on the source credential type
         (e.g. vault path, secret key).
+      - Omitting this option during an update preserves stored metadata, including in C(enforced) state.
     type: dict
 
   organization:

@@ -17,6 +17,7 @@ _SERVICE = "controller"
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "notification_template"
     MODEL_CLASS = AnsibleNotificationTemplate
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from"})

@@ -32,10 +32,10 @@ options:
     state:
       description:
         - The desired state of the feature flag.
-        - Use 'present' to ensure the feature flag exists with the specified value.
+        - Use 'present' to update the value of an existing runtime feature flag.
         - Use 'exists' to check if the feature flag exists without modifying it.
         - A missing flag returns C(exists=false).
-        - Use 'absent' to remove the feature flag (not typically supported for system flags).
+        - C(absent) succeeds when the flag already does not exist. Gateway does not support deleting an existing flag.
         - Use 'enforced' to ensure the feature flag value matches exactly.
       choices: ["present", "absent", "exists", "enforced"]
       default: "exists"

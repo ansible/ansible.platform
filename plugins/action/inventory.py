@@ -22,6 +22,7 @@ _SERVICE = "controller"
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "inventory"
     MODEL_CLASS = AnsibleInventory
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from"} | set(_ASSOC_MAP))

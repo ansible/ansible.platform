@@ -24,6 +24,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "user"
     MODEL_CLASS = AnsibleUser
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"email", "first_name", "last_name"})
     LOOKUP_FIELD = "username"
 
     # These fields are removed from the resource payload. Password is excluded
@@ -311,15 +312,14 @@ class ActionModule(BaseResourceActionPlugin):
         if result.get("failed"):
             return result
 
+        if self._task.args.get("state", "present") in ("absent", "deleted", "exists"):
+            return result
+
         # Handle is_platform_auditor via role_user_assignment (stable-2.6 parity).
         if is_platform_auditor_desired is not None:
-            state = self._task.args.get("state", "present")
-            if state not in ("absent", "deleted"):
-                self._handle_platform_auditor(result, bool(is_platform_auditor_desired))
+            self._handle_platform_auditor(result, bool(is_platform_auditor_desired))
 
         if organizations is not None:
-            state = self._task.args.get("state", "present")
-            if state not in ("absent", "deleted", "exists"):
-                self._handle_organization_memberships(result, organizations)
+            self._handle_organization_memberships(result, organizations)
 
         return result

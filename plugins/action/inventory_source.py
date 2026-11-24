@@ -18,6 +18,7 @@ _NOTIFICATION_FIELDS = {
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "inventory_source"
     MODEL_CLASS = AnsibleInventorySource
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
 
     _WRITE_ONLY_FIELDS = frozenset(_NOTIFICATION_FIELDS)
     _JSON_OBJECT_FIELDS = frozenset({"source_vars"})

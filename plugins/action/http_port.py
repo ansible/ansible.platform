@@ -12,3 +12,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ht
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "http_port"
     MODEL_CLASS = AnsibleHttpPort
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"use_https", "is_api_port"})

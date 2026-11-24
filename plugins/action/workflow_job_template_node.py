@@ -33,6 +33,7 @@ class WorkflowNodeNotFoundError(ValueError):
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_job_template_node"
     MODEL_CLASS = AnsibleWorkflowJobTemplateNode
+    _ENFORCED_NULL_FIELDS = frozenset({"inventory", "execution_environment"})
     LOOKUP_FIELD = "identifier"
 
     _WRITE_ONLY_FIELDS = frozenset(set(_ASSOC_MAP) | {"approval_node"})

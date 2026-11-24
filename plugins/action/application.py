@@ -14,6 +14,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ap
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "application"
     MODEL_CLASS = AnsibleApplication
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"pkce_required"})
 
     # API-generated; returned flat only, not in the nested dict (not round-trip safe as input).
     # client_secret is only present in the POST response — absent on GET/PATCH.

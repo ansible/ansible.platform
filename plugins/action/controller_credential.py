@@ -23,6 +23,7 @@ _GATEWAY_TEAM_PATH = TeamTransformMixin_v1.get_endpoint_operations()["get"].path
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "controller_credential"
     MODEL_CLASS = AnsibleControllerCredential
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from", "inputs", "gateway_team_id"})
