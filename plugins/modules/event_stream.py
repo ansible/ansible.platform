@@ -35,24 +35,25 @@ options:
       - Setting this option will change the existing name (lookup via O(name)).
     type: str
 
-  credential_name:
+  credential:
     description:
-      - The name of the credential to associate with this event stream.
+      - The name or ID of the credential to associate with this event stream.
       - The credential type must be one of the supported event stream credential types
         (e.g. 'HMAC Event Stream', 'Basic Event Stream', 'Token Event Stream',
         'GitHub Event Stream', etc.).
       - Required when creating a new event stream.
+      - When both spellings are supplied, O(credential) takes precedence.
     type: str
     aliases:
-      - credential
+      - credential_name
 
-  organization_name:
+  organization:
     description:
-      - The name of the organization this event stream belongs to.
+      - The name or ID of the organization this event stream belongs to.
       - Required when creating a new event stream.
     type: str
     aliases:
-      - organization
+      - organization_name
 
   event_stream_type:
     description:
@@ -104,16 +105,16 @@ EXAMPLES = """
 - name: Create an EDA event stream
   ansible.platform.event_stream:
     name: "Example Event Stream"
-    credential_name: "Example Credential"
-    organization_name: Default
+    credential: "Example Credential"
+    organization: Default
     state: present
 
 - name: Create an event stream with custom UUID and forwarding enabled
   ansible.platform.event_stream:
     name: "Static Event Stream"
     uuid: "550e8400-e29b-41d4-a716-446655440000"
-    credential_name: "Example Credential"
-    organization_name: Default
+    credential: "Example Credential"
+    organization: Default
     forward_events: true
     headers: "Content-Type,X-Custom-Header"
     state: present
@@ -122,8 +123,8 @@ EXAMPLES = """
   ansible.platform.event_stream:
     name: "Example Event Stream"
     new_name: "Renamed Event Stream"
-    credential_name: "Example Credential"
-    organization_name: Default
+    credential: "Example Credential"
+    organization: Default
     state: present
 
 - name: Delete an EDA event stream
@@ -159,6 +160,9 @@ event_stream:
       type: int
     name:
       description: Name of the event stream.
+      type: str
+    credential_name:
+      description: Name of the event stream credential, or its ID as a string if the name cannot be resolved.
       type: str
     uuid:
       description: UUID for the event stream URL.

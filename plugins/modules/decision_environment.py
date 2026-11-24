@@ -60,12 +60,12 @@ options:
     choices: ['always', 'never', 'missing']
     default: 'always'
 
-  organization_name:
+  organization:
     description:
       - The name or ID of the organization the decision environment belongs to.
     type: str
     aliases:
-      - organization
+      - organization_name
 
   state:
     description:
@@ -90,7 +90,7 @@ EXAMPLES = """
     image_url: "quay.io/test/image:latest"
     credential: "Example Credential"
     pull_policy: "missing"
-    organization_name: Default
+    organization: Default
     state: present
 
 - name: Update the name of a decision environment
