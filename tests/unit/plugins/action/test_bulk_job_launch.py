@@ -164,9 +164,9 @@ class TestBulkJobLaunchActionModule:
             }
             result = action_module.run(
                 task_vars={
-                    "controller_job_id": 7,
-                    "controller_job_template_name": "Parent template",
-                    "controller_user_name": "parent-user",
+                    "tower_job_id": 7,
+                    "tower_job_template_name": "Parent template",
+                    "tower_user_name": "parent-user",
                 }
             )
 

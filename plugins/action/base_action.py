@@ -537,9 +537,11 @@ class BaseResourceActionPlugin(ActionBase):
 
         metadata = {}
         for field in ("job_id", "job_template_name", "user_name"):
-            value = task_vars.get(f"controller_{field}")
-            if value is not None:
-                metadata[field] = value
+            for prefix in ("tower_", "awx_"):
+                value = task_vars.get(f"{prefix}{field}")
+                if value is not None:
+                    metadata[field] = value
+                    break
         return metadata
 
     @classmethod

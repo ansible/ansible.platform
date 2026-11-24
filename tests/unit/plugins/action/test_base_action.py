@@ -456,6 +456,43 @@ class TestExtractLaunchMetadata(unittest.TestCase):
         assert "user_name" not in result
 
 
+class TestCurrentJobMetadata(unittest.TestCase):
+    """Tests for current Controller task-variable metadata."""
+
+    def test_prefers_tower_variables_over_deprecated_awx_variables(self):
+        result = BaseResourceActionPlugin._current_job_metadata(
+            {
+                "tower_job_id": 7,
+                "tower_job_template_name": "Tower template",
+                "tower_user_name": "tower-user",
+                "awx_job_id": 8,
+                "awx_job_template_name": "AWX template",
+                "awx_user_name": "awx-user",
+            }
+        )
+
+        assert result == {
+            "job_id": 7,
+            "job_template_name": "Tower template",
+            "user_name": "tower-user",
+        }
+
+    def test_falls_back_to_awx_variables(self):
+        result = BaseResourceActionPlugin._current_job_metadata(
+            {
+                "awx_job_id": 8,
+                "awx_job_template_name": "AWX template",
+                "awx_user_name": "awx-user",
+            }
+        )
+
+        assert result == {
+            "job_id": 8,
+            "job_template_name": "AWX template",
+            "user_name": "awx-user",
+        }
+
+
 class TestRoleTeamAssignmentMultiObject(unittest.TestCase):
     def _action(self, assignment_objects, manager):
         action = RoleTeamAssignmentAction.__new__(RoleTeamAssignmentAction)

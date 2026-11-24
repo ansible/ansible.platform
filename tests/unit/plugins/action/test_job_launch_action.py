@@ -358,9 +358,12 @@ class TestJobLaunchAction(unittest.TestCase):
 
         action.run(
             task_vars={
-                "controller_job_id": 99,
-                "controller_job_template_name": "Parent",
-                "controller_user_name": "operator",
+                "tower_job_id": 99,
+                "tower_job_template_name": "Parent",
+                "tower_user_name": "operator",
+                "awx_job_id": 88,
+                "awx_job_template_name": "Deprecated parent",
+                "awx_user_name": "deprecated-user",
             }
         )
 

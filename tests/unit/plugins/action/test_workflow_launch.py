@@ -227,9 +227,7 @@ class TestWorkflowLaunchActionModule:
 
     def test_current_job_metadata_is_injected_before_launch(self, action_module):
         mock_manager = MagicMock()
-        mock_manager.search_api.return_value = {
-            "results": [{"id": 10, "name": "Test WJT", "ask_variables_on_launch": True}]
-        }
+        mock_manager.search_api.return_value = {"results": [{"id": 10, "name": "Test WJT", "ask_variables_on_launch": True}]}
         mock_manager.launch_resource.return_value = {"id": 42, "status": "pending"}
 
         with patch.object(action_module, "_prepare_action") as mock_prepare:
@@ -255,9 +253,9 @@ class TestWorkflowLaunchActionModule:
             }
             result = action_module.run(
                 task_vars={
-                    "controller_job_id": 7,
-                    "controller_job_template_name": "Parent template",
-                    "controller_user_name": "parent-user",
+                    "tower_job_id": 7,
+                    "tower_job_template_name": "Parent template",
+                    "tower_user_name": "parent-user",
                 }
             )
 
