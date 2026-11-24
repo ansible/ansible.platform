@@ -47,6 +47,14 @@ class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "rulebook_activation"
     MODEL_CLASS = AnsibleRulebookActivation
 
+    _LEGACY_REFERENCE_FIELDS = {
+        "project": "project_name",
+        "rulebook": "rulebook_name",
+        "decision_environment": "decision_environment_name",
+        "awx_token": "awx_token_name",
+        "organization": "organization_name",
+    }
+
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Normalize the legacy enabled parameter to the platform state model."""
         prepared = super()._prepare_action(tmp, task_vars)

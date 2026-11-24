@@ -42,6 +42,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "eda_project"
     MODEL_CLASS = AnsibleEdaProject
+    _LEGACY_REFERENCE_FIELDS = {"organization": "organization_name"}
     _WRITE_ONLY_FIELDS = frozenset({"sync", "wait"})
     _resolved_fk_ids: dict[tuple[str, str, str], Optional[int]]
 
