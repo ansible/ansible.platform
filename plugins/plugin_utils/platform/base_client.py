@@ -686,6 +686,16 @@ class BaseAPIClient(ABC):
         result.update(plan.result)
         return result
 
+    def is_workflow_approval_template(self, template_id: int) -> bool:
+        """Check whether a unified_job_template ID refers to a workflow approval template."""
+        try:
+            tmpl = self.search_api(f"/api/controller/v2/workflow_approval_templates/{template_id}/")
+            return tmpl.get("type") == "workflow_approval_template"
+        except APIError as exc:
+            if exc.status_code == 404:
+                return False
+            raise
+
     def manage_workflow_approval(self, node_id: int, data: dict, check_mode: bool = False) -> bool:
         """Reconcile a node's approval template without writing during check mode."""
         data = {key: value for key, value in data.items() if value is not None}

@@ -45,5 +45,9 @@ class AnsibleWorkflowJobTemplate:
     notification_templates_error: Optional[List[str]] = field(default=None)
     notification_templates_approvals: Optional[List[str]] = field(default=None)
 
+    # Graph management fields (handled by action plugin, not sent to API)
+    workflow_nodes: Optional[List[dict]] = field(default=None)
+    destroy_current_nodes: Optional[bool] = None
+
     # Read-only fields (populated from API responses)
     id: Optional[int] = None
