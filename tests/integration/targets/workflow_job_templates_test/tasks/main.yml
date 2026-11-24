@@ -83,6 +83,9 @@
     - name: Check survey idempotency and association check mode
       ansible.builtin.include_tasks: survey_and_associations.yml
 
+    - name: Check workflow_nodes graph management
+      ansible.builtin.include_tasks: workflow_nodes.yml
+
     - name: Rename workflow job template
       ansible.platform.workflow_job_template:
         name: "{{ workflow_template_name }}"
