@@ -111,9 +111,16 @@ class UserTransformMixin_v1(BaseTransformMixin):
         if associated_authenticators:
             resolved_authenticators = {}
             for authenticator, data in associated_authenticators.items():
-                authenticator_id = authenticator
-                if manager is not None and not str(authenticator).isdigit():
-                    authenticator_id = manager.lookup_resource_id("authenticators", "name", authenticator, service="gateway")
+                reference = str(authenticator)
+                if reference.startswith("name:"):
+                    authenticator_id = manager.lookup_resource_id("authenticators", "name", reference[5:], service="gateway", numeric_is_id=False)
+                elif reference.startswith("id:"):
+                    authenticator_id = int(reference[3:])
+                elif manager is not None and not reference.isdigit():
+                    # Backward compatibility for unprefixed exported names.
+                    authenticator_id = manager.lookup_resource_id("authenticators", "name", reference, service="gateway", numeric_is_id=False)
+                else:
+                    authenticator_id = int(reference)
                 resolved_authenticators[str(authenticator_id)] = data
             api_data["associated_authenticators"] = resolved_authenticators
 

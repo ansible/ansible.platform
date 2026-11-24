@@ -33,6 +33,7 @@ IMPORT_ORDER = [
     ("authenticator_maps", "authenticator_map"),
     ("users", "user"),
     ("teams", "team"),
+    ("role_definitions", "role_definition"),
     ("credential_types", "controller_credential_type"),
     ("credentials", "controller_credential"),
     ("execution_environments", "execution_environment"),
@@ -239,11 +240,28 @@ class ActionModule(BaseResourceActionPlugin):
 
         def _fetch_name_map(endpoint, id_field="name"):
             response = manager.search_api(endpoint=endpoint, return_all=True, max_objects=max_objects)
-            return {r[id_field]: r["id"] for r in response.get("results", []) if id_field in r and "id" in r}
+            return {r[id_field]: r["id"] for r in response.get("results", []) if isinstance(r, dict) and id_field in r and "id" in r}
 
         self._display.vvv("Building role-assignment resolution cache...")
         cache["role_definitions"] = _fetch_name_map("api/gateway/v1/role_definitions/")
-        cache["users"] = _fetch_name_map("api/gateway/v1/users/", "username")
+        user_names = set()
+        for key in _ROLE_ASSIGNMENT_TYPES:
+            for item in assets.get(key, []):
+                if isinstance(item, dict):
+                    user = item.get("user")
+                    if isinstance(user, str) and not user.isdigit():
+                        user_names.add(user)
+        cache["users"] = {}
+        for username in user_names:
+            response = manager.search_api(
+                endpoint="api/gateway/v1/users/",
+                query_params={"username": username},
+                return_all=True,
+                max_objects=max_objects,
+            )
+            for user in response.get("results", []):
+                if user.get("username") == username and user.get("id") is not None:
+                    cache["users"][username] = user["id"]
         cache["gateway_orgs"] = _fetch_name_map("api/gateway/v1/organizations/")
         cache["controller_orgs"] = _fetch_name_map("api/controller/v2/organizations/")
 
@@ -264,10 +282,12 @@ class ActionModule(BaseResourceActionPlugin):
         object_types = set()
         for key in _ROLE_ASSIGNMENT_TYPES:
             for item in assets.get(key, []):
+                if not isinstance(item, dict):
+                    continue
                 if item.get("object_type"):
                     object_types.add(item["object_type"])
                 for ao in item.get("assignment_objects", []):
-                    if ao.get("type"):
+                    if isinstance(ao, dict) and ao.get("type"):
                         object_types.add(ao["type"])
 
         for obj_type in object_types:
@@ -285,14 +305,20 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
             scoped = {}
             unscoped = {}
+            credential_types = _fetch_name_map("api/controller/v2/credential_types/") if obj_type == "awx.credential" else {}
             for r in response.get("results", []):
                 if "name" not in r or "id" not in r:
                     continue
-                scoped[(r["name"], r.get("organization"))] = r["id"]
-                if r["name"] not in unscoped:
-                    unscoped[r["name"]] = r["id"]
+                credential_type = None
+                if obj_type == "awx.credential":
+                    credential_type = credential_types.get(r.get("credential_type"), r.get("credential_type"))
+                scoped_key = (r["name"], r.get("organization"), credential_type) if obj_type == "awx.credential" else (r["name"], r.get("organization"))
+                scoped[scoped_key] = r["id"]
+                unscoped_key = (r["name"], credential_type) if obj_type == "awx.credential" else r["name"]
+                if unscoped_key not in unscoped:
+                    unscoped[unscoped_key] = r["id"]
                 else:
-                    unscoped[r["name"]] = None
+                    unscoped[unscoped_key] = None
             cache[obj_type] = scoped
             cache[obj_type + ":unscoped"] = unscoped
 
@@ -306,7 +332,7 @@ class ActionModule(BaseResourceActionPlugin):
         )
         return cache
 
-    def _resolve_object_from_cache(self, cache, obj_type, obj_name, org_name):
+    def _resolve_object_from_cache(self, cache, obj_type, obj_name, org_name, credential_type=None):
         """Resolve an object name + type + org to a target-instance ID from the pre-built cache."""
         if obj_type == "organizations":
             return cache.get("gateway_orgs", {}).get(obj_name)
@@ -323,16 +349,17 @@ class ActionModule(BaseResourceActionPlugin):
 
         scoped = cache.get(obj_type, {})
         unscoped = cache.get(obj_type + ":unscoped", {})
+        key_suffix = credential_type if obj_type == "awx.credential" else None
 
         if org_name and obj_type not in CONTROLLER_NON_ORG_TYPES:
             org_id = cache.get("controller_orgs", {}).get(org_name)
             if org_id is not None:
-                return scoped.get((obj_name, org_id))
+                return scoped.get((obj_name, org_id, key_suffix)) if obj_type == "awx.credential" else scoped.get((obj_name, org_id))
             # Org explicitly provided but not found on target — do not
             # fall back to an unscoped match from a different org.
             return None
 
-        return unscoped.get(obj_name)
+        return unscoped.get((obj_name, key_suffix)) if obj_type == "awx.credential" else unscoped.get(obj_name)
 
     def _pre_resolve_role_assignment(self, clean_data, cache, export_key):
         """Replace portable names with target-instance integer IDs for one role assignment."""
@@ -347,9 +374,12 @@ class ActionModule(BaseResourceActionPlugin):
         if export_key == "role_user_assignments":
             user = resolved.get("user")
             if isinstance(user, str):
-                user_id = cache.get("users", {}).get(user)
-                if user_id is not None:
-                    resolved["user"] = user_id
+                if user.isdigit():
+                    resolved["user"] = int(user)
+                else:
+                    user_id = cache.get("users", {}).get(user)
+                    if user_id is not None:
+                        resolved["user"] = user_id
 
         if export_key == "role_team_assignments":
             team = resolved.get("team")
@@ -371,18 +401,19 @@ class ActionModule(BaseResourceActionPlugin):
         obj_type = resolved.get("object_type")
         if obj_name and obj_type:
             org_name = resolved.get("organization")
-            obj_id = self._resolve_object_from_cache(cache, obj_type, obj_name, org_name)
+            obj_id = self._resolve_object_from_cache(cache, obj_type, obj_name, org_name, resolved.get("object_credential_type"))
             if obj_id is not None:
                 resolved["object_id"] = obj_id
                 del resolved["object_name"]
                 del resolved["object_type"]
                 resolved.pop("organization", None)
+                resolved.pop("object_credential_type", None)
 
         if isinstance(resolved.get("assignment_objects"), list):
             pre_resolved = []
             for ao in resolved["assignment_objects"]:
                 if isinstance(ao, dict) and ao.get("name") and ao.get("type"):
-                    ao_id = self._resolve_object_from_cache(cache, ao["type"], ao["name"], ao.get("organization"))
+                    ao_id = self._resolve_object_from_cache(cache, ao["type"], ao["name"], ao.get("organization"), ao.get("credential_type"))
                     if ao_id is not None:
                         pre_resolved.append({"object_id": ao_id})
                         continue

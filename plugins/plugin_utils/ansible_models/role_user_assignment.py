@@ -23,6 +23,7 @@ class AnsibleRoleUserAssignment:
     object_ansible_id: Optional[str] = None
     object_name: Optional[str] = None
     object_type: Optional[str] = None
+    object_credential_type: Optional[str] = None
     organization: Optional[str] = None
 
     state: str = "present"

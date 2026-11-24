@@ -59,6 +59,12 @@ options:
       - Use C(all) to export all teams.
     type: list
     elements: str
+  role_definitions:
+    description:
+      - Gateway role definition names to export.
+      - Use C(all) to export all role definitions.
+    type: list
+    elements: str
   authenticators:
     description:
       - Gateway authenticator names to export.

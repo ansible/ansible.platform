@@ -54,6 +54,11 @@ options:
         description:
             - Portable assignment object type, such as C(awx.credential) or C(teams).
         type: str
+    object_credential_type:
+        description:
+            - Credential type used to disambiguate Controller credential targets
+              with the same name and organization.
+        type: str
     organization:
         description:
             - Organization used to scope portable object-name lookup.

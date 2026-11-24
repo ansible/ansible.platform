@@ -425,14 +425,26 @@ def test_import_skips_write_only_tokens(action):
 
 def test_build_role_assignment_cache_fetches_target_resources():
     manager = Mock()
-    manager.search_api.side_effect = [
-        {"results": [{"name": "Team Member", "id": 1}, {"name": "Org Admin", "id": 2}]},
-        {"results": [{"username": "alice", "id": 10}, {"username": "bob", "id": 11}]},
-        {"results": [{"name": "Default", "id": 100}]},
-        {"results": [{"name": "Default", "id": 200}]},
-        {"results": [{"name": "DevTeam", "id": 50, "organization": 100}]},
-        {"results": [{"name": "Demo Project", "id": 300, "organization": 200}]},
-    ]
+
+    def search_api(**kwargs):
+        endpoint = kwargs.get("endpoint")
+        query = kwargs.get("query_params", {})
+        if endpoint == "api/gateway/v1/role_definitions/":
+            return {"results": [{"name": "Team Member", "id": 1}, {"name": "Org Admin", "id": 2}]}
+        if endpoint == "api/gateway/v1/users/":
+            username = query["username"]
+            return {"results": [{"username": username, "id": {"alice": 10, "bob": 11}[username]}]}
+        if endpoint == "api/gateway/v1/organizations/":
+            return {"results": [{"name": "Default", "id": 100}]}
+        if endpoint == "api/controller/v2/organizations/":
+            return {"results": [{"name": "Default", "id": 200}]}
+        if endpoint == "api/gateway/v1/teams/":
+            return {"results": [{"name": "DevTeam", "id": 50, "organization": 100}]}
+        if endpoint == "/api/controller/v2/projects/":
+            return {"results": [{"name": "Demo Project", "id": 300, "organization": 200}]}
+        raise AssertionError("unexpected endpoint: %s" % endpoint)
+
+    manager.search_api.side_effect = search_api
     action = ActionModule.__new__(ActionModule)
     action._display = Mock()
 

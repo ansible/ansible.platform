@@ -600,7 +600,7 @@ def test_user_authenticator_references_are_exported_by_name():
 
     assert "authenticators" not in result
     assert "authenticator_uid" not in result
-    assert result["associated_authenticators"] == {"Local Database Authenticator": {"uid": "alice"}}
+    assert result["associated_authenticators"] == {"name:Local Database Authenticator": {"uid": "alice"}}
 
 
 def test_role_user_assignment_resolves_gateway_object_name_from_role_content_type():

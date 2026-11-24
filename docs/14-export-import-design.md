@@ -461,6 +461,10 @@ modules on the `feature/import-export-module` branch:
 | `organizations` | `organization` | gateway | — | — |
 | `users` | `user` | gateway | — | — |
 | `teams` | `team` | gateway | organization | — |
+| `role_definitions` | `role_definition` | gateway | — | — |
+| `authenticators` | `authenticator` | gateway | — | — |
+| `authenticator_maps` | `authenticator_map` | gateway | authenticator | — |
+| `tokens` | — | gateway | user | non-restorable metadata only |
 | `credential_types` | `controller_credential_type` | controller | — | — |
 | `credentials` | `controller_credential` | controller | credential_type, organization, user, team | — |
 | `execution_environments` | `execution_environment` | controller | organization, credential | — |
@@ -472,6 +476,8 @@ modules on the `feature/import-export-module` branch:
 | `job_templates` | `job_template` | controller | inventory, project, organization, execution_environment, webhook_credential | credentials, labels, instance_groups, notification_templates_*, survey_spec |
 | `workflow_job_templates` | `workflow_job_template` | controller | organization, inventory, webhook_credential | labels, notification_templates_*, survey_spec |
 | `schedules` | `schedule` | controller | unified_job_template, inventory, execution_environment, organization | credentials, labels, instance_groups |
+| `role_user_assignments` | `role_user_assignment` | gateway | role_definition, user, object | portable names; unresolved numeric targets are non-restorable |
+| `role_team_assignments` | `role_team_assignment` | gateway | role_definition, team, object | portable names with organization scope |
 
 **Supporting resources** (not top-level in awxkit, but needed):
 
@@ -557,8 +563,7 @@ used to create a new credential.
 
 The `from_awxkit_export` filter is covered by unit tests for natural-key
 conversion, inline inventory children, associations, and edge cases. There is
-no dedicated Molecule scenario or live role-based legacy round-trip in this
-PR.
+no dedicated Molecule scenario or live legacy-format round-trip in this PR.
 
 ### Integration tests
 
@@ -573,8 +578,9 @@ The current live target covers:
 - Cleanup and a second import asserting `changed: false`.
 
 The test intentionally does not attempt to create new credentials from exported
-`$encrypted$` values, and does not claim live legacy-format or role-based
-round-trip coverage.
+`$encrypted$` values or claim live legacy-format round-trip coverage. Role
+definitions and native role assignments are covered by the dependency-ordered
+import path; custom role definitions must be included in the export.
 
 ## SECTION 7: Export Module Design
 

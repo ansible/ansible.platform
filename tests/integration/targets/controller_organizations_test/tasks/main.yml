@@ -3,4 +3,29 @@
   ansible.builtin.set_fact:
     test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
   when: test_id is not defined
+
+- name: Apply Controller organization associations
+  ansible.platform.controller_organization:
+    name: Default
+    galaxy_credentials:
+      - Ansible Galaxy
+    instance_groups:
+      - default
+    state: present
+  register: controller_organization_associations
+
+- name: Reapply Controller organization associations idempotently
+  ansible.platform.controller_organization:
+    name: Default
+    galaxy_credentials:
+      - Ansible Galaxy
+    instance_groups:
+      - default
+    state: present
+  register: controller_organization_associations_repeat
+
+- name: Verify Controller organization association idempotency
+  ansible.builtin.assert:
+    that:
+      - not controller_organization_associations_repeat.changed
 ...

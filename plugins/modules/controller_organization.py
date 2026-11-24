@@ -14,7 +14,7 @@ module: controller_organization
 author: Red Hat (@RedHatOfficial)
 short_description: Manage Controller-owned organization settings
 description:
-  - Manage Controller-specific fields and associations for a logical organization.
+  - Update Controller-specific fields and associations for an existing logical organization.
 options:
   name:
     description:
@@ -51,7 +51,7 @@ options:
     description:
       - Desired state of the Controller organization overlay.
     type: str
-    choices: [present, absent, exists]
+    choices: [present, exists]
     default: present
 extends_documentation_fragment:
   - ansible.platform.auth
@@ -75,7 +75,7 @@ EXAMPLES = """
 
 RETURN = """
 changed:
-  description: Whether the Controller organization overlay was created or updated.
+  description: Whether the Controller organization overlay was updated.
   returned: always
   type: bool
 

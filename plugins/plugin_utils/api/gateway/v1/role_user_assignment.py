@@ -84,7 +84,13 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
             from .role_team_assignment import _resolve_named_object_id
 
             api_data["object_id"] = _resolve_named_object_id(
-                manager, {"name": object_name, "type": object_type, "organization": getattr(ansible_instance, "organization", None)}
+                manager,
+                {
+                    "name": object_name,
+                    "type": object_type,
+                    "organization": getattr(ansible_instance, "organization", None),
+                    "credential_type": getattr(ansible_instance, "object_credential_type", None),
+                },
             )
 
         object_id = getattr(ansible_instance, "object_id", None)

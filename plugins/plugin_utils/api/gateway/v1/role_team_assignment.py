@@ -168,6 +168,8 @@ def _resolve_named_object_id(manager, obj):
 
     org_id = _resolve_organization_id(manager, organization, service) if organization else None
     query = {"name": name}
+    if obj_type == "awx.credential" and obj.get("credential_type"):
+        query["credential_type"] = manager.lookup_resource_id("credential_types", "name", obj["credential_type"], service="controller", numeric_is_id=False)
     if org_id is not None and service == "controller":
         query["organization"] = org_id
     if org_id is not None and service == "gateway" and obj_type == "teams":
@@ -176,6 +178,8 @@ def _resolve_named_object_id(manager, obj):
     if isinstance(lookup_path, str) and lookup_path.startswith("/api/") and not lookup_path.startswith("/api/gateway/"):
         payload = manager.search_api(lookup_path, query_params=query)
         results = [result for result in _search_results(payload) if result.get("name") == name]
+        if obj_type == "awx.credential" and query.get("credential_type") is not None:
+            results = [result for result in results if str(result.get("credential_type")) == str(query["credential_type"])]
         if org_id is not None:
             results = [result for result in results if _matches_org(result, org_id)]
         if len(results) != 1:
