@@ -1,5 +1,12 @@
 ---
 requires_ansible: ">=2.16.0"
+plugin_routing:
+  lookup:
+    gateway_api:
+      redirect: ansible.platform.platform_api
+      deprecation:
+        removal_version: "3.0.0"
+        warning_text: Use ansible.platform.platform_api instead.
 action_groups:
   gateway:
     - application

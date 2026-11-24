@@ -490,42 +490,24 @@ manager.execute('create', 'user', {'username': 'alice', ...})
 
 ### The search_api() Method
 
-The `search_api()` method enables lookups via the manager subprocess without triggering
-SSL fork crashes (see "Why a Separate Process" section below). This method is used by
-the `gateway_api` lookup plugin.
+The `platform_api` lookup starts an ephemeral manager subprocess to perform HTTPS
+requests outside the Ansible worker. The lookup selects a service for relative
+endpoints and calls `search_api()` through the manager's RPC client. The manager
+resolves the API version for relative paths and uses the service and version supplied
+by the caller in full API paths.
 
 ```python
-def search_api(self, query, resource_type):
-    """
-    Search the Gateway API using a search query.
-    
-    Args:
-        query (str): Search query (e.g., 'username:alice')
-        resource_type (str): Resource type (e.g., 'user')
-    
-    Returns:
-        list[dict]: List of matching resources in user-model format
-    """
-    # Implementation in manager (safe from SSL fork issues)
-    # 1. Build API search request
-    # 2. Execute HTTP GET with search params
-    # 3. Transform response to user-model format
-    # 4. Return results
+response = client.search_api(
+    endpoint="instances",
+    query_params={"hostname": "execution-01"},
+    return_all=True,
+    service="controller",
+)
 ```
 
-**Example usage in a lookup plugin:**
-
-```python
-# plugins/lookup/gateway_api.py
-class LookupModule(LookupBase):
-    def run(self, terms, **kwargs):
-        rpc_client = get_rpc_client()
-        results = rpc_client.search_api(query=terms[0], resource_type=kwargs.get("resource_type", "user"))
-        return [r["id"] for r in results]
-```
-
-This allows dynamic lookups (e.g., "find all users whose username contains 'admin'")
-without spawning additional processes or triggering SSL fork safety issues.
+The manager returns the API response as a dictionary and follows pagination when
+`return_all=True`. The lookup shapes that response for Ansible and shuts down its
+manager when the request finishes.
 
 ---
 
@@ -551,7 +533,7 @@ ansible_collections/ansible/platform/
 │   │   └── ... (20 more)
 │   │
 │   ├── lookup/
-│   │   ├── gateway_api.py           ← API search via search_api() RPC method
+│   │   ├── platform_api.py           ← API search via search_api() RPC method
 │   │   └── ...
 │   │
 │   └── plugin_utils/
