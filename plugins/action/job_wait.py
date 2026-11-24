@@ -112,6 +112,7 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             self._set_job_result(result, job_data)
+            result.update(self._extract_launch_metadata(job_data))
             status = job_data.get("status", "")
             result["changed"] = False
 

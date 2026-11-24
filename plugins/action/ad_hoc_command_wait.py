@@ -76,6 +76,8 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(wait_result))
+
             if status in FAILED_STATUSES:
                 result["failed"] = True
                 result["msg"] = f"Ad hoc command {command_id} finished with status: {status}"

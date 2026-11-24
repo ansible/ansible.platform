@@ -199,5 +199,16 @@ job_info:
     id:
       description: Numeric ID of the launched workflow job.
       type: int
+
+user_name:
+  description: Username of the Controller user who launched the workflow.
+  returned: when Controller provides the metadata
+  type: str
+  sample: admin
+job_template_name:
+  description: Name of the workflow job template used for the launch.
+  returned: when Controller provides the metadata
+  type: str
+  sample: My Workflow
 ...
 """

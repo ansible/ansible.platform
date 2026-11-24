@@ -481,6 +481,59 @@ class BaseResourceActionPlugin(ActionBase):
         """
         return self.MODEL_CLASS(**resource_data)
 
+    @staticmethod
+    def _extract_launch_metadata(job_data: dict) -> dict:
+        """Extract audit metadata from a Controller job API response.
+
+        Args:
+            job_data: Controller job detail dict (must contain summary_fields).
+
+        Returns:
+            dict: Keys ``user_name`` and/or ``job_template_name`` when present.
+        """
+        if not isinstance(job_data, dict):
+            return {}
+        metadata: dict = {}
+        summary = job_data.get("summary_fields") or {}
+        created_by = summary.get("created_by") or {}
+        if isinstance(created_by, dict) and created_by.get("username"):
+            metadata["user_name"] = created_by["username"]
+        for key in ("job_template", "workflow_job_template"):
+            ref = summary.get(key) or {}
+            if isinstance(ref, dict) and ref.get("name"):
+                metadata["job_template_name"] = ref["name"]
+                break
+        return metadata
+
+    @staticmethod
+    def _current_job_metadata(task_vars: Optional[dict]) -> dict:
+        """Return current Controller job metadata exposed to the running playbook."""
+        if not isinstance(task_vars, dict):
+            return {}
+
+        metadata = {}
+        for field in ("job_id", "job_template_name", "user_name"):
+            value = task_vars.get(f"controller_{field}")
+            if value is not None:
+                metadata[field] = value
+        return metadata
+
+    @classmethod
+    def _inject_current_job_metadata(cls, extra_vars: Optional[dict], task_vars: Optional[dict]) -> Optional[dict]:
+        """Add current-job metadata to launch variables, with authoritative values winning."""
+        metadata = cls._current_job_metadata(task_vars)
+        if not metadata:
+            return extra_vars
+
+        merged = dict(extra_vars or {})
+        overridden = [k for k in metadata if k in merged and merged[k] != metadata[k]]
+        if overridden:
+            display.warning(
+                "Controller job metadata overrode user-provided extra_vars key(s): %s" % ", ".join(sorted(overridden))
+            )
+        merged.update(metadata)
+        return merged
+
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Prepare the common inputs needed by an action plugin.
 
