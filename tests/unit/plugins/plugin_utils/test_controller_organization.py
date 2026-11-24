@@ -33,6 +33,16 @@ class TestControllerOrganizationTransform(unittest.TestCase):
         self.assertIsNone(api.max_hosts)
         self.assertIsNone(api.description)
 
+    def test_association_fields_are_accepted_by_the_model(self):
+        ansible = AnsibleControllerOrganization(
+            name="Default",
+            galaxy_credentials=["Automation Hub"],
+            instance_groups=["default"],
+        )
+
+        self.assertEqual(ansible.galaxy_credentials, ["Automation Hub"])
+        self.assertEqual(ansible.instance_groups, ["default"])
+
     def test_state_has_the_standard_present_default(self):
         ansible = AnsibleControllerOrganization(name="Default")
 

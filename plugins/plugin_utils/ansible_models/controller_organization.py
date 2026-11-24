@@ -1,7 +1,7 @@
 """Internal Ansible model for Controller-side organization settings."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -17,5 +17,7 @@ class AnsibleControllerOrganization:
     description: Optional[str] = None
     default_environment: Optional[str] = None
     max_hosts: Optional[int] = None
+    galaxy_credentials: Optional[List[str]] = None
+    instance_groups: Optional[List[str]] = None
     state: str = "present"
     id: Optional[int] = None
