@@ -305,8 +305,10 @@ class ActionModule(BaseResourceActionPlugin):
             if org_name:
                 org_id = cache.get("gateway_orgs", {}).get(org_name)
                 if org_id is not None:
-                    # Do not fall back to another organization's same-named team.
                     return cache.get("teams", {}).get((obj_name, org_id))
+                # Org explicitly provided but not found on target — do not
+                # fall back to an unscoped match from a different org.
+                return None
             return cache.get("teams_unscoped", {}).get(obj_name)
 
         scoped = cache.get(obj_type, {})

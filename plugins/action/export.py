@@ -433,7 +433,6 @@ class ActionModule(BaseResourceActionPlugin):
         response = self._search_resources(manager, endpoint, "id", names_filter, max_objects)
         exported = []
         object_cache = {}
-        role_definition_cache = {}
         role_definitions = manager.search_api(
             endpoint=ROLE_DEFINITION_ENDPOINT,
             return_all=True,

@@ -70,4 +70,24 @@ EXAMPLES = """
   ansible.platform.controller_organization:
     name: Engineering
     state: exists
-..."""
+"""
+
+RETURN = """
+changed:
+  description: Whether the Controller organization overlay was created or updated.
+  returned: always
+  type: bool
+
+controller_organization:
+  description: >
+    The Controller organization resource after the operation.
+  returned: when state is present or exists
+  type: dict
+  contains:
+    id:
+      description: Numeric database ID of the Controller organization.
+      type: int
+    name:
+      description: Name of the Controller organization.
+      type: str
+"""
