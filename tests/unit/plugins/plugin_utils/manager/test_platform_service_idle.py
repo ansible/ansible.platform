@@ -282,8 +282,8 @@ class TestPlatformServiceIdleTokenExpiry(unittest.TestCase):
 
 
 class TestProcessManagerIdleArgv(unittest.TestCase):
-    def test_spawn_manager_includes_idle_timeout_in_command(self):
-        cfg = GatewayConfig(base_url="https://example.com/", username="u", password="p", idle_timeout=123.0)
+    def test_spawn_manager_includes_idle_timeout_and_retry_settings_in_command(self):
+        cfg = GatewayConfig(base_url="https://example.com/", username="u", password="p", idle_timeout=123.0, max_retries=0, retry_backoff_factor=3)
         # tests/unit/plugins/plugin_utils/manager/ -> five parents up to platform/
         script = Path(__file__).resolve().parent.parent.parent.parent.parent / "plugins" / "plugin_utils" / "manager" / "manager_process.py"
         with patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.subprocess.Popen") as mock_popen:
@@ -299,7 +299,7 @@ class TestProcessManagerIdleArgv(unittest.TestCase):
                 owner_pid=None,
             )
         cmd = mock_popen.call_args[0][0]
-        self.assertEqual(cmd[-1], "123.0")
+        self.assertEqual(cmd[-3:], ["123.0", "0", "3"])
 
 
 if __name__ == "__main__":
