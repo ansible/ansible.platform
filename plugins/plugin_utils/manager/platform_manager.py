@@ -1430,7 +1430,7 @@ class PlatformService(BaseAPIClient):
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
-        This is the RPC entry-point used by the gateway_api lookup plugin so that
+        This is the RPC entry-point used by the platform_api lookup plugin so that
         all HTTP/SSL work stays in the manager subprocess (never in a forked Ansible
         worker process), avoiding the macOS + Python 3.12 fork-safety SIGABRT.
 

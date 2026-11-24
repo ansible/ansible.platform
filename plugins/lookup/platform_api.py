@@ -5,7 +5,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 DOCUMENTATION = """
-name: gateway_api
+name: platform_api
 author: John Westcott IV (@john-westcott-iv)
 short_description: Search the API for objects
 requirements:
@@ -14,16 +14,23 @@ description:
   - Query Ansible Automation Platform component API endpoints via the Platform Gateway.
   - Supports pagination (C(return_all)), filtering (C(query_params)), and returning full objects (C(return_objects)) or IDs (C(return_ids)).
   - Use for read-only lookups of users, teams, organizations, settings, and other resources managed by C(ansible.platform) modules.
-  - By default, endpoints are resolved against the Gateway API. For example, C(users) queries C(/api/gateway/v1/users/).
-  - To query other AAP components through the gateway, provide the full API path, such as C(api/eda/v1/decision-environments/) for Event-Driven Ansible.
+  - Relative endpoints use the explicit O(service), then the registered service for the resource, then Gateway.
+  - Controller resources with registered defaults are C(instances), C(instance_groups), C(job_templates), and C(workflow_job_templates).
+  - Event-Driven Ansible resources with registered defaults are C(activations) and C(decision-environments).
+  - Shared resources such as C(users) and C(organizations) default to Gateway. Use O(service) to select a different API.
+  - Full API paths such as C(/api/eda/v1/organizations/) take precedence over O(service) and registered defaults.
   - The Automation Controller, Platform Gateway, Event-Driven Ansible, and Galaxy APIs can all be queried through the gateway.
 options:
   _terms:
     description:
       - The API endpoint to query.
-      - For Gateway resources, provide a short path relative to the Gateway API (for example, C(users), C(teams), C(settings/notification)).
-      - For other AAP components, provide the full path through the gateway (for example, C(api/eda/v1/decision-environments/)).
+      - A relative endpoint such as C(users) or C(instances/42) or a full API path with or without the leading slash.
     required: True
+  service:
+    description:
+      - API service to use for a relative endpoint. Supported identifiers include V(gateway), V(controller), and V(eda).
+      - Overrides the registered resource service. The client selects the API version for the service.
+    type: str
   query_params:
     description:
       - The query parameters to search for in the form of key/value pairs.
@@ -82,23 +89,23 @@ _raw:
 EXAMPLES = """
 - name: Load notification settings
   set_fact:
-    notification_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification') }}"
+    notification_settings: "{{ lookup('ansible.platform.platform_api', 'settings/notification') }}"
 
 - name: Load the notification settings specifying the connection info
   set_fact:
-    notification_settings: "{{ lookup('ansible.platform.gateway_api', 'settings/notification', host='gateway.example.com',
+    notification_settings: "{{ lookup('ansible.platform.platform_api', 'settings/notification', host='gateway.example.com',
                              username='admin', password=my_pass_var, verify_ssl=False) }}"
 
 - name: Report the usernames of all users with admin privs
   debug:
     msg: "Admin users: {{ admins }}"
   vars:
-    admins: "{{ query('ansible.platform.gateway_api', 'users', query_params={ 'is_superuser': true }) | map(attribute='username') | join(', ') }}"
+    admins: "{{ query('ansible.platform.platform_api', 'users', query_params={ 'is_superuser': true }) | map(attribute='username') | join(', ') }}"
 
 - name: debug all organizations in a loop  # use query to return a list
   debug:
     msg: "Organization description={{ item['description'] }} id={{ item['id'] }}"
-  loop: "{{ query('ansible.platform.gateway_api', 'organizations') }}"
+  loop: "{{ query('ansible.platform.platform_api', 'organizations') }}"
   loop_control:
     label: "{{ item['name'] }}"
 
@@ -107,7 +114,7 @@ EXAMPLES = """
     organization: Default
     role: admin
     user: john
-  when: "lookup('ansible.platform.gateway_api', 'users', query_params={ 'username': 'john' }) | length == 1"
+  when: "lookup('ansible.platform.platform_api', 'users', query_params={ 'username': 'john' }) | length == 1"
 
 - name: Create an inventory group with all 'foo' hosts
   group:
@@ -115,15 +122,19 @@ EXAMPLES = """
     inventory: "Demo Inventory"
     hosts: >-
       {{ query(
-           'ansible.platform.gateway_api',
-            'hosts',
+           'ansible.platform.platform_api',
+            'hosts', service='controller',
             query_params={ 'name__startswith' : 'foo', },
         ) | map(attribute='name') | list }}
   register: group_creation
 
-- name: List organziation information in EDA via the gateway
+- name: List Controller instances using the registered service
   set_fact:
-    eda_organizations: "{{ lookup('ansible.platform.gateway_api', 'api/eda/v1/organizations', host='gateway.example.com',
+    controller_instances: "{{ query('ansible.platform.platform_api', 'instances') }}"
+
+- name: List organizations in EDA via the gateway
+  set_fact:
+    eda_organizations: "{{ lookup('ansible.platform.platform_api', 'api/eda/v1/organizations', host='gateway.example.com',
                              username='admin', password=my_pass_var, verify_ssl=False) }}"
 ...
 """
@@ -134,9 +145,19 @@ from ansible.plugins.lookup import LookupBase  # noqa
 from ansible.utils.display import Display  # noqa
 
 
+_RESOURCE_SERVICES = {
+    "activations": "eda",
+    "decision-environments": "eda",
+    "instance_groups": "controller",
+    "instances": "controller",
+    "job_templates": "controller",
+    "workflow_job_templates": "controller",
+}
+
+
 class LookupModule(LookupBase):
     """
-    Lookup plugin that queries the Automation Platform Gateway API.
+    Lookup plugin that queries component APIs through the Platform Gateway.
 
     All HTTP/SSL work is delegated to the manager subprocess via
     spawn_ephemeral_client() + client.search_api(), keeping the forked Ansible
@@ -202,6 +223,11 @@ class LookupModule(LookupBase):
         # multiprocessing.managers serialises call arguments with pickle, and
         # Ansible explicitly forbids pickling its lazy objects.
         endpoint = str(self._to_plain(terms[0]))
+        relative_path = endpoint.removeprefix("/")
+        service = "gateway"
+        if not relative_path.startswith("api/"):
+            resource = relative_path.partition("?")[0].partition("/")[0]
+            service = self._to_plain(self.get_option("service")) or _RESOURCE_SERVICES.get(resource, "gateway")
         query_params = self._to_plain(self.get_option("query_params")) or {}
         return_all = bool(self.get_option("return_all"))
         max_objects = int(self.get_option("max_objects") or 1000)
@@ -216,7 +242,7 @@ class LookupModule(LookupBase):
             # since lookups don't set host facts.
             client, _facts = spawn_ephemeral_client({}, gateway_config)
         except Exception as e:
-            raise AnsibleError("gateway_api lookup: failed to connect to platform manager: {0}".format(to_native(e)))
+            raise AnsibleError("platform_api lookup: failed to connect to platform manager: {0}".format(to_native(e)))
 
         try:
             return_data = client.search_api(
@@ -224,29 +250,30 @@ class LookupModule(LookupBase):
                 query_params=query_params,
                 return_all=return_all,
                 max_objects=max_objects,
+                service=service,
             )
         except ValueError as e:
-            raise AnsibleError("gateway_api lookup: {0}".format(to_native(e)))
+            raise AnsibleError("platform_api lookup: {0}".format(to_native(e)))
         except Exception as e:
-            raise AnsibleError("gateway_api lookup: API request failed for '{0}': {1}".format(endpoint, to_native(e)))
+            raise AnsibleError("platform_api lookup: API request failed for '{0}': {1}".format(endpoint, to_native(e)))
         finally:
             try:
                 result = client.shutdown_manager()
-                self._display.vvvv("gateway_api: shutdown signal sent to manager: %s" % result)
+                self._display.vvvv("platform_api: shutdown signal sent to manager: %s" % result)
             except Exception as e:
-                self._display.vvvv("gateway_api: shutdown RPC failed (manager may have already exited): %s" % e)
+                self._display.vvvv("platform_api: shutdown RPC failed (manager may have already exited): %s" % e)
             try:
                 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
 
                 ProcessManager.terminate_manager_process(getattr(client, "_process", None))
-                self._display.vvvv("gateway_api: manager process terminated")
+                self._display.vvvv("platform_api: manager process terminated")
             except Exception as e:
-                self._display.warning("gateway_api: failed to terminate manager process: %s" % e)
+                self._display.warning("platform_api: failed to terminate manager process: %s" % e)
             try:
                 client.close()
-                self._display.vvvv("gateway_api: client connection closed")
+                self._display.vvvv("platform_api: client connection closed")
             except Exception as e:
-                self._display.vvvv("gateway_api: error closing client connection: %s" % e)
+                self._display.vvvv("platform_api: error closing client connection: %s" % e)
 
         # --- response validation ---
         if self.get_option("expect_objects") or self.get_option("expect_one"):
