@@ -33,6 +33,11 @@ class TestControllerOrganizationTransform(unittest.TestCase):
         self.assertIsNone(api.max_hosts)
         self.assertIsNone(api.description)
 
+    def test_state_has_the_standard_present_default(self):
+        ansible = AnsibleControllerOrganization(name="Default")
+
+        self.assertEqual(ansible.state, "present")
+
     def test_description_is_preserved_in_update_payload(self):
         ansible = AnsibleControllerOrganization(name="Default", description="Managed by Controller")
 
