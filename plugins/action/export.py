@@ -280,7 +280,7 @@ class ActionModule(BaseResourceActionPlugin):
             name_cache = self._build_name_cache(manager, max_objects)
 
             assets = {}
-            non_restorable = {"tokens": [], "authenticators": [], "authenticator_maps": [], "credentials": []}
+            non_restorable = {"tokens": [], "authenticators": [], "authenticator_maps": [], "credentials": [], "notification_templates": []}
             for res_type, endpoint, id_field in EXPORTABLE_RESOURCES:
                 filter_values = validated_params.get(res_type)
 
@@ -299,9 +299,9 @@ class ActionModule(BaseResourceActionPlugin):
                     exported = self._export_role_assignments(manager, res_type, endpoint, names_filter, name_cache, max_objects)
                 else:
                     exported = self._export_resource_type(manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects)
-                if res_type in ("authenticators", "credentials"):
+                if res_type in ("authenticators", "credentials", "notification_templates"):
                     restorable = []
-                    field = "configuration" if res_type == "authenticators" else "inputs"
+                    field = {"authenticators": "configuration", "credentials": "inputs", "notification_templates": "notification_configuration"}[res_type]
                     for item in exported:
                         if self._contains_masked_secret(item.get(field)):
                             non_restorable[res_type].append(item)
@@ -460,7 +460,13 @@ class ActionModule(BaseResourceActionPlugin):
             if res_type == "role_user_assignments":
                 item["user"] = user.get("username", assignment.get("user"))
             else:
-                item["team"] = team.get("name", assignment.get("team"))
+                team_name = team.get("name", assignment.get("team"))
+                item["team"] = team_name
+                team_org_id = team.get("organization")
+                if isinstance(team_org_id, int):
+                    team_org = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {}).get(team_org_id)
+                    if team_org:
+                        item["team_organization"] = team_org
             object_id = assignment.get("object_id") or content.get("pk") or content.get("id")
             object_ansible_id = assignment.get("object_ansible_id")
             if object_type_path and (object_id is not None or object_ansible_id):
@@ -713,14 +719,20 @@ class ActionModule(BaseResourceActionPlugin):
                                 self._fetch_associations(manager, "group", r, group_data, name_cache, "api/controller/v2/groups/", max_objects)
                                 objects.append(group_data)
                             group_by_name = {group.get("name"): group for group in objects}
+                            depth_cache = {}
 
-                            def group_depth(group_name, visiting=()):
-                                if group_name in visiting:
+                            def group_depth(group_name, ancestors=frozenset()):
+                                if group_name in ancestors:
                                     return 0
-                                next_visiting = visiting + (group_name,)
+                                if group_name in depth_cache:
+                                    return depth_cache[group_name]
                                 group = group_by_name.get(group_name, {})
                                 children = group.get("children") or []
-                                return max((group_depth(child, next_visiting) for child in children), default=0) + 1
+                                path = ancestors | {group_name}
+                                result = max((group_depth(child, path) for child in children), default=0) + 1
+                                if group_name not in ancestors:
+                                    depth_cache[group_name] = result
+                                return result
 
                             # Create child groups before parents so their
                             # association lookups succeed on a clean target.

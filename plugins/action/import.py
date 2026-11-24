@@ -317,9 +317,10 @@ class ActionModule(BaseResourceActionPlugin):
         if org_name and obj_type not in CONTROLLER_NON_ORG_TYPES:
             org_id = cache.get("controller_orgs", {}).get(org_name)
             if org_id is not None:
-                # An organization-scoped miss must not resolve a same-named
-                # object from a different organization.
                 return scoped.get((obj_name, org_id))
+            # Org explicitly provided but not found on target — do not
+            # fall back to an unscoped match from a different org.
+            return None
 
         return unscoped.get(obj_name)
 
@@ -343,9 +344,18 @@ class ActionModule(BaseResourceActionPlugin):
         if export_key == "role_team_assignments":
             team = resolved.get("team")
             if isinstance(team, str):
-                team_id = cache.get("teams_unscoped", {}).get(team)
-                if team_id is not None:
-                    resolved["team"] = team_id
+                team_org = resolved.get("team_organization")
+                if team_org:
+                    org_id = cache.get("gateway_orgs", {}).get(team_org)
+                    if org_id is not None:
+                        team_id = cache.get("teams", {}).get((team, org_id))
+                        if team_id is not None:
+                            resolved["team"] = team_id
+                            resolved.pop("team_organization", None)
+                else:
+                    team_id = cache.get("teams_unscoped", {}).get(team)
+                    if team_id is not None:
+                        resolved["team"] = team_id
 
         obj_name = resolved.get("object_name")
         obj_type = resolved.get("object_type")

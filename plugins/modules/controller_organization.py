@@ -70,6 +70,7 @@ EXAMPLES = """
   ansible.platform.controller_organization:
     name: Engineering
     state: exists
+...
 """
 
 RETURN = """
@@ -90,4 +91,5 @@ controller_organization:
     name:
       description: Name of the Controller organization.
       type: str
+...
 """
