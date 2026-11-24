@@ -150,8 +150,6 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         metadata = getattr(ansible_instance, "metadata", None)
         if metadata is not None:
             api_data["metadata"] = metadata
-        elif operation == "update" and include_nulls:
-            api_data["metadata"] = None
 
         # Read-only from API (for building URL in execute)
         for field_name in ("id",):
@@ -167,7 +165,8 @@ class EdaCredentialInputSourceTransformMixin_v1(BaseTransformMixin):
         include_nulls = (
             getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
         )
-        return frozenset({"description", "metadata"}) if include_nulls else frozenset()
+        # EDA cannot clear metadata with a null PATCH value.
+        return frozenset({"description"}) if include_nulls else frozenset()
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:

@@ -259,6 +259,19 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses should override this with module-specific write-only fields.
     _WRITE_ONLY_FIELDS: frozenset = frozenset()
 
+    # For these fields, keep the declared defaults for create and enforced.
+    # A present update uses only values supplied by the caller.
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE: frozenset[str] = frozenset()
+
+    # Fields whose API transforms already clear an omitted value to an empty string.
+    _ENFORCED_EMPTY_STRING_FIELDS: frozenset[str] = frozenset()
+
+    # Fields whose API update hook clears an omitted value to null.
+    _ENFORCED_NULL_FIELDS: frozenset[str] = frozenset()
+
+    # Some resources expose updates and lookups but have immutable lifecycles.
+    _UNSUPPORTED_OPERATIONS: frozenset[str] = frozenset()
+
     # API-generated fields returned flat only (not in nested dict, not round-trip safe as input).
     # Subclasses override with module-specific fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
@@ -1403,12 +1416,22 @@ class BaseResourceActionPlugin(ActionBase):
                 )
                 return result
 
+            omitted_defaults = set()
+            text_reset_only = False
             # ---- present: idempotent create (find -> compare ->  update only if changed) -----
             if operation == "create" and state == "present":
                 try:
                     find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
-                        if not self._should_update(resource_data, find_result):
+                        if self._DEFAULT_FIELDS_TO_OMIT_ON_UPDATE:
+                            option_specs = argspec.get("argument_spec", {})
+                            for field in self._DEFAULT_FIELDS_TO_OMIT_ON_UPDATE:
+                                option_names = (field, *option_specs.get(field, {}).get("aliases", ()))
+                                explicitly_null = field in resource_data and resource_data[field] is None
+                                if not explicitly_null and all(self._task.args.get(name) is None for name in option_names):
+                                    omitted_defaults.add(field)
+                        desired_update = {key: value for key, value in resource_data.items() if key not in omitted_defaults}
+                        if not self._should_update(desired_update, find_result):
                             flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
                             # Nothing changed — return current state without touching API
                             result.update(
@@ -1481,8 +1504,14 @@ class BaseResourceActionPlugin(ActionBase):
                         if ro in find_result:
                             merged[ro] = find_result[ro]
                     merged.setdefault(self.LOOKUP_FIELD, lookup_val)
-                    # Short-circuit if the merged desired state matches current
-                    if not self._should_update(merged, find_result):
+                    # The comparison must account for the same omitted fields that
+                    # the API transform clears during an enforced update.
+                    fields_to_clear = {
+                        field for field in self._ENFORCED_EMPTY_STRING_FIELDS if merged.get(field) is None and find_result.get(field) not in (None, "")
+                    }
+                    needs_null_reset = any(merged.get(field) is None and find_result.get(field) is not None for field in self._ENFORCED_NULL_FIELDS)
+                    supplied_fields_changed = self._should_update(merged, find_result)
+                    if not fields_to_clear and not needs_null_reset and not supplied_fields_changed:
                         flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
                         result.update(
                             {
@@ -1494,17 +1523,30 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                    resource = self._build_resource({k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
+                    text_reset_only = not supplied_fields_changed and not needs_null_reset
+                    if text_reset_only:
+                        # Send the verified clears explicitly without triggering other
+                        # legacy null resets on a path that previously did no write.
+                        merged.update(dict.fromkeys(fields_to_clear, ""))
+                    from dataclasses import fields
+
+                    model_fields = {field.name for field in fields(resource) if field.init}
+                    resource = self._build_resource({key: value for key, value in merged.items() if key in model_fields})
                     operation = "update"
                 else:
                     operation = "create"
 
+            if operation in self._UNSUPPORTED_OPERATIONS:
+                raise AnsibleError(f"{self.MODULE_NAME} does not support the {operation} operation")
+
             # ---- check mode ------------------------------------------------
             ansible_data = self._build_ansible_data(resource, validated_params, operation)
+            for field in omitted_defaults:
+                ansible_data.pop(field, None)
             preserve_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False) and any(
                 value is None for key, value in ansible_data.items() if key != "id"
             )
-            if operation == "update" and (state == "enforced" or preserve_nulls):
+            if operation == "update" and ((state == "enforced" and not text_reset_only) or preserve_nulls):
                 ansible_data["_platform_enforced"] = True
 
             if self._task.check_mode and operation in ("create", "update", "delete"):

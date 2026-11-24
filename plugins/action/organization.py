@@ -45,6 +45,7 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "organization"
     MODEL_CLASS = AnsibleOrganization
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
     _WRITE_ONLY_FIELDS = frozenset(_CONTROLLER_SETTINGS) | frozenset(_CONTROLLER_ASSOCIATIONS)
 
     def _prepare_action(self, tmp: Optional[object] = None, task_vars: Optional[dict] = None) -> dict:

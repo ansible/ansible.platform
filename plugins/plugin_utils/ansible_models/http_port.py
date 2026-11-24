@@ -25,8 +25,8 @@ class AnsibleHttpPort:
     # Optional / CRUD fields
     new_name: Optional[str] = None
     number: Optional[int] = None
-    use_https: bool = False
-    is_api_port: bool = False
+    use_https: Optional[bool] = None
+    is_api_port: Optional[bool] = None
     state: str = "present"
 
     # Read-only fields (populated from API responses)

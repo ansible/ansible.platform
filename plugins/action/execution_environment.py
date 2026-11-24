@@ -14,3 +14,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ex
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "execution_environment"
     MODEL_CLASS = AnsibleExecutionEnvironment
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"pull"})

@@ -26,6 +26,7 @@ _SERVICE = "controller"
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_job_template"
     MODEL_CLASS = AnsibleWorkflowJobTemplate
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset(

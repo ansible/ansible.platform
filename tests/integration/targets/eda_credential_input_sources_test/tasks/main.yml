@@ -121,6 +121,20 @@
           - update_result.eda_credential_input_source.metadata.secret_path == "secret/updated"
           - update_result.eda_credential_input_source.metadata.secret_key == "new_password"
 
+    - name: Preview an enforced update with metadata omitted
+      ansible.platform.eda_credential_input_source: &enforced_input_source
+        input_field_name: password
+        target_credential: "{{ target_cred_name }}"
+        source_credential: "{{ source_cred_name }}"
+        organization_name: Default
+        state: enforced
+      check_mode: true
+      register: metadata_preview
+
+    - name: Apply an enforced update with metadata omitted
+      ansible.platform.eda_credential_input_source: *enforced_input_source
+      register: metadata_apply
+
     # <Exists — check presence> -------------------
     - name: Check credential input source exists
       ansible.platform.eda_credential_input_source:
@@ -137,6 +151,9 @@
           - exists_result is not changed
           - exists_result.exists | bool
           - exists_result.input_field_name == "password"
+          - metadata_preview is not changed
+          - metadata_apply is not changed
+          - exists_result.eda_credential_input_source.metadata == update_result.eda_credential_input_source.metadata
 
     # <Delete> -------------------
     - name: Check deleting the credential input source

@@ -12,3 +12,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.te
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "team"
     MODEL_CLASS = AnsibleTeam
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})

@@ -19,6 +19,9 @@ from ansible_collections.ansible.platform.plugins.action.host import ActionModul
 from ansible_collections.ansible.platform.plugins.action.role_team_assignment import ActionModule as RoleTeamAssignmentAction
 from ansible_collections.ansible.platform.plugins.action.role_user_assignment import ActionModule as RoleUserAssignmentAction
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.authenticator_user import AnsibleAuthenticatorUser
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.loader import DynamicClassLoader
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.registry import APIVersionRegistry
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 @dataclass
@@ -692,6 +695,174 @@ def test_nullable_reference_clear_is_idempotent_after_api_returns_null(module, f
     """Clear assigned relationships, including numeric-string IDs, but retain cleared values."""
     action = _make_resource_action(module)
     assert action._should_update({field: ""}, {field: current}) is changed
+
+
+@pytest.mark.parametrize(
+    "module,inputs,defaults,stored",
+    [
+        ("application", {"organization": "1"}, {"pkce_required": True}, {"pkce_required": False}),
+        ("authenticator", {}, {"remove_users": True, "configuration": {}}, {"remove_users": False, "configuration": {"KEY": "value"}}),
+        ("authenticator_map", {"authenticator": "2"}, {"revoke": False}, {"revoke": True}),
+        ("http_port", {"number": 8443}, {"use_https": False, "is_api_port": False}, {"use_https": True, "is_api_port": True}),
+        (
+            "route",
+            {},
+            {"is_service_https": False, "enable_gateway_auth": True, "enable_mtls": False},
+            {"is_service_https": True, "enable_gateway_auth": False, "enable_mtls": True},
+        ),
+        (
+            "service",
+            {},
+            {"is_service_https": False, "enable_gateway_auth": True, "enable_mtls": False},
+            {"is_service_https": True, "enable_gateway_auth": False, "enable_mtls": True},
+        ),
+        ("ui_plugin_route", {}, {"is_service_https": False}, {"is_service_https": True}),
+        ("execution_environment", {}, {"pull": "missing"}, {"pull": "always"}),
+        ("decision_environment", {"image_url": "image"}, {"pull_policy": "always"}, {"pull_policy": "missing"}),
+    ],
+)
+def test_present_defaults_apply_to_create_and_explicit_updates(module, inputs, defaults, stored):
+    """Verify omission through runtime validation, state comparison, and API request building."""
+    registry = APIVersionRegistry()
+    service = registry.get_service_for_module(module)
+    model, _, transform = DynamicClassLoader(registry).load_classes_for_module(module, registry.get_latest_version(service))
+    action = _make_resource_action(module, {"name": "Resource", **inputs})
+    manager = action._client
+    manager.lookup_resource_id.return_value = 2
+    manager.search_api.return_value = {}
+    current = {"id": 7, "name": "Resource", **inputs, **stored}
+
+    def run(args=None, *, check_mode=False, exists=True):
+        action._task.args = {"name": "Resource", **inputs, **(args or {})}
+        action._task.check_mode = check_mode
+        manager.execute.reset_mock()
+        manager.execute.side_effect = lambda operation, **_: (current if exists else {}) if operation == "find" else {"id": 7, "changed": True}
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run()
+        assert not result["failed"], result
+        return result["changed"], [call.kwargs for call in manager.execute.call_args_list if call.kwargs["operation"] != "find"]
+
+    def audited_request_fields(write):
+        operation = write["operation"]
+        context = {"operation": operation, "manager": manager}
+        api_data = transform.from_ansible_data(model(**write["ansible_data"]), context)
+        endpoint = next(endpoint for endpoint in transform.get_endpoint_operations().values() if endpoint.required_for == operation)
+        _, payload = build_endpoint_request(endpoint, api_data)
+        return {key: payload[key] for key in defaults if key in payload}
+
+    assert run() == (False, [])
+    assert run({"new_name": "Updated"}, check_mode=True) == (True, [])
+    changed, (write,) = run({"new_name": "Updated"})
+    assert changed and write["operation"] == "update"
+    assert audited_request_fields(write) == {}
+
+    changed, (write,) = run(defaults)
+    assert changed and write["operation"] == "update"
+    assert audited_request_fields(write) == defaults
+
+    changed, (write,) = run(exists=False)
+    assert changed and write["operation"] == "create"
+    assert audited_request_fields(write) == defaults
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("description,changed", [("existing", True), ("123", True), ("", False)])
+def test_team_enforced_detects_an_omitted_reset(description, changed, check_mode):
+    """Predict or apply a reset when the description is the only difference."""
+    action = _make_resource_action("team", {"name": "Team", "organization": "1", "state": "enforced"}, check_mode)
+    manager = action._client
+    manager.execute.side_effect = [{"id": 7, "name": "Team", "organization": "1", "description": description}, {"id": 7, "description": "", "changed": True}]
+    with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run()
+
+    assert not result["failed"], result
+    calls = [call.kwargs for call in manager.execute.call_args_list]
+    assert (result["failed"], result["changed"], [call["operation"] for call in calls]) == (
+        False,
+        changed,
+        ["find", "update"] if changed and not check_mode else ["find"],
+    )
+    if changed and not check_mode:
+        write = calls[-1]["ansible_data"]
+        registry = APIVersionRegistry()
+        model, _, transform = DynamicClassLoader(registry).load_classes_for_module("team", registry.get_latest_version("gateway"))
+        api_data = transform.from_ansible_data(model(**write), {"operation": "update"})
+        assert build_endpoint_request(transform.get_endpoint_operations()["update"], api_data) == (
+            "/api/gateway/v1/teams/7/",
+            {"name": "Team", "description": "", "organization": 1},
+        )
+
+
+def test_enforced_description_reset_leaves_omitted_associations_out_of_patch():
+    """A text-only reset must not turn omitted credential or organization into nulls."""
+    action = _make_resource_action("execution_environment", {"state": "enforced"})
+    manager = action._client
+    manager.execute.side_effect = [
+        {"id": 7, "name": "Resource", "description": "existing", "pull": "missing", "organization": 2, "credential": 3},
+        {"id": 7, "description": "", "changed": True},
+    ]
+    with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run()
+    assert not result["failed"], result
+
+    write = manager.execute.call_args.kwargs["ansible_data"]
+    api = _resource_transform("execution_environment")
+    api_data = api.from_ansible_data(action.MODEL_CLASS(**write), {"operation": "update"})
+    _, payload = build_endpoint_request(api.get_endpoint_operations()["update"], api_data)
+    assert payload == {"name": "Resource", "description": "", "pull": "missing"}
+
+
+@pytest.mark.parametrize(
+    "field,stored",
+    [("inventory", "Demo Inventory"), ("execution_environment", "Demo Environment")],
+)
+@pytest.mark.parametrize(
+    "state,check_mode,is_set,changed",
+    [("present", False, True, False), ("enforced", True, True, True), ("enforced", False, True, True), ("enforced", False, False, False)],
+)
+def test_workflow_node_resets_omitted_references_only_when_enforced(field, stored, state, check_mode, is_set, changed):
+    """Check mode and apply both detect drift in an omitted nullable reference."""
+    identity = {"identifier": "node", "workflow_job_template": "1", "unified_job_template": "2"}
+    action = _make_resource_action("workflow_job_template_node", {**identity, "state": state}, check_mode)
+    manager = action._client
+    current = {"id": 7, **identity, field: stored if is_set else None}
+    manager.execute.side_effect = [current, {**current, field: None, "changed": True}]
+    with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run()
+    assert not result["failed"], result
+    writes = [call.kwargs["ansible_data"] for call in manager.execute.call_args_list if call.kwargs["operation"] == "update"]
+    expected = [(True, None)] if changed and not check_mode else []
+    assert (result["changed"], [(data.get("_platform_enforced", False), data[field]) for data in writes]) == (changed, expected)
+
+
+@pytest.mark.parametrize("check_mode", [False, True])
+@pytest.mark.parametrize("state,existing,operation", [("present", False, "create"), ("enforced", False, "create"), ("absent", True, "delete")])
+def test_feature_flag_rejects_unsupported_lifecycle_operations(state, existing, operation, check_mode):
+    """A check-mode run must not predict a create or delete that Gateway cannot perform."""
+    action = _make_resource_action("feature_flag", {"name": "FEATURE_EXAMPLE_ENABLED", "value": "True", "state": state}, check_mode)
+    manager = action._client
+    manager.execute.return_value = {"id": 7, "name": "FEATURE_EXAMPLE_ENABLED"} if existing else {}
+    with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run()
+
+    assert result["failed"] and not result.get("changed"), result
+    assert result["msg"] == f"feature_flag does not support the {operation} operation"
+    assert [call.kwargs["operation"] for call in manager.execute.call_args_list] == ["find"]
+
+
+def test_user_exists_does_not_reconcile_platform_auditor():
+    """An existence check is read-only even when the task includes role inputs."""
+    action = _make_resource_action("user", {"username": "someone", "state": "exists", "is_platform_auditor": True})
+    manager = action._client
+    manager.execute.return_value = {"id": 7, "username": "someone"}
+    with (
+        patch.object(ActionBase, "run", return_value={}),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        patch.object(action, "_handle_platform_auditor") as reconcile_auditor,
+    ):
+        result = action.run()
+    assert (result["failed"], result["exists"], result["changed"]) == (False, True, False)
+    reconcile_auditor.assert_not_called()
 
 
 if __name__ == "__main__":

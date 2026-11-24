@@ -73,6 +73,7 @@
         body:
           name: "{{ ujt_name }}"
           organization: "{{ test_organization.json.id }}"
+          ask_inventory_on_launch: true
         status_code: [200, 201]
       register: test_ujt
       delegate_to: localhost
@@ -130,6 +131,59 @@
       ansible.builtin.assert:
         that:
           - idempotent_node is not changed
+
+    - name: Create inventory for the enforced reset
+      ansible.platform.inventory:
+        name: "Workflow Node Inventory {{ test_id }}"
+        organization: "{{ test_organization.json.id }}"
+      register: reset_inventory
+
+    - name: Assign the inventory to the workflow node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        inventory: "{{ reset_inventory.id }}"
+
+    - name: Predict resetting the omitted inventory
+      ansible.platform.workflow_job_template_node: &enforced_node
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        unified_job_template: "{{ ujt_name }}"
+        state: enforced
+      check_mode: true
+      register: reset_preview
+
+    - name: Read the workflow node after check mode
+      ansible.builtin.uri: &read_reset_node
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_template_nodes/{{ created_node.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+      delegate_to: localhost
+      register: node_after_preview
+
+    - name: Apply the omitted inventory reset
+      ansible.platform.workflow_job_template_node: *enforced_node
+      register: reset_apply
+
+    - name: Read the workflow node after the reset
+      ansible.builtin.uri: *read_reset_node
+      delegate_to: localhost
+      register: node_after_reset
+
+    - name: Repeat the omitted inventory reset
+      ansible.platform.workflow_job_template_node: *enforced_node
+      register: reset_repeat
+
+    - name: Verify the inventory reset behavior
+      ansible.builtin.assert:
+        that:
+          - reset_preview is changed
+          - node_after_preview.json.inventory | int == reset_inventory.id | int
+          - reset_apply is changed
+          - node_after_reset.json.inventory is none
+          - reset_repeat is not changed
 
     # -- FK change detection --------------------------------------------------
 
@@ -393,6 +447,13 @@
         - test_workflow.json is defined
         - test_workflow.json.id is defined
       delegate_to: localhost
+
+    - name: Delete inventory used for the enforced reset
+      ansible.platform.inventory:
+        name: "{{ reset_inventory.id }}"
+        organization: "{{ test_organization.json.id }}"
+        state: absent
+      when: reset_inventory.id is defined
 
     - name: Delete organization prerequisite
       ansible.builtin.uri:

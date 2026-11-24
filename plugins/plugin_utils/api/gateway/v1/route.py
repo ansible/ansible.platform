@@ -63,10 +63,16 @@ class RouteTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
         op = context.operation if isinstance(context, TransformContext) else context.get("operation")
+        if op == "create":
+            api_data.update({"is_service_https": False, "enable_gateway_auth": True, "enable_mtls": False})
 
         # Client-side validation: mTLS requires gateway auth to be disabled
         enable_gateway_auth = getattr(ansible_instance, "enable_gateway_auth", None)
+        if enable_gateway_auth is None:
+            enable_gateway_auth = api_data.get("enable_gateway_auth")
         enable_mtls = getattr(ansible_instance, "enable_mtls", None)
+        if enable_mtls is None:
+            enable_mtls = api_data.get("enable_mtls")
         if op in ("create", "update", "enforced") and enable_gateway_auth and enable_mtls:
             raise ValueError("Mutual TLS can only be enabled when gateway auth is disabled")
 
