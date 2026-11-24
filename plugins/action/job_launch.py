@@ -98,6 +98,7 @@ class ActionModule(BaseResourceActionPlugin):
         if not wait:
             self._fetch_launch_metadata(manager, result, job_url, params.get("name"))
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
+            result.update(self._extract_launch_metadata(launch_result))
             return result
 
         try:
@@ -119,6 +120,7 @@ class ActionModule(BaseResourceActionPlugin):
                     "status": final_status,
                 }
             )
+            result.update(self._extract_launch_metadata(wait_result))
             if failed:
                 result["job_data"] = wait_result
                 result["msg"] = f"Job {job_id} finished with status: {final_status}"
@@ -135,6 +137,7 @@ class ActionModule(BaseResourceActionPlugin):
                     "status": lr.get("status", "unknown"),
                 }
             )
+            result.update(self._extract_launch_metadata(lr))
         except Exception as exc:
             result.update(
                 {

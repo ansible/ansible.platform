@@ -312,5 +312,32 @@ class TestWaitCommand(unittest.TestCase):
         self.assertFalse(result["changed"])
 
 
+class TestLaunchMetadata(unittest.TestCase):
+    """Test audit metadata extraction from Controller responses."""
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_wait_returns_user_name_from_response(self, mock_prepare):
+        module = _make_module(args={"command_id": 42})
+        manager = MagicMock()
+        manager.wait_for_completion.return_value = {
+            "id": 42,
+            "status": "successful",
+            "elapsed": 5.0,
+            "started": "2026-01-01T00:00:00Z",
+            "finished": "2026-01-01T00:00:05Z",
+            "summary_fields": {"created_by": {"id": 1, "username": "admin"}},
+        }
+        mock_prepare.return_value = {
+            "result": {},
+            "validated_params": {"command_id": 42, "interval": 2.0, "timeout": None},
+            "manager": manager,
+        }
+
+        result = module.run(task_vars={})
+
+        self.assertEqual(result["user_name"], "admin")
+        self.assertNotIn("job_template_name", result)
+
+
 if __name__ == "__main__":
     unittest.main()

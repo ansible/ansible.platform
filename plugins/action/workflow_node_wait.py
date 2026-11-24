@@ -122,6 +122,7 @@ class ActionModule(BaseResourceActionPlugin):
                         "job_data": job_result,
                     }
                 )
+                result.update(self._extract_launch_metadata(job_result))
 
                 if status in FAILED_STATUSES:
                     result["failed"] = True

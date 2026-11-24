@@ -75,6 +75,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
+            result.update(self._extract_launch_metadata(launch_result))
             return result
 
         detail_operation = AdHocCommandTransformMixin_v2.get_endpoint_operations()["get"]
@@ -90,6 +91,7 @@ class ActionModule(BaseResourceActionPlugin):
             failed = final_status in ("failed", "error", "canceled")
 
             result.update({"changed": True, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
+            result.update(self._extract_launch_metadata(wait_result))
             if failed:
                 result["msg"] = "Ad hoc command %s finished with status: %s" % (job_id, final_status)
         except WaitTimeoutError as exc:

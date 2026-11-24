@@ -133,6 +133,8 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(launch_result))
+
             if not wait:
                 return result
 
@@ -157,6 +159,8 @@ class ActionModule(BaseResourceActionPlugin):
                 result["status"] = final_status
                 result[self.MODULE_NAME]["status"] = final_status
                 self._set_job_timing(result, job_result)
+
+                result.update(self._extract_launch_metadata(job_result))
 
                 if final_status in ("failed", "error", "canceled"):
                     result["failed"] = True

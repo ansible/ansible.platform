@@ -212,5 +212,10 @@ job_info:
     description: Full response from the bulk job launch API.
     returned: success
     type: dict
+user_name:
+    description: Username of the Controller user who launched the bulk job.
+    returned: when Controller provides the metadata
+    type: str
+    sample: admin
 ...
 """

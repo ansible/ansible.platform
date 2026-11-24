@@ -88,6 +88,8 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(launch_result))
+
             if not wait or not job_id:
                 return result
 
@@ -102,6 +104,8 @@ class ActionModule(BaseResourceActionPlugin):
                 final_status = job_result.get("status", "")
                 result["status"] = final_status
                 result["job_info"] = job_result
+
+                result.update(self._extract_launch_metadata(job_result))
 
                 if job_result.get("failed") or final_status in ("failed", "error", "canceled"):
                     result["failed"] = True

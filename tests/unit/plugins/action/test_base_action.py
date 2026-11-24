@@ -398,6 +398,64 @@ class TestActionPreparation(unittest.TestCase):
         self.assertEqual(result["msg"], "invalid documentation")
 
 
+class TestExtractLaunchMetadata(unittest.TestCase):
+    """Tests for _extract_launch_metadata helper."""
+
+    def test_extracts_user_name_and_job_template_name(self):
+        job_data = {
+            "id": 42,
+            "summary_fields": {
+                "created_by": {"id": 1, "username": "admin"},
+                "job_template": {"id": 10, "name": "Deploy App"},
+            },
+        }
+        result = BaseResourceActionPlugin._extract_launch_metadata(job_data)
+        assert result == {"user_name": "admin", "job_template_name": "Deploy App"}
+
+    def test_extracts_workflow_job_template_name(self):
+        job_data = {
+            "summary_fields": {
+                "created_by": {"id": 1, "username": "operator"},
+                "workflow_job_template": {"id": 5, "name": "Release Pipeline"},
+            },
+        }
+        result = BaseResourceActionPlugin._extract_launch_metadata(job_data)
+        assert result == {"user_name": "operator", "job_template_name": "Release Pipeline"}
+
+    def test_job_template_wins_over_workflow_job_template(self):
+        job_data = {
+            "summary_fields": {
+                "job_template": {"id": 1, "name": "JT"},
+                "workflow_job_template": {"id": 2, "name": "WJT"},
+            },
+        }
+        result = BaseResourceActionPlugin._extract_launch_metadata(job_data)
+        assert result["job_template_name"] == "JT"
+
+    def test_returns_only_user_name_when_no_template(self):
+        job_data = {
+            "summary_fields": {
+                "created_by": {"id": 1, "username": "sync-user"},
+                "inventory_source": {"id": 3, "name": "AWS"},
+            },
+        }
+        result = BaseResourceActionPlugin._extract_launch_metadata(job_data)
+        assert result == {"user_name": "sync-user"}
+
+    def test_returns_empty_dict_for_missing_summary_fields(self):
+        assert BaseResourceActionPlugin._extract_launch_metadata({"id": 1}) == {}
+
+    def test_returns_empty_dict_for_non_dict(self):
+        assert BaseResourceActionPlugin._extract_launch_metadata(None) == {}
+        assert BaseResourceActionPlugin._extract_launch_metadata("bad") == {}
+
+    def test_handles_empty_created_by(self):
+        job_data = {"summary_fields": {"created_by": {}, "job_template": {"id": 1, "name": "T"}}}
+        result = BaseResourceActionPlugin._extract_launch_metadata(job_data)
+        assert result == {"job_template_name": "T"}
+        assert "user_name" not in result
+
+
 class TestRoleTeamAssignmentMultiObject(unittest.TestCase):
     def _action(self, assignment_objects, manager):
         action = RoleTeamAssignmentAction.__new__(RoleTeamAssignmentAction)
