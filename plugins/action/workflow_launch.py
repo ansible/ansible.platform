@@ -43,7 +43,9 @@ class ActionModule(BaseResourceActionPlugin):
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
             manager = prepared["manager"]
-            resource_data = prepared["resource_data"] or prepared["validated_params"]
+            resource_data = dict(prepared["resource_data"] or prepared["validated_params"])
+            user_extra_vars = resource_data.get("extra_vars")
+            resource_data["extra_vars"] = self._inject_current_job_metadata(user_extra_vars, task_vars)
             launch = AnsibleWorkflowLaunch(**resource_data)
             if not launch.name:
                 raise AnsibleError("name is required")
@@ -91,7 +93,7 @@ class ActionModule(BaseResourceActionPlugin):
             for field_name, prompt_flag in prompt_checks.items():
                 if field_name in post_data and not wjt.get(prompt_flag):
                     param_errors.append(f"The field {field_name} was specified but the workflow job template does not allow it to be overridden")
-            if launch.extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
+            if user_extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
                 param_errors.append("The field extra_vars was specified but the workflow job template does not allow it to be overridden")
             if param_errors:
                 result["errors"] = param_errors

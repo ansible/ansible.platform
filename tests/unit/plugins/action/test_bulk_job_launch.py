@@ -144,6 +144,40 @@ class TestBulkJobLaunchActionModule:
         ]
         mock_manager.wait_for_completion.assert_not_called()
 
+    def test_current_job_metadata_is_injected_before_bulk_launch(self, action_module):
+        mock_manager = MagicMock()
+        mock_manager.execute.return_value = _launch_result()
+        params = {
+            "jobs": [{"unified_job_template": 7}],
+            "extra_vars": {"job_id": "user-value", "custom": True},
+            "wait": False,
+        }
+
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": params,
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(
+                task_vars={
+                    "controller_job_id": 7,
+                    "controller_job_template_name": "Parent template",
+                    "controller_user_name": "parent-user",
+                }
+            )
+
+        assert result["id"] == 42
+        assert mock_manager.execute.call_args.args[2]["extra_vars"] == {
+            "job_id": 7,
+            "custom": True,
+            "job_template_name": "Parent template",
+            "user_name": "parent-user",
+        }
+
     def test_launch_with_wait_success(self, action_module):
         mock_manager = MagicMock()
         mock_manager.execute.return_value = {

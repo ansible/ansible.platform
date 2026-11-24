@@ -225,6 +225,50 @@ class TestWorkflowLaunchActionModule:
         )
         mock_manager.wait_for_completion.assert_not_called()
 
+    def test_current_job_metadata_is_injected_before_launch(self, action_module):
+        mock_manager = MagicMock()
+        mock_manager.search_api.return_value = {
+            "results": [{"id": 10, "name": "Test WJT", "ask_variables_on_launch": True}]
+        }
+        mock_manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {
+                    "name": "Test WJT",
+                    "organization": None,
+                    "inventory": None,
+                    "wait": False,
+                    "interval": 2.0,
+                    "timeout": None,
+                    "limit": None,
+                    "tags": None,
+                    "skip_tags": None,
+                    "scm_branch": None,
+                    "extra_vars": {"job_id": "user-value", "custom": True},
+                },
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(
+                task_vars={
+                    "controller_job_id": 7,
+                    "controller_job_template_name": "Parent template",
+                    "controller_user_name": "parent-user",
+                }
+            )
+
+        assert result["id"] == 42
+        assert mock_manager.launch_resource.call_args.args[1]["extra_vars"] == {
+            "job_id": 7,
+            "custom": True,
+            "job_template_name": "Parent template",
+            "user_name": "parent-user",
+        }
+
     def test_missing_job_id_fails_after_launch(self, action_module):
         """A malformed launch response must not be reported as a successful wait."""
         mock_manager = MagicMock()
