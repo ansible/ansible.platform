@@ -55,6 +55,8 @@ spec:
       value: "{{pull_request_number}}"
     - name: oci-container-repo
       value: "quay.io/aap-ci/pipeline-artifacts/ansible/ansible-platform"
+    - name: aap-version
+      value: "2.7-next"
 
   workspaces:
     - name: workspace
