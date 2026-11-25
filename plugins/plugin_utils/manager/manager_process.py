@@ -69,7 +69,7 @@ def main():
         pass
 
     if len(sys.argv) < 10:
-        print(f"ERROR: Expected at least 9 args (optional 10th: idle_timeout), got {len(sys.argv) - 1}", file=sys.stderr)
+        print(f"ERROR: Expected at least 9 args, got {len(sys.argv) - 1}", file=sys.stderr)
         print(f"Args received: {_redact_argv()}", file=sys.stderr)
         sys.exit(1)
 
@@ -93,6 +93,8 @@ def main():
     gateway_validate_certs = sys.argv[8].lower() == "true"
     gateway_request_timeout = float(sys.argv[9])
     pm_idle_timeout_arg = float(sys.argv[10]) if len(sys.argv) > 10 else 3600.0
+    max_retries = int(sys.argv[11]) if len(sys.argv) > 11 and sys.argv[11] else None
+    retry_backoff_factor = int(sys.argv[12]) if len(sys.argv) > 12 and sys.argv[12] else None
     log_marker("Arguments parsed successfully")
 
     log_marker("Reading environment variables...")
@@ -182,6 +184,8 @@ def main():
                 verify_ssl=gateway_validate_certs,
                 request_timeout=gateway_request_timeout,
                 connection_mode="experimental",  # Persistent manager is always experimental mode
+                max_retries=max_retries,
+                retry_backoff_factor=retry_backoff_factor,
                 idle_timeout=pm_idle_timeout_arg,
             )
             with open(error_log, "a") as f:

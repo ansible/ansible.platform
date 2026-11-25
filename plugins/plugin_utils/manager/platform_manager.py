@@ -116,7 +116,7 @@ class PlatformService(BaseAPIClient):
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
 
-        self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
+        self.retry_config = RetryConfig.from_gateway_config(config)
 
     def record_activity(self) -> None:
         """Mark the service as recently active (RPC or HTTP traffic)."""
@@ -190,7 +190,12 @@ class PlatformService(BaseAPIClient):
             PlatformError: Classified platform error
         """
 
-        @retry_http_request(config=retry_config if retry_config is not None else self.retry_config)
+        if retry_config is None:
+            # Never extend transient retries to POSTs via the connection settings.
+            config = getattr(self, "config", None)
+            retry_config = RetryConfig(max_attempts=1) if method.upper() == "POST" and config is not None and config.has_retry_settings else self.retry_config
+
+        @retry_http_request(config=retry_config)
         def _execute_with_retry():
             response = self._request_with_auth_recovery(method, url, operation, resource, **kwargs)
 

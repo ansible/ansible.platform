@@ -6,7 +6,7 @@ This module is part of the platform SDK and is not Ansible-specific.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,13 @@ class GatewayConfig:
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
     idle_timeout: float = 3600.0
+    max_retries: Optional[int] = None
+    retry_backoff_factor: Optional[int] = None
 
     def __post_init__(self):
-        """Normalize URL after initialization."""
+        """Normalize the URL and validate optional retry settings."""
+        self.max_retries = _parse_retry_setting("aap_max_retries", self.max_retries, minimum=0)
+        self.retry_backoff_factor = _parse_retry_setting("aap_retry_backoff_factor", self.retry_backoff_factor, minimum=1)
         original_url = self.base_url
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
@@ -47,6 +51,11 @@ class GatewayConfig:
             self.request_timeout,
             self.idle_timeout,
         )
+
+    @property
+    def has_retry_settings(self) -> bool:
+        """Whether either transient retry setting was supplied."""
+        return self.max_retries is not None or self.retry_backoff_factor is not None
 
     @property
     def requests_verify(self) -> Union[bool, str]:
@@ -114,10 +123,39 @@ def _resolve_ca_bundle(
     return None
 
 
+def _parse_retry_setting(name: str, value: Any, minimum: int) -> Optional[int]:
+    """Parse a configured integer without coercing booleans or fractions."""
+    if value is None:
+        return None
+
+    message = f"{name} must be an integer greater than or equal to {minimum}"
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(message)
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ValueError(message) from error
+    if parsed < minimum:
+        raise ValueError(message)
+    return parsed
+
+
+def _resolve_retry_setting(name: str, task_args: Mapping[str, Any], host_vars: Mapping[str, Any], environment: Mapping[str, Any]) -> Any:
+    """Return the first supplied value in task, inventory, or environment scope."""
+    canonical_name = f"aap_{name}"
+    for scope in (task_args, host_vars):
+        for key in (canonical_name, name):
+            value = scope.get(key)
+            if value is not None:
+                return value
+    return environment.get(canonical_name.upper())
+
+
 def extract_gateway_config(
     task_args: Optional[Dict[str, Any]] = None,
     host_vars: Optional[Dict[str, Any]] = None,
     required: bool = True,
+    environment: Optional[Mapping[str, Any]] = None,
 ) -> GatewayConfig:
     """
     Extract gateway configuration from task arguments and host variables.
@@ -130,6 +168,7 @@ def extract_gateway_config(
         task_args: Task/command arguments (higher priority)
         host_vars: Host/inventory variables (lower priority)
         required: Whether gateway_url is required (default: True)
+        environment: Environment variables available for retry settings
 
     Returns:
         GatewayConfig object with normalized values
@@ -139,6 +178,7 @@ def extract_gateway_config(
     """
     task_args = task_args or {}
     host_vars = host_vars or {}
+    environment = environment or {}
 
     logger.debug(
         "Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)",
@@ -242,6 +282,8 @@ def extract_gateway_config(
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
         idle_timeout=(float(pm_idle_timeout) if pm_idle_timeout is not None else 3600.0),
+        max_retries=_resolve_retry_setting("max_retries", task_args, host_vars, environment),
+        retry_backoff_factor=_resolve_retry_setting("retry_backoff_factor", task_args, host_vars, environment),
     )
 
     logger.debug("GatewayConfig created successfully")
