@@ -42,10 +42,16 @@ options:
         elements: str
     user:
         description:
-            - The name or id of the user to assign to the object.
-            - This option is mutually exclusive with I(user_ansible_id).
+            - The username of the user to assign to the object.
+            - This option is mutually exclusive with I(user_id) and I(user_ansible_id).
         required: False
         type: str
+    user_id:
+        description:
+            - The numeric ID of the user to assign to the object.
+            - This option is mutually exclusive with I(user) and I(user_ansible_id).
+        required: False
+        type: int
     object_name:
         description:
             - Portable name of the target object. Requires C(object_type).
@@ -153,8 +159,11 @@ role_user_assignment:
       description: Name or ID of the role definition assigned.
       type: str
     user:
-      description: Username or ID of the user receiving the role.
+      description: Username of the user receiving the role.
       type: str
+    user_id:
+      description: Numeric ID of the user receiving the role.
+      type: int
     object_id:
       description: Primary key of the object this assignment applies to (if scoped).
       type: int

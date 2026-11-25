@@ -489,7 +489,48 @@ def test_build_role_assignment_cache_resolves_numeric_usernames(action):
 
     assert cache["users"] == {"123": 77}
     resolved = action._pre_resolve_role_assignment({"user": "123"}, cache, "role_user_assignments")
-    assert resolved["user"] == 77
+    assert resolved["user_id"] == 77
+    assert "user" not in resolved
+
+
+def test_build_role_assignment_cache_uses_credential_type_names(action):
+    manager = Mock()
+
+    def search_api(**kwargs):
+        endpoint = kwargs.get("endpoint")
+        if endpoint == "api/gateway/v1/role_definitions/":
+            return {"results": []}
+        if endpoint == "api/gateway/v1/organizations/":
+            return {"results": []}
+        if endpoint == "api/controller/v2/organizations/":
+            return {"results": [{"name": "Default", "id": 200}]}
+        if endpoint == "api/gateway/v1/teams/":
+            return {"results": []}
+        if endpoint == "api/controller/v2/credential_types/":
+            return {"results": [{"id": 3, "name": "Cloud"}]}
+        if endpoint == "/api/controller/v2/credentials/":
+            return {"results": [{"name": "Shared", "id": 9, "organization": 200, "credential_type": 3}]}
+        raise AssertionError("unexpected endpoint: %s" % endpoint)
+
+    manager.search_api.side_effect = search_api
+    action._display = Mock()
+
+    assets = {
+        "role_user_assignments": [
+            {
+                "object_name": "Shared",
+                "object_type": "awx.credential",
+                "organization": "Default",
+                "object_credential_type": "Cloud",
+            }
+        ]
+    }
+    cache = action._build_role_assignment_cache(manager, assets)
+
+    assert cache["awx.credential"] == {("Shared", 200, "Cloud"): 9}
+    resolved = action._pre_resolve_role_assignment(assets["role_user_assignments"][0], cache, "role_user_assignments")
+    assert resolved["object_id"] == 9
+    assert "object_name" not in resolved
 
 
 def test_build_role_assignment_cache_skips_eda_objects(action):
@@ -537,6 +578,7 @@ def test_import_skips_null_role_assignment_collections(action):
     assert result["failed"] is False
     assert result["results"]["role_user_assignments"]["ok"] == 1
     assert "role_team_assignments" not in result["results"]
+    action._import_single_resource.assert_called_once_with(manager, "role_user_assignment", {"user_id": 77}, {})
 
 
 def test_pre_resolve_role_user_assignment_replaces_names_with_ids():
@@ -560,7 +602,8 @@ def test_pre_resolve_role_user_assignment_replaces_names_with_ids():
     resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
 
     assert resolved["role_definition"] == 1
-    assert resolved["user"] == 10
+    assert resolved["user_id"] == 10
+    assert "user" not in resolved
     assert resolved["object_id"] == 50
     assert "object_name" not in resolved
     assert "object_type" not in resolved

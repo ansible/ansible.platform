@@ -15,6 +15,7 @@ class AnsibleRoleUserAssignment:
 
     # Target user (mutually exclusive)
     user: Optional[str] = None
+    user_id: Optional[int] = None
     user_ansible_id: Optional[str] = None
 
     # Object selector (mutually exclusive groups)

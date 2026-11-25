@@ -241,9 +241,9 @@ class ActionModule(BaseResourceActionPlugin):
         cache = {}
         max_objects = _ROLE_CACHE_MAX_OBJECTS
 
-        def _fetch_name_map(endpoint, id_field="name"):
+        def _fetch_name_map(endpoint, key_field="name", value_field="id"):
             response = manager.search_api(endpoint=endpoint, return_all=True, max_objects=max_objects)
-            return {r[id_field]: r["id"] for r in response.get("results", []) if isinstance(r, dict) and id_field in r and "id" in r}
+            return {r[key_field]: r[value_field] for r in response.get("results", []) if isinstance(r, dict) and key_field in r and value_field in r}
 
         self._display.vvv("Building role-assignment resolution cache...")
         cache["role_definitions"] = _fetch_name_map("api/gateway/v1/role_definitions/")
@@ -308,7 +308,9 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
             scoped = {}
             unscoped = {}
-            credential_types = _fetch_name_map("api/controller/v2/credential_types/") if obj_type == "awx.credential" else {}
+            credential_types = (
+                _fetch_name_map("api/controller/v2/credential_types/", key_field="id", value_field="name") if obj_type == "awx.credential" else {}
+            )
             for r in response.get("results", []):
                 if "name" not in r or "id" not in r:
                     continue
@@ -379,7 +381,8 @@ class ActionModule(BaseResourceActionPlugin):
             if isinstance(user, str):
                 user_id = cache.get("users", {}).get(user)
                 if user_id is not None:
-                    resolved["user"] = user_id
+                    resolved["user_id"] = user_id
+                    resolved.pop("user", None)
 
         if export_key == "role_team_assignments":
             team = resolved.get("team")

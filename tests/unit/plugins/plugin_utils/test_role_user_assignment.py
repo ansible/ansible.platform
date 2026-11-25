@@ -68,6 +68,16 @@ class TestRoleUserAssignmentIdentityResolution(unittest.TestCase):
         self.assertEqual(api_data.user, 77)
         manager.lookup_resource_id.assert_any_call("users", "username", "123", numeric_is_id=False)
 
+    def test_user_id_is_passed_directly_without_username_lookup(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 10
+        ansible = AnsibleRoleUserAssignment(role_definition="Organization Admin", user_id=77, object_id=30)
+
+        api_data = RoleUserAssignmentTransformMixin_v1.from_ansible_data(ansible, {"manager": manager})
+
+        self.assertEqual(api_data.user, 77)
+        manager.lookup_resource_id.assert_called_once_with("role_definitions", "name", "Organization Admin", numeric_is_id=True)
+
     def test_object_name_lookup_continues_only_after_not_found(self):
         ansible = AnsibleRoleUserAssignment(role_definition="Team Admin", user="alice", object_id="Ops Team")
         manager = MagicMock()

@@ -67,12 +67,16 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
             if resolved is not None:
                 api_data["role_definition"] = resolved
 
-        # Resolve user name -> id
-        user = getattr(ansible_instance, "user", None)
-        if user is not None:
-            resolved = _resolve_fk(manager, "users", "username", user, numeric_is_id=not isinstance(user, str))
-            if resolved is not None:
-                api_data["user"] = resolved
+        # Pass an already-resolved user ID directly; otherwise resolve the username.
+        user_id = getattr(ansible_instance, "user_id", None)
+        if user_id is not None:
+            api_data["user"] = user_id
+        else:
+            user = getattr(ansible_instance, "user", None)
+            if user is not None:
+                resolved = _resolve_fk(manager, "users", "username", user, numeric_is_id=not isinstance(user, str))
+                if resolved is not None:
+                    api_data["user"] = resolved
 
         user_ansible_id = getattr(ansible_instance, "user_ansible_id", None)
         if user_ansible_id is not None:
@@ -192,9 +196,13 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         role_def = getattr(ansible_data, "role_definition", None)
         if role_def is not None:
             params["role_definition"] = role_def
-        user = getattr(ansible_data, "user", None)
-        if user is not None:
-            params["user"] = user
+        user_id = getattr(ansible_data, "user_id", None)
+        if user_id is not None:
+            params["user"] = user_id
+        else:
+            user = getattr(ansible_data, "user", None)
+            if user is not None:
+                params["user"] = user
         user_ansible_id = getattr(ansible_data, "user_ansible_id", None)
         if user_ansible_id is not None:
             params["user_ansible_id"] = user_ansible_id
