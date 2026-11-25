@@ -1,0 +1,10 @@
+---
+bugfixes:
+  - >-
+    ``role_user_assignment`` and ``role_team_assignment`` - verify that a row
+    returned by the list-based find actually matches the requested role,
+    principal and object before treating it as an existing assignment. A
+    response the Gateway did not narrow on every filter was previously accepted
+    as a match, so the create was skipped and the task reported success while
+    the role was never assigned
+    (https://issues.redhat.com/browse/AAP-74089).

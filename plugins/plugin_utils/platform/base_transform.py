@@ -74,6 +74,57 @@ class BaseTransformMixin(ABC):
         """
         return list_result
 
+    @staticmethod
+    def _normalize_find_value(value: Any) -> Optional[str]:
+        """Reduce an API field to a comparable scalar string.
+
+        Foreign keys come back as a bare id, a nested object, or a URL-bearing
+        dict depending on the endpoint and serializer.
+        """
+        if isinstance(value, dict):
+            value = value.get("id")
+        return None if value is None else str(value)
+
+    @classmethod
+    def filter_results_by_expected_params(cls, list_result: dict, expected: Optional[Dict[str, Any]]) -> dict:
+        """Drop list rows that do not match every expected query parameter.
+
+        A list-based find asks the API to narrow on a composite key and then
+        selects the first row. When an endpoint does not honor one of those
+        filters, the untouched row that comes back is a different resource,
+        and selecting it silently reports an unrelated object as the match.
+        Re-checking the filters locally keeps that from happening. The
+        ID-based find path performs the equivalent validation already.
+
+        Args:
+            list_result: Raw list payload from the API.
+            expected: Query parameters the caller asked the API to filter on.
+
+        Returns:
+            dict: ``list_result`` narrowed to the rows that genuinely match.
+        """
+        if not expected:
+            return list_result
+
+        matches = []
+        for row in list_result.get("results") or []:
+            if not isinstance(row, dict):
+                continue
+            for key, wanted in expected.items():
+                actual = row.get(key)
+                if actual is None:
+                    actual = row.get("%s_id" % key)
+                if cls._normalize_find_value(actual) != cls._normalize_find_value(wanted):
+                    break
+            else:
+                matches.append(row)
+
+        filtered = dict(list_result)
+        filtered["results"] = matches
+        filtered["count"] = len(matches)
+        filtered["next"] = None
+        return filtered
+
     @classmethod
     def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
         """Select the resource returned by a list-based find operation.
