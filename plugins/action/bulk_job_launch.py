@@ -70,6 +70,7 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # The create operation applies the API transform and posts the launch payload.
+            model_params["jobs"] = self._explicit_list_items("jobs", jobs)
             launch_result = manager.execute("create", self.MODULE_NAME, model_params)
 
             job_id = launch_result.get("id")

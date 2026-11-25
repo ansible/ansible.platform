@@ -42,13 +42,6 @@ class ActionModule(BaseResourceActionPlugin):
         | set(_ASSOC_MAP)
     )
 
-    def _build_argspec_from_docs(self, documentation):
-        argspec = super()._build_argspec_from_docs(documentation)
-        wn = argspec["argument_spec"].get("workflow_nodes")
-        if wn and "suboptions" in wn:
-            wn["options"] = wn.pop("suboptions")
-        return argspec
-
     def _should_update(self, desired_data, current_data):
         desired = dict(desired_data)
         desired.pop("organization", None)
