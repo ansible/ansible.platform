@@ -335,10 +335,8 @@ class ActionModule(BaseResourceActionPlugin):
                     authenticator_name = item.get("authenticator")
                     if authenticator_name in masked_authenticators:
                         non_restorable["authenticator_maps"].append(item)
-                    elif authenticator_name in valid_authenticators or not (valid_authenticators or masked_authenticators):
+                    elif authenticator_name not in masked_authenticators:
                         kept_maps.append(item)
-                    else:
-                        non_restorable["authenticator_maps"].append(item)
                 if kept_maps:
                     assets["authenticator_maps"] = kept_maps
                 else:
@@ -501,6 +499,13 @@ class ActionModule(BaseResourceActionPlugin):
                             GATEWAY_ORGANIZATION_ENDPOINT if object_endpoint.startswith("api/gateway/") else CONTROLLER_ORGANIZATION_ENDPOINT
                         )
                         organization = name_cache.get(organization_cache_endpoint, {}).get(organization)
+                        if organization is None:
+                            if not hasattr(self, "_non_restorable_role_assignments"):
+                                self._non_restorable_role_assignments = []
+                            self._non_restorable_role_assignments.append(
+                                dict(item, object_id=object_id, non_restorable_reason="object organization could not be resolved to a portable name")
+                            )
+                            continue
                     if organization:
                         object_data["organization"] = organization
                     if res_type == "role_user_assignments":

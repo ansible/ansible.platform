@@ -286,7 +286,7 @@ class ActionModule(BaseResourceActionPlugin):
                     continue
                 if item.get("object_type"):
                     object_types.add(item["object_type"])
-                for ao in item.get("assignment_objects", []):
+                for ao in item.get("assignment_objects") or []:
                     if isinstance(ao, dict) and ao.get("type"):
                         object_types.add(ao["type"])
 
