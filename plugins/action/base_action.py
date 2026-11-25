@@ -552,7 +552,11 @@ class BaseResourceActionPlugin(ActionBase):
             return extra_vars
 
         merged = dict(extra_vars)
-        merged["controller_job_metadata"] = metadata
+        existing = merged.get("controller_job_metadata")
+        if isinstance(existing, dict):
+            merged["controller_job_metadata"] = {**metadata, **existing}
+        elif "controller_job_metadata" not in merged:
+            merged["controller_job_metadata"] = metadata
         return merged
 
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:

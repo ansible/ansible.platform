@@ -477,6 +477,39 @@ class TestCurrentJobMetadata(unittest.TestCase):
             "user_name": "tower-user",
         }
 
+    def test_preserves_existing_metadata_key_values(self):
+        result = BaseResourceActionPlugin._inject_current_job_metadata(
+            {
+                "job_id": "caller-job",
+                "controller_job_metadata": {"job_id": "custom-job", "custom": True},
+            },
+            {
+                "tower_job_id": 7,
+                "tower_job_template_name": "Tower template",
+                "tower_user_name": "tower-user",
+            },
+        )
+
+        assert result == {
+            "job_id": "caller-job",
+            "controller_job_metadata": {
+                "job_id": "custom-job",
+                "job_template_name": "Tower template",
+                "user_name": "tower-user",
+                "custom": True,
+            },
+        }
+
+    def test_preserves_non_dict_metadata_key(self):
+        extra_vars = {"controller_job_metadata": "caller-value"}
+
+        result = BaseResourceActionPlugin._inject_current_job_metadata(
+            extra_vars,
+            {"tower_job_id": 7},
+        )
+
+        assert result == extra_vars
+
     def test_falls_back_to_awx_variables(self):
         result = BaseResourceActionPlugin._current_job_metadata(
             {

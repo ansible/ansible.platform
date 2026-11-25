@@ -130,7 +130,7 @@ class TestBulkJobLaunchActionModule:
             mock_prepare.return_value = {
                 "result": {},
                 "validated_params": {
-                    "jobs": [{"unified_job_template": 7}],
+                    "jobs": [{"unified_job_template": 7}, {"unified_job_template": 8, "job_slice_count": 0, "extra_data": {}}],
                     "name": None,
                     "description": None,
                     "organization": None,

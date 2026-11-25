@@ -45,7 +45,6 @@ class ActionModule(BaseResourceActionPlugin):
             manager = prepared["manager"]
             resource_data = dict(prepared["resource_data"] or prepared["validated_params"])
             user_extra_vars = resource_data.get("extra_vars")
-            resource_data["extra_vars"] = self._inject_current_job_metadata(user_extra_vars, task_vars)
             launch = AnsibleWorkflowLaunch(**resource_data)
             if not launch.name:
                 raise AnsibleError("name is required")
@@ -98,6 +97,11 @@ class ActionModule(BaseResourceActionPlugin):
             if param_errors:
                 result["errors"] = param_errors
                 raise AnsibleError("Parameters specified which cannot be passed into workflow job template launch: " + "; ".join(param_errors))
+
+            if wjt.get("ask_variables_on_launch") and user_extra_vars:
+                launch.extra_vars = self._inject_current_job_metadata(user_extra_vars, task_vars)
+                launch_request = WorkflowLaunchTransformMixin_v2.from_ansible_data(launch, {"manager": manager})
+                launch_path, post_data = build_endpoint_request(launch_operation, launch_request, path_values={"id": wjt_id})
 
             if self._task.check_mode:
                 result.update(
