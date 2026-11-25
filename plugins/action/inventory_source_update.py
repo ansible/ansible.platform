@@ -67,6 +67,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
+            result.update(self._extract_launch_metadata(launch_result))
             return result
 
         try:
@@ -96,6 +97,7 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
             self._set_job_timing(result, wait_result)
+            result.update(self._extract_launch_metadata(wait_result))
             if failed:
                 result["msg"] = "Inventory source update %s finished with status: %s" % (job_id, final_status)
                 result["job_data"] = wait_result

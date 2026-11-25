@@ -73,6 +73,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
+            result.update(self._extract_launch_metadata(launch_result))
             return result
 
         try:
@@ -90,6 +91,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             result.update({"changed": changed, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
             self._set_job_timing(result, wait_result)
+            result.update(self._extract_launch_metadata(wait_result))
             if failed:
                 result["job_data"] = wait_result
                 result["msg"] = "Project update %s finished with status: %s" % (job_id, final_status)

@@ -217,5 +217,42 @@ class TestProjectUpdateAction(unittest.TestCase):
         self.assertIs(result["finished"], False)
 
 
+class TestLaunchMetadata(unittest.TestCase):
+    """Test audit metadata extraction from Controller responses."""
+
+    def _prepared(self, manager, **kwargs):
+        return {
+            "result": {},
+            "argspec": {"argument_spec": {}},
+            "validated_params": kwargs,
+            "resource_data": kwargs,
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_wait_result_includes_user_name(self, mock_prepare):
+        module = _make_module()
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 42
+        manager.search_api.return_value = {"scm_revision": "abc123"}
+        manager.launch_resource.return_value = {"id": 86, "url": "project_updates/86/"}
+        manager.wait_for_completion.return_value = {
+            "id": 86,
+            "status": "successful",
+            "scm_revision": "def456",
+            "elapsed": 5.0,
+            "started": "2026-01-01T00:00:00Z",
+            "finished": "2026-01-01T00:00:05Z",
+            "summary_fields": {"created_by": {"id": 1, "username": "admin"}},
+        }
+        mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=True, interval=2.0, timeout=None)
+
+        result = module.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertEqual(result["user_name"], "admin")
+
+
 if __name__ == "__main__":
     unittest.main()

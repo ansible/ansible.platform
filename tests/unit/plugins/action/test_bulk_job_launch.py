@@ -7,7 +7,6 @@ __metaclass__ = type
 from unittest.mock import MagicMock, patch
 
 import pytest
-from ansible.plugins.action import ActionBase
 
 
 def _launch_result():
@@ -126,23 +125,85 @@ class TestBulkJobLaunchActionModule:
         mock_manager = MagicMock()
         mock_manager.execute.return_value = _launch_result()
 
-        action_module._task.args = {
-            "jobs": ['{"unified_job_template": "7"}', {"unified_job_template": 8, "job_slice_count": 0, "extra_data": {}}],
-            "wait": False,
-        }
-        with patch.object(ActionBase, "run", return_value={}), patch.object(action_module, "_get_or_spawn_manager", return_value=(mock_manager, None)):
-            result = action_module.run(task_vars={})
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {
+                    "jobs": [{"unified_job_template": 7}, {"unified_job_template": 8, "job_slice_count": 0, "extra_data": {}}],
+                    "name": None,
+                    "description": None,
+                    "organization": None,
+                    "inventory": None,
+                    "limit": None,
+                    "scm_branch": None,
+                    "extra_vars": None,
+                    "job_tags": None,
+                    "skip_tags": None,
+                    "wait": False,
+                    "interval": 2.0,
+                    "timeout": None,
+                },
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(
+                task_vars={
+                    "tower_job_id": 7,
+                    "tower_job_template_name": "Parent template",
+                    "tower_user_name": "parent-user",
+                }
+            )
 
         assert result["changed"] is True
         assert result["id"] == 42
         assert result["status"] == "pending"
         assert result["job_info"]["type"] == "workflow_job"
+        assert mock_manager.execute.call_args.args[2]["extra_vars"] is None
         mock_manager.execute.assert_called_once()
         assert mock_manager.execute.call_args.args[2]["jobs"] == [
             {"unified_job_template": 7},
             {"unified_job_template": 8, "job_slice_count": 0, "extra_data": {}},
         ]
         mock_manager.wait_for_completion.assert_not_called()
+
+    def test_current_job_metadata_is_injected_before_bulk_launch(self, action_module):
+        mock_manager = MagicMock()
+        mock_manager.execute.return_value = _launch_result()
+        params = {
+            "jobs": [{"unified_job_template": 7}],
+            "extra_vars": {"job_id": "user-value", "custom": True},
+            "wait": False,
+        }
+
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": params,
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(
+                task_vars={
+                    "tower_job_id": 7,
+                    "tower_job_template_name": "Parent template",
+                    "tower_user_name": "parent-user",
+                }
+            )
+
+        assert result["id"] == 42
+        assert mock_manager.execute.call_args.args[2]["extra_vars"] == {
+            "job_id": "user-value",
+            "custom": True,
+            "controller_job_metadata": {
+                "job_id": 7,
+                "job_template_name": "Parent template",
+                "user_name": "parent-user",
+            },
+        }
 
     def test_launch_with_wait_success(self, action_module):
         mock_manager = MagicMock()

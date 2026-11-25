@@ -502,6 +502,60 @@ class BaseResourceActionPlugin(ActionBase):
         """
         return self.MODEL_CLASS(**resource_data)
 
+    @staticmethod
+    def _extract_launch_metadata(job_data: dict) -> dict:
+        """Extract audit metadata from a Controller job API response.
+
+        Args:
+            job_data: Controller job detail dict (must contain summary_fields).
+
+        Returns:
+            dict: Keys ``user_name`` and/or ``job_template_name`` when present.
+        """
+        if not isinstance(job_data, dict):
+            return {}
+        metadata: dict = {}
+        summary = job_data.get("summary_fields") or {}
+        created_by = summary.get("created_by") or {}
+        if isinstance(created_by, dict) and created_by.get("username"):
+            metadata["user_name"] = created_by["username"]
+        for key in ("job_template", "workflow_job_template"):
+            ref = summary.get(key) or {}
+            if isinstance(ref, dict) and ref.get("name"):
+                metadata["job_template_name"] = ref["name"]
+                break
+        return metadata
+
+    @staticmethod
+    def _current_job_metadata(task_vars: Optional[dict]) -> dict:
+        """Return current Controller job metadata exposed to the running playbook."""
+        if not isinstance(task_vars, dict):
+            return {}
+
+        metadata = {}
+        for field in ("job_id", "job_template_name", "user_name"):
+            for prefix in ("tower_", "awx_"):
+                value = task_vars.get(f"{prefix}{field}")
+                if value is not None:
+                    metadata[field] = value
+                    break
+        return metadata
+
+    @classmethod
+    def _inject_current_job_metadata(cls, extra_vars: Optional[dict], task_vars: Optional[dict]) -> Optional[dict]:
+        """Add current-job metadata under a dedicated key when launch variables exist."""
+        metadata = cls._current_job_metadata(task_vars)
+        if not metadata or not extra_vars:
+            return extra_vars
+
+        merged = dict(extra_vars)
+        existing = merged.get("controller_job_metadata")
+        if isinstance(existing, dict):
+            merged["controller_job_metadata"] = {**metadata, **existing}
+        elif "controller_job_metadata" not in merged:
+            merged["controller_job_metadata"] = metadata
+        return merged
+
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Prepare the common inputs needed by an action plugin.
 
