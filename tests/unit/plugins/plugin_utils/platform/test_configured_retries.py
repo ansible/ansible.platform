@@ -49,7 +49,7 @@ def client_and_transport(request, monkeypatch):
 )
 def test_configured_request_attempts(client_and_transport, monkeypatch, retries, status, method, attempts):
     config = GatewayConfig(base_url=URL, max_retries=retries, retry_backoff_factor=3)
-    client, transport, _ = client_and_transport(config, status)
+    client, transport, _mode = client_and_transport(config, status)
     sleep = Mock()
     monkeypatch.setattr("time.sleep", sleep)
     monkeypatch.setattr("random.uniform", lambda *_: 0)
@@ -72,7 +72,7 @@ def test_unconfigured_attempts_keep_transport_defaults(client_and_transport, mon
 
 
 def test_request_override_takes_precedence(client_and_transport):
-    client, transport, _ = client_and_transport(GatewayConfig(base_url=URL, max_retries=2), 503)
+    client, transport, _mode = client_and_transport(GatewayConfig(base_url=URL, max_retries=2), 503)
 
     with pytest.raises(APIError):
         client._make_request("GET", URL, retry_config=RetryConfig(max_attempts=1))
