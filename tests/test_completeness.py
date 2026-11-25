@@ -150,7 +150,11 @@ def test_meta_runtime():
 
     meta_data = yaml.load(meta_data_string, Loader=yaml.Loader)
 
-    all_action_groups = meta_data.get("action_groups", {})
+    # Group entries may include Ansible metadata such as extend_group. Only
+    # strings are module names, and inherited modules are declared in their
+    # source groups.
+    action_groups = meta_data.get("action_groups", {})
+    all_action_groups = {name: {entry for entry in entries if isinstance(entry, str)} for name, entries in action_groups.items()}
     all_grouped_modules = set()
     for group_modules in all_action_groups.values():
         all_grouped_modules.update(group_modules)
