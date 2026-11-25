@@ -328,14 +328,13 @@ class ActionModule(BaseResourceActionPlugin):
                 # A map is restorable when its authenticator is included in
                 # this export or intentionally supplied by the target. A
                 # masked authenticator makes its map non-restorable.
-                valid_authenticators = {item.get("name") for item in assets.get("authenticators", [])}
                 masked_authenticators = {item.get("name") for item in non_restorable.get("authenticators", [])}
                 kept_maps = []
                 for item in assets["authenticator_maps"]:
                     authenticator_name = item.get("authenticator")
                     if authenticator_name in masked_authenticators:
                         non_restorable["authenticator_maps"].append(item)
-                    elif authenticator_name not in masked_authenticators:
+                    else:
                         kept_maps.append(item)
                 if kept_maps:
                     assets["authenticator_maps"] = kept_maps
