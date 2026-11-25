@@ -116,6 +116,7 @@ no_api_parameter_ok = {
         "notification_templates_error",
         "notification_templates_approvals",
         "galaxy_credentials",
+        "opa_query_path",
     ],
     # These control polling behavior rather than the Controller launch payload.
     "bulk_job_launch": ["wait", "interval", "timeout"],

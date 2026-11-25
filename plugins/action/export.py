@@ -191,6 +191,7 @@ STRIP_FIELDS = frozenset(
 # required plugin discriminator accepted by the authenticator module.
 RESOURCE_FIELDS_TO_PRESERVE = {
     "authenticators": frozenset({"type"}),
+    "controller_organizations": frozenset({"opa_query_path"}),
 }
 
 # Association sub-endpoints to fetch per resource type.

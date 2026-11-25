@@ -51,6 +51,12 @@ options:
       - This is updated on the Controller organization associated with the Gateway organization.
     type: int
 
+  opa_query_path:
+    description:
+      - OPA policy query path evaluated before job execution in this organization.
+      - This is updated on the Controller organization associated with the Gateway organization.
+    type: str
+
   instance_groups:
     description:
       - Controller instance groups associated with this organization.
@@ -183,6 +189,9 @@ organization:
     max_hosts:
       description: Maximum number of Controller inventory hosts.
       type: int
+    opa_query_path:
+      description: OPA policy query path for the Controller organization.
+      type: str
     instance_groups:
       description: Controller instance groups associated with the organization.
       type: list

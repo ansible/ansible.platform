@@ -48,7 +48,7 @@ IMPORT_ORDER = [
     ("schedules", "schedule"),
     # Controller organization overlays depend on organizations, credentials,
     # and instance groups, so apply them after those base resources exist.
-    ("controller_organizations", "controller_organization"),
+    ("controller_organizations", "organization"),
     ("role_user_assignments", "role_user_assignment"),
     ("role_team_assignments", "role_team_assignment"),
 ]
