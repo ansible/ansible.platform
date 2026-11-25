@@ -43,6 +43,10 @@ options:
       - Instance-group names or IDs associated with the organization.
     type: list
     elements: str
+  opa_query_path:
+    description:
+      - OPA policy query path evaluated before job execution.
+    type: str
   new_name:
     description:
       - New Controller organization name.

@@ -17,6 +17,7 @@ class AnsibleControllerOrganization:
     description: Optional[str] = None
     default_environment: Optional[str] = None
     max_hosts: Optional[int] = None
+    opa_query_path: Optional[str] = None
     galaxy_credentials: Optional[List[str]] = None
     instance_groups: Optional[List[str]] = None
     state: str = "present"

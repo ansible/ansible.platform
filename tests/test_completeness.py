@@ -121,6 +121,7 @@ no_api_parameter_ok = {
     "bulk_job_launch": ["wait", "interval", "timeout"],
     # organization scopes receiving-team name lookup only (AAP-92255); not an API field
     "role_team_assignment": ["organization"],
+    "role_user_assignment": ["object_name", "object_type", "object_credential_type", "organization"],
 }
 
 # Modules that need to be developed. If the module is found on the file system it will auto-detect

@@ -32,6 +32,7 @@ class TestControllerOrganizationTransform(unittest.TestCase):
         self.assertIsNone(api.default_environment)
         self.assertIsNone(api.max_hosts)
         self.assertIsNone(api.description)
+        self.assertIsNone(api.opa_query_path)
 
     def test_association_fields_are_accepted_by_the_model(self):
         ansible = AnsibleControllerOrganization(
@@ -54,6 +55,13 @@ class TestControllerOrganizationTransform(unittest.TestCase):
         api = ControllerOrganizationTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
 
         self.assertEqual(api.description, "Managed by Controller")
+
+    def test_opa_query_path_is_preserved_in_update_payload(self):
+        ansible = AnsibleControllerOrganization(name="Default", opa_query_path="aap.policy.allow")
+
+        api = ControllerOrganizationTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
+
+        self.assertEqual(api.opa_query_path, "aap.policy.allow")
 
     def test_default_environment_name_resolves_in_controller(self):
         manager = MagicMock()
@@ -80,7 +88,7 @@ class TestControllerOrganizationTransform(unittest.TestCase):
 
         self.assertEqual(operations["update"].path, BASE_PATH + "/{id}/")
         self.assertEqual(operations["update"].method, "PATCH")
-        self.assertEqual(operations["update"].fields, ["description", "default_environment", "max_hosts"])
+        self.assertEqual(operations["update"].fields, ["description", "default_environment", "max_hosts", "opa_query_path"])
         self.assertNotIn("create", operations)
         self.assertNotIn("delete", operations)
 
