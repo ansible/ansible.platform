@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ansible.errors import AnsibleError
 from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.authenticator_user import ActionModule as AuthenticatorUserAction
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -641,6 +642,64 @@ def _make_resource_action(module, args=None, check_mode=False):
     action._display.verbosity = 0
     action._client = MagicMock()
     return action
+
+
+@pytest.mark.parametrize(
+    ("module", "common", "option", "valid", "invalid", "error_field"),
+    [
+        ("workflow_job_template", {"name": "Flow"}, "workflow_nodes", [{"identifier": "start"}], [{}], "identifier"),
+        ("workflow_job_template_node", {"identifier": "review", "workflow_job_template": "Flow"}, "approval_node", {"name": "Review"}, {}, "name"),
+        ("bulk_host_create", {"inventory": "Inventory"}, "hosts", [{"name": "host1"}], [{"enabled": False}], "name"),
+        ("bulk_job_launch", {}, "jobs", [{"unified_job_template": 42}], [{"unified_job_template": 42, "verbosity": 6}], "verbosity"),
+        (
+            "rulebook_activation",
+            {"name": "Activation"},
+            "event_streams",
+            [{"event_stream": "stream", "source_index": 0}],
+            [{"event_stream": "stream", "source_index": "invalid"}],
+            "source_index",
+        ),
+        (
+            "role_team_assignment",
+            {"team": "Admins", "role_definition": "Inventory Admin"},
+            "assignment_objects",
+            [{"object_id": 7}],
+            [{"object_id": "bad"}],
+            "object_id",
+        ),
+    ],
+)
+def test_real_module_validation_enforces_nested_options(module, common, option, valid, invalid, error_field):
+    action = _make_resource_action(module, {**common, option: valid})
+    action._validate_action_input()
+
+    action._task.args[option] = invalid
+    with pytest.raises(AnsibleError, match=f"Input validation failed:.*{error_field}"):
+        action._validate_action_input()
+
+
+def test_shared_argspec_validates_multiple_levels_without_restricting_free_form_data():
+    action = _make_resource_action("workflow_job_template")
+    docs = """
+options:
+  group:
+    type: dict
+    suboptions:
+      members:
+        type: list
+        elements: dict
+        suboptions:
+          port:
+            type: int
+            required: true
+          variables:
+            type: dict
+"""
+    spec = action._build_argspec_from_docs(docs)
+    variables = {"custom": {"arbitrary_input": False}}
+    inputs = {"group": {"members": [{"port": "443", "variables": variables}]}}
+
+    assert action._validate_data(inputs, spec, "input").validated_parameters == {"group": {"members": [{"port": 443, "variables": variables}]}}
 
 
 def _resource_transform(module):

@@ -7,6 +7,7 @@ __metaclass__ = type
 from unittest.mock import MagicMock, patch
 
 import pytest
+from ansible.plugins.action import ActionBase
 
 
 def _launch_result():
@@ -125,29 +126,11 @@ class TestBulkJobLaunchActionModule:
         mock_manager = MagicMock()
         mock_manager.execute.return_value = _launch_result()
 
-        with patch.object(action_module, "_prepare_action") as mock_prepare:
-            mock_prepare.return_value = {
-                "result": {},
-                "validated_params": {
-                    "jobs": [{"unified_job_template": 7}],
-                    "name": None,
-                    "description": None,
-                    "organization": None,
-                    "inventory": None,
-                    "limit": None,
-                    "scm_branch": None,
-                    "extra_vars": None,
-                    "job_tags": None,
-                    "skip_tags": None,
-                    "wait": False,
-                    "interval": 2.0,
-                    "timeout": None,
-                },
-                "resource_data": {},
-                "write_only_data": {},
-                "manager": mock_manager,
-                "argspec": {},
-            }
+        action_module._task.args = {
+            "jobs": ['{"unified_job_template": "7"}', {"unified_job_template": 8, "job_slice_count": 0, "extra_data": {}}],
+            "wait": False,
+        }
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action_module, "_get_or_spawn_manager", return_value=(mock_manager, None)):
             result = action_module.run(task_vars={})
 
         assert result["changed"] is True
@@ -155,6 +138,10 @@ class TestBulkJobLaunchActionModule:
         assert result["status"] == "pending"
         assert result["job_info"]["type"] == "workflow_job"
         mock_manager.execute.assert_called_once()
+        assert mock_manager.execute.call_args.args[2]["jobs"] == [
+            {"unified_job_template": 7},
+            {"unified_job_template": 8, "job_slice_count": 0, "extra_data": {}},
+        ]
         mock_manager.wait_for_completion.assert_not_called()
 
     def test_launch_with_wait_success(self, action_module):
