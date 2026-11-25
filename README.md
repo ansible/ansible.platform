@@ -122,6 +122,40 @@ Connecting to AAP requires specifying authentication variables (the ones prefixe
         aap_password: your-password
 ```
 
+Use `group/ansible.platform.aap` in `module_defaults` to set shared connection
+options once for Gateway, Controller, and EDA tasks.
+
+```yaml
+- name: Query AAP services
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.aap:
+      aap_hostname: "{{ gateway_url }}"
+      aap_token: "{{ gateway_token }}"
+  tasks:
+    - name: Check whether the Gateway administrator exists
+      ansible.platform.user:
+        username: admin
+        state: exists
+
+    - name: List running Controller jobs
+      ansible.platform.job_list:
+        status: running
+
+    - name: Check whether an EDA decision environment exists
+      ansible.platform.decision_environment:
+        name: Example Decision Environment
+        state: exists
+```
+
+The `group/ansible.platform.gateway`, `group/ansible.platform.controller`, and
+`group/ansible.platform.eda` groups still support defaults for their respective
+modules. When you set the same option in multiple groups in one
+`module_defaults` block, Ansible applies the later group. Place service-specific
+overrides after the common group and use the same option name throughout.
+The documented `gateway_*` aliases also work in `module_defaults`.
+
 ## Testing
 
 This collection is tested using integration tests which can be called via `ansible-test integration`. If you wish to run the tests manually, we recommend using the parent Makefile via `make collection-test`. It will require a running version of Ansible Automation Platform.

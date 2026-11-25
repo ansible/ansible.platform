@@ -104,15 +104,16 @@ gh run rerun <RUN_ID> --repo ansible/ansible.platform --failed
 
 ### 1. Collection Completeness Test
 
-**What it checks:** All modules extending `ansible.platform.auth` are registered in `meta/runtime.yml`
+**What it checks:** Modules extending `ansible.platform.auth` are registered in a service group in `meta/runtime.yml`.
 
-**Purpose:** Enables `module_defaults` for `group/ansible.platform.gateway`
+**Purpose:** Enables shared `module_defaults` through `group/ansible.platform.aap`
+and selective defaults through the service groups.
 
 **Test location:** `tests/test_completeness.py`
 
 **Common failure:**
 ```
-The following items should be added to meta/runtime.yml action-groups.gateway:
+The following items should be added to an action group in meta/runtime.yml:
     ad_hoc_command
 ```
 
@@ -120,11 +121,12 @@ The following items should be added to meta/runtime.yml action-groups.gateway:
 ```yaml
 # meta/runtime.yml
 action_groups:
-  gateway:
-    - ad_hoc_command  # ← ADD THIS
-    - application
-    - authenticator
+  controller:
+    - ad_hoc_command
 ```
+
+Add the module to its service group. The common `aap` group extends those
+groups and inherits the module automatically.
 
 **Why it matters:**
 - Ensures `module_defaults` work for all modules
