@@ -30,6 +30,7 @@ from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 import yaml
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+from ansible.module_utils.common.validation import check_type_dict, check_type_list
 from ansible.plugins.action import ActionBase
 from ansible.utils.display import Display
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
@@ -592,6 +593,15 @@ class BaseResourceActionPlugin(ActionBase):
             validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
         return ValidatedActionInput(argspec=argspec, validated_params=validated_params, warnings=warnings)
 
+    def _explicit_list_items(self, field: str, validated_items: list[dict]) -> list[dict]:
+        """Use validated values for the keys the caller supplied in each list item."""
+        supplied_items = check_type_list(self._task.args.get(field, validated_items))
+        explicit_items = []
+        for supplied_item, validated_item in zip(supplied_items, validated_items, strict=True):
+            supplied_fields = check_type_dict(supplied_item)
+            explicit_items.append({key: validated_item[key] for key in supplied_fields})
+        return explicit_items
+
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get connection client from the connection plugin.
@@ -900,6 +910,7 @@ class BaseResourceActionPlugin(ActionBase):
             if field in options:
                 options[field]["no_log"] = True
 
+        self._normalize_nested_options(options)
         argspec = {
             "argument_spec": options,
             "mutually_exclusive": doc_data.get("mutually_exclusive", []) + list(self._MUTUALLY_EXCLUSIVE),
@@ -909,6 +920,16 @@ class BaseResourceActionPlugin(ActionBase):
         }
 
         return argspec
+
+    @staticmethod
+    def _normalize_nested_options(options: dict) -> None:
+        """Translate documented suboptions into Ansible's runtime option spec."""
+        for spec in options.values():
+            suboptions = spec.pop("suboptions", None)
+            if suboptions is not None:
+                spec.setdefault("options", suboptions)
+            if spec.get("options"):
+                BaseResourceActionPlugin._normalize_nested_options(spec["options"])
 
     def _load_documentation_fragment(self, fragment_name: str) -> dict:
         """

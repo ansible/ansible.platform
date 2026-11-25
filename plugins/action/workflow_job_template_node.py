@@ -40,20 +40,6 @@ class ActionModule(BaseResourceActionPlugin):
     _MUTUALLY_EXCLUSIVE = [["unified_job_template", "approval_node"]]
     _NULLABLE_FK_FIELDS = frozenset({"execution_environment"})
 
-    def _build_argspec_from_docs(self, documentation: str) -> dict:
-        """Validate approval suboptions before any resource lookup or mutation.
-
-        Args:
-            documentation: Module DOCUMENTATION YAML.
-
-        Returns:
-            dict: Argument specification with approval dictionary validation enabled.
-        """
-        argspec = super()._build_argspec_from_docs(documentation)
-        approval = argspec["argument_spec"]["approval_node"]
-        approval["options"] = approval.pop("suboptions")
-        return argspec
-
     @staticmethod
     def _resolve_node_ids_in_workflow(manager, workflow_id, identifiers):
         """Resolve node identifiers to IDs scoped to a specific workflow.

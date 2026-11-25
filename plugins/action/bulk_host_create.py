@@ -33,7 +33,7 @@ class ActionModule(BaseResourceActionPlugin):
             validated_params = prepared["validated_params"]
             manager = prepared["manager"]
 
-            hosts = validated_params.get("hosts", [])
+            hosts = self._explicit_list_items("hosts", validated_params.get("hosts", []))
             inventory = validated_params.get("inventory")
             ansible_data = AnsibleBulkHostCreate(
                 hosts=hosts,
