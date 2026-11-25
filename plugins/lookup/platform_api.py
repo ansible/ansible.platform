@@ -132,6 +132,10 @@ EXAMPLES = """
   set_fact:
     controller_instances: "{{ query('ansible.platform.platform_api', 'instances') }}"
 
+- name: List Controller instances with up to two retries
+  set_fact:
+    controller_instances: "{{ query('ansible.platform.platform_api', 'instances', max_retries=2, retry_backoff_factor=3) }}"
+
 - name: List organizations in EDA via the gateway
   set_fact:
     eda_organizations: "{{ lookup('ansible.platform.platform_api', 'api/eda/v1/organizations', host='gateway.example.com',
@@ -211,13 +215,15 @@ class LookupModule(LookupBase):
             verify_ssl=bool(self.get_option("verify_ssl")),
             request_timeout=float(self.get_option("request_timeout") or 60),
             connection_mode="direct",
+            max_retries=self._to_plain(self.get_option("aap_max_retries")),
+            retry_backoff_factor=self._to_plain(self.get_option("aap_retry_backoff_factor")),
         )
 
     def run(self, terms, variables=None, **kwargs):
         if len(terms) != 1:
             raise AnsibleError("You must pass exactly one endpoint to query")
 
-        self.set_options(direct=kwargs)
+        self.set_options(var_options=variables, direct=kwargs)
 
         # Strip Ansible tagged types before any RPC/pickle boundary.
         # multiprocessing.managers serialises call arguments with pickle, and

@@ -16,8 +16,10 @@ __metaclass__ = type
 import base64
 import importlib
 import json
+import os
 import subprocess
 import time
+from collections import ChainMap
 from pathlib import Path
 from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
@@ -342,6 +344,10 @@ class BaseResourceActionPlugin(ActionBase):
             "aap_token",
             "aap_validate_certs",
             "aap_request_timeout",
+            "aap_max_retries",
+            "aap_retry_backoff_factor",
+            "max_retries",
+            "retry_backoff_factor",
             "aap_ca_bundle",
             "gateway_ca_bundle",
             "ansible_platform_ca_bundle",
@@ -622,9 +628,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Import platform SDK modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import extract_gateway_config
 
-        # Extract gateway configuration
-        gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, required=True)
-
         # Collect task-level environment vars (e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, proxy
         # settings) and inventory aap_ca_bundle BEFORE dispatching so they reach the manager
         # subprocess regardless of which connection mode is in use (local, http-direct, http-persistent).
@@ -639,6 +642,8 @@ class BaseResourceActionPlugin(ActionBase):
                     self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
         if task_env:
             self._display.vvvv(f"Forwarding {len(task_env)} task-level env var(s) to manager: {list(task_env.keys())}")
+
+        gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, environment=ChainMap(task_env, os.environ))
 
         # DISPATCHER: Delegate to connection plugin's get_client() when available;
         # otherwise support connection: local by spawning an ephemeral manager.

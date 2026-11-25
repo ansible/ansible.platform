@@ -8,9 +8,12 @@ transient failures with exponential backoff.
 import functools
 import logging
 import time
-from typing import Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar
 
 from .exceptions import PlatformError
+
+if TYPE_CHECKING:
+    from .config import GatewayConfig
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,15 @@ class RetryConfig:
         self.exponential_base = exponential_base
         self.jitter = jitter
 
+    @classmethod
+    def from_gateway_config(cls, config: "GatewayConfig") -> "RetryConfig":
+        """Translate connection settings into total attempts and exponential base."""
+        defaults = DEFAULT_RETRY_CONFIG
+        return cls(
+            max_attempts=defaults.max_attempts if config.max_retries is None else config.max_retries + 1,
+            exponential_base=defaults.exponential_base if config.retry_backoff_factor is None else config.retry_backoff_factor,
+        )
+
     def calculate_delay(self, attempt: int) -> float:
         """
         Calculate delay for retry attempt.
@@ -50,7 +62,10 @@ class RetryConfig:
             Delay in seconds
         """
         # Exponential backoff: delay = initial_delay * (base ^ attempt)
-        delay = self.initial_delay * (self.exponential_base**attempt)
+        try:
+            delay = self.initial_delay * (float(self.exponential_base) ** attempt if attempt else 1.0)
+        except OverflowError:
+            delay = self.max_delay
 
         # Cap at max_delay
         delay = min(delay, self.max_delay)

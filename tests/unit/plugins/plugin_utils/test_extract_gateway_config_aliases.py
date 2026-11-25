@@ -15,6 +15,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -240,6 +242,36 @@ class TestCaBundleAliases(unittest.TestCase):
             host_vars={},
         )
         self.assertFalse(cfg.requests_verify)
+
+
+@pytest.mark.parametrize(
+    ("task_args", "host_vars", "environment", "expected"),
+    [
+        ({"max_retries": 0}, {"aap_max_retries": 4}, {"AAP_MAX_RETRIES": "6"}, (0, None)),
+        ({"aap_retry_backoff_factor": 3, "retry_backoff_factor": 4}, {}, {"AAP_RETRY_BACKOFF_FACTOR": "5"}, (None, 3)),
+        ({}, {"retry_backoff_factor": 4}, {"AAP_MAX_RETRIES": "6", "AAP_RETRY_BACKOFF_FACTOR": "5"}, (6, 4)),
+        ({}, {}, {"AAP_RETRY_BACKOFF_FACTOR": "5"}, (None, 5)),
+        ({}, {}, {}, (None, None)),
+    ],
+)
+def test_retry_setting_precedence(task_args, host_vars, environment, expected):
+    config = extract_gateway_config(task_args={**_BASE, **task_args}, host_vars=host_vars, environment=environment)
+    assert (config.max_retries, config.retry_backoff_factor) == expected
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("aap_max_retries", -1),
+        ("aap_max_retries", "1.5"),
+        ("aap_max_retries", True),
+        ("aap_retry_backoff_factor", 0),
+        ("aap_retry_backoff_factor", -1),
+    ],
+)
+def test_invalid_retry_setting(option, value):
+    with pytest.raises(ValueError, match=option):
+        extract_gateway_config(task_args={**_BASE, option: value})
 
 
 if __name__ == "__main__":

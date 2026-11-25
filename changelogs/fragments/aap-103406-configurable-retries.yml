@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - Add configurable transient HTTP retries to modules and the platform_api lookup with AWX-compatible option aliases and environment variables.
+...

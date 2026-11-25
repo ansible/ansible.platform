@@ -29,6 +29,8 @@ ENV_NAMES = (
     "AAP_VALIDATE_CERTS",
     "GATEWAY_REQUEST_TIMEOUT",
     "AAP_REQUEST_TIMEOUT",
+    "AAP_MAX_RETRIES",
+    "AAP_RETRY_BACKOFF_FACTOR",
     "GATEWAY_HOST",
 )
 
@@ -52,14 +54,14 @@ def _stub_client(monkeypatch, search_api):
     return spawn
 
 
-def _run_lookup(monkeypatch, env, **kwargs):
+def _run_lookup(monkeypatch, env, variables=None, **kwargs):
     for env_name in ENV_NAMES:
         monkeypatch.delenv(env_name, raising=False)
     for env_name, value in env.items():
         monkeypatch.setenv(env_name, value)
 
     spawn = _stub_client(monkeypatch, Mock(return_value={"results": []}))
-    _new_lookup_plugin().run(["users"], **kwargs)
+    _new_lookup_plugin().run(["users"], variables=variables, **kwargs)
     return spawn.call_args.args[1]
 
 
@@ -165,6 +167,29 @@ def test_gateway_host_legacy_spelling_is_not_used(monkeypatch):
     config = _run_lookup(monkeypatch, {"GATEWAY_HOST": "https://old-name.example.com"})
 
     assert config.base_url == "https://localhost/"
+
+
+@pytest.mark.parametrize(
+    ("variables", "options", "expected"),
+    [
+        ({}, {}, (6, 5)),
+        ({"aap_max_retries": 4, "retry_backoff_factor": 3}, {"max_retries": 0}, (0, 3)),
+    ],
+)
+def test_retry_settings_reach_manager_config(monkeypatch, variables, options, expected):
+    config = _run_lookup(monkeypatch, {"AAP_MAX_RETRIES": "6", "AAP_RETRY_BACKOFF_FACTOR": "5"}, variables=variables, **options)
+
+    assert (config.max_retries, config.retry_backoff_factor) == expected
+
+
+@pytest.mark.parametrize("value", [False, -1])
+def test_lookup_rejects_invalid_retry_counts(monkeypatch, value):
+    spawn = _stub_client(monkeypatch, Mock())
+
+    with pytest.raises(AnsibleError, match="aap_max_retries must be an integer"):
+        _new_lookup_plugin().run(["users"], max_retries=value)
+
+    spawn.assert_not_called()
 
 
 @pytest.fixture

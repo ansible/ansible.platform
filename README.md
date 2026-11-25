@@ -24,6 +24,27 @@ Ensure you are on `ansible.platform >= 2.7.x` before upgrading. Connection varia
 
 See the [AAP 2.7 documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7) for the full upgrade guide.
 
+### HTTP retries when migrating from AWX
+
+`ansible.platform` accepts AWX's `max_retries` and `retry_backoff_factor` as
+aliases for `aap_max_retries` and `aap_retry_backoff_factor`. Set them in module
+arguments, lookup keyword arguments, inventory, or the `AAP_MAX_RETRIES` and
+`AAP_RETRY_BACKOFF_FACTOR` environment variables. Explicit arguments take
+precedence over inventory, followed by the environment.
+
+`aap_max_retries: 2` allows up to three attempts on an eligible transient
+failure, including the initial request. Use `0` for one attempt. Job launches
+and resource-creating POSTs are protected against transient retries. When
+either setting is supplied, the configured policy applies to eligible requests
+in both manager modes and the in-process HTTP fallback.
+
+If the count is unset, the manager allows up to three attempts. The in-process
+HTTP fallback makes one attempt when both settings are unset. The backoff
+factor defaults to `2` and must be at least `1`. Platform starts the delay at
+one second before jitter, raises the factor to the retry index starting at
+zero, caps the result at 60 seconds, and applies up to 10% jitter. AWX uses a
+wider jitter range and has no explicit delay cap.
+
 ## Description
 
 This collection provides Gateway, Controller, and EDA modules under the
