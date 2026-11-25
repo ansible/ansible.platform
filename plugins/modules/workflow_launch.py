@@ -75,6 +75,7 @@ options:
       - Extra variables to pass to the workflow job.
       - Only used if the workflow job template has I(ask_variables_on_launch) or
         I(survey_enabled) set.
+      - When extra variables are provided from a Controller job, current job metadata is added under C(controller_job_metadata).
     type: dict
 
   wait:

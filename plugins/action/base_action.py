@@ -546,16 +546,13 @@ class BaseResourceActionPlugin(ActionBase):
 
     @classmethod
     def _inject_current_job_metadata(cls, extra_vars: Optional[dict], task_vars: Optional[dict]) -> Optional[dict]:
-        """Add current-job metadata to launch variables, with authoritative values winning."""
+        """Add current-job metadata under a dedicated key when launch variables exist."""
         metadata = cls._current_job_metadata(task_vars)
-        if not metadata:
+        if not metadata or not extra_vars:
             return extra_vars
 
-        merged = dict(extra_vars or {})
-        overridden = [k for k in metadata if k in merged and merged[k] != metadata[k]]
-        if overridden:
-            display.warning("Controller job metadata overrode user-provided extra_vars key(s): %s" % ", ".join(sorted(overridden)))
-        merged.update(metadata)
+        merged = dict(extra_vars)
+        merged["controller_job_metadata"] = metadata
         return merged
 
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:

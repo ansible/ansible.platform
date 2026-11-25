@@ -1,5 +1,5 @@
 ---
 minor_changes:
-  - job_launch, workflow_launch, bulk_job_launch - automatically propagate the current Controller job metadata as ``job_id``, ``job_template_name``, and ``user_name`` in launch extra vars when available (https://issues.redhat.com/browse/AAPRFE-2341).
-  - job_launch, workflow_launch, bulk_job_launch, ad_hoc_command, inventory_source_update, project_update, ad_hoc_command_wait, job_wait, workflow_node_wait - return ``user_name`` (and ``job_template_name`` where applicable) in the module result for audit traceability (https://issues.redhat.com/browse/AAPRFE-2341).
+  - job_launch, workflow_launch, bulk_job_launch - automatically propagate the current Controller job metadata under ``controller_job_metadata`` when launch extra vars are provided (https://issues.redhat.com/browse/AAP-103410).
+  - job_launch, workflow_launch, bulk_job_launch, ad_hoc_command, inventory_source_update, project_update, ad_hoc_command_wait, job_wait, workflow_node_wait - return ``user_name`` (and ``job_template_name`` where applicable) in the module result for audit traceability (https://issues.redhat.com/browse/AAP-103410).
 ...

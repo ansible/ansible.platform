@@ -64,6 +64,7 @@ options:
     description:
       - Extra variables for the job template.
       - Requires ask_extra_vars or survey_enabled on the template.
+      - When extra variables are provided from a Controller job, current job metadata is added under C(controller_job_metadata).
     type: dict
 
   limit:

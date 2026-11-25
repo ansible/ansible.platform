@@ -210,7 +210,13 @@ class TestWorkflowLaunchActionModule:
                 "manager": mock_manager,
                 "argspec": {},
             }
-            result = action_module.run(task_vars={})
+            result = action_module.run(
+                task_vars={
+                    "tower_job_id": 7,
+                    "tower_job_template_name": "Parent template",
+                    "tower_user_name": "parent-user",
+                }
+            )
 
         assert result["changed"] is True
         assert result["id"] == 42
@@ -261,10 +267,13 @@ class TestWorkflowLaunchActionModule:
 
         assert result["id"] == 42
         assert mock_manager.launch_resource.call_args.args[1]["extra_vars"] == {
-            "job_id": 7,
+            "job_id": "user-value",
             "custom": True,
-            "job_template_name": "Parent template",
-            "user_name": "parent-user",
+            "controller_job_metadata": {
+                "job_id": 7,
+                "job_template_name": "Parent template",
+                "user_name": "parent-user",
+            },
         }
 
     def test_missing_job_id_fails_after_launch(self, action_module):

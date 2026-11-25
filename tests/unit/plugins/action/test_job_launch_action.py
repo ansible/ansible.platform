@@ -55,7 +55,13 @@ class TestJobLaunchAction(unittest.TestCase):
             "url": "/api/controller/v2/jobs/42/",
         }
 
-        result = action.run(task_vars={})
+        result = action.run(
+            task_vars={
+                "tower_job_id": 7,
+                "tower_job_template_name": "Parent template",
+                "tower_user_name": "parent-user",
+            }
+        )
 
         self.assertTrue(result["changed"])
         self.assertFalse(result.get("failed", False))
@@ -370,7 +376,7 @@ class TestJobLaunchAction(unittest.TestCase):
         payload = action._client.launch_resource.call_args.args[1]
         self.assertEqual(
             json.loads(payload["extra_vars"]),
-            {"job_id": 99, "custom": True, "job_template_name": "Parent", "user_name": "operator"},
+            {"job_id": "user-value", "custom": True, "controller_job_metadata": {"job_id": 99, "job_template_name": "Parent", "user_name": "operator"}},
         )
 
     def test_tags_joined_as_comma_separated(self):
