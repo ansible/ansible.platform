@@ -662,9 +662,7 @@ class ActionModule(BaseResourceActionPlugin):
                 if resource_type == "job_templates" and key == "inventory" and isinstance(value, int):
                     inventory_org_id = name_cache.get("api/controller/v2/inventories/:organizations", {}).get(value)
                     if inventory_org_id is not None:
-                        cleaned["inventory_organization"] = self._resolve_fk(
-                            "organization", inventory_org_id, name_cache, CONTROLLER_ORGANIZATION_ENDPOINT
-                        )
+                        cleaned["inventory_organization"] = self._resolve_fk("organization", inventory_org_id, name_cache, CONTROLLER_ORGANIZATION_ENDPOINT)
             elif key == "variables":
                 cleaned[key] = self._normalize_variables(value)
             else:
