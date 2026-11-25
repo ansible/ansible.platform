@@ -81,6 +81,20 @@ class TestCleanResource:
         result = clean_resource(resource, {"api/controller/v2/inventories/": {}})
         assert result["inventory"] == 999
 
+    def test_inventory_reference_preserves_owning_organization(self):
+        result = clean_resource(
+            {"name": "JT", "inventory": 42},
+            {
+                "api/controller/v2/inventories/": {42: "Hosts"},
+                "api/controller/v2/inventories/:organizations": {42: 7},
+                "api/controller/v2/organizations/": {7: "Inventory Org"},
+            },
+            "job_templates",
+        )
+
+        assert result["inventory"] == "Hosts"
+        assert result["inventory_organization"] == "Inventory Org"
+
     def test_preserves_non_fk_fields(self):
         resource = {
             "name": "Test",

@@ -65,7 +65,7 @@ no_endpoint_for_module = [
 # Common across controller modules: "organization" is a lookup helper, "survey_spec"
 # is set via a separate endpoint. Pre-populated so migrators don't need to investigate.
 controller_no_api_parameter_ok = {
-    "job_template": ["organization", "survey_spec"],
+    "job_template": ["organization", "inventory_organization", "survey_spec"],
     "workflow_job_template": ["organization", "survey_spec"],
     "host": [],
     # Gateway team IDs are resolved to Controller team IDs before the request.

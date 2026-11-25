@@ -13,7 +13,7 @@ class ActionModule(BaseResourceActionPlugin):
         if result.get("failed"):
             return result
         state = self._task.args.get("state", "present")
-        if state in ("absent", "deleted", "exists"):
+        if state == "exists":
             return result
         resource_id = result.get("id") or (result.get(self.MODULE_NAME) or {}).get("id")
         if not resource_id:

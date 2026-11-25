@@ -23,6 +23,7 @@ class AnsibleJobTemplate:
     description: Optional[str] = None
     job_type: Optional[str] = None
     inventory: Optional[str] = None
+    inventory_organization: Optional[str] = None
     organization: Optional[str] = None
     project: Optional[str] = None
     playbook: Optional[str] = None
