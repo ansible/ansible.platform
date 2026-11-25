@@ -17,6 +17,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import time
+import traceback as _tb
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -136,8 +137,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result["elapsed"] = last.get("elapsed", 0.0)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

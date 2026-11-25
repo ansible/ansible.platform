@@ -18,6 +18,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import time
+import traceback as _tb
 
 from ansible_collections.ansible.platform.plugins.action.base_action import (
     BaseResourceActionPlugin,
@@ -142,8 +143,6 @@ class ActionModule(BaseResourceActionPlugin):
             result["msg"] = "Workflow approval node '%s' has been %s" % (name, action_past)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

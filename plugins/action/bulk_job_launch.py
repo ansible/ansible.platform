@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from dataclasses import fields
 from typing import Optional
 
@@ -116,8 +117,6 @@ class ActionModule(BaseResourceActionPlugin):
                     result["job_info"] = last
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

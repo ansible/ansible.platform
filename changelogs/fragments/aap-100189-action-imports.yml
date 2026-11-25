@@ -1,0 +1,4 @@
+---
+trivial:
+  - Move standard-library imports to module scope in action plugins.
+...
