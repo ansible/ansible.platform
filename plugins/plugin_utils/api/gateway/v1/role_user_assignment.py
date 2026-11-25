@@ -11,15 +11,15 @@ from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
 
-def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
+def _resolve_fk(manager, endpoint: str, lookup_field: str, value, numeric_is_id: bool = True) -> Optional[int]:
     """Resolve a name or id to an integer ID, failing if a supplied name is missing."""
     if value is None:
         return None
-    if str(value).isdigit():
+    if numeric_is_id and str(value).isdigit():
         return int(value)
     if manager is None:
         raise ValueError("Cannot resolve %s %r to an ID without an API client" % (lookup_field, value))
-    result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
+    result = manager.lookup_resource_id(endpoint, lookup_field, str(value), numeric_is_id=numeric_is_id)
     if result is None:
         raise ValueError("Resource '%s' %s=%s not found" % (endpoint, lookup_field, value))
     return result
@@ -70,7 +70,7 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         # Resolve user name -> id
         user = getattr(ansible_instance, "user", None)
         if user is not None:
-            resolved = _resolve_fk(manager, "users", "username", user)
+            resolved = _resolve_fk(manager, "users", "username", user, numeric_is_id=not isinstance(user, str))
             if resolved is not None:
                 api_data["user"] = resolved
 

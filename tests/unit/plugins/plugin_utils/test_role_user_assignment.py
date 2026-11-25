@@ -46,7 +46,7 @@ class TestRoleUserAssignmentIdentityResolution(unittest.TestCase):
             with self.subTest(client=client_mode):
                 client = _client(client_mode)
 
-                def lookup_resource(endpoint, lookup_field, value):
+                def lookup_resource(endpoint, lookup_field, value, **kwargs):
                     if endpoint == "role_definitions":
                         return 10
                     raise ValueError("Resource 'users' with username=missing-user not found")
@@ -57,6 +57,16 @@ class TestRoleUserAssignmentIdentityResolution(unittest.TestCase):
                     client._find_resource(ansible, RoleUserAssignmentTransformMixin_v1, _context(client))
 
                 client._make_request.assert_not_called()
+
+    def test_numeric_username_is_looked_up_as_a_name(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.side_effect = [10, 77]
+        ansible = AnsibleRoleUserAssignment(role_definition="Organization Admin", user="123", object_id=30)
+
+        api_data = RoleUserAssignmentTransformMixin_v1.from_ansible_data(ansible, {"manager": manager})
+
+        self.assertEqual(api_data.user, 77)
+        manager.lookup_resource_id.assert_any_call("users", "username", "123", numeric_is_id=False)
 
     def test_object_name_lookup_continues_only_after_not_found(self):
         ansible = AnsibleRoleUserAssignment(role_definition="Team Admin", user="alice", object_id="Ops Team")

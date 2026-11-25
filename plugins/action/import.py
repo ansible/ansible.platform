@@ -134,6 +134,9 @@ class ActionModule(BaseResourceActionPlugin):
                     continue
 
                 resource_list = assets[export_key]
+                if resource_list is None and export_key in _ROLE_ASSIGNMENT_TYPES:
+                    continue
+
                 type_result = {"changed": 0, "ok": 0, "failed": 0}
                 results_summary[export_key] = type_result
 
@@ -246,10 +249,10 @@ class ActionModule(BaseResourceActionPlugin):
         cache["role_definitions"] = _fetch_name_map("api/gateway/v1/role_definitions/")
         user_names = set()
         for key in _ROLE_ASSIGNMENT_TYPES:
-            for item in assets.get(key, []):
+            for item in assets.get(key) or []:
                 if isinstance(item, dict):
                     user = item.get("user")
-                    if isinstance(user, str) and not user.isdigit():
+                    if isinstance(user, str):
                         user_names.add(user)
         cache["users"] = {}
         for username in user_names:
@@ -281,7 +284,7 @@ class ActionModule(BaseResourceActionPlugin):
 
         object_types = set()
         for key in _ROLE_ASSIGNMENT_TYPES:
-            for item in assets.get(key, []):
+            for item in assets.get(key) or []:
                 if not isinstance(item, dict):
                     continue
                 if item.get("object_type"):
@@ -374,12 +377,9 @@ class ActionModule(BaseResourceActionPlugin):
         if export_key == "role_user_assignments":
             user = resolved.get("user")
             if isinstance(user, str):
-                if user.isdigit():
-                    resolved["user"] = int(user)
-                else:
-                    user_id = cache.get("users", {}).get(user)
-                    if user_id is not None:
-                        resolved["user"] = user_id
+                user_id = cache.get("users", {}).get(user)
+                if user_id is not None:
+                    resolved["user"] = user_id
 
         if export_key == "role_team_assignments":
             team = resolved.get("team")

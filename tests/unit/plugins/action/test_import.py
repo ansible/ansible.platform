@@ -464,6 +464,34 @@ def test_build_role_assignment_cache_fetches_target_resources():
     assert cache["awx.project"] == {("Demo Project", 200): 300}
 
 
+def test_build_role_assignment_cache_resolves_numeric_usernames(action):
+    manager = Mock()
+
+    def search_api(**kwargs):
+        endpoint = kwargs.get("endpoint")
+        query = kwargs.get("query_params", {})
+        if endpoint == "api/gateway/v1/role_definitions/":
+            return {"results": []}
+        if endpoint == "api/gateway/v1/users/":
+            assert query == {"username": "123"}
+            return {"results": [{"username": "123", "id": 77}]}
+        if endpoint in ("api/gateway/v1/organizations/", "api/controller/v2/organizations/", "api/gateway/v1/teams/"):
+            return {"results": []}
+        raise AssertionError("unexpected endpoint: %s" % endpoint)
+
+    manager.search_api.side_effect = search_api
+    action._display = Mock()
+
+    cache = action._build_role_assignment_cache(
+        manager,
+        {"role_user_assignments": [{"user": "123"}], "role_team_assignments": None},
+    )
+
+    assert cache["users"] == {"123": 77}
+    resolved = action._pre_resolve_role_assignment({"user": "123"}, cache, "role_user_assignments")
+    assert resolved["user"] == 77
+
+
 def test_build_role_assignment_cache_skips_eda_objects(action):
     manager = Mock()
     manager.search_api.side_effect = [
@@ -482,6 +510,33 @@ def test_build_role_assignment_cache_skips_eda_objects(action):
 
     called_endpoints = [call.kwargs.get("endpoint") for call in manager.search_api.call_args_list]
     assert all(not (endpoint or "").startswith("/api/eda/") for endpoint in called_endpoints)
+
+
+def test_import_skips_null_role_assignment_collections(action):
+    manager = Mock()
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {
+                "assets": {
+                    "role_user_assignments": [{"user": "123"}],
+                    "role_team_assignments": None,
+                }
+            },
+            "manager": manager,
+        }
+    )
+    action._build_role_assignment_cache = Mock(return_value={"users": {"123": 77}})
+    action._import_single_resource = Mock(return_value=False)
+    action._import_inventory_children = Mock(return_value=({"changed": 0, "ok": 0, "failed": 0}, {"changed": 0, "ok": 0, "failed": 0}))
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is False
+    assert result["results"]["role_user_assignments"]["ok"] == 1
+    assert "role_team_assignments" not in result["results"]
 
 
 def test_pre_resolve_role_user_assignment_replaces_names_with_ids():
