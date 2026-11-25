@@ -20,6 +20,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback
 from dataclasses import asdict
 from dataclasses import fields as dataclass_fields
 from typing import Any, Dict, Optional
@@ -119,8 +120,6 @@ class ActionModule(BaseResourceActionPlugin):
             return self._handle_create_or_update(manager, params, state, name, new_name, existing, result)
 
         except Exception as e:
-            import traceback
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
             result["msg"] = str(e)

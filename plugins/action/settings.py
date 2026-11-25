@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -46,8 +47,6 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
         except Exception as e:
-            import traceback
-
             self._display.vvv("Error in settings action plugin: %s" % e)
             result["failed"] = True
             result["msg"] = str(e)

@@ -14,12 +14,16 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import base64
-import importlib
+import importlib.util
 import json
 import os
 import subprocess
+import sys
+import tempfile
 import time
+import traceback
 from collections import ChainMap
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
@@ -84,11 +88,6 @@ def _manager_process_entry(
     This is a module-level function so it can be pickled for multiprocessing.spawn.
     Uses the same pattern as python-multiproc repository.
     """
-    import base64
-    import sys
-    import traceback
-    from pathlib import Path
-
     # Redirect stderr to a file for debugging
     error_log_path = Path(socket_dir) / f"manager_error_{inventory_hostname}.log"
     stderr_log = Path(socket_dir) / f"manager_stderr_{inventory_hostname}.log"
@@ -477,8 +476,6 @@ class BaseResourceActionPlugin(ActionBase):
                 data["id"] = resource.id
             return data
 
-        from dataclasses import asdict
-
         return asdict(resource)
 
     def _pre_execute_hook(self, ansible_data: dict, write_only_data: dict, validated_params: dict, operation: str) -> None:
@@ -675,8 +672,6 @@ class BaseResourceActionPlugin(ActionBase):
                 client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config, task_env=task_env or None)
                 return client, facts_to_set
         except Exception as e:
-            import traceback
-
             tb = traceback.format_exc()
             self._display.error(f"Failed in _get_or_spawn_manager dispatcher: {type(e).__name__}: {e}")
             self._display.error(f"Traceback: {tb}")
@@ -710,8 +705,6 @@ class BaseResourceActionPlugin(ActionBase):
             facts_dict contains socket/authkey/gateway_url facts if a new manager
             was spawned, or None if reusing an existing manager.
         """
-        import sys
-
         self._display.vvvv("Using experimental connection mode (Persistent Manager)")
 
         inventory_hostname = task_vars.get("inventory_hostname", "localhost")
@@ -734,8 +727,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Determine the expected socket path for the current credentials and TLS policy.
         # The socket filename encodes an identity hash, so a credential or trust-policy
         # change automatically causes a new manager to be spawned.
-        import tempfile
-
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
         expected_conn_info = ProcessManager.generate_connection_info(
             identifier=inventory_hostname,
@@ -802,8 +793,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Pass os.getppid() as owner_pid — action plugins run in forked workers,
         # so os.getppid() is the main ansible-playbook process PID.  The manager's
         # watchdog thread watches that PID and self-terminates when it exits.
-        import os as _os_spawn
-
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -812,7 +801,7 @@ class BaseResourceActionPlugin(ActionBase):
             gateway_config=gateway_config,
             authkey_b64=authkey_b64,
             sys_path=parent_sys_path,
-            owner_pid=_os_spawn.getppid(),
+            owner_pid=os.getppid(),
             task_env=_persistent_task_env or None,
         )
 
@@ -970,8 +959,6 @@ class BaseResourceActionPlugin(ActionBase):
             fragment_path = Path(__file__).parent.parent / "doc_fragments" / f"{fragment}.py"
 
             if fragment_path.exists():
-                import importlib.util
-
                 spec = importlib.util.spec_from_file_location(f"doc_fragment_{fragment}", fragment_path)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
@@ -1111,8 +1098,6 @@ class BaseResourceActionPlugin(ActionBase):
                 self._display.vvvv(f"Loaded manager meta from {meta_path}: pid={meta.get('pid')}")
                 # Build a minimal process_info so the shutdown logic below can proceed.
                 # We don't have the Popen object, so we wrap the raw PID instead.
-                import os as _os
-
                 pid = meta.get("pid")
                 if pid:
 
@@ -1124,7 +1109,7 @@ class BaseResourceActionPlugin(ActionBase):
 
                         def poll(self):
                             try:
-                                _os.kill(self._pid, 0)
+                                os.kill(self._pid, 0)
                                 return None  # still running
                             except ProcessLookupError:
                                 return 0
@@ -1133,24 +1118,22 @@ class BaseResourceActionPlugin(ActionBase):
 
                         def terminate(self):
                             try:
-                                _os.kill(self._pid, 15)  # SIGTERM
+                                os.kill(self._pid, 15)  # SIGTERM
                             except ProcessLookupError:
                                 pass
 
                         def kill(self):
                             try:
-                                _os.kill(self._pid, 9)  # SIGKILL
+                                os.kill(self._pid, 9)  # SIGKILL
                             except ProcessLookupError:
                                 pass
 
                         def wait(self, timeout=None):
-                            import time as _t
-
-                            deadline = _t.monotonic() + (timeout or 30)
-                            while _t.monotonic() < deadline:
+                            deadline = time.monotonic() + (timeout or 30)
+                            while time.monotonic() < deadline:
                                 if self.poll() is not None:
                                     return 0
-                                _t.sleep(0.1)
+                                time.sleep(0.1)
                             raise subprocess.TimeoutExpired([], timeout)
 
                     process_info = {"process": _PidProxy(pid), "authkey_b64": meta.get("authkey_b64")}
@@ -1554,8 +1537,6 @@ class BaseResourceActionPlugin(ActionBase):
                         # Send the verified clears explicitly without triggering other
                         # legacy null resets on a path that previously did no write.
                         merged.update(dict.fromkeys(fields_to_clear, ""))
-                    from dataclasses import fields
-
                     model_fields = {field.name for field in fields(resource) if field.init}
                     resource = self._build_resource({key: value for key, value in merged.items() if key in model_fields})
                     operation = "update"
@@ -1658,13 +1639,11 @@ class BaseResourceActionPlugin(ActionBase):
                 result["exists"] = bool(validated_output.get("id"))
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)
             if self._display.verbosity >= 3:
-                result["exception"] = _tb.format_exc()
+                result["exception"] = traceback.format_exc()
 
         return result
 
