@@ -931,7 +931,7 @@ class DirectHTTPClient(BaseAPIClient):
         api_data = mixin_class.from_ansible_data(ansible_data, context)
         logger.info("DirectHTTPClient: API data for %s: %s", mixin_class.__name__, api_data)
         # Get endpoint operations from mixin
-        operations = mixin_class.get_endpoint_operations()
+        operations = self._create_update_endpoint_operations(mixin_class, ansible_data)
         logger.info("DirectHTTPClient: Operations for %s: %s", mixin_class.__name__, operations)
         # Execute operations (potentially multi-endpoint)
         api_result = self._execute_operations(operations, api_data, context, required_for="create")
@@ -968,7 +968,7 @@ class DirectHTTPClient(BaseAPIClient):
         api_data = mixin_class.from_ansible_data(ansible_data, context)
 
         # Get endpoint operations from mixin
-        operations = mixin_class.get_endpoint_operations()
+        operations = self._create_update_endpoint_operations(mixin_class, ansible_data)
         update_op = operations.get("update")
         missing_required_fields = []
         if update_op:
@@ -1089,7 +1089,7 @@ class DirectHTTPClient(BaseAPIClient):
         2. ID lookup: GET /resource/{id}/
         3. List+filter: GET /resource/?field=value (including composite-key lookups)
         """
-        # Allow non-CRUD mixins to choose a detail endpoint from the input data.
+        # Allow mixins to choose lookup endpoints from the input data.
         find_operations = getattr(mixin_class, "get_find_endpoint_operations", None)
         operations = find_operations(ansible_data) if find_operations else mixin_class.get_endpoint_operations()
         get_op = operations.get("get")

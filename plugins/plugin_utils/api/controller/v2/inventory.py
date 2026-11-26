@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional, Union
+
+import yaml
 
 from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
@@ -17,6 +19,17 @@ from ....platform.types import EndpointOperation, TransformContext
 logger = logging.getLogger(__name__)
 
 BASE_PATH = "/api/controller/v2/inventories"
+CONSTRUCTED_PATH = "/api/controller/v2/constructed_inventories"
+CONSTRUCTED_KIND = "constructed"
+CONSTRUCTED_SOURCE_FIELDS = ("source_vars", "limit")
+
+
+def validate_constructed_source_options(kind: str | None, source_vars: dict[str, Any] | str | None, limit: str | None) -> bool:
+    """Validate the requested kind and return whether source options were supplied."""
+    supplied = source_vars is not None or limit is not None
+    if supplied and kind != CONSTRUCTED_KIND:
+        raise ValueError("source_vars and limit require kind: constructed")
+    return supplied
 
 
 @dataclass
@@ -29,6 +42,8 @@ class APIInventory_v2(BaseTransformMixin):
     kind: Optional[str] = None
     host_filter: Optional[str] = None
     variables: Optional[str] = None
+    source_vars: Optional[str] = None
+    limit: Optional[str] = None
     prevent_instance_group_fallback: Optional[bool] = None
 
     # Read-only fields from API
@@ -37,6 +52,32 @@ class APIInventory_v2(BaseTransformMixin):
 
 class InventoryTransformMixin_v2(BaseTransformMixin):
     """Transform mixin for Inventory API v2."""
+
+    _JSON_OBJECT_FIELDS = frozenset({"source_vars"})
+
+    @classmethod
+    def get_create_update_endpoint_operations(cls, ansible_data):
+        """Select the constructed write endpoints when source options are supplied."""
+        operations = cls.get_endpoint_operations()
+        if validate_constructed_source_options(ansible_data.kind, ansible_data.source_vars, ansible_data.limit):
+            for name in ("create", "update"):
+                operation = operations[name]
+                operations[name] = replace(
+                    operation,
+                    path=operation.path.replace(BASE_PATH, CONSTRUCTED_PATH, 1),
+                    fields=[field for field in operation.fields if field not in ("kind", "host_filter")] + list(CONSTRUCTED_SOURCE_FIELDS),
+                )
+        return operations
+
+    @classmethod
+    def get_find_endpoint_operations(cls, ansible_data):
+        """Select the lookup endpoints that can return the requested source settings."""
+        operations = cls.get_endpoint_operations()
+        if validate_constructed_source_options(ansible_data.kind, ansible_data.source_vars, ansible_data.limit):
+            for name in ("get", "list"):
+                operation = operations[name]
+                operations[name] = replace(operation, path=operation.path.replace(BASE_PATH, CONSTRUCTED_PATH, 1))
+        return operations
 
     @classmethod
     def from_ansible_data(
@@ -73,7 +114,7 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
                     raise ValueError("Cannot resolve organization name without a manager")
                 api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization, service="controller", numeric_is_id=False)
 
-        for field in ("description", "kind", "host_filter", "prevent_instance_group_fallback"):
+        for field in ("description", "kind", "host_filter", "limit", "prevent_instance_group_fallback"):
             val = getattr(ansible_instance, field, None)
             if val is not None:
                 api_data[field] = val
@@ -85,6 +126,10 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
         if variables is not None:
             api_data["variables"] = json.dumps(variables) if isinstance(variables, dict) else variables
 
+        source_vars = getattr(ansible_instance, "source_vars", None)
+        if source_vars is not None:
+            api_data["source_vars"] = cls._normalize_source_vars(source_vars)
+
         # Read-only from API (for building URL in execute)
         for field in ("id",):
             val = getattr(ansible_instance, field, None)
@@ -92,6 +137,20 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
                 api_data[field] = val
 
         return APIInventory_v2(**api_data)
+
+    @staticmethod
+    def _normalize_source_vars(value: dict[str, Any] | str | None) -> str | None:
+        """Convert mappings to stable JSON and preserve empty or unparseable text."""
+        if isinstance(value, dict):
+            return json.dumps(value, sort_keys=True)
+        if isinstance(value, str) and value.strip():
+            try:
+                parsed = yaml.safe_load(value)
+                if isinstance(parsed, dict):
+                    return json.dumps(parsed, sort_keys=True)
+            except (yaml.YAMLError, TypeError, ValueError):
+                pass
+        return value
 
     @classmethod
     def get_endpoint_operations(cls) -> Dict[str, EndpointOperation]:
@@ -201,6 +260,8 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
             kind=api_data.get("kind"),
             host_filter=api_data.get("host_filter"),
             variables=variables,
+            source_vars=cls._normalize_source_vars(api_data.get("source_vars")),
+            limit=api_data.get("limit"),
             prevent_instance_group_fallback=api_data.get("prevent_instance_group_fallback"),
             id=api_data.get("id"),
         )

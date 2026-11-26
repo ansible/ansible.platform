@@ -45,6 +45,16 @@ one second before jitter, raises the factor to the retry index starting at
 zero, caps the result at 60 seconds, and applies up to 10% jitter. AWX uses a
 wider jitter range and has no explicit delay cap.
 
+### Constructed inventories
+
+To define a constructed inventory in one Configuration as Code task, use
+`ansible.platform.inventory` with `kind: constructed`, `input_inventories`,
+`source_vars`, and `limit`. Controller applies the last two settings to the
+source it creates for that inventory. You can still manage that source
+independently with `ansible.platform.inventory_source`. Omitted source settings
+are preserved on update. Use `limit: ""` to clear the host pattern and
+`source_vars: {}` to replace the source variables with an empty mapping.
+
 ## Description
 
 This collection provides Gateway, Controller, and EDA modules under the

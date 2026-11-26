@@ -207,7 +207,91 @@
           - invalid_organization is failed
           - invalid_organization is not changed
 
+    - name: Exercise the constructed inventory and its generated source
+      vars:
+        constructed_source_vars:
+          plugin: constructed
+          groups:
+            web: "name is defined"
+      module_defaults:
+        ansible.platform.inventory:
+          name: "{{ name_prefix }}-Constructed"
+          organization: Default
+          kind: constructed
+      block:
+        - name: Configure constructed inventory and its source in one task
+          ansible.platform.inventory:
+            input_inventories: ["{{ name_prefix }}-Renamed"]
+            source_vars: "{{ constructed_source_vars }}"
+            limit: web
+          register: constructed
+
+        - name: Predict clearing the limit
+          ansible.platform.inventory:
+            limit: ""
+          check_mode: true
+          register: clear_plan
+
+        - name: Reapply the original configuration after check mode
+          ansible.platform.inventory:
+            input_inventories: ["{{ name_prefix }}-Renamed"]
+            source_vars: "{{ constructed_source_vars }}"
+            limit: web
+          register: constructed_repeat
+
+        - name: Update source variables while preserving the limit
+          ansible.platform.inventory:
+            source_vars:
+              plugin: constructed
+              strict: true
+          register: updated_constructed
+
+        - name: Clear the limit while preserving source variables
+          ansible.platform.inventory:
+            limit: ""
+          register: cleared_constructed
+
+        - name: Find the generated inventory source independently
+          ansible.platform.inventory_source:
+            name: "Auto-created source for: {{ name_prefix }}-Constructed"
+            inventory: "{{ constructed.id }}"
+            state: exists
+          register: generated_source
+
+        - name: Read the constructed inventory's associations
+          ansible.builtin.uri:
+            url: "{{ gateway_hostname }}/api/controller/v2/inventories/{{ constructed.id }}/{{ item }}/"
+            user: "{{ gateway_username }}"
+            password: "{{ gateway_password }}"
+            force_basic_auth: true
+            validate_certs: "{{ gateway_validate_certs | bool }}"
+          loop: [input_inventories, inventory_sources]
+          register: constructed_associations
+          delegate_to: localhost
+
+        - name: Verify the constructed inventory lifecycle
+          ansible.builtin.assert:
+            that:
+              - constructed is changed
+              - clear_plan is changed
+              - constructed_repeat is not changed
+              - updated_constructed is changed
+              - updated_constructed.inventory.limit == 'web'
+              - cleared_constructed is changed
+              - cleared_constructed.inventory.limit == ''
+              - (cleared_constructed.inventory.source_vars | from_yaml).strict
+              - generated_source.exists
+              - constructed_associations.results[0].json.results | map(attribute='id') | list == [created_inv.id]
+              - constructed_associations.results[1].json.results | map(attribute='id') | list == [generated_source.id]
+
   always:
+    - name: Delete constructed inventory
+      ansible.platform.inventory:
+        name: "{{ name_prefix }}-Constructed"
+        organization: Default
+        state: absent
+      failed_when: false
+
     - name: Delete smart inventory
       ansible.platform.inventory:
         name: "{{ name_prefix }}-Smart"
