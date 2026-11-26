@@ -202,6 +202,64 @@ class TestInventorySourceTransform(unittest.TestCase):
         )
         self.assertEqual(api.source_project, 15)
 
+    def test_fk_inventory_is_scoped_but_source_project_is_not(self):
+        mock_manager = MagicMock()
+
+        def lookup_resource_id(endpoint, lookup_field, lookup_value, **kwargs):
+            return {
+                ("organizations", "Inventory Org"): 7,
+                ("inventories", "Shared Inventory"): 42,
+                ("projects", "Shared Project"): 15,
+            }[(endpoint, lookup_value)]
+
+        mock_manager.lookup_resource_id.side_effect = lookup_resource_id
+        ansible = AnsibleInventorySource(
+            name="src",
+            inventory="Shared Inventory",
+            organization="Inventory Org",
+            source="scm",
+            source_project="Shared Project",
+        )
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.inventory, 42)
+        self.assertEqual(api.source_project, 15)
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Inventory Org", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call(
+            "inventories",
+            "name",
+            "Shared Inventory",
+            service="controller",
+            extra_query_params={"organization": 7},
+            require_unique=True,
+        )
+        mock_manager.lookup_resource_id.assert_any_call("projects", "name", "Shared Project", service="controller", require_unique=True)
+
+    def test_fk_source_project_accepts_qualified_name_without_inventory_scope(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 15
+        ansible = AnsibleInventorySource(
+            name="src",
+            inventory="1",
+            organization="7",
+            source="scm",
+            source_project="Other Org++Shared Project",
+        )
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.source_project, 15)
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Other Org", service="controller", require_unique=True)
+        mock_manager.lookup_resource_id.assert_any_call(
+            "projects",
+            "name",
+            "Shared Project",
+            service="controller",
+            extra_query_params={"organization": 15},
+            require_unique=True,
+        )
+
     def test_fk_id_skips_lookup(self):
         ansible = AnsibleInventorySource(name="src", inventory="42", source="ec2", credential="10")
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
