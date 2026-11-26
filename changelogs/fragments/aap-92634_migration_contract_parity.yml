@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - platform clients - keep request bodies, unchanged-update behavior, and delete result shapes consistent between direct and persistent modes, while honoring explicit user password resets when update_secrets is enabled.
+...

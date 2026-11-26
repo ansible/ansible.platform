@@ -1,0 +1,29 @@
+---
+- name: Create or update projects
+  ansible.platform.controller_project:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(omit) }}"
+    organization: "{{ item.organization | default(omit) }}"
+    scm_type: "{{ item.scm_type | default(omit) }}"
+    scm_url: "{{ item.scm_url | default(omit) }}"
+    scm_branch: "{{ item.scm_branch | default(omit) }}"
+    scm_refspec: "{{ item.scm_refspec | default(omit) }}"
+    credential: "{{ item.credential | default(omit) }}"
+    local_path: "{{ item.local_path | default(omit) }}"
+    scm_clean: "{{ item.scm_clean | default(omit) }}"
+    scm_delete_on_update: "{{ item.scm_delete_on_update | default(omit) }}"
+    scm_track_submodules: "{{ item.scm_track_submodules | default(omit) }}"
+    scm_update_on_launch: "{{ item.scm_update_on_launch | default(omit) }}"
+    scm_update_cache_timeout: "{{ item.scm_update_cache_timeout | default(omit) }}"
+    timeout: "{{ item.timeout | default(omit) }}"
+    allow_override: "{{ item.allow_override | default(omit) }}"
+    default_environment: "{{ item.default_environment | default(omit) }}"
+    signature_validation_credential: "{{ item.signature_validation_credential | default(omit) }}"
+    notification_templates_started: "{{ item.notification_templates_started | default(omit) }}"
+    notification_templates_success: "{{ item.notification_templates_success | default(omit) }}"
+    notification_templates_error: "{{ item.notification_templates_error | default(omit) }}"
+    state: "{{ import_controller_state }}"
+  loop: "{{ _import_controller_assets.projects }}"
+  loop_control:
+    label: "{{ item.name }}"
+...

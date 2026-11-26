@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
@@ -53,9 +54,6 @@ class ActionModule(BaseResourceActionPlugin):
             elif wait_timeout < 0:
                 raise AnsibleError("timeout must be 0 or greater")
 
-            if not command_id:
-                raise AnsibleError("command_id is required")
-
             resource_url = AD_HOC_COMMANDS_DETAIL_ENDPOINT.format(id=command_id)
 
             wait_result = manager.wait_for_completion(
@@ -66,16 +64,20 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
             status = wait_result.get("status", "")
+            finished_at = wait_result.get("finished")
             result.update(
                 {
                     "changed": False,
                     "id": wait_result.get("id", command_id),
                     "elapsed": wait_result.get("elapsed", 0.0),
                     "started": wait_result.get("started", ""),
-                    "finished": wait_result.get("finished", ""),
+                    "finished": bool(finished_at),
+                    "finished_at": finished_at,
                     "status": status,
                 }
             )
+
+            result.update(self._extract_launch_metadata(wait_result))
 
             if status in FAILED_STATUSES:
                 result["failed"] = True
@@ -83,15 +85,16 @@ class ActionModule(BaseResourceActionPlugin):
 
         except WaitTimeoutError as exc:
             last = exc.last_result or {}
+            finished_at = last.get("finished")
             result["failed"] = True
             result["msg"] = str(exc)
             result["id"] = last.get("id", command_id)
             result["status"] = last.get("status", "unknown")
             result["elapsed"] = last.get("elapsed", 0.0)
+            result["finished"] = bool(finished_at)
+            result["finished_at"] = finished_at
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

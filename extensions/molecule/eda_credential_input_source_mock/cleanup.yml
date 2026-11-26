@@ -1,0 +1,23 @@
+---
+- name: Ensure EDA credential input source is absent
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "http://127.0.0.1:8000"
+      gateway_username: mock
+      gateway_password: testpass
+      gateway_validate_certs: false
+  tasks:
+    - name: Delete any remaining input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "1"
+        source_credential: "2"
+        organization_name: Default
+        state: absent
+      failed_when: false
+...

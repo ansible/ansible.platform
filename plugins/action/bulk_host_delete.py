@@ -14,13 +14,14 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import json
-from dataclasses import asdict
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.bulk_host_delete import AnsibleBulkHostDelete
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.bulk_host_delete import BulkHostDeleteTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 def _get_error_response(exc: Exception) -> Optional[dict]:
@@ -98,13 +99,14 @@ class ActionModule(BaseResourceActionPlugin):
             ansible_data = AnsibleBulkHostDelete(hosts=hosts)
             api_data = BulkHostDeleteTransformMixin_v2.from_ansible_data(ansible_data)
             create_operation = BulkHostDeleteTransformMixin_v2.get_endpoint_operations()["create"]
-            manager.launch_resource(launch_url=create_operation.path, payload=asdict(api_data), service="controller", retry=False)
+            if create_operation.method != "POST":
+                raise AnsibleError("Bulk host delete endpoint operation must use POST")
+            endpoint, payload = build_endpoint_request(create_operation, api_data)
+            manager.launch_resource(launch_url=endpoint, payload=payload, service="controller", retry=False)
 
             result["changed"] = True
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

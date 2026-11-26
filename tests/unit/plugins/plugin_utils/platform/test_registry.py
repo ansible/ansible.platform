@@ -167,6 +167,9 @@ def test_get_api_version_allows_reprobe_after_transient_failure():
         def _post_json(self, url, payload, operation="http_request", resource="unknown"):
             pass
 
+        def search_api(self, endpoint, query_params=None, return_all=False, max_objects=1000, service="gateway"):
+            pass
+
     client = _ConcreteClient.__new__(_ConcreteClient)
     client.api_versions = {}
     client.registry = MagicMock()

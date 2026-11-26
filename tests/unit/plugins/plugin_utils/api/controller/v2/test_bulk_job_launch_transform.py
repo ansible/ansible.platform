@@ -91,12 +91,12 @@ class TestBulkJobLaunchTransform(unittest.TestCase):
     def test_named_inventory_url_is_passed_to_shared_resolver(self):
         manager = MagicMock()
         manager.lookup_resource_id.return_value = 71
-        ansible_data = AnsibleBulkJobLaunch(jobs=[{"unified_job_template": 7}], inventory="Default++Shared Inventory")
+        ansible_data = AnsibleBulkJobLaunch(jobs=[{"unified_job_template": 7}], inventory="Shared Inventory++Default")
 
         api_data = BulkJobLaunchTransformMixin_v2.from_ansible_data(ansible_data, _context(manager))
 
         self.assertEqual(api_data.inventory, 71)
-        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "Default++Shared Inventory", service="controller", require_unique=True)
+        manager.lookup_resource_id.assert_called_once_with("inventories", "name", "Shared Inventory++Default", service="controller", require_unique=True)
 
     def test_resolve_performs_reference_lookups_without_creating_resource(self):
         manager = MagicMock()

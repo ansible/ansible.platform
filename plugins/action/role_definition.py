@@ -12,6 +12,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ro
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "role_definition"
     MODEL_CLASS = AnsibleRoleDefinition
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
 
     # Permissions lists are order-insensitive: the Gateway may return them
     # in alphabetical order regardless of user-specified order.  Without

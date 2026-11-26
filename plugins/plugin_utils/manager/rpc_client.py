@@ -99,7 +99,8 @@ class ManagerRPCClient:
         lookup_value: str,
         service: str = "gateway",
         extra_query_params: dict = None,
-        require_unique: bool = False,
+        require_unique: bool = True,
+        numeric_is_id: bool = True,
     ):
         """
         Resolve a resource name to its integer ID via the manager process.
@@ -114,6 +115,7 @@ class ManagerRPCClient:
             service: Service to route the lookup through (e.g. 'gateway', 'controller')
             extra_query_params: Additional filter params (e.g. {'organization': 42})
             require_unique: Reject names that match multiple resources
+            numeric_is_id: Treat all-digit lookup values as IDs instead of names
 
         Returns:
             Integer resource ID
@@ -121,11 +123,44 @@ class ManagerRPCClient:
         Raises:
             ValueError: If the resource is not found
         """
-        return self.service_proxy.lookup_resource_id(endpoint, lookup_field, lookup_value, service, extra_query_params or {}, require_unique)
+        return self.service_proxy.lookup_resource_id(
+            endpoint,
+            lookup_field,
+            lookup_value,
+            service,
+            extra_query_params or {},
+            require_unique,
+            numeric_is_id,
+        )
 
-    def lookup_organization_names(self, organization_ids: list) -> list:
+    def lookup_organization_ids(self, organization_names: list, service: str = "gateway") -> list:
+        """Resolve organization names to IDs through the manager process."""
+        return self.service_proxy.lookup_organization_ids(organization_names, service)
+
+    def lookup_resource_ids(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_values: list,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        numeric_is_id: bool = True,
+        allow_missing: bool = False,
+    ) -> dict:
+        """Resolve multiple resource references through the manager process."""
+        return self.service_proxy.lookup_resource_ids(
+            endpoint,
+            lookup_field,
+            lookup_values,
+            service,
+            extra_query_params or {},
+            numeric_is_id,
+            allow_missing,
+        )
+
+    def lookup_organization_names(self, organization_ids: list, service: str = "gateway") -> list:
         """Resolve organization IDs to names via the manager process."""
-        return self.service_proxy.lookup_organization_names(organization_ids)
+        return self.service_proxy.lookup_organization_names(organization_ids, service)
 
     def manage_associations(
         self,
@@ -138,6 +173,7 @@ class ManagerRPCClient:
         service: str = "gateway",
         extra_query_params: dict = None,
         preserve_existing: bool = False,
+        check_mode: bool = False,
     ) -> bool:
         """Sync an association sub-endpoint via the manager process. See PlatformService.manage_associations()."""
         return self.service_proxy.manage_associations(
@@ -150,11 +186,12 @@ class ManagerRPCClient:
             service,
             extra_query_params or {},
             preserve_existing,
+            check_mode,
         )
 
-    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict]) -> bool:
+    def manage_sub_resource(self, base_path: str, resource_id: int, sub_path: str, data: Optional[dict], check_mode: bool = False) -> bool:
         """Manage a secondary sub-endpoint via the manager process. See PlatformService.manage_sub_resource()."""
-        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data)
+        return self.service_proxy.manage_sub_resource(base_path, resource_id, sub_path, data, check_mode)
 
     def copy_resource(self, module_name: str, source_name_or_id: str, new_name: str, copy_endpoint_path: str, service: str = "gateway") -> dict:
         """Copy a resource via the manager process. See PlatformService.copy_resource()."""
@@ -185,6 +222,14 @@ class ManagerRPCClient:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
 
+    def is_workflow_approval_template(self, template_id: int) -> bool:
+        """Check whether a unified_job_template ID refers to a workflow approval template via the manager process."""
+        return self.service_proxy.is_workflow_approval_template(template_id)
+
+    def manage_workflow_approval(self, node_id: int, data: dict, check_mode: bool = False) -> bool:
+        """Reconcile a workflow approval template through the shared manager SDK."""
+        return self.service_proxy.manage_workflow_approval(node_id, data, check_mode)
+
     def post_resource(self, endpoint: str, data: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST JSON data to an endpoint via the manager process. See PlatformService.post_resource()."""
         return self.service_proxy.post_resource(endpoint, data, service, retry)
@@ -192,10 +237,6 @@ class ManagerRPCClient:
     def delete_resource(self, endpoint: str, service: str = "gateway") -> dict:
         """DELETE an endpoint via the manager process. See PlatformService.delete_resource()."""
         return self.service_proxy.delete_resource(endpoint, service)
-
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """Create hosts in bulk via the manager process. See PlatformService.bulk_host_create()."""
-        return self.service_proxy.bulk_host_create(inventory_id, hosts, service)
 
     def direct_request(self, method: str, path: str, data=None, retry_config: Optional[Any] = None) -> dict:
         """Make a raw authenticated HTTP request via the manager process."""

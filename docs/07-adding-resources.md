@@ -709,12 +709,30 @@ def from_ansible_data(self, ansible_instance, context):
     )
 ```
 
-### Pattern 2: Name-to-ID reference field
+### Pattern 2: Related resource references
+
+Use the resource name as the option name for new modules, for example
+`organization`, `project`, or `decision_environment`. Document which values the
+option accepts. Prefer accepting a name or an ID when the target API supports both.
+Resolve names within the appropriate component and organization scope, and report
+an ambiguity when multiple resources match.
+
+For existing modules, keep the accepted option names, alias precedence, and value
+resolution behavior. Check what the module actually accepts before updating its
+documentation. In particular, some existing options with a `_name` suffix also
+accept IDs, and changing how numeric strings are interpreted can change which
+resource a playbook selects.
+
+For a new option that resolves organizations against the same component API:
 
 ```python
 if ansible_instance.organization is not None:
-    org_id = context.manager.lookup_resource_id("organization", ansible_instance.organization)
-    params["organization"] = org_id
+    params["organization"] = context.manager.lookup_resource_id(
+        "organizations",
+        "name",
+        ansible_instance.organization,
+        service=context.service,
+    )
 ```
 
 ### Pattern 3: Write-only field (password)

@@ -80,6 +80,11 @@ EXAMPLES = """
 ...
 """
 RETURN = """
+copied:
+  description: Whether this invocation copied a source template into a new destination.
+  returned: when copy_from is supplied
+  type: bool
+
 changed:
   description: Whether the notification template was created, updated, or deleted.
   returned: always

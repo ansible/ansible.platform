@@ -5,15 +5,19 @@ connection modes must implement. All shared functionality (version detection,
 error handling, credential management, CRUD operations) is used by both modes.
 """
 
+import json
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from dataclasses import asdict
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import quote
 
 from ..platform.config import GatewayConfig
-from ..platform.exceptions import APIError, ValidationError
+from ..platform.exceptions import APIError, ResourceNotFoundError, ValidationError
 from ..platform.loader import DynamicClassLoader
 from ..platform.registry import DEFAULT_SERVICE, APIVersionRegistry
+from ..platform.types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +114,129 @@ class BaseAPIClient(ABC):
         """Build the cache key used by resource-name lookups."""
         key = f"{service}:{endpoint}:{lookup_field}:{lookup_value}"
         if extra_query_params:
-            suffix = "&".join(f"{k}={v}" for k, v in sorted(extra_query_params.items()))
+            suffix = json.dumps(extra_query_params, sort_keys=True, separators=(",", ":"), default=str)
             key = f"{key}:{suffix}"
         return key
+
+    def _invalidate_resource_lookup_cache(self, service: str, endpoint_path: str) -> None:
+        """Invalidate cached names after a resource mutation."""
+        cache = getattr(self, "cache", None)
+        if cache is None:
+            return
+
+        path_parts = [part for part in endpoint_path.split("?")[0].strip("/").split("/") if part]
+        if len(path_parts) < 4 or path_parts[0] != "api" or not path_parts[2].startswith("v"):
+            return
+
+        endpoint = path_parts[3]
+        prefixes = (f"{service}:{endpoint}:", f"lookup:{service}:{endpoint}:")
+        for key in tuple(cache):
+            if key.startswith(prefixes):
+                cache.pop(key, None)
+
+        # Organization helpers use aliases in addition to normal lookup keys.
+        if service == "gateway" and endpoint == "organizations":
+            for key in tuple(cache):
+                if key.startswith(("org_name:", "org_id:")):
+                    cache.pop(key, None)
+
+    def _normalize_resource_lookup(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str,
+        extra_query_params: Optional[dict],
+    ) -> tuple:
+        """Normalize a lookup reference and its filters, including Controller named keys.
+
+        Normalize only the simple Controller key form
+        ``resource-name++organization``. Composite Controller keys remain
+        unchanged for the list-query fallback; without caller filters,
+        lookup_resource_id first tries the complete value against the detail
+        endpoint.
+        """
+        filters = dict(extra_query_params or {})
+        value = str(lookup_value)
+        if lookup_field != "name" or "++" not in value:
+            if service == "controller" and endpoint != "organizations":
+                self._normalize_organization_filter(filters, service)
+            return value, filters
+
+        # Server-side detail lookup is the source of truth for named keys.
+        if service != "controller":
+            return value, filters
+
+        # Controller has resource-specific named-key formats (for example,
+        # hosts include inventory and organization). Only normalize the simple
+        # one-separator form; caller filters may have skipped detail lookup.
+        if value.count("++") != 1:
+            self._normalize_organization_filter(filters, service)
+            return value, filters
+
+        resource_name, organization_name = self._parse_controller_named_key(value)
+
+        # An empty organization component is the documented named URL form for
+        # unscoped resources (``name++``). Its list query is just a name query.
+        if organization_name is None:
+            if not resource_name:
+                raise ValueError("Invalid named key %r; a resource name is required" % value)
+            return resource_name, filters
+        if endpoint == "organizations":
+            return value, filters
+
+        self._normalize_organization_filter(filters, service)
+        if not resource_name or not organization_name:
+            raise ValueError("Invalid Controller named key %r; expected name++organization" % value)
+
+        # Resolve scope IDs in the service whose foreign key consumes them.
+        organization_id = self.lookup_resource_id(
+            "organizations",
+            "name",
+            organization_name,
+            service=service,
+            require_unique=True,
+            numeric_is_id=False,
+        )
+        if organization_id is None:
+            raise ValueError("Organization %r from Controller named key %r was not found" % (organization_name, value))
+
+        explicit_organization = filters.get("organization")
+        if explicit_organization is not None:
+            if self._normalize_composite_value(explicit_organization) != self._normalize_composite_value(organization_id):
+                raise ValueError("Controller named key %r conflicts with organization scope %r" % (value, filters["organization"]))
+
+        filters["organization"] = organization_id
+        return resource_name, filters
+
+    @staticmethod
+    def _parse_controller_named_key(value: str) -> Tuple[str, Optional[str]]:
+        """Split a Controller named key into its name and optional organization.
+
+        The trailing ``++`` form represents a resource without organization
+        scope, so its organization component is returned as ``None``. For
+        scoped keys, everything after the first separator remains the scope.
+        """
+        resource_name, separator, organization_name = value.partition("++")
+        if not separator:
+            return value.strip(), None
+        if value.endswith("++") and value.count("++") == 1:
+            return resource_name.strip(), None
+        return resource_name.strip(), organization_name.strip()
+
+    def _normalize_organization_filter(self, filters: dict, service: str) -> None:
+        """Replace an organization name or API object with an ID from its owning service."""
+        organization = filters.get("organization")
+        if organization is None:
+            return
+        organization_id = self._normalize_composite_value(organization)
+        if organization_id is None:
+            raise ValueError("Organization scope %r does not include an ID" % organization)
+        if not str(organization_id).strip().isdigit():
+            organization_id = self.lookup_resource_id("organizations", "name", str(organization_id), service=service, require_unique=True)
+        if organization_id is None:
+            raise ValueError("Organization %r was not found" % organization)
+        filters["organization"] = int(organization_id)
 
     @staticmethod
     def _normalize_composite_value(value: Any) -> Any:
@@ -127,6 +251,89 @@ class BaseAPIClient(ABC):
     def _prepare_resource_lookup(self, service: str) -> None:
         """Allow clients to prepare transport headers before a batch lookup."""
 
+    def lookup_resource_id(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_value: str,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        require_unique: bool = True,
+        numeric_is_id: bool = True,
+    ) -> Optional[int]:
+        """Resolve an ID or uniquely matched resource name through the shared lookup path.
+
+        Controller named keys are normalized to a resource name and organization
+        filter before the request. The cache is used only for explicitly
+        non-unique lookups: a cached ID cannot guarantee a later unique lookup
+        still has exactly one match.
+        """
+        if not lookup_value:
+            return None
+        if numeric_is_id and str(lookup_value).isdigit():
+            return int(lookup_value)
+
+        # A detail lookup has no way to apply caller-supplied filters. The
+        # composite Controller credential key is an exception when organization
+        # is the sole filter: resolve the key directly, then verify its owner.
+        named_key = str(lookup_value)
+        filters = dict(extra_query_params or {})
+        scoped_composite_credential = (
+            service == "controller" and endpoint == "credentials" and lookup_field == "name" and named_key.count("++") > 1 and set(filters) == {"organization"}
+        )
+        if lookup_field == "name" and "++" in named_key and (not filters or scoped_composite_credential):
+            if scoped_composite_credential:
+                self._normalize_organization_filter(filters, service)
+            service_version = self.get_api_version(service)
+            self._prepare_resource_lookup(service)
+            named_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/{quote(named_key, safe='+')}/"
+            try:
+                named_result = self.search_api(named_path, service=service)
+            except APIError as exc:
+                if exc.status_code != 404:
+                    raise
+            else:
+                named_resource_id = named_result.get("id")
+                if named_resource_id is not None:
+                    if scoped_composite_credential:
+                        actual_organization = self._normalize_composite_value(named_result.get("organization"))
+                        expected_organization = filters["organization"]
+                        if actual_organization != expected_organization:
+                            raise ValueError(
+                                "Credential named key %r resolved to organization %r, not requested organization %r"
+                                % (named_key, actual_organization, expected_organization)
+                            )
+                    return named_resource_id
+
+        lookup_value, extra_query_params = self._normalize_resource_lookup(endpoint, lookup_field, lookup_value, service, extra_query_params)
+        cache_key = self._resource_lookup_cache_key(service, endpoint, lookup_field, str(lookup_value), extra_query_params)
+        if not require_unique and cache_key in self.cache:
+            return self.cache[cache_key]
+
+        service_version = self.get_api_version(service)
+        self._prepare_resource_lookup(service)
+        api_path = f"/api/{service}/v{service_version}/{endpoint.strip('/')}/"
+        query = {lookup_field: lookup_value}
+        if extra_query_params:
+            query.update(extra_query_params)
+        response_data = self.search_api(api_path, query_params=query, service=service)
+        results = response_data.get("results", [])
+        if not results:
+            raise ResourceNotFoundError(
+                "Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value),
+                endpoint=endpoint,
+                lookup_field=lookup_field,
+                lookup_value=lookup_value,
+                service=service,
+            )
+        if require_unique and (len(results) > 1 or response_data.get("count", len(results)) > 1 or response_data.get("next")):
+            raise ValueError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, lookup_value))
+
+        resource_id = results[0].get("id")
+        if resource_id is not None and not require_unique:
+            self.cache[cache_key] = resource_id
+        return resource_id
+
     def _lookup_resource_ids(
         self,
         endpoint: str,
@@ -134,17 +341,45 @@ class BaseAPIClient(ABC):
         lookup_values: list,
         service: str = "gateway",
         extra_query_params: dict = None,
+        numeric_is_id: bool = True,
+        allow_missing: bool = False,
     ) -> dict:
-        """Resolve several names with bounded ``__in`` queries where possible."""
-        values = list(dict.fromkeys(str(value) for value in lookup_values if value and not str(value).isdigit()))
-        cache_keys = {value: self._resource_lookup_cache_key(service, endpoint, lookup_field, value, extra_query_params) for value in values}
-        resolved = {value: self.cache[key] for value, key in cache_keys.items() if key in self.cache}
-        uncached = [value for value in values if value not in resolved]
+        """Resolve several values with bounded ``__in`` queries where possible."""
+        lookup_filters = dict(extra_query_params or {})
+        if service == "controller" and endpoint != "organizations":
+            self._normalize_organization_filter(lookup_filters, service)
+        input_values = list(dict.fromkeys(str(value) for value in lookup_values if value or (isinstance(value, int) and not isinstance(value, bool))))
+        resolved = {}
+
+        def lookup_one(value):
+            lookup_kwargs = {"service": service, "extra_query_params": lookup_filters}
+            if not numeric_is_id:
+                lookup_kwargs["numeric_is_id"] = False
+            return self.lookup_resource_id(endpoint, lookup_field, value, **lookup_kwargs)
+
+        named_values = [value for value in input_values if lookup_field == "name" and endpoint != "organizations" and "++" in value]
+        for value in named_values:
+            try:
+                resolved[value] = self.lookup_resource_id(
+                    endpoint,
+                    lookup_field,
+                    value,
+                    service=service,
+                    extra_query_params=lookup_filters,
+                    require_unique=True,
+                )
+            except ResourceNotFoundError as exc:
+                if allow_missing and (exc.endpoint, exc.lookup_field, exc.service) == (endpoint, lookup_field, service):
+                    continue
+                raise
+
+        values = [value for value in input_values if (not numeric_is_id or not value.isdigit()) and value not in named_values]
+        uncached = values
 
         if not uncached:
             return resolved
-        if len(uncached) == 1:
-            resolved[uncached[0]] = self.lookup_resource_id(endpoint, lookup_field, uncached[0], service=service, extra_query_params=extra_query_params)
+        if len(uncached) == 1 and not allow_missing:
+            resolved[uncached[0]] = lookup_one(uncached[0])
             return resolved
 
         service_version = self.get_api_version(service)
@@ -155,36 +390,64 @@ class BaseAPIClient(ABC):
             if not batch_values:
                 return
             query = {f"{lookup_field}__in": ",".join(batch_values)}
-            if extra_query_params:
-                query.update(extra_query_params)
+            if lookup_filters:
+                query.update(lookup_filters)
             data = self.search_api(
                 api_path,
                 query_params=query,
                 return_all=True,
                 max_objects=100000,
             )
+            matches_by_value = {}
             for result in data.get("results", []):
                 value = result.get(lookup_field)
                 value = str(value) if value is not None else None
-                if value in batch_values and value not in resolved:
-                    resolved[value] = result.get("id")
-                    if resolved[value] is not None:
-                        self.cache[cache_keys[value]] = resolved[value]
+                if value in batch_values:
+                    matches_by_value.setdefault(value, []).append(result)
 
             for value in batch_values:
-                if value not in resolved:
-                    raise ValidationError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value))
+                matches = matches_by_value.get(value, [])
+                if not matches:
+                    if allow_missing:
+                        continue
+                    raise ResourceNotFoundError(
+                        "Resource '%s' with %s=%s not found" % (endpoint, lookup_field, value),
+                        endpoint=endpoint,
+                        lookup_field=lookup_field,
+                        lookup_value=value,
+                        service=service,
+                    )
+                if len(matches) > 1:
+                    raise ValidationError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, value))
+                resolved[value] = matches[0].get("id")
+
+        def resolve_exact(value):
+            query = {lookup_field: value}
+            if lookup_filters:
+                query.update(lookup_filters)
+            data = self.search_api(api_path, query_params=query, return_all=True, max_objects=100000)
+            matches = [result for result in data.get("results", []) if str(result.get(lookup_field)) == value]
+            if not matches:
+                return
+            if len(matches) > 1:
+                raise ValidationError("Resource '%s' with %s=%s matched multiple resources; provide additional filters" % (endpoint, lookup_field, value))
+            resolved[value] = matches[0].get("id")
 
         batch_values = []
         for value in uncached:
             if "," in value:
                 resolve_batch(batch_values)
                 batch_values = []
-                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service, extra_query_params=extra_query_params)
+                if allow_missing:
+                    resolve_exact(value)
+                else:
+                    resolved[value] = lookup_one(value)
                 continue
 
             candidate = batch_values + [value]
             query = {f"{lookup_field}__in": ",".join(candidate)}
+            if lookup_filters:
+                query.update(lookup_filters)
             url_length = len(self._build_url(api_path, query).encode("utf-8"))
             if url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
                 batch_values = candidate
@@ -192,13 +455,52 @@ class BaseAPIClient(ABC):
 
             resolve_batch(batch_values)
             batch_values = []
-            single_url_length = len(self._build_url(api_path, {f"{lookup_field}__in": value}).encode("utf-8"))
+            single_query = {f"{lookup_field}__in": value}
+            if lookup_filters:
+                single_query.update(lookup_filters)
+            single_url_length = len(self._build_url(api_path, single_query).encode("utf-8"))
             if single_url_length <= self.MAX_BATCH_LOOKUP_URL_BYTES:
                 batch_values = [value]
+            elif allow_missing:
+                resolve_exact(value)
             else:
-                resolved[value] = self.lookup_resource_id(endpoint, lookup_field, value, service=service, extra_query_params=extra_query_params)
+                resolved[value] = lookup_one(value)
         resolve_batch(batch_values)
         return resolved
+
+    def lookup_resource_ids(
+        self,
+        endpoint: str,
+        lookup_field: str,
+        lookup_values: list,
+        service: str = "gateway",
+        extra_query_params: dict = None,
+        numeric_is_id: bool = True,
+        allow_missing: bool = False,
+    ) -> dict:
+        """Resolve multiple resource references through bounded list queries.
+
+        Args:
+            endpoint: API endpoint name.
+            lookup_field: Field to match for each value.
+            lookup_values: Values to resolve.
+            service: API service owning the endpoint.
+            extra_query_params: Additional filters that scope every lookup.
+            numeric_is_id: Treat all-digit values as IDs and omit them from lookup.
+            allow_missing: Return matches found without raising for missing values.
+
+        Returns:
+            A mapping from normalized lookup values to resource IDs.
+        """
+        return self._lookup_resource_ids(
+            endpoint,
+            lookup_field,
+            lookup_values,
+            service=service,
+            extra_query_params=extra_query_params,
+            numeric_is_id=numeric_is_id,
+            allow_missing=allow_missing,
+        )
 
     def _ansible_tls_kwargs(self, verify=None):
         """Map TLS verify setting to Ansible Request validate_certs/ca_path kwargs."""
@@ -332,6 +634,90 @@ class BaseAPIClient(ABC):
         ambiguous transport failure.
         """
         pass
+
+    @abstractmethod
+    def search_api(
+        self,
+        endpoint: str,
+        query_params: Optional[Dict] = None,
+        return_all: bool = False,
+        max_objects: int = 1000,
+        service: str = "gateway",
+    ) -> dict:
+        """Fetch an API endpoint using the concrete client's transport."""
+        pass
+
+    def _execute_singleton_mutation(self, module_name: str, ansible_data: Any, mixin_class: type, context: TransformContext) -> dict:
+        """Execute a mixin's mutation plan through the shared SDK transports.
+
+        Validate before reading current state. A mixin plans endpoint steps
+        using that state, keeping resource decisions out of either client.
+        Check mode returns the same prediction without executing those steps.
+        """
+        mixin_class.validate_mutation(ansible_data, context)
+        api_data = mixin_class.from_ansible_data(ansible_data, context)
+        current = self.execute("find", module_name, {})
+        plan = mixin_class.plan_mutation(ansible_data, current, context)
+        if not plan.operations or context.check_mode:
+            return plan.result
+
+        if plan.api_data is not None:
+            api_data = plan.api_data
+        operations = mixin_class.get_endpoint_operations()
+        api_result = None
+        for name in plan.operations:
+            endpoint = operations[name]
+            path, payload = build_endpoint_request(endpoint, api_data, context)
+            method = endpoint.method.upper()
+            url = self._build_url(path, service=context.service, api_version=context.api_version)
+            if method == "GET":
+                api_result = self._get_json(url, operation=context.operation, resource=module_name)
+            elif method == "POST":
+                api_result = self._post_json(url, payload, operation=context.operation, resource=module_name, retry=False)
+            elif method in {"PUT", "PATCH"}:
+                api_result = self._execute_operations({name: endpoint}, api_data, context, required_for=context.operation)
+            elif method == "DELETE":
+                self.delete_resource(path, service=context.service)
+                api_result = None
+            else:
+                raise ValueError("Unsupported singleton mutation method: %s" % method)
+
+        result = asdict(mixin_class.from_api(api_result, context)) if api_result is not None else {}
+        result.update(plan.result)
+        return result
+
+    def is_workflow_approval_template(self, template_id: int) -> bool:
+        """Check whether a unified_job_template ID refers to a workflow approval template."""
+        try:
+            tmpl = self.search_api(f"/api/controller/v2/workflow_approval_templates/{template_id}/")
+            return tmpl.get("type") == "workflow_approval_template"
+        except APIError as exc:
+            if exc.status_code == 404:
+                return False
+            raise
+
+    def manage_workflow_approval(self, node_id: int, data: dict, check_mode: bool = False) -> bool:
+        """Reconcile a node's approval template without writing during check mode."""
+        data = {key: value for key, value in data.items() if value is not None}
+        if "name" not in data:
+            raise ValueError("Approval node name is required")
+        node_path = f"/api/controller/v2/workflow_job_template_nodes/{node_id}/"
+        node = self.search_api(node_path)
+        template_id = node.get("unified_job_template")
+        if template_id is None:
+            if not check_mode:
+                self.post_resource(node_path + "create_approval_template/", data, service="controller", retry=False)
+            return True
+
+        current = self.search_api(f"/api/controller/v2/workflow_approval_templates/{template_id}/")
+        if current.get("type") != "workflow_approval_template":
+            raise ValueError("Workflow node is attached to a non-approval template")
+        changes = {key: value for key, value in data.items() if current.get(key) != value}
+        if not changes:
+            return False
+        if not check_mode:
+            self.direct_request("PATCH", f"/api/controller/v2/workflow_approval_templates/{template_id}/", changes)
+        return True
 
     def launch_resource(self, launch_url: str, payload: dict, service: str = "gateway", retry: bool = True) -> dict:
         """POST to a launch endpoint and return the created resource.
@@ -487,7 +873,7 @@ class BaseAPIClient(ABC):
 
             time.sleep(sleep_time)
 
-    def lookup_organization_ids(self, names: list) -> list:
+    def lookup_organization_ids(self, names: list, service: str = "gateway") -> list:
         """
         Lookup organization IDs from names (shared helper).
 
@@ -497,28 +883,9 @@ class BaseAPIClient(ABC):
         Returns:
             List of organization IDs
         """
-        # This is a shared helper that both modes can use
-        # Implementation will be in the shared CRUD layer
-        pass
+        return [self.lookup_resource_id("organizations", "name", name, service=service, require_unique=True) for name in names]
 
-    def bulk_host_create(self, inventory_id: int, hosts: list, service: str = "controller") -> dict:
-        """
-        Create hosts in bulk via the Controller bulk/host_create endpoint.
-
-        Args:
-            inventory_id: Numeric ID of the target inventory
-            hosts: List of host dicts (name, description, enabled, variables, instance_id)
-            service: Service name (default: controller)
-
-        Returns:
-            API response dict
-
-        Raises:
-            ValueError: If the API returns a non-201 status
-        """
-        raise NotImplementedError
-
-    def lookup_organization_names(self, ids: list) -> list:
+    def lookup_organization_names(self, ids: list, service: str = "gateway") -> list:
         """
         Lookup organization names from IDs (shared helper).
 
@@ -528,6 +895,22 @@ class BaseAPIClient(ABC):
         Returns:
             List of organization names
         """
-        # This is a shared helper that both modes can use
-        # Implementation will be in the shared CRUD layer
-        pass
+        names = []
+        for organization_id in ids:
+            if not str(organization_id).strip().isdigit():
+                raise ValueError("Organization ID %r must be numeric" % organization_id)
+            cache_key = "org_name:%s:%s" % (service, organization_id)
+            if cache_key in self.cache:
+                names.append(self.cache[cache_key])
+                continue
+
+            version = self.get_api_version(service)
+            path = "/api/%s/v%s/organizations/%s/" % (service, version, organization_id)
+            organization = self.search_api(path, service=service)
+            name = organization.get("name")
+            if name is None:
+                raise ValueError("Organization ID %s was not found in %s" % (organization_id, service))
+            self.cache[cache_key] = name
+            names.append(name)
+
+        return names

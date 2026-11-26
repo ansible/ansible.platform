@@ -34,6 +34,47 @@ class BaseTransformMixin(ABC):
     require_unique_lookup = False
 
     @classmethod
+    def to_operation_payload(
+        cls,
+        api_data: Any,
+        operation: Any,
+        *,
+        include_null_fields: Optional[set] = None,
+        omit_empty: bool = False,
+        preserve_empty_fields: Optional[set] = None,
+    ) -> dict:
+        """Build an API body using the fields declared by an endpoint operation.
+
+        This keeps custom action requests and the generic CRUD executor aligned
+        with the same endpoint contract.
+        """
+        values = asdict(api_data) if hasattr(api_data, "__dataclass_fields__") else api_data
+        include_null_fields = include_null_fields or set()
+        preserve_empty_fields = preserve_empty_fields or set()
+        payload = {}
+        for field_name in operation.fields or []:
+            if field_name not in values:
+                continue
+            value = values[field_name]
+            if value is None and field_name not in include_null_fields:
+                continue
+            if value == "" and omit_empty and field_name not in preserve_empty_fields:
+                continue
+            payload[field_name] = value
+
+        if getattr(operation, "flatten_body", False) and len(payload) == 1:
+            return next(iter(payload.values()))
+        return payload
+
+    @classmethod
+    def filter_find_results(cls, list_result: dict, api_data: Any, lookup_field: str, lookup_value: Any) -> dict:
+        """Apply request-side constraints before selecting a unique list result.
+
+        Most resources rely on API-side filters and do not need local filtering.
+        """
+        return list_result
+
+    @classmethod
     def select_find_result(cls, list_result: dict, lookup_field: str, lookup_value: Any) -> dict:
         """Select the resource returned by a list-based find operation.
 
@@ -47,11 +88,12 @@ class BaseTransformMixin(ABC):
         if not cls.require_unique_lookup:
             return results[0]
 
+        if len(results) > 1 or list_result.get("count", len(results)) > 1 or list_result.get("next"):
+            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
+
         matches = [item for item in results if str(item.get(lookup_field)) == str(lookup_value)]
         if not matches:
             raise ValueError(f"Resource with {lookup_field}={lookup_value} not found")
-        if len(matches) > 1 or list_result.get("count", len(results)) > 1 or list_result.get("next"):
-            raise ValueError(f"Resource with {lookup_field}={lookup_value} matched multiple resources")
         return matches[0]
 
     def to_ansible(self, context: Optional[Union[TransformContext, Dict[str, Any]]] = None) -> Any:

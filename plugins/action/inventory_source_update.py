@@ -9,11 +9,10 @@ __metaclass__ = type
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory_source_update import (
-    CONTROLLER_INVENTORIES_ENDPOINT,
-    CONTROLLER_INVENTORY_SOURCES_ENDPOINT,
-)
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import InventoryTransformMixin_v2
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory_source import InventorySourceTransformMixin_v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _SERVICE = "controller"
 
@@ -50,7 +49,11 @@ class ActionModule(BaseResourceActionPlugin):
             return result
 
         try:
-            launch_result = manager.launch_resource("inventory_sources/%d/update" % source_id, {}, service=_SERVICE, retry=False)
+            sync_operation = InventorySourceTransformMixin_v2.get_endpoint_operations()["sync"]
+            if sync_operation.method != "POST":
+                raise AnsibleError("Inventory source sync endpoint operation must use POST")
+            sync_path, sync_payload = build_endpoint_request(sync_operation, {"id": source_id})
+            launch_result = manager.launch_resource(sync_path, sync_payload, service=_SERVICE, retry=False)
         except Exception as exc:
             result.update({"changed": False, "failed": True, "msg": str(exc)})
             return result
@@ -64,21 +67,40 @@ class ActionModule(BaseResourceActionPlugin):
 
         if not wait:
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
+            result.update(self._extract_launch_metadata(launch_result))
             return result
 
         try:
+            # Omitted/zero means unlimited; negative means a single poll.
+            # Translate these values to the shared waiter's timeout conventions.
+            if timeout is None or timeout == 0:
+                wait_timeout = -1.0
+            elif timeout < 0:
+                wait_timeout = 0.0  # Stop after the first unfinished response.
+            else:
+                wait_timeout = float(timeout)
             wait_result = manager.wait_for_completion(
                 job_url,
-                timeout=float(timeout) if timeout is not None else None,
+                timeout=wait_timeout,
                 interval=float(interval),
                 service=_SERVICE,
             )
             final_status = wait_result.get("status", "unknown")
-            failed = final_status in ("failed", "error", "canceled")
+            failed = wait_result.get("failed", False) or final_status in ("failed", "error", "canceled")
 
-            result.update({"changed": True, "failed": failed, "id": wait_result.get("id", job_id), "status": final_status})
+            result.update(
+                {
+                    "changed": True,
+                    "failed": failed,
+                    "id": wait_result.get("id", job_id),
+                    "status": final_status,
+                }
+            )
+            self._set_job_timing(result, wait_result)
+            result.update(self._extract_launch_metadata(wait_result))
             if failed:
                 result["msg"] = "Inventory source update %s finished with status: %s" % (job_id, final_status)
+                result["job_data"] = wait_result
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
             result.update(
@@ -90,6 +112,7 @@ class ActionModule(BaseResourceActionPlugin):
                     "status": lr.get("status", "unknown"),
                 }
             )
+            self._set_job_timing(result, lr)
         except Exception as exc:
             result.update(
                 {
@@ -108,8 +131,9 @@ class ActionModule(BaseResourceActionPlugin):
             return int(inventory)
         if organization:
             org_id = manager.lookup_resource_id("organizations", "name", organization, service=_SERVICE)
+            inventory_list_operation = InventoryTransformMixin_v2.get_endpoint_operations()["list"]
             data = manager.search_api(
-                CONTROLLER_INVENTORIES_ENDPOINT,
+                inventory_list_operation.path,
                 query_params={"name": inventory, "organization": org_id},
             )
             results = data.get("results", [])
@@ -124,8 +148,9 @@ class ActionModule(BaseResourceActionPlugin):
             query_params["id"] = int(name)
         else:
             query_params["name"] = name
+        list_operation = InventorySourceTransformMixin_v2.get_endpoint_operations()["list"]
         data = manager.search_api(
-            CONTROLLER_INVENTORY_SOURCES_ENDPOINT,
+            list_operation.path,
             query_params=query_params,
         )
         results = data.get("results", [])

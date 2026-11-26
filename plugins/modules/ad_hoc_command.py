@@ -110,8 +110,10 @@ options:
 
   timeout:
     description:
-      - Maximum seconds to wait before aborting (client-side).
+      - Maximum time in seconds to wait for the ad hoc command to finish.
+      - If omitted or set to C(0), wait indefinitely.
       - Only used when C(wait=true).
+      - Reaching this timeout stops waiting but does not cancel the remote command.
     type: int
 
 seealso:
@@ -164,5 +166,11 @@ status:
   returned: success
   type: str
   sample: pending
+
+user_name:
+  description: Username of the Controller user who launched the command.
+  returned: when Controller provides the metadata
+  type: str
+  sample: admin
 ...
 """

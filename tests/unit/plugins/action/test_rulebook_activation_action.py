@@ -72,6 +72,7 @@ class TestRulebookActivationAction(unittest.TestCase):
                 "rule_engine_credential_id": {},
                 "restart_on_project_update": {"type": "bool", "default": False},
                 "state": {"default": "present"},
+                "enabled": {"type": "bool"},
             }
         }
         validation = SimpleNamespace(validated_parameters=validated_params)
@@ -84,14 +85,82 @@ class TestRulebookActivationAction(unittest.TestCase):
                         with patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
                             return action.run(task_vars={})
 
+    def test_legacy_enabled_maps_to_state(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": False})
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "enabled": True, "state": "present", "restart": False},
+            provided_args={"name": "test-activation", "enabled": True},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.direct_request.assert_called_once()
+        self.assertIn("enable", manager.direct_request.call_args.args[1])
+
+    def test_enabled_false_does_not_override_explicit_absent_existing(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "enabled": False, "state": "absent", "restart": False},
+            provided_args={"name": "test-activation", "enabled": False, "state": "absent"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.execute.assert_any_call(operation="delete", module_name="rulebook_activation", ansible_data={"id": 42, "name": "test-activation"})
+        manager.direct_request.assert_not_called()
+
+    def test_enabled_false_does_not_create_missing_explicit_absent(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result=None)
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "missing", "enabled": False, "state": "absent", "restart": False},
+            provided_args={"name": "missing", "enabled": False, "state": "absent"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertFalse(result["changed"])
+        self.assertEqual(manager.execute.call_count, 1)
+        manager.direct_request.assert_not_called()
+
+    def test_enabled_with_description_updates_existing_activation(self):
+        action = self._make_action()
+        manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
+        result = self._run_action(
+            action,
+            manager,
+            {"name": "test-activation", "enabled": True, "state": "present", "description": "updated", "restart": False},
+            provided_args={"name": "test-activation", "enabled": True, "description": "updated"},
+        )
+
+        self.assertFalse(result.get("failed", False))
+        self.assertTrue(result["changed"])
+        manager.execute.assert_any_call(
+            operation="update",
+            module_name="rulebook_activation",
+            ansible_data={"name": "test-activation", "state": "enabled", "description": "updated", "is_enabled": True, "id": 42},
+        )
+
     def test_delete_existing_activation(self):
         """Delete activation when it exists."""
         action = self._make_action()
         manager = self._make_manager(find_result={"id": 42, "name": "test-activation", "is_enabled": True})
         result = self._run_action(action, manager, {"name": "test-activation", "state": "absent", "restart": False})
 
-        self.assertFalse(result.get("failed", False))
-        self.assertTrue(result["changed"])
+        expected_result = {
+            "changed": True,
+            "failed": False,
+            "rulebook_activation": {"state": "absent", "id": 42},
+            "id": 42,
+        }
+        self.assertEqual(result, expected_result)
         # Delete goes through the generic execute() dispatch, not direct_request
         manager.execute.assert_any_call(
             operation="delete",
@@ -190,6 +259,7 @@ class TestRulebookActivationAction(unittest.TestCase):
 
         self.assertFalse(result.get("failed", False))
         self.assertTrue(result["changed"])
+        self.assertNotIn("id", result)
         manager.direct_request.assert_not_called()
 
     def test_check_mode_restart(self):
@@ -249,6 +319,35 @@ class TestRulebookActivationAction(unittest.TestCase):
             self.assertEqual(create_call.kwargs["ansible_data"][field], value)
         self.assertNotIn("id", create_call.kwargs["ansible_data"])
         manager.direct_request.assert_not_called()
+
+    def test_create_project_reference_accepts_both_spellings_and_prefers_project(self):
+        cases = (
+            ({"project": "short"}, "short", []),
+            ({"project_name": "legacy"}, "legacy", []),
+            ({"project": 42}, "42", []),
+            ({"project": None, "project_name": "legacy"}, "legacy", []),
+            ({"project": "short", "project_name": None}, "short", []),
+            ({"project_name": "legacy", "project": "short"}, "short", ["Both option project_name and its alias project are set."]),
+            ({"project": "short", "project_name": "legacy"}, "short", ["Both option project_name and its alias project are set."]),
+        )
+        for inputs, expected_project, warnings in cases:
+            with self.subTest(inputs=inputs):
+                action = self._make_action()
+                action._task.args = {"name": "new-activation", **inputs}
+                manager = self._make_manager()
+
+                with (
+                    patch.object(ActionBase, "run", return_value={}),
+                    patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+                ):
+                    result = action.run(task_vars={})
+
+                self.assertFalse(result["failed"], result.get("msg"))
+                create = manager.execute.call_args.kwargs
+                self.assertEqual(
+                    (create["operation"], create["ansible_data"].get("project_name"), result.get("warnings", [])),
+                    ("create", expected_project, warnings),
+                )
 
     def test_update_existing_activation_no_changes_is_idempotent(self):
         """An unchanged activation is not PATCHed or reported as changed."""

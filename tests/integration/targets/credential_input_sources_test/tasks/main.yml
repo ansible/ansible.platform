@@ -20,40 +20,6 @@
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    - name: Look up Default organization in Controller
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/?name=Default"
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        return_content: true
-      register: ctrl_default_org
-      delegate_to: localhost
-
-    - name: Assert Default organization exists
-      ansible.builtin.assert:
-        that:
-          - ctrl_default_org.json.count | int > 0
-        fail_msg: "Controller organization 'Default' was not found."
-
-    - name: Look up Machine credential type in Controller
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        return_content: true
-      register: ctrl_machine_credential_type
-      delegate_to: localhost
-
-    - name: Assert Machine credential type exists
-      ansible.builtin.assert:
-        that:
-          - ctrl_machine_credential_type.json.count | int > 0
-        fail_msg: "Controller Machine credential type was not found."
-
     - name: Look up HashiCorp Vault Secret Lookup credential type
       ansible.builtin.uri:
         url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?name=HashiCorp%20Vault%20Secret%20Lookup"
@@ -71,6 +37,13 @@
           - ctrl_vault_credential_type.json.count | int > 0
         fail_msg: "Controller HashiCorp Vault Secret Lookup credential type was not found."
 
+    - name: Assert cached Controller fixtures are available
+      ansible.builtin.assert:
+        that:
+          - controller_default_organization_id is defined
+          - controller_machine_credential_type_id is defined
+        fail_msg: "Shared Controller fixtures required by the credential input source test were not found."
+
     - name: Create target Machine credential
       ansible.builtin.uri:
         url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
@@ -82,8 +55,8 @@
         body_format: json
         body:
           name: "{{ target_credential_name }}"
-          credential_type: "{{ ctrl_machine_credential_type.json.results[0].id }}"
-          organization: "{{ ctrl_default_org.json.results[0].id }}"
+          credential_type: "{{ controller_machine_credential_type_id }}"
+          organization: "{{ controller_default_organization_id }}"
           inputs:
             username: "cis-test-user"
         status_code: [200, 201]
@@ -102,7 +75,7 @@
         body:
           name: "{{ source_credential_name }}"
           credential_type: "{{ ctrl_vault_credential_type.json.results[0].id }}"
-          organization: "{{ ctrl_default_org.json.results[0].id }}"
+          organization: "{{ controller_default_organization_id }}"
           inputs:
             url: "https://vault.example.invalid"
             token: "integration-test-token"

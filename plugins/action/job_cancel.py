@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
@@ -44,8 +45,8 @@ class ActionModule(BaseResourceActionPlugin):
             job_id = validated_params.get("job_id")
             fail_if_not_running = validated_params.get("fail_if_not_running", False)
 
-            if not job_id:
-                raise AnsibleError("job_id is required")
+            if job_id <= 0:
+                raise AnsibleError("job_id must be a positive integer")
 
             # Check mode: report would-change without touching the API
             if self._task.check_mode:
@@ -69,8 +70,6 @@ class ActionModule(BaseResourceActionPlugin):
             result.update(cancel_result)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

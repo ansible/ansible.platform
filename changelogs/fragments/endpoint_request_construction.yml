@@ -1,0 +1,5 @@
+---
+trivial:
+  - sdk - Build API request paths and bodies from transform endpoint operations
+    so migrated modules share the same request contract across SDK clients.
+...

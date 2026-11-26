@@ -81,8 +81,13 @@ started:
     type: str
     sample: "2017-03-01T17:03:53.200234Z"
 finished:
-    description: Timestamp of when the command finished running.
-    returned: success
+    description: Whether Controller reports a finish timestamp for the command.
+    returned: when waiting completes or times out
+    type: bool
+    sample: true
+finished_at:
+    description: Timestamp of when the command finished running, or null while it is still running.
+    returned: when waiting completes or times out
     type: str
     sample: "2017-03-01T17:04:04.078782Z"
 status:
@@ -90,5 +95,10 @@ status:
     returned: success
     type: str
     sample: successful
+user_name:
+    description: Username of the Controller user who launched the command.
+    returned: when Controller provides the metadata
+    type: str
+    sample: admin
 ...
 """

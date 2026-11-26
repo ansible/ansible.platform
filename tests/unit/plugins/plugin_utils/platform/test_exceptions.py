@@ -3,8 +3,31 @@
 
 """Tests for structured platform error classification."""
 
+import pickle
+
+import pytest
 import requests
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError, classify_exception
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import (
+    APIError,
+    ResourceNotFoundError,
+    ValidationError,
+    classify_exception,
+    format_error_response_body,
+)
+
+
+def test_resource_not_found_preserves_identity_through_rpc_pickling():
+    """Keep the lookup error type and identity across multiprocessing serialization."""
+    original = ResourceNotFoundError("No match", endpoint="labels", lookup_field="name", lookup_value="Label", service="controller")
+    restored = pickle.loads(pickle.dumps(original))
+
+    assert isinstance(restored, ResourceNotFoundError)
+    assert isinstance(restored, ValueError)
+    assert isinstance(restored, ValidationError)
+    assert str(restored) == "No match"
+    assert (restored.endpoint, restored.lookup_field, restored.lookup_value, restored.service) == ("labels", "name", "Label", "controller")
+    assert restored.to_dict()["details"] == original.details
+    assert classify_exception(restored) is restored
 
 
 def test_http_error_preserves_status_code_for_action_plugins():
@@ -29,3 +52,23 @@ def test_http_error_without_response_returns_api_error_with_no_status():
     assert isinstance(classified, APIError)
     assert classified.status_code is None
     assert classified.details["status_code"] is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"detail": "x" * 1100},
+        ["x" * 1100],
+        '{"detail": "' + "x" * 1100 + '"}',
+        b'{"detail": "' + b"x" * 1100 + b'"}',
+        "x" * 1100,
+    ],
+)
+def test_format_error_response_body_preserves_long_values_after_string_conversion(body):
+    error = Exception("request failed")
+    error.details = {"response_body": body}
+
+    formatted_body = format_error_response_body(error)
+
+    assert len(formatted_body) > 1000
+    assert "x" * 1100 in formatted_body

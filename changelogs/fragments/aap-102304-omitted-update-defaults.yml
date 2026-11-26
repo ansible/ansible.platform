@@ -1,0 +1,14 @@
+---
+bugfixes:
+  - >-
+    Preserve existing values for omitted defaulted options when updating applications,
+    authenticators, authenticator maps, HTTP ports, routes, services, UI plugin routes,
+    execution environments, and decision environments with state=present. Creation
+    continues to use the existing defaults.
+  - Detect drift in supported omitted text fields and workflow node references
+    during enforced updates and check mode.
+  - Preserve EDA credential input source metadata when omitted in enforced updates,
+    because the EDA API cannot clear it with a null value.
+  - Keep user existence checks read-only when the task includes the platform auditor option.
+  - Report unsupported feature flag creation or deletion consistently in check mode and apply.
+...

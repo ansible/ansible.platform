@@ -1,0 +1,5 @@
+bugfixes:
+  - job_launch - preserve legacy indefinite wait behavior when ``timeout`` is omitted or zero and validate launch-prompt overrides before check-mode return.
+  - inventory_source_update - preserve legacy indefinite wait behavior and waited job result fields.
+  - schedule - restore organization-scoped unified job template lookup.
+  - These changes address Batch 1 compatibility findings tracked under ANSTRAT-1874.

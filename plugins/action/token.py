@@ -16,6 +16,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback
 from dataclasses import asdict
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
@@ -26,6 +27,9 @@ class ActionModule(BaseResourceActionPlugin):
     """Action plugin for token module."""
 
     MODULE_NAME = "token"
+    _NO_LOG_FIELDS = frozenset({"existing_token"})
+    _MUTUALLY_EXCLUSIVE = [["existing_token", "existing_token_id"]]
+    _REQUIRED_IF = [["state", "absent", ["existing_token", "existing_token_id"], True]]
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -36,15 +40,7 @@ class ActionModule(BaseResourceActionPlugin):
         del tmp
 
         try:
-            doc = self._get_documentation()
-            argspec = self._build_argspec_from_docs(doc) if doc else None
-            if not argspec:
-                from ansible.errors import AnsibleError
-
-                raise AnsibleError("Could not load DOCUMENTATION for token module")
-
-            module_args = self._task.args.copy()
-            validated_input = self._validate_data(module_args, argspec, "input")
+            validated_params = self._validate_action_input().validated_params
             manager, facts_to_set = self._get_or_spawn_manager(task_vars)
             self._client = manager
 
@@ -52,7 +48,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result["ansible_facts"] = facts_to_set
                 result["_ansible_facts_cacheable"] = True
 
-            validated_params = validated_input.validated_parameters
             state = validated_params.get("state", "present")
 
             if state == "absent":
@@ -102,7 +97,7 @@ class ActionModule(BaseResourceActionPlugin):
                         }
                     )
                 except Exception as e:
-                    if "404" in str(e) or "not found" in str(e).lower():
+                    if self._is_resource_not_found(e):
                         result.update(
                             {
                                 "changed": False,
@@ -177,8 +172,6 @@ class ActionModule(BaseResourceActionPlugin):
                 )
 
         except Exception as e:
-            import traceback
-
             self._display.vvv("Error in token action plugin: %s" % e)
             result["failed"] = True
             result["msg"] = str(e)

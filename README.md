@@ -1,5 +1,11 @@
 # Ansible Platform Collection
 
+The `ansible.platform` collection centralizes resource management for Ansible Automation
+Platform Gateway, Automation Controller, and Event-Driven Ansible (EDA).
+
+See the [development module inventory](docs/README.md#collection-scope-and-module-inventory)
+and [unreleased changes](CHANGELOG.rst#unreleased) for work since the documented releases.
+
 ## Changelog for v2.7.20260313
 
 * Added OIDC User Identity support for Ansible Automation Platform Gateway
@@ -18,9 +24,33 @@ Ensure you are on `ansible.platform >= 2.7.x` before upgrading. Connection varia
 
 See the [AAP 2.7 documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7) for the full upgrade guide.
 
+### HTTP retries when migrating from AWX
+
+`ansible.platform` accepts AWX's `max_retries` and `retry_backoff_factor` as
+aliases for `aap_max_retries` and `aap_retry_backoff_factor`. Set them in module
+arguments, lookup keyword arguments, inventory, or the `AAP_MAX_RETRIES` and
+`AAP_RETRY_BACKOFF_FACTOR` environment variables. Explicit arguments take
+precedence over inventory, followed by the environment.
+
+`aap_max_retries: 2` allows up to three attempts on an eligible transient
+failure, including the initial request. Use `0` for one attempt. Job launches
+and resource-creating POSTs are protected against transient retries. When
+either setting is supplied, the configured policy applies to eligible requests
+in both manager modes and the in-process HTTP fallback.
+
+If the count is unset, the manager allows up to three attempts. The in-process
+HTTP fallback makes one attempt when both settings are unset. The backoff
+factor defaults to `2` and must be at least `1`. Platform starts the delay at
+one second before jitter, raises the factor to the retry index starting at
+zero, caps the result at 60 seconds, and applies up to 10% jitter. AWX uses a
+wider jitter range and has no explicit delay cap.
+
 ## Description
 
-This collection contains modules that can be used to automate the creation of resources on an install of Ansible Automation Platform.
+This collection provides Gateway, Controller, and EDA modules under the
+`ansible.platform` namespace. It includes platform identity and service configuration,
+Controller automation resources and job operations, and EDA resources and rulebook
+activations. Each module targets the service that owns its resource.
 
 ## Requirements
 
@@ -60,9 +90,21 @@ See [using Ansible collections](https://docs.ansible.com/ansible/devel/user_guid
 
 ## Use Cases
 
-This collection can be used to automate to the creation of resources inside of the Ansible Automation Platform. Things such as users, organizations and teams can be created using this collection.
+- **Gateway:** Manage users, organizations, teams, authentication, access control,
+  services, service nodes, and Gateway settings. Registering a service or node is
+  Gateway configuration.
+- **Controller:** Manage inventories, hosts, groups, projects, credentials, execution
+  environments, job templates, workflows, schedules, notifications, and Controller
+  settings. Launch, cancel, and wait for automation jobs.
+- **EDA:** Manage projects, credentials, credential types and input sources, Controller
+  tokens, decision environments, event streams, and rulebook activations.
 
-Adding services (Controller, Event Driven Automation, Automation) can also be done with this collection. Nodes for those services can also be added.
+Service ownership remains distinct within the collection. For example,
+`ansible.platform.settings` manages Gateway settings, while
+`ansible.platform.controller_settings` manages Controller settings. Similarly,
+`ansible.platform.controller_project` and `ansible.platform.eda_project` manage
+projects in their respective services. See each module's documentation for its
+supported inputs and operations.
 
 ## Authenticating to AAP in a playbook
 
@@ -79,6 +121,40 @@ Connecting to AAP requires specifying authentication variables (the ones prefixe
         aap_username: your-username
         aap_password: your-password
 ```
+
+Use `group/ansible.platform.aap` in `module_defaults` to set shared connection
+options once for Gateway, Controller, and EDA tasks.
+
+```yaml
+- name: Query AAP services
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.aap:
+      aap_hostname: "{{ gateway_url }}"
+      aap_token: "{{ gateway_token }}"
+  tasks:
+    - name: Check whether the Gateway administrator exists
+      ansible.platform.user:
+        username: admin
+        state: exists
+
+    - name: List running Controller jobs
+      ansible.platform.job_list:
+        status: running
+
+    - name: Check whether an EDA decision environment exists
+      ansible.platform.decision_environment:
+        name: Example Decision Environment
+        state: exists
+```
+
+The `group/ansible.platform.gateway`, `group/ansible.platform.controller`, and
+`group/ansible.platform.eda` groups still support defaults for their respective
+modules. When you set the same option in multiple groups in one
+`module_defaults` block, Ansible applies the later group. Place service-specific
+overrides after the common group and use the same option name throughout.
+The documented `gateway_*` aliases also work in `module_defaults`.
 
 ## Testing
 

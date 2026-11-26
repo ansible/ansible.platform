@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 from ansible.errors import AnsibleError
 from ansible.playbook.task import Task
 from ansible_collections.ansible.platform.plugins.action.project_update import ActionModule
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.project_update import CONTROLLER_PROJECTS_ENDPOINT
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
@@ -41,52 +40,40 @@ class TestProjectResolution(unittest.TestCase):
 
     def test_scoped_lookup_filters_exact_name_and_organization(self):
         manager = MagicMock()
-        manager.lookup_resource_id.return_value = 7
-        manager.search_api.return_value = {
-            "count": 2,
-            "results": [
-                {"id": 12, "name": "Demo Project - archived"},
-                {"id": 42, "name": "Demo Project"},
-            ],
-        }
+        manager.lookup_resource_id.side_effect = [7, 42]
 
         project_id = _make_module()._resolve_project(manager, "Demo Project", "Engineering")
 
         self.assertEqual(project_id, 42)
-        manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Engineering", service="controller")
-        manager.search_api.assert_called_once_with(
-            CONTROLLER_PROJECTS_ENDPOINT,
-            query_params={"name": "Demo Project", "organization": 7},
-            return_all=True,
+        self.assertEqual(
+            manager.lookup_resource_id.call_args_list,
+            [
+                unittest.mock.call("organizations", "name", "Engineering", service="controller"),
+                unittest.mock.call(
+                    "projects",
+                    "name",
+                    "Demo Project",
+                    service="controller",
+                    require_unique=True,
+                    extra_query_params={"organization": 7},
+                ),
+            ],
         )
 
     def test_ambiguous_unscoped_name_is_rejected(self):
         manager = MagicMock()
-        manager.search_api.return_value = {
-            "count": 2,
-            "results": [
-                {"id": 42, "name": "Demo Project", "organization": 7},
-                {"id": 43, "name": "Demo Project", "organization": 8},
-            ],
-        }
+        manager.lookup_resource_id.side_effect = ValueError("Resource 'projects' with name=Demo Project matched multiple resources")
 
-        with self.assertRaisesRegex(AnsibleError, "specify organization"):
+        with self.assertRaisesRegex(AnsibleError, "matched multiple resources"):
             _make_module()._resolve_project(manager, "Demo Project", None)
 
-        manager.search_api.assert_called_once_with(CONTROLLER_PROJECTS_ENDPOINT, query_params={"name": "Demo Project"}, return_all=True)
+        manager.lookup_resource_id.assert_called_once_with("projects", "name", "Demo Project", service="controller", require_unique=True)
 
     def test_ambiguous_scoped_name_is_rejected(self):
         manager = MagicMock()
-        manager.lookup_resource_id.return_value = 7
-        manager.search_api.return_value = {
-            "count": 2,
-            "results": [
-                {"id": 42, "name": "Demo Project"},
-                {"id": 43, "name": "Demo Project"},
-            ],
-        }
+        manager.lookup_resource_id.side_effect = [7, ValueError("Resource 'projects' with name=Demo Project matched multiple resources")]
 
-        with self.assertRaisesRegex(AnsibleError, "Multiple projects named 'Demo Project'"):
+        with self.assertRaisesRegex(AnsibleError, "matched multiple resources"):
             _make_module()._resolve_project(manager, "Demo Project", "Engineering")
 
 
@@ -98,20 +85,21 @@ class TestProjectUpdateAction(unittest.TestCase):
     def test_check_mode_resolves_project_without_launching(self, mock_prepare):
         module = _make_module(check_mode=True)
         manager = MagicMock()
-        manager.search_api.return_value = {"results": [{"id": 42, "name": "Demo Project"}]}
+        manager.lookup_resource_id.return_value = 42
         mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=True)
 
         result = module.run(task_vars={})
 
         self.assertEqual(result, {"changed": True, "failed": False, "msg": "Project update skipped (check mode)"})
-        manager.search_api.assert_called_once_with(CONTROLLER_PROJECTS_ENDPOINT, query_params={"name": "Demo Project"}, return_all=True)
+        manager.lookup_resource_id.assert_called_once_with("projects", "name", "Demo Project", service="controller", require_unique=True)
+        manager.search_api.assert_not_called()
         manager.launch_resource.assert_not_called()
 
     @patch.object(ActionModule, "_prepare_action")
     def test_invalid_interval_fails_before_launch(self, mock_prepare):
         module = _make_module()
         manager = MagicMock()
-        manager.search_api.return_value = {"results": [{"id": 42, "name": "Demo Project"}]}
+        manager.lookup_resource_id.return_value = 42
         mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=True, interval=0)
 
         result = module.run(task_vars={})
@@ -127,12 +115,17 @@ class TestProjectUpdateAction(unittest.TestCase):
             with self.subTest(revision=revision):
                 module = _make_module()
                 manager = MagicMock()
-                manager.search_api.side_effect = [
-                    {"results": [{"id": 42, "name": "Demo Project"}]},
-                    {"scm_revision": "before"},
-                ]
+                manager.lookup_resource_id.return_value = 42
+                manager.search_api.return_value = {"scm_revision": "before"}
                 manager.launch_resource.return_value = {"id": 86, "url": "project_updates/86/", "status": "pending"}
-                manager.wait_for_completion.return_value = {"id": 86, "status": "successful", "scm_revision": revision}
+                manager.wait_for_completion.return_value = {
+                    "id": 86,
+                    "status": "successful",
+                    "scm_revision": revision,
+                    "elapsed": 3.0,
+                    "started": "2026-11-11T10:00:00Z",
+                    "finished": "2026-11-11T10:00:03Z",
+                }
                 mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=True, interval=2.0)
 
                 result = module.run(task_vars={})
@@ -141,15 +134,57 @@ class TestProjectUpdateAction(unittest.TestCase):
                 self.assertEqual(result["changed"], expected_changed)
                 self.assertEqual(result["id"], 86)
                 self.assertEqual(result["status"], "successful")
+                self.assertEqual(result["elapsed"], 3.0)
+                self.assertEqual(result["started"], "2026-11-11T10:00:00Z")
+                self.assertIs(result["finished"], True)
+                self.assertEqual(result["finished_at"], "2026-11-11T10:00:03Z")
+                manager.search_api.assert_called_once_with("/api/controller/v2/projects/42/")
+                manager.launch_resource.assert_called_once_with(
+                    "/api/controller/v2/projects/42/update/",
+                    {},
+                    service="controller",
+                )
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_negative_timeout_fails_before_api_calls(self, mock_prepare):
+        for check_mode in (False, True):
+            for wait in (False, True):
+                for timeout in (-1, -5):
+                    with self.subTest(check_mode=check_mode, wait=wait, timeout=timeout):
+                        manager = MagicMock()
+                        mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=wait, timeout=timeout)
+
+                        result = _make_module(check_mode=check_mode).run(task_vars={})
+
+                        self.assertEqual(result, {"changed": False, "failed": True, "msg": "timeout must be 0 or greater"})
+                        manager.lookup_resource_id.assert_not_called()
+                        manager.search_api.assert_not_called()
+                        manager.launch_resource.assert_not_called()
+                        manager.wait_for_completion.assert_not_called()
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_wait_maps_unlimited_and_explicit_timeouts(self, mock_prepare):
+        for timeout, expected in ((None, -1.0), (0, -1.0), (30, 30.0)):
+            with self.subTest(timeout=timeout):
+                manager = MagicMock()
+                manager.lookup_resource_id.return_value = 42
+                manager.search_api.return_value = {"scm_revision": "before"}
+                manager.launch_resource.return_value = {"id": 86}
+                manager.wait_for_completion.return_value = {"id": 86, "status": "successful", "scm_revision": "before"}
+                mock_prepare.return_value = self._prepared(manager, name="Demo Project", timeout=timeout)
+
+                result = _make_module().run(task_vars={})
+
+                self.assertFalse(result["failed"])
+                self.assertEqual(manager.wait_for_completion.call_args.kwargs["timeout"], expected)
+                self.assertIsInstance(manager.wait_for_completion.call_args.kwargs["timeout"], float)
 
     @patch.object(ActionModule, "_prepare_action")
     def test_canceled_update_is_failed(self, mock_prepare):
         module = _make_module()
         manager = MagicMock()
-        manager.search_api.side_effect = [
-            {"results": [{"id": 42, "name": "Demo Project"}]},
-            {"scm_revision": "before"},
-        ]
+        manager.lookup_resource_id.return_value = 42
+        manager.search_api.return_value = {"scm_revision": "before"}
         manager.launch_resource.return_value = {"id": 86, "url": "project_updates/86/"}
         manager.wait_for_completion.return_value = {"id": 86, "status": "canceled", "scm_revision": "before"}
         mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=True, interval=2.0)
@@ -158,15 +193,14 @@ class TestProjectUpdateAction(unittest.TestCase):
 
         self.assertEqual(result["status"], "canceled")
         self.assertTrue(result["failed"])
+        self.assertEqual(result["job_data"], manager.wait_for_completion.return_value)
 
     @patch.object(ActionModule, "_prepare_action")
     def test_timeout_returns_last_job_state(self, mock_prepare):
         module = _make_module()
         manager = MagicMock()
-        manager.search_api.side_effect = [
-            {"results": [{"id": 42, "name": "Demo Project"}]},
-            {"scm_revision": "before"},
-        ]
+        manager.lookup_resource_id.return_value = 42
+        manager.search_api.return_value = {"scm_revision": "before"}
         manager.launch_resource.return_value = {"id": 86, "url": "project_updates/86/"}
         manager.wait_for_completion.side_effect = WaitTimeoutError(
             "Timed out waiting for project update",
@@ -180,6 +214,44 @@ class TestProjectUpdateAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertEqual(result["id"], 86)
         self.assertEqual(result["status"], "running")
+        self.assertIs(result["finished"], False)
+
+
+class TestLaunchMetadata(unittest.TestCase):
+    """Test audit metadata extraction from Controller responses."""
+
+    def _prepared(self, manager, **kwargs):
+        return {
+            "result": {},
+            "argspec": {"argument_spec": {}},
+            "validated_params": kwargs,
+            "resource_data": kwargs,
+            "write_only_data": {},
+            "manager": manager,
+        }
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_wait_result_includes_user_name(self, mock_prepare):
+        module = _make_module()
+        manager = MagicMock()
+        manager.lookup_resource_id.return_value = 42
+        manager.search_api.return_value = {"scm_revision": "abc123"}
+        manager.launch_resource.return_value = {"id": 86, "url": "project_updates/86/"}
+        manager.wait_for_completion.return_value = {
+            "id": 86,
+            "status": "successful",
+            "scm_revision": "def456",
+            "elapsed": 5.0,
+            "started": "2026-01-01T00:00:00Z",
+            "finished": "2026-01-01T00:00:05Z",
+            "summary_fields": {"created_by": {"id": 1, "username": "admin"}},
+        }
+        mock_prepare.return_value = self._prepared(manager, name="Demo Project", wait=True, interval=2.0, timeout=None)
+
+        result = module.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertEqual(result["user_name"], "admin")
 
 
 if __name__ == "__main__":

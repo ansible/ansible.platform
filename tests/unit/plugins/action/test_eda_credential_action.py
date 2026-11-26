@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from ansible.plugins.action import ActionBase
+from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.eda_credential import ActionModule
 
 
@@ -106,6 +107,55 @@ class TestEdaCredentialAction(unittest.TestCase):
                             return action.run(task_vars={})
 
     # ---- CRUD Tests (delegated to base class) ----
+
+    def test_legacy_credential_argument_aliases_are_documented(self):
+        """Legacy ansible.eda argument names remain accepted as aliases."""
+        from ansible_collections.ansible.platform.plugins.modules.eda_credential import DOCUMENTATION
+
+        self.assertIn("credential_type_name", DOCUMENTATION)
+        self.assertIn("organization_name", DOCUMENTATION)
+
+    def test_legacy_aliases_are_removed_before_model_construction(self):
+        action = self._make_action()
+        prepared = {
+            "validated_params": {
+                "name": "my-cred",
+                "credential_type": "GitLab PAT",
+                "credential_type_name": "GitLab PAT",
+                "organization": "Default",
+                "organization_name": "Default",
+            },
+            "resource_data": {
+                "name": "my-cred",
+                "credential_type": "GitLab PAT",
+                "credential_type_name": "GitLab PAT",
+                "organization": "Default",
+                "organization_name": "Default",
+            },
+        }
+
+        with patch.object(BaseResourceActionPlugin, "_prepare_action", return_value=prepared):
+            result = action._prepare_action(task_vars={})
+
+        self.assertNotIn("credential_type_name", result["validated_params"])
+        self.assertNotIn("organization_name", result["validated_params"])
+        self.assertNotIn("credential_type_name", result["resource_data"])
+        self.assertNotIn("organization_name", result["resource_data"])
+
+    def test_legacy_organization_alias_wins_when_both_names_are_supplied(self):
+        for organization, expected in (("Engineering", "Engineering"), (2, "2")):
+            with self.subTest(organization=organization):
+                action = self._make_action()
+                action._task.args = {"name": "my-cred", "organization_name": "Default", "organization": organization}
+                manager = MagicMock()
+
+                with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+                    prepared = action._prepare_action(task_vars={})
+
+                self.assertEqual(prepared["validated_params"]["organization"], expected)
+                self.assertEqual(prepared["resource_data"]["organization"], expected)
+                self.assertNotIn("organization_name", prepared["resource_data"])
+                self.assertEqual(prepared["result"]["warnings"], ["Both option organization and its alias organization_name are set."])
 
     def test_create_new_credential(self):
         """Create credential when none exists (base class CRUD)."""

@@ -64,6 +64,7 @@ options:
     description:
       - Extra variables for the job template.
       - Requires ask_extra_vars or survey_enabled on the template.
+      - When extra variables are provided from a Controller job, current job metadata is added under C(controller_job_metadata).
     type: dict
 
   limit:
@@ -152,8 +153,11 @@ options:
 
   timeout:
     description:
-      - Maximum seconds to wait before aborting (client-side).
-      - Only used when wait is true.
+      - Maximum time in seconds to wait for the job to finish.
+      - If omitted or set to C(0), wait indefinitely.
+      - A negative value stops waiting after the first unfinished response.
+      - Only used when C(wait=true).
+      - Reaching this timeout stops waiting but does not cancel the remote job.
     type: int
 
 seealso:
@@ -192,6 +196,37 @@ EXAMPLES = """
 """
 
 RETURN = """
+elapsed:
+  description: Elapsed seconds reported by Controller.
+  returned: when waiting completes or times out
+  type: float
+started:
+  description: Timestamp of when the job started.
+  returned: when waiting completes or times out
+  type: str
+finished:
+  description: Whether Controller reports a finish timestamp.
+  returned: when waiting completes or times out
+  type: bool
+finished_at:
+  description: Finish timestamp reported by Controller, or null while running.
+  returned: when waiting completes or times out
+  type: str
+job_data:
+  description: Controller job data when the job ends in a failed status.
+  returned: when waiting ends in a failed, error, or canceled status
+  type: dict
+
+job_template_name:
+  description: Name of the job template used for the launch.
+  returned: when provided by Controller
+  type: str
+
+user_name:
+  description: Username recorded by Controller as the user who launched the job.
+  returned: when provided by Controller
+  type: str
+
 id:
   description: Job ID of the newly launched job.
   returned: success
@@ -203,5 +238,6 @@ status:
   returned: success
   type: str
   sample: pending
+
 ...
 """

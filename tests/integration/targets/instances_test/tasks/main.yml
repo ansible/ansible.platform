@@ -2,7 +2,7 @@
 # Exercise instance reads and updates against an existing Controller instance.
 # Creation and deprovisioning require an OpenShift/Kubernetes Controller.
 #
-# Mutable tests (update, check_mode, idempotency) run only in local mode
+# Mutable tests (update, check_mode, idempotency) run only in http-persistent mode
 # because all CI connection modes share the same Controller instance and
 # parallel jobs create unavoidable race conditions on singleton resources.
 
@@ -26,7 +26,7 @@
 
 - name: Choose a different capacity adjustment
   ansible.builtin.set_fact:
-    test_capacity_adjustment: "{{ 0.8 if (original_capacity_adjustment | float) != 0.8 else 0.7 }}"
+    test_capacity_adjustment: "{{ 0.98 if (original_capacity_adjustment | float) != 0.98 else 0.97 }}"
 
 - name: Run Test
   module_defaults:
@@ -51,7 +51,7 @@
           - exists_check.exists
           - exists_check is not changed
 
-    # --- Mutable tests (local mode only — singleton resource, not parallel-safe) ---
+    # --- Mutable tests (http-persistent mode only — singleton resource, not parallel-safe) ---
 
     - name: Check mode predicts an instance update
       ansible.platform.instance:
@@ -59,53 +59,53 @@
         capacity_adjustment: "{{ test_capacity_adjustment }}"
       check_mode: true
       register: check_mode_update
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Assert check mode predicts a change
       ansible.builtin.assert:
         that:
           - check_mode_update is changed
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Confirm check mode did not change the instance
       ansible.builtin.set_fact:
         instance_after_check_mode: >-
           {{ (query('ansible.platform.gateway_api', 'api/controller/v2/instances/',
           query_params={'hostname': test_instance.hostname}, **connection_info) | first).capacity_adjustment | float }}
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Assert check mode left the instance unchanged
       ansible.builtin.assert:
         that:
           - instance_after_check_mode == original_capacity_adjustment
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Update capacity adjustment
       ansible.platform.instance:
         hostname: "{{ test_instance.hostname }}"
         capacity_adjustment: "{{ test_capacity_adjustment }}"
       register: updated_instance
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Assert update changed the requested field
       ansible.builtin.assert:
         that:
           - updated_instance is changed
           - updated_instance.instance.capacity_adjustment | float == test_capacity_adjustment | float
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Check idempotency
       ansible.platform.instance:
         hostname: "{{ test_instance.hostname }}"
         capacity_adjustment: "{{ test_capacity_adjustment }}"
       register: idempotent_instance
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
     - name: Assert no change on re-apply
       ansible.builtin.assert:
         that:
           - idempotent_instance is not changed
-      when: connection_mode | default('local') == 'local'
+      when: connection_mode | default('local') == 'http-persistent'
 
   always:
     - name: Restore original capacity adjustment
@@ -113,7 +113,7 @@
         hostname: "{{ test_instance.hostname }}"
         capacity_adjustment: "{{ original_capacity_adjustment }}"
       when:
-        - connection_mode | default('local') == 'local'
+        - connection_mode | default('local') == 'http-persistent'
         - test_instance is defined
         - original_capacity_adjustment is defined
 ...

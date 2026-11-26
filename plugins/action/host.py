@@ -12,3 +12,6 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ho
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "host"
     MODEL_CLASS = AnsibleHost
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
+    _JSON_OBJECT_FIELDS = frozenset({"variables"})
+    _PRESERVE_RESULT_ID_FIELDS = frozenset({"instance_id"})

@@ -8,6 +8,12 @@
   ansible.builtin.set_fact:
     name_prefix: "AAP-Collection-Test-AHCC-{{ test_id }}"
 
+- name: Assert the cached Machine credential type is available
+  ansible.builtin.assert:
+    that:
+      - controller_machine_credential_type_id is defined
+    fail_msg: "The shared Machine credential type fixture was not found."
+
 - name: Run ad hoc command cancel test
   block:
     - name: Create a test Controller organization
@@ -56,24 +62,6 @@
         status_code: [201]
       delegate_to: localhost
 
-    - name: Look up Machine credential type in Controller
-      ansible.builtin.uri:
-        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credential_types/?namespace=ssh"
-        method: GET
-        user: "{{ gateway_username }}"
-        password: "{{ gateway_password }}"
-        force_basic_auth: true
-        validate_certs: "{{ gateway_validate_certs | bool }}"
-        status_code: [200]
-      register: machine_credential_type
-      delegate_to: localhost
-
-    - name: Assert Machine credential type exists
-      ansible.builtin.assert:
-        that:
-          - machine_credential_type.json.count | int > 0
-        fail_msg: "Controller Machine credential type was not found."
-
     - name: Create a test Machine credential
       ansible.builtin.uri:
         url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/credentials/"
@@ -85,7 +73,7 @@
         body_format: json
         body:
           name: "{{ name_prefix }}-Credential"
-          credential_type: "{{ machine_credential_type.json.results[0].id }}"
+          credential_type: "{{ controller_machine_credential_type_id }}"
           organization: "{{ test_organization.json.id }}"
           inputs:
             username: ad-hoc-command-cancel-test

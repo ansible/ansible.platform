@@ -14,3 +14,5 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.co
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "controller_credential_type"
     MODEL_CLASS = AnsibleControllerCredentialType
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
+    _NO_LOG_FIELDS = frozenset({"inputs"})

@@ -17,6 +17,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import time
+import traceback as _tb
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -48,10 +49,6 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 1.0)
             timeout = validated_params.get("timeout", 10)
 
-            if not workflow_job_id:
-                raise AnsibleError("workflow_job_id is required")
-            if not name:
-                raise AnsibleError("name is required")
             if interval <= 0:
                 raise AnsibleError("interval must be greater than 0")
 
@@ -126,6 +123,7 @@ class ActionModule(BaseResourceActionPlugin):
                         "job_data": job_result,
                     }
                 )
+                result.update(self._extract_launch_metadata(job_result))
 
                 if status in FAILED_STATUSES:
                     result["failed"] = True
@@ -140,8 +138,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result["elapsed"] = last.get("elapsed", 0.0)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

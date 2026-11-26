@@ -151,43 +151,28 @@ id: <integer ID if exists>
 <resource fields>: <values>
 ```
 
+The authenticator user and role assignment modules can report a missing
+selection as a failure. These checks are read-only.
+
 ### `state: enforced`
 
-Ensure the resource exists with **exactly** the given properties. Unlike `present`
-(which only checks specified fields), `enforced` resets omitted optional fields to
-their defaults. This is the compliance enforcement state.
+Ensure the resource exists and apply its supported reset rules to omitted
+options on update. The reset values come from the module defaults and the
+resource-specific API transform. For example, omitting the description of an
+existing team clears that field.
 
 ```yaml
-- name: Lock down HTTP port configuration
-  ansible.platform.http_port:
-    port: 443
-    enabled: true
-    ssl_certificate: "default"
+- name: Clear the description of the existing Operations team
+  ansible.platform.team:
+    name: Operations
+    organization: Default
     state: enforced
-
-- name: Enforce feature flags to approved values
-  ansible.platform.feature_flag:
-    name: login_expiry
-    enabled: true
-    expiry_days: 30
-    state: enforced
-  loop: "{{ approved_flags }}"
 ```
 
-**Formal definition**: Let `D` be the full desired state including defaults for all
-omitted optional fields. Ensure `E = D`. If `E` is ∅, create. If `E ≠ D`, update to `D`.
-If `E = D`, no-op.
-
-**Key differences from `present`**:
-- Omitted fields are set to defaults (not left untouched)
-- Compliance enforcement: guarantees exact match, not partial match
-- Use when you need to reset a resource to a known-good baseline
-- Useful for security baselines and configuration hardening
-
-**Edge cases**:
-- Read-only fields are never reset (system-managed fields like `created_at`)
-- Defaults are version-specific (defined by the AAP Gateway version)
-- More restrictive than `present` — use it when you need exact configuration
+Check mode predicts changes without writing. A repeat run reports no change
+when the supplied values and supported reset values match the stored resource.
+Read-only fields, required lookup fields, and associations without a reset
+rule retain their resource-specific behavior.
 
 ---
 
@@ -365,7 +350,7 @@ Every `ansible.platform` resource module guarantees this contract:
 ### The Convergence Loop
 
 ```
-1. GATHER:  Read current config from Gateway (same schema as user input)
+1. GATHER:  Read current config from the owning service (same schema as user input)
 2. COMPARE: Diff desired config against current config
 3. PLAN:    Compute operations needed (create, update, delete)
 4. EXECUTE: Apply operations via API (or skip if no diff)
@@ -374,9 +359,10 @@ Every `ansible.platform` resource module guarantees this contract:
 
 ### Before Making Any Change
 
-The module **always** reads the current state of the resource from the Gateway API
-before deciding whether to create, update, or delete. This is the "find before mutate"
-pattern. It is what makes idempotency possible.
+For resource convergence, the action reads current state from the resource's
+owning service before deciding whether to create, update, or delete. This is the
+"find before mutate" pattern. Operation modules such as launch, wait, and cancel
+have their own documented behavior.
 
 ```
 Input:  task args (desired state)
@@ -388,9 +374,10 @@ Step 4: If different → execute API call → return changed=true
 
 ### check_mode
 
-When `check_mode: true` is set on a task, step 4 is skipped. The action plugin returns
-what it *would* do, including a `would_change` key in the result, but makes no
-API calls. This is guaranteed for all 22 action plugins.
+For modules that support check mode, `check_mode: true` skips the mutation in
+step 4 and reports whether a change would be needed. Read requests may still be
+required to inspect current state. Consult the module documentation for check-mode
+support and result fields; a `would_change` field is not a collection-wide contract.
 
 ```yaml
 - name: Preview changes without applying them
@@ -445,7 +432,7 @@ check mode is not a simulation — it is a **computation**.
 The convergence loop becomes:
 
 ```
-1. GATHER:  Read current config from Gateway → before
+1. GATHER:  Read current config from the owning service → before
 2. PREDICT: Compute after from set theory (no API calls)
 3. REPORT:  Return changed=(before != after), before/after state
 ```
@@ -571,86 +558,21 @@ and mixin selection are transparent to the action plugin.
 
 ## SECTION 7: Compliance Enforcement
 
-IT security teams often need to enforce that a platform is configured to a known-good
-baseline. `state: enforced` on a resource module is their tool.
-
-### Compliance Baseline as Code
-
-Define the desired state once, audit and enforce it everywhere:
+Use `state: enforced` to apply a baseline to a resource that supports
+the state. Each task affects the resource selected by its lookup fields.
 
 ```yaml
----
-- name: Enforce HTTP port baseline
-  hosts: aap_gateways
-  tasks:
-    - name: Only approved HTTP ports should exist
-      ansible.platform.http_port:
-        port: 443
-        enabled: true
-        ssl_certificate: "default"
-        state: enforced
-      loop: "{{ approved_ports }}"
-```
-
-This ensures that:
-- Only the listed ports exist and are enabled
-- Each port has exactly the specified configuration
-- Any unauthorized ports are removed
-- Any configuration drift is corrected
-
-### Compliance Audit (read-only)
-
-Use `check_mode` with `state: enforced` to audit without changing anything:
-
-```yaml
-- name: Audit HTTP port compliance
-  ansible.platform.http_port:
-    port: "{{ item }}"
-    enabled: true
-    ssl_certificate: "default"
+- name: Check whether the Operations team needs a description reset
+  ansible.platform.team:
+    name: Operations
+    organization: Default
     state: enforced
-  loop: "{{ approved_ports }}"
   check_mode: true
   register: audit_result
-
-- name: Report compliance status
-  debug:
-    msg: |
-      Compliance drift detected:
-      {% if audit_result.changed %}
-      FAILED - Configuration does not match baseline
-      Changes needed: {{ audit_result | to_nice_json }}
-      {% else %}
-      PASSED - Configuration matches baseline
-      {% endif %}
 ```
 
-### Security Hardening Example
-
-```yaml
----
-- name: Harden platform security baseline
-  hosts: aap_gateways
-  tasks:
-    - name: Enforce feature flag configuration
-      ansible.platform.feature_flag:
-        name: "{{ item.name }}"
-        enabled: "{{ item.enabled }}"
-        value: "{{ item.value }}"
-        state: enforced
-      loop:
-        - {name: "login_expiry", enabled: true, value: "30"}
-        - {name: "mfa_required", enabled: true, value: "true"}
-        - {name: "debug_mode", enabled: false, value: "false"}
-
-    - name: Enforce password policy
-      ansible.platform.password_policy:
-        min_length: 12
-        require_uppercase: true
-        require_numbers: true
-        require_special_chars: true
-        state: enforced
-```
+A changed result means the task would apply the supported reset or update an
+explicitly supplied value. Run the same task without check mode to apply it.
 
 ### Scheduled Compliance Enforcement
 

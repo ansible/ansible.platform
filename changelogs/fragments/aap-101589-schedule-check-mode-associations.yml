@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - schedule - report potential association changes in check mode when a requested association name or a qualified credential's organization does not exist, while preserving live-mode lookup failures (https://github.com/ansible/ansible.platform/pull/390).
+...

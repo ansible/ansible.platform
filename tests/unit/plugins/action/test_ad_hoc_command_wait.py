@@ -69,7 +69,8 @@ class TestCheckMode(unittest.TestCase):
         self.assertFalse(result["changed"])
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "successful")
-        self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
+        self.assertIs(result["finished"], True)
+        self.assertEqual(result["finished_at"], "2026-01-01T00:00:05Z")
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
             timeout=-1.0,
@@ -106,7 +107,8 @@ class TestWaitCommand(unittest.TestCase):
         self.assertEqual(result["status"], "successful")
         self.assertEqual(result["elapsed"], 5.2)
         self.assertEqual(result["started"], "2026-01-01T00:00:00Z")
-        self.assertEqual(result["finished"], "2026-01-01T00:00:05Z")
+        self.assertIs(result["finished"], True)
+        self.assertEqual(result["finished_at"], "2026-01-01T00:00:05Z")
         manager.wait_for_completion.assert_called_once_with(
             resource_url="/api/controller/v2/ad_hoc_commands/42/",
             timeout=-1.0,
@@ -201,6 +203,9 @@ class TestWaitCommand(unittest.TestCase):
         self.assertIn("Timed out", result["msg"])
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "running")
+        self.assertEqual(result["elapsed"], 0.0)
+        self.assertIs(result["finished"], False)
+        self.assertIsNone(result["finished_at"])
 
     @patch.object(ActionModule, "_prepare_action")
     def test_wait_with_custom_interval(self, mock_prepare):
@@ -264,19 +269,10 @@ class TestWaitCommand(unittest.TestCase):
         self.assertEqual(result["msg"], "timeout must be 0 or greater")
         manager.wait_for_completion.assert_not_called()
 
-    @patch.object(ActionModule, "_prepare_action")
-    def test_missing_command_id(self, mock_prepare):
+    def test_missing_command_id_is_rejected_by_shared_validation(self):
         module = _make_module(args={})
-        mock_prepare.return_value = {
-            "result": {},
-            "validated_params": {"command_id": None, "interval": 2.0, "timeout": None},
-            "manager": MagicMock(),
-        }
-
-        result = module.run(task_vars={})
-
-        self.assertTrue(result["failed"])
-        self.assertIn("command_id is required", result["msg"])
+        with self.assertRaisesRegex(Exception, "command_id"):
+            module._validate_action_input()
 
     @patch.object(ActionModule, "_prepare_action")
     def test_command_not_found(self, mock_prepare):
@@ -314,6 +310,33 @@ class TestWaitCommand(unittest.TestCase):
         result = module.run(task_vars={})
 
         self.assertFalse(result["changed"])
+
+
+class TestLaunchMetadata(unittest.TestCase):
+    """Test audit metadata extraction from Controller responses."""
+
+    @patch.object(ActionModule, "_prepare_action")
+    def test_wait_returns_user_name_from_response(self, mock_prepare):
+        module = _make_module(args={"command_id": 42})
+        manager = MagicMock()
+        manager.wait_for_completion.return_value = {
+            "id": 42,
+            "status": "successful",
+            "elapsed": 5.0,
+            "started": "2026-01-01T00:00:00Z",
+            "finished": "2026-01-01T00:00:05Z",
+            "summary_fields": {"created_by": {"id": 1, "username": "admin"}},
+        }
+        mock_prepare.return_value = {
+            "result": {},
+            "validated_params": {"command_id": 42, "interval": 2.0, "timeout": None},
+            "manager": manager,
+        }
+
+        result = module.run(task_vars={})
+
+        self.assertEqual(result["user_name"], "admin")
+        self.assertNotIn("job_template_name", result)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -24,6 +26,21 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 
 class TestWorkflowJobTemplateTransform(unittest.TestCase):
     """Ansible <-> API round-trip tests for workflow_job_template."""
+
+    def test_find_and_delete_ignore_non_lookup_foreign_keys(self):
+        """Unused inventory and webhook fields cannot hide an existing workflow."""
+        for operation in ("find", "delete"):
+            with self.subTest(operation=operation):
+                manager = MagicMock()
+                manager.lookup_resource_id.return_value = 7
+                ansible = AnsibleWorkflowJobTemplate(name="wf", organization="Default", inventory="Missing", webhook_credential="Missing")
+
+                api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": operation, "manager": manager})
+
+                manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
+                self.assertEqual(api.organization, 7)
+                self.assertIsNone(api.inventory)
+                self.assertIsNone(api.webhook_credential)
 
     def test_extra_vars_stays_as_dict(self):
         ansible = AnsibleWorkflowJobTemplate(name="wf", extra_vars={"foo": "bar"})
@@ -55,13 +72,13 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         self.assertIsNone(api.organization)
         self.assertIsNone(api.extra_vars)
 
-    def test_org_fk_uses_default_service(self):
+    def test_org_fk_uses_controller_service(self):
         mock_manager = MagicMock()
         mock_manager.lookup_resource_id.return_value = 42
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleWorkflowJobTemplate(name="wf", organization="Default")
         api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Default", service="controller")
         self.assertEqual(api.organization, 42)
 
     def test_inventory_fk_uses_controller_service(self):
@@ -114,7 +131,7 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
     def test_from_api_resolves_fk_ids_to_names(self):
         def _mock_search(path):
             lookup = {
-                "/api/gateway/v1/organizations/5/": {"name": "Default"},
+                "/api/controller/v2/organizations/5/": {"name": "Default"},
                 "/api/controller/v2/inventories/10/": {"name": "Prod Inventory"},
                 "/api/controller/v2/credentials/3/": {"name": "GH Token"},
             }
@@ -210,6 +227,18 @@ class TestWorkflowJobTemplateTransform(unittest.TestCase):
         self.assertEqual(ansible.extra_vars, {"foo": "bar"})
         api = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(ansible, {"operation": "update"})
         self.assertEqual(api.extra_vars, '{"foo": "bar"}')
+
+
+@pytest.mark.parametrize("field", ["inventory", "webhook_credential"])
+@pytest.mark.parametrize("operation", ["find", "delete"])
+def test_unused_write_reference_does_not_block_find_or_delete(field, operation):
+    """Do not mistake an invalid unused reference for an absent resource."""
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = ValueError("unused reference must not be resolved")
+    model = AnsibleWorkflowJobTemplate(name="Resource", **{field: "Missing Reference"})
+    data = WorkflowJobTemplateTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": operation})
+    assert getattr(data, field) is None
+    manager.lookup_resource_id.assert_not_called()
 
 
 if __name__ == "__main__":

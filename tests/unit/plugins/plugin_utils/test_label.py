@@ -33,7 +33,7 @@ class TestLabelTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleLabel(name="Test", organization="Default")
         api = LabelTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default")
+        mock_manager.lookup_resource_id.assert_called_once_with("organizations", "name", "Default", service="controller")
         self.assertEqual(api.organization, 42)
 
     def test_create_with_org_id_skips_lookup(self):

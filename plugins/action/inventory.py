@@ -7,8 +7,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import json
-
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.inventory import AnsibleInventory
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.inventory import BASE_PATH
@@ -24,6 +22,7 @@ _SERVICE = "controller"
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "inventory"
     MODEL_CLASS = AnsibleInventory
+    _ENFORCED_EMPTY_STRING_FIELDS = frozenset({"description"})
     LOOKUP_FIELD = "name"
 
     _WRITE_ONLY_FIELDS = frozenset({"copy_from"} | set(_ASSOC_MAP))
@@ -31,7 +30,7 @@ class ActionModule(BaseResourceActionPlugin):
     def _resolve_lookup(self, resource, resource_data, validated_params):
         organization = getattr(resource, "organization", None)
         if organization is not None and str(organization).strip().isdigit():
-            names = self._client.lookup_organization_names([int(organization)])
+            names = self._client.lookup_organization_names([int(organization)], service=_SERVICE)
             if names:
                 resource.organization = names[0]
                 resource_data["organization"] = names[0]
@@ -40,12 +39,8 @@ class ActionModule(BaseResourceActionPlugin):
         if task_vars is None:
             task_vars = {}
 
-        variables = self._task.args.get("variables")
-        if isinstance(variables, dict):
-            self._task.args["variables"] = json.dumps(variables, sort_keys=True)
-
-        copy_from = self._task.args.pop("copy_from", None)
-        association_data = {field: self._task.args.pop(field, None) for field in _ASSOC_MAP}
+        copy_from = self._task.args.get("copy_from")
+        association_data = {field: self._task.args.get(field) for field in _ASSOC_MAP}
 
         name = self._task.args.get("name")
         organization = self._task.args.get("organization")
@@ -54,6 +49,10 @@ class ActionModule(BaseResourceActionPlugin):
 
         copied = False
         if copy_from and state not in ("absent", "exists") and not check_mode:
+            try:
+                self._validate_action_input()
+            except Exception as exc:
+                return {"changed": False, "failed": True, "msg": str(exc)}
             try:
                 super(BaseResourceActionPlugin, self).run(tmp, task_vars)
                 self._task_vars = task_vars
@@ -64,7 +63,7 @@ class ActionModule(BaseResourceActionPlugin):
                     if str(organization).strip().isdigit():
                         query_params["organization"] = int(organization)
                     else:
-                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+                        query_params["organization"] = manager.lookup_resource_id("organizations", "name", organization, service=_SERVICE)
                 existing = manager.search_api(BASE_PATH, query_params=query_params)
                 if not any(item.get("name") == name for item in existing.get("results", [])):
                     manager.copy_resource(self.MODULE_NAME, copy_from, name, BASE_PATH, service=_SERVICE)
@@ -73,6 +72,8 @@ class ActionModule(BaseResourceActionPlugin):
                 return {"changed": False, "failed": True, "msg": "Failed to copy from '%s': %s" % (copy_from, exc)}
 
         result = super().run(tmp, task_vars)
+        if copy_from:
+            result["copied"] = copied
         if copied:
             result["changed"] = True
         if result.get("failed") or state in ("absent", "exists"):
@@ -82,18 +83,14 @@ class ActionModule(BaseResourceActionPlugin):
         if not inv_id:
             return result
 
-        reconcile_fields = {k: v for k, v in association_data.items() if v is not None}
-        if check_mode:
-            if reconcile_fields:
-                result["changed"] = True
-            return result
-
         try:
             manager = self._client
             changed = False
             for field, (lookup_endpoint, lookup_field) in _ASSOC_MAP.items():
                 desired = association_data.get(field)
-                if desired is not None and manager.manage_associations(BASE_PATH, inv_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE):
+                if desired is not None and manager.manage_associations(
+                    BASE_PATH, inv_id, field, desired, lookup_endpoint, lookup_field, service=_SERVICE, check_mode=check_mode
+                ):
                     changed = True
         except Exception as exc:
             result["failed"] = True

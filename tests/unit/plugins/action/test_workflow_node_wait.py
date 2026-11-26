@@ -78,47 +78,14 @@ class TestWorkflowNodeWaitActionModule:
         mock_manager.wait_for_completion.assert_called_once()
 
     def test_missing_workflow_job_id(self, action_module):
-        mock_manager = MagicMock()
-        with patch.object(action_module, "_prepare_action") as mock_prepare:
-            mock_prepare.return_value = {
-                "result": {},
-                "validated_params": {
-                    "workflow_job_id": None,
-                    "name": "Step",
-                    "interval": 1.0,
-                    "timeout": 10,
-                },
-                "resource_data": {},
-                "write_only_data": {},
-                "manager": mock_manager,
-                "argspec": {},
-            }
-            result = action_module.run(task_vars={})
-
-        assert result["failed"] is True
-        assert result["changed"] is False
-        assert "workflow_job_id" in result["msg"]
+        action_module._task.args = {"name": "Step"}
+        with pytest.raises(Exception, match="workflow_job_id"):
+            action_module._validate_action_input()
 
     def test_missing_name(self, action_module):
-        mock_manager = MagicMock()
-        with patch.object(action_module, "_prepare_action") as mock_prepare:
-            mock_prepare.return_value = {
-                "result": {},
-                "validated_params": {
-                    "workflow_job_id": 42,
-                    "name": "",
-                    "interval": 1.0,
-                    "timeout": 10,
-                },
-                "resource_data": {},
-                "write_only_data": {},
-                "manager": mock_manager,
-                "argspec": {},
-            }
-            result = action_module.run(task_vars={})
-
-        assert result["failed"] is True
-        assert "name" in result["msg"]
+        action_module._task.args = {"workflow_job_id": 42}
+        with pytest.raises(Exception, match="name"):
+            action_module._validate_action_input()
 
     @pytest.mark.parametrize("interval", [0, -1])
     def test_invalid_interval_fails_before_search(self, action_module, interval):
@@ -624,3 +591,41 @@ class TestWorkflowNodeWaitActionModule:
 
         assert result["failed"] is True
         assert result["status"] == "canceled"
+
+    @patch("ansible_collections.ansible.platform.plugins.action.workflow_node_wait.time")
+    def test_wait_result_includes_metadata_from_summary_fields(self, mock_time, action_module):
+        """Audit metadata is extracted from the node's job response."""
+        mock_time.time.side_effect = [0.0, 0.5, 1.0]
+        mock_manager = MagicMock()
+        mock_manager.search_api.return_value = {
+            "count": 1,
+            "results": [{"id": 100, "related": {"job": "/api/controller/v2/jobs/55/"}}],
+        }
+        mock_manager.wait_for_completion.return_value = {
+            "id": 55,
+            "status": "successful",
+            "elapsed": 1.0,
+            "summary_fields": {
+                "created_by": {"id": 1, "username": "operator"},
+                "job_template": {"id": 10, "name": "Deploy"},
+            },
+        }
+
+        with patch.object(action_module, "_prepare_action") as mock_prepare:
+            mock_prepare.return_value = {
+                "result": {},
+                "validated_params": {
+                    "workflow_job_id": 42,
+                    "name": "Deploy Step",
+                    "interval": 1.0,
+                    "timeout": 120,
+                },
+                "resource_data": {},
+                "write_only_data": {},
+                "manager": mock_manager,
+                "argspec": {},
+            }
+            result = action_module.run(task_vars={})
+
+        assert result["user_name"] == "operator"
+        assert result["job_template_name"] == "Deploy"

@@ -15,6 +15,7 @@ class AnsibleSchedule:
     description: Optional[str] = None
     rrule: Optional[str] = None
     unified_job_template: Optional[str] = None
+    organization: Optional[str] = None
     enabled: Optional[bool] = None
     extra_data: Optional[dict] = None
     inventory: Optional[str] = None

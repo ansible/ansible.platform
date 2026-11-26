@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - event_stream - migrate ``event_stream`` module from ``ansible.eda`` (https://issues.redhat.com/browse/AAP-97666).
+...

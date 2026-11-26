@@ -12,3 +12,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ui
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "ui_plugin_route"
     MODEL_CLASS = AnsibleUIPluginRoute
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"is_service_https"})

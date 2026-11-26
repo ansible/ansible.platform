@@ -17,6 +17,8 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.eda.v1.decisi
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "decision_environment"
     MODEL_CLASS = AnsibleDecisionEnvironment
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"pull_policy"})
+    _LEGACY_REFERENCE_FIELDS = {"organization": "organization_name"}
     _REQUIRED_IF = [["state", "present", ["image_url"]]]
 
     _REFERENCE_FIELDS = (

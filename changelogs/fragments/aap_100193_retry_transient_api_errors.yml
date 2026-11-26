@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - api - retry transient failures for SDK reads and idempotent endpoint operations, while keeping resource-creation POSTs single-attempt.
+...

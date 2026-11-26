@@ -1,0 +1,637 @@
+{
+  "metadata": {
+    "ticket": "AAP-101589",
+    "date": "2026-11-11",
+    "branch": "AAP-101589-batch2-compat",
+    "platform_base_commit": "0d5514b50281fef9e0953584340426886a07a182",
+    "platform_inputs": "uncommitted branch working tree; see code_hashes",
+    "awx_devel_commit": "72a1922a9cdc7c877c91d2e97d0c53ed34b437f4",
+    "token_baseline": "ansible.controller stable-2.6",
+    "token_baseline_commit": "798a79d8800d6bbd42d1714d13cd60febb9a0032",
+    "eda_ref": "origin/main",
+    "eda_commit": "7512a8408333",
+    "skill_hashes": {
+      "SKILL.md": "b80e83e58bac6124d0fb5dccad0fbfe78c84d74eb4389f9c9fc83f6c41a8a1cf",
+      "scripts/audit_module_compat.py": "9ce1e6e8989cf7c5a446074fa4ea50ba3174c1d86961d66b0804157330b70b5b",
+      "scripts/prepare_platform_integration_targets.py": "0523f5f9c68b29da6f95be94718bd06c38c7c48c5d59d4e0c549192b93dbfddf",
+      "references/migration-scope.json": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0"
+    },
+    "scope_note": "Organization is excluded by the skill migration plan and audited explicitly as a replacement because this ticket includes it. Token is absent from AWX devel and audited against the available stable-2.6 baseline. The manifest AWX summary counts conflict with its detailed rows (35/8 versus 38/7); no Batch 2 module is omitted as a result.",
+    "code_hashes": {
+      "plugins/modules/organization.py": "7db536076b5453d26c7d1e1f72c877db0890fc6aed05a76a1729bf6deb3e0af0",
+      "plugins/action/organization.py": "b28322f4861d29828461438533f52a4f7ba5b47705b7b8468da90d86afe5de6e",
+      "plugins/modules/workflow_job_template.py": "ebdabb5466f938116eb1ecab61a32bd0baef0bbd15511697ad4f03f3f24ae31b",
+      "plugins/action/workflow_job_template.py": "a6b9123f6c98aad0b7e0a5100ea5da52b07c95928ab7e3f4d09a6378fad432a2",
+      "plugins/modules/execution_environment.py": "01b79c60f8bc984805cc3edc1fbe61510ff823e43a82b7d3b0010225b2ddd01b",
+      "plugins/action/execution_environment.py": "f73420fd5d58c0329b9ba1227573a55658f6a123bee43b510943be6325e87db1",
+      "plugins/modules/group.py": "addb4885c3ef45a2282d25d6f293c22843b72bcf89d768490e51b5c7ae295bbf",
+      "plugins/action/group.py": "621a6670b51bbe345b974ac580d62de4a6fa9061068029b35129b4728adfc878",
+      "plugins/modules/token.py": "054ee131e26606ab4bc1a9ede303be9ee2237e010fe9e571bd4e59c7c10ea482",
+      "plugins/action/token.py": "94af5f17d28d43b0aec34f7e03593e93d741592bc33a720aefbdc1ba4aec8535",
+      "plugins/modules/job_wait.py": "1c3166f66a1aacc10833668aee69cde9f5b9f50629a2c8078006a7dbb34ec984",
+      "plugins/action/job_wait.py": "130ea7a0d31ad4532bcae69694fb7d5052528007c666d2ef9c1ebad6249ceab5",
+      "plugins/modules/controller_settings.py": "c65a6be442db271c29b2697d8d58132d6af36dd8ff788a4bc210838591ab626f",
+      "plugins/action/controller_settings.py": "256e5bdb8261485cac2193d15fb6cf9db22ceda5833de310cd88cbac42992da9",
+      "plugins/modules/notification_template.py": "18a1d7a00db3dd13cbc17ebfde50dc0744a6feae397712266db55635c098b106",
+      "plugins/action/notification_template.py": "04a034453aa6ddb76b625315171b25ed4f22ec7d3b4bb5b7fb584071d57a20af",
+      "plugins/modules/project_update.py": "854dcdfb42cb4f4dbde4734de838cbb9062fd7b3b200962c3af3ea6be8e5b9ed",
+      "plugins/action/project_update.py": "0e39193eb44616bd62994544412a9539ad3717c5df94523eff8b23d745dcece8",
+      "plugins/plugin_utils/platform/direct_client.py": "695d8517a8ac7608762f9ed7233fabe22113d9dee8df3e96c88a3fcda5c722d0",
+      "plugins/plugin_utils/manager/platform_manager.py": "368e00580fbb0ef695dc966fef89af9784d5a49f594c9be32197a9a9180b62ac",
+      "plugins/plugin_utils/manager/rpc_client.py": "ac4c8ae8b1e2872903cb47854a4f083ad13a2dc3bf9b6aa8d47f57acdb876262",
+      "plugins/plugin_utils/api/controller/v2/workflow_job_template.py": "4b89360346b2ca846303762a1a2ae106f485cf4034ef9831336d60492dc06454"
+    }
+  },
+  "modules": [
+    {
+      "source": "awx_collection",
+      "module": "execution_environment",
+      "module_id": "awx_collection:execution_environment",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": null,
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "execution_environment",
+      "implemented_platform_name": "execution_environment",
+      "gateway_collision": null,
+      "platform_name": "execution_environment",
+      "source_sha": "38c5ecb516d27b687cb46d985ad3b4c589643cad",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "95441b8010df6bf8ce91622cd790f1b046434e2a",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "a1ced32ba86af338578d30f3c87547d5d1190e83",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "execution_environment"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "source": "awx_collection",
+      "module": "group",
+      "module_id": "awx_collection:group",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": null,
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "group",
+      "implemented_platform_name": "group",
+      "gateway_collision": null,
+      "platform_name": "group",
+      "source_sha": "a746f646d4e62a089e0e99e5e3ff8450b8103032",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "fe5d0953721f7c62ee08ac1ef3f06b29eb1f920d",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "fb55804ebfc4fc2aa0f631b32b4c2bf466a08513",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "group"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "source": "awx_collection",
+      "module": "job_wait",
+      "module_id": "awx_collection:job_wait",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": null,
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "job_wait",
+      "implemented_platform_name": "job_wait",
+      "gateway_collision": null,
+      "platform_name": "job_wait",
+      "source_sha": "b7f71eeda2898564b37e1c1bb034a304290d117b",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "1741ff70040ff09b27d7ed94861cb79eb87fe27f",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "7af96b530136e6ade695074bb7775d95b8eeeee0",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "finished_at"
+          ],
+          "changed": {
+            "finished": {
+              "type": {
+                "legacy": "str",
+                "platform": "bool",
+                "severity": "review"
+              }
+            }
+          },
+          "breaking": false,
+          "review_keys": [
+            "finished"
+          ]
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "source": "awx_collection",
+      "module": "notification_template",
+      "module_id": "awx_collection:notification_template",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": null,
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "notification_template",
+      "implemented_platform_name": "notification_template",
+      "gateway_collision": null,
+      "platform_name": "notification_template",
+      "source_sha": "cc0c28317fef45ab0ce9e18a63c5fc6ffe8ce39b",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "ff04b25e0c7957e945b3c8944041f547bf192eda",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "e087e159e34dfb4a6a2f5cb8d1e2e223621b50a4",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "copied",
+            "notification_template"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "source": "awx_collection",
+      "module": "organization",
+      "module_id": "awx_collection:organization",
+      "diff_schema_version": 9,
+      "status": "out-of-scope",
+      "scope": "exclude",
+      "scope_reason": "RBAC is handled by the ansible.platform Gateway module",
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": null,
+      "implemented_platform_name": "organization",
+      "gateway_collision": null,
+      "platform_name": "organization",
+      "source_sha": "38b7c3dc0daa5e7e19b00e9fd5b846d9668d48ec",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "6a3b50e8322bafc40d3326cbe331f5ff52676d02",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": null,
+      "diff": null,
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true,
+      "replacement_contract_audit": {
+        "module_id": "awx_collection:organization",
+        "module": "organization",
+        "audit_method": "manual supplement using track-module-compat contract/architecture helpers",
+        "diff": {
+          "options": {
+            "dropped": [
+              "custom_virtualenv",
+              "default_environment",
+              "galaxy_credentials",
+              "instance_groups",
+              "max_hosts",
+              "notification_templates_approvals",
+              "notification_templates_error",
+              "notification_templates_started",
+              "notification_templates_success"
+            ],
+            "added": [],
+            "changed": {
+              "state": {
+                "choices": {
+                  "removed": [],
+                  "added": [
+                    "enforced"
+                  ],
+                  "severity": "safe"
+                }
+              }
+            },
+            "breaking": true,
+            "breaking_keys": [],
+            "review_keys": []
+          },
+          "return": {
+            "dropped": [],
+            "added": [
+              "changed",
+              "organization"
+            ],
+            "changed": {},
+            "breaking": false,
+            "review_keys": []
+          },
+          "architecture": {
+            "action_plugin_found": true,
+            "http_in_action_plugin": false,
+            "legacy_has_wait_semantics": false,
+            "poll_loop_in_action_plugin": false,
+            "violation": false
+          }
+        }
+      }
+    },
+    {
+      "source": "awx_collection",
+      "module": "project_update",
+      "module_id": "awx_collection:project_update",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": null,
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "project_update",
+      "implemented_platform_name": "project_update",
+      "gateway_collision": null,
+      "platform_name": "project_update",
+      "source_sha": "64d81ffc5424ac5e36ebb2422bd1119ca7a3336f",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "6425c984d9e36f98e2282d69b4180290a0e42079",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "bbc06ddfdfd3ca543f9802761924d5906586de54",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "elapsed",
+            "finished",
+            "finished_at",
+            "job_data",
+            "started"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": true,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "source": "awx_collection",
+      "module": "settings",
+      "module_id": "awx_collection:settings",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": "Renamed to avoid the Gateway settings collision",
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "controller_settings",
+      "implemented_platform_name": "controller_settings",
+      "gateway_collision": null,
+      "platform_name": "controller_settings",
+      "source_sha": "7314257463b2d9d3349d6cfece89fb751763ffc5",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "5d90f54e529aa3ef10e4965067b1c9217cd0cdfd",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "442e4cdcd08ea60c6169eec96c6b98c5ff7e44bf",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [],
+          "changed": {},
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "controller_settings",
+            "new_values",
+            "old_values",
+            "value",
+            "values"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "source": "awx_collection",
+      "module": "workflow_job_template",
+      "module_id": "awx_collection:workflow_job_template",
+      "diff_schema_version": 9,
+      "status": "migrated",
+      "scope": "migrate",
+      "scope_reason": null,
+      "scope_sha": "4416c21081768399714bbfcf976af1d7f8989626e048d640c42a4a1a27f88fa0",
+      "planned_platform_name": "workflow_job_template",
+      "implemented_platform_name": "workflow_job_template",
+      "gateway_collision": null,
+      "platform_name": "workflow_job_template",
+      "source_sha": "398257df7db0f20cb151fe765bea42291685ea6f",
+      "source_fragments_sha": "0ec8a27052895d5647760a70ee4a3485a4afed5185777e6f2522714a5700e09f",
+      "platform_sha": "780460a6af48285852f8ac4d3312c440743d8390",
+      "platform_fragments_sha": "4f703d4f9a112408e8200157881f5f0151a71a604f08d730d3faa7b0cdc9dfb4",
+      "platform_action_sha": "e614b25895d381eb93a378bff73ae480401f27b1",
+      "diff": {
+        "options": {
+          "dropped": [
+            "destroy_current_nodes",
+            "destroy_current_schema",
+            "schema",
+            "workflow_nodes"
+          ],
+          "added": [],
+          "changed": {
+            "state": {
+              "choices": {
+                "removed": [],
+                "added": [
+                  "enforced"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": true,
+          "breaking_keys": [],
+          "review_keys": []
+        },
+        "return": {
+          "dropped": [],
+          "added": [
+            "changed",
+            "copied",
+            "workflow_job_template"
+          ],
+          "changed": {},
+          "breaking": false,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        },
+        "extraction_failed": {
+          "source": false,
+          "platform": false
+        },
+        "return_extraction_failed": {
+          "source": false,
+          "platform": false
+        }
+      },
+      "platform_source": "working tree (AAP-101589-batch2-compat)",
+      "eda_source": "origin/main@7512a8408333",
+      "changed": true
+    },
+    {
+      "module_id": "awx_collection:token",
+      "module": "token",
+      "audit_method": "manual supplement using track-module-compat contract/architecture helpers",
+      "diff": {
+        "options": {
+          "dropped": [],
+          "added": [
+            "organization"
+          ],
+          "changed": {
+            "scope": {
+              "type": {
+                "legacy": "str",
+                "platform": "list",
+                "severity": "review"
+              },
+              "choices": {
+                "removed": [],
+                "added": [
+                  "openid",
+                  "roles"
+                ],
+                "severity": "safe"
+              }
+            }
+          },
+          "breaking": false,
+          "breaking_keys": [],
+          "review_keys": [
+            "scope"
+          ]
+        },
+        "return": {
+          "dropped": [
+            "controller_token"
+          ],
+          "added": [
+            "aap_token"
+          ],
+          "changed": {},
+          "breaking": true,
+          "review_keys": []
+        },
+        "architecture": {
+          "action_plugin_found": true,
+          "http_in_action_plugin": false,
+          "legacy_has_wait_semantics": false,
+          "poll_loop_in_action_plugin": false,
+          "violation": false
+        }
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.platform_manager import PlatformService
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client import BaseAPIClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import GatewayConfig, extract_gateway_config
 
 
@@ -96,6 +97,41 @@ class TestPlatformServiceIdle(unittest.TestCase):
             self.platform_service.record_activity()
             self.platform_service.record_activity()
             self.assertEqual(self.platform_service.seconds_since_last_activity(), 5.0)
+
+    def test_wait_keeps_service_active_and_restarts_idle_timeout_on_completion(self):
+        self.platform_service.config.idle_timeout = 10.0
+        now = [0.0]
+
+        with patch("time.monotonic", side_effect=lambda: now[0]):
+            self.platform_service.record_activity()
+            now[0] = 100.0
+
+            def wait_for_completion(*args, **kwargs):
+                self.assertFalse(self.platform_service.should_exit_for_idle())
+                return {"status": "successful"}
+
+            with patch.object(BaseAPIClient, "wait_for_completion", side_effect=wait_for_completion):
+                result = self.platform_service.wait_for_completion("/jobs/42/", timeout=300, interval=60)
+
+            self.assertEqual(result["status"], "successful")
+            self.assertEqual(self.platform_service._active_waits, 0)
+            self.assertFalse(self.platform_service.should_exit_for_idle())
+            now[0] = 111.0
+            self.assertTrue(self.platform_service.should_exit_for_idle())
+
+    def test_wait_releases_active_registration_on_error_and_cancellation(self):
+        self.platform_service.config.idle_timeout = 10.0
+
+        for error in (RuntimeError("wait failed"), KeyboardInterrupt()):
+            with self.subTest(error=type(error).__name__):
+                with patch("time.monotonic", return_value=100.0):
+                    with patch.object(BaseAPIClient, "wait_for_completion", side_effect=error):
+                        with self.assertRaises(type(error)):
+                            self.platform_service.wait_for_completion("/jobs/42/", timeout=300, interval=60)
+                    self.assertEqual(self.platform_service._active_waits, 0)
+
+                with patch("time.monotonic", return_value=111.0):
+                    self.assertTrue(self.platform_service.should_exit_for_idle())
 
 
 class TestPlatformServiceIdleTokenExpiry(unittest.TestCase):
@@ -246,8 +282,8 @@ class TestPlatformServiceIdleTokenExpiry(unittest.TestCase):
 
 
 class TestProcessManagerIdleArgv(unittest.TestCase):
-    def test_spawn_manager_includes_idle_timeout_in_command(self):
-        cfg = GatewayConfig(base_url="https://example.com/", username="u", password="p", idle_timeout=123.0)
+    def test_spawn_manager_includes_idle_timeout_and_retry_settings_in_command(self):
+        cfg = GatewayConfig(base_url="https://example.com/", username="u", password="p", idle_timeout=123.0, max_retries=0, retry_backoff_factor=3)
         # tests/unit/plugins/plugin_utils/manager/ -> five parents up to platform/
         script = Path(__file__).resolve().parent.parent.parent.parent.parent / "plugins" / "plugin_utils" / "manager" / "manager_process.py"
         with patch("ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager.subprocess.Popen") as mock_popen:
@@ -263,7 +299,7 @@ class TestProcessManagerIdleArgv(unittest.TestCase):
                 owner_pid=None,
             )
         cmd = mock_popen.call_args[0][0]
-        self.assertEqual(cmd[-1], "123.0")
+        self.assertEqual(cmd[-3:], ["123.0", "0", "3"])
 
 
 if __name__ == "__main__":

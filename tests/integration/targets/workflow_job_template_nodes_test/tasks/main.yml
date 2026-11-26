@@ -18,22 +18,27 @@
 
 - name: Run Test
   module_defaults:
-    group/ansible.platform.gateway:
-      gateway_hostname: "{{ gateway_hostname }}"
-      gateway_username: "{{ gateway_username }}"
-      gateway_password: "{{ gateway_password }}"
-      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
-    group/ansible.platform.controller:
+    group/ansible.platform.aap:
       gateway_hostname: "{{ gateway_hostname }}"
       gateway_username: "{{ gateway_username }}"
       gateway_password: "{{ gateway_password }}"
       gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
 
   block:
-    - name: Create organization for workflow template
-      ansible.platform.organization:
-        name: "{{ organization_name }}"
+    - name: Create Controller organization for workflow template
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/"
+        method: POST
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        body_format: json
+        body:
+          name: "{{ organization_name }}"
+        status_code: [201]
       register: test_organization
+      delegate_to: localhost
 
     - name: Create workflow job template prerequisite
       ansible.builtin.uri:
@@ -46,7 +51,7 @@
         body_format: json
         body:
           name: "{{ workflow_name }}"
-          organization: "{{ test_organization.id }}"
+          organization: "{{ test_organization.json.id }}"
         status_code: [200, 201]
       register: test_workflow
       delegate_to: localhost
@@ -62,7 +67,8 @@
         body_format: json
         body:
           name: "{{ ujt_name }}"
-          organization: "{{ test_organization.id }}"
+          organization: "{{ test_organization.json.id }}"
+          ask_inventory_on_launch: true
         status_code: [200, 201]
       register: test_ujt
       delegate_to: localhost
@@ -121,6 +127,59 @@
         that:
           - idempotent_node is not changed
 
+    - name: Create inventory for the enforced reset
+      ansible.platform.inventory:
+        name: "Workflow Node Inventory {{ test_id }}"
+        organization: "{{ test_organization.json.id }}"
+      register: reset_inventory
+
+    - name: Assign the inventory to the workflow node
+      ansible.platform.workflow_job_template_node:
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        inventory: "{{ reset_inventory.id }}"
+
+    - name: Predict resetting the omitted inventory
+      ansible.platform.workflow_job_template_node: &enforced_node
+        identifier: "{{ node_identifier }}"
+        workflow_job_template: "{{ workflow_name }}"
+        unified_job_template: "{{ ujt_name }}"
+        state: enforced
+      check_mode: true
+      register: reset_preview
+
+    - name: Read the workflow node after check mode
+      ansible.builtin.uri: &read_reset_node
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/workflow_job_template_nodes/{{ created_node.id }}/"
+        url_username: "{{ gateway_username }}"
+        url_password: "{{ gateway_password }}"
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        force_basic_auth: true
+      delegate_to: localhost
+      register: node_after_preview
+
+    - name: Apply the omitted inventory reset
+      ansible.platform.workflow_job_template_node: *enforced_node
+      register: reset_apply
+
+    - name: Read the workflow node after the reset
+      ansible.builtin.uri: *read_reset_node
+      delegate_to: localhost
+      register: node_after_reset
+
+    - name: Repeat the omitted inventory reset
+      ansible.platform.workflow_job_template_node: *enforced_node
+      register: reset_repeat
+
+    - name: Verify the inventory reset behavior
+      ansible.builtin.assert:
+        that:
+          - reset_preview is changed
+          - node_after_preview.json.inventory | int == reset_inventory.id | int
+          - reset_apply is changed
+          - node_after_reset.json.inventory is none
+          - reset_repeat is not changed
+
     # -- FK change detection --------------------------------------------------
 
     - name: Create second workflow JT for FK change test
@@ -134,7 +193,7 @@
         body_format: json
         body:
           name: "{{ ujt_name_2 }}"
-          organization: "{{ test_organization.id }}"
+          organization: "{{ test_organization.json.id }}"
         status_code: [200, 201]
       register: test_ujt_2
       delegate_to: localhost
@@ -266,6 +325,56 @@
         that:
           - absent_node is not changed
 
+    - name: Create an approval node
+      ansible.platform.workflow_job_template_node:
+        identifier: "approval-{{ test_id }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        approval_node:
+          name: "Approve {{ test_id }}"
+          description: Initial approval
+          timeout: 60
+      register: created_approval
+
+    - name: Reapply the approval node
+      ansible.platform.workflow_job_template_node:
+        identifier: "approval-{{ test_id }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        approval_node:
+          name: "Approve {{ test_id }}"
+          description: Initial approval
+          timeout: 60
+      register: unchanged_approval
+
+    - name: Predict approval changes
+      ansible.platform.workflow_job_template_node:
+        identifier: "approval-{{ test_id }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        approval_node:
+          name: "Approve {{ test_id }}"
+          description: ""
+          timeout: 0
+      check_mode: true
+      register: planned_approval
+
+    - name: Apply the approval changes predicted by check mode
+      ansible.platform.workflow_job_template_node:
+        identifier: "approval-{{ test_id }}"
+        workflow_job_template: "{{ test_workflow.json.id }}"
+        approval_node:
+          name: "Approve {{ test_id }}"
+          description: ""
+          timeout: 0
+      register: updated_approval
+
+    - name: Assert approval creation, idempotency, and dry-run behavior
+      ansible.builtin.assert:
+        that:
+          - created_approval is changed
+          - created_approval.workflow_node_id == created_approval.id
+          - unchanged_approval is not changed
+          - planned_approval is changed
+          - updated_approval is changed
+
   always:
     - name: Delete second workflow node if created
       ansible.platform.workflow_job_template_node:
@@ -334,11 +443,25 @@
         - test_workflow.json.id is defined
       delegate_to: localhost
 
-    - name: Delete organization prerequisite
-      ansible.platform.organization:
-        name: "{{ organization_name }}"
+    - name: Delete inventory used for the enforced reset
+      ansible.platform.inventory:
+        name: "{{ reset_inventory.id }}"
+        organization: "{{ test_organization.json.id }}"
         state: absent
+      when: reset_inventory.id is defined
+
+    - name: Delete organization prerequisite
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/{{ test_organization.json.id }}/"
+        method: DELETE
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [202, 204, 404]
       when:
         - test_organization is defined
-        - test_organization.id is defined
+        - test_organization.json is defined
+        - test_organization.json.id is defined
+      delegate_to: localhost
 ...

@@ -10,6 +10,8 @@
 6. [The RPC Interface](#section-6-the-rpc-interface)
 7. [Directory Structure](#section-7-directory-structure)
 8. [Why a Separate Process](#section-8-why-a-separate-process)
+9. [Subscription and License Operations](#section-9-subscription-and-license-operations)
+10. [Settings Operations](#section-10-settings-operations)
 
 ---
 
@@ -488,42 +490,24 @@ manager.execute('create', 'user', {'username': 'alice', ...})
 
 ### The search_api() Method
 
-The `search_api()` method enables lookups via the manager subprocess without triggering
-SSL fork crashes (see "Why a Separate Process" section below). This method is used by
-the `gateway_api` lookup plugin.
+The `platform_api` lookup starts an ephemeral manager subprocess to perform HTTPS
+requests outside the Ansible worker. The lookup selects a service for relative
+endpoints and calls `search_api()` through the manager's RPC client. The manager
+resolves the API version for relative paths and uses the service and version supplied
+by the caller in full API paths.
 
 ```python
-def search_api(self, query, resource_type):
-    """
-    Search the Gateway API using a search query.
-    
-    Args:
-        query (str): Search query (e.g., 'username:alice')
-        resource_type (str): Resource type (e.g., 'user')
-    
-    Returns:
-        list[dict]: List of matching resources in user-model format
-    """
-    # Implementation in manager (safe from SSL fork issues)
-    # 1. Build API search request
-    # 2. Execute HTTP GET with search params
-    # 3. Transform response to user-model format
-    # 4. Return results
+response = client.search_api(
+    endpoint="instances",
+    query_params={"hostname": "execution-01"},
+    return_all=True,
+    service="controller",
+)
 ```
 
-**Example usage in a lookup plugin:**
-
-```python
-# plugins/lookup/gateway_api.py
-class LookupModule(LookupBase):
-    def run(self, terms, **kwargs):
-        rpc_client = get_rpc_client()
-        results = rpc_client.search_api(query=terms[0], resource_type=kwargs.get("resource_type", "user"))
-        return [r["id"] for r in results]
-```
-
-This allows dynamic lookups (e.g., "find all users whose username contains 'admin'")
-without spawning additional processes or triggering SSL fork safety issues.
+The manager returns the API response as a dictionary and follows pagination when
+`return_all=True`. The lookup shapes that response for Ansible and shuts down its
+manager when the request finishes.
 
 ---
 
@@ -549,7 +533,7 @@ ansible_collections/ansible/platform/
 │   │   └── ... (20 more)
 │   │
 │   ├── lookup/
-│   │   ├── gateway_api.py           ← API search via search_api() RPC method
+│   │   ├── platform_api.py           ← API search via search_api() RPC method
 │   │   └── ...
 │   │
 │   └── plugin_utils/
@@ -722,3 +706,76 @@ The separate process architecture is the right solution and is stable in product
 The unit tests in `test_http.py` and `test_manager.py` verify the error recovery
 paths (stale socket, dead manager, re-spawn, idle timeout) to ensure the complexity
 does not become a reliability risk.
+
+---
+
+## SECTION 9: Subscription and License Operations
+
+Subscriptions and Controller licensing use singleton endpoints. Both are available
+through the public `execute()` contract on `PlatformService` and
+`DirectHTTPClient`.
+
+| Resource | Operations | Shared SDK behavior |
+|---|---|---|
+| `subscriptions` | `find` | POST credentials, then filter the returned subscriptions locally. |
+| `license` | `find`, `create`, `delete` | Read license state, apply a manifest or attach a subscription, and remove a license without an object ID. |
+
+Subscription filters use substring matching. Every filter with a matching response
+key must match; a missing key does not exclude that subscription. The mixin applies
+these filters in `from_find_result()`, so direct and persistent clients return the
+same filtered list.
+
+License creation accepts exactly one non-empty manifest value or
+`subscription_id`. The action plugin reads a manifest file and passes its base64
+encoded contents to the SDK; SDK callers pass the encoded contents themselves.
+Subscription attachment posts the ID and then reads the updated configuration.
+Deleting a license uses the fixed config endpoint and requires no resource ID.
+Deleting when no license exists is an unchanged result.
+
+An already licensed, valid, non-trial Controller is unchanged unless `force` is
+true. License create and delete honor `_platform_check_mode`: the SDK validates
+and reads current state, predicts `changed`, and performs no mutation request.
+
+### Extension points
+
+The subscription mixin can implement `from_find_result()` when response handling
+depends on the original request, such as client-side filters. License mixins
+implement `validate_mutation()` and `plan_mutation()`. A
+`SingletonMutationPlan` declares ordered endpoint operations and the predicted
+result; the shared executor validates, reads current state, and runs those steps.
+The mixin owns resource decisions, while the executor owns HTTP execution. Both
+clients use this same path, including check-mode prediction and error propagation.
+
+---
+
+## SECTION 10: Settings Operations
+
+Gateway `settings` and Controller `controller_settings` expose `find` and `update`
+through both SDK clients. Comparisons and legacy Controller conversion run in the
+mixins, so SDK callers receive the same decisions as Ansible tasks:
+
+```python
+client.execute("update", "settings", {"settings": {"SESSION_COOKIE_AGE": 3600}})
+client.execute("update", "controller_settings", {"name": "DEFAULT_JOB_TIMEOUT", "value": "7200"})
+```
+
+Only requested keys participate in comparisons. An unchanged subset returns
+`changed=False` without a write; real changes send only changed keys using Gateway
+PUT or Controller PATCH. Gateway preserves string comparisons. Controller preserves
+native comparisons, validates setting names, and converts legacy `name`/`value`
+strings to booleans, integers, lists, or mappings; `settings` values retain their
+supplied types. Read failures propagate and prevent writes.
+
+Pass `_platform_check_mode=True` to predict an update without writing. Results
+include current `settings`, `changed`, `old_values`, and `new_values`. Gateway old/new
+values contain changed keys. Controller old/new values contain all requested keys,
+with `diff` limited to changed keys. In check mode, `settings` remains server state.
+
+Settings mutation plans supply API data restricted to changed fields. The shared
+executor runs the existing PUT/PATCH transport path; action plugins format results
+and redact sensitive values in Ansible output. The SDK returns values to its caller.
+A server value of `$encrypted$` is a placeholder, so a supplied plaintext replacement
+is sent again because equality cannot be established.
+
+These settings fixes are tracked separately in
+[AAP-102130](https://redhat.atlassian.net/browse/AAP-102130).

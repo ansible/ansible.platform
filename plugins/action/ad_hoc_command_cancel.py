@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
@@ -47,8 +48,6 @@ class ActionModule(BaseResourceActionPlugin):
             interval = validated_params.get("interval", 1.0)
             timeout = validated_params.get("timeout", 0)
 
-            if not command_id:
-                raise AnsibleError("command_id is required")
             if interval <= 0:
                 raise AnsibleError("interval must be greater than 0")
             if timeout < 0:
@@ -94,8 +93,6 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

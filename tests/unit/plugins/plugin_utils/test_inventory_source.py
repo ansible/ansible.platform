@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 _COLLECTIONS_PARENT = str(Path(__file__).resolve().parent.parent.parent.parent.parent.parent.parent)
 if _COLLECTIONS_PARENT not in sys.path:
     sys.path.insert(0, _COLLECTIONS_PARENT)
@@ -24,6 +26,26 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 
 class TestInventorySourceTransform(unittest.TestCase):
     """Ansible <-> API round-trip tests for inventory_source."""
+
+    def test_find_and_delete_ignore_unused_foreign_keys(self):
+        """Keep inventory scope while avoiding write-only reference lookups."""
+        for operation in ("find", "delete"):
+            with self.subTest(operation=operation):
+                manager = MagicMock()
+                manager.lookup_resource_id.return_value = 7
+                ansible = AnsibleInventorySource(
+                    name="source", inventory="Prod", credential="Missing", execution_environment="Missing", source_project="Missing"
+                )
+
+                api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": operation, "manager": manager})
+
+                manager.lookup_resource_id.assert_called_once_with(
+                    "inventories", "name", "Prod", service="controller", extra_query_params=None, require_unique=True
+                )
+                self.assertEqual(api.inventory, 7)
+                self.assertIsNone(api.credential)
+                self.assertIsNone(api.execution_environment)
+                self.assertIsNone(api.source_project)
 
     def test_post_init_normalizes_source_vars_dict(self):
         ansible = AnsibleInventorySource(name="src", inventory="1", source_vars={"private": False})
@@ -87,8 +109,64 @@ class TestInventorySourceTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventorySource(name="src", inventory="Production", source="ec2")
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("inventories", "name", "Production", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call(
+            "inventories",
+            "name",
+            "Production",
+            service="controller",
+            extra_query_params=None,
+            require_unique=True,
+        )
         self.assertEqual(api.inventory, 42)
+
+    def test_non_numeric_organization_requires_manager(self):
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="ec2", organization="E2E Org")
+
+        with self.assertRaisesRegex(ValueError, "organization"):
+            InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
+
+    def test_fk_lookups_are_scoped_by_organization(self):
+        mock_manager = MagicMock()
+
+        def lookup_resource_id(endpoint, lookup_field, lookup_value, **kwargs):
+            return {
+                ("organizations", "E2E Org"): 7,
+                ("inventories", "Production"): 42,
+                ("projects", "Inventory Project"): 15,
+            }[(endpoint, lookup_value)]
+
+        mock_manager.lookup_resource_id.side_effect = lookup_resource_id
+        context = {"operation": "create", "manager": mock_manager}
+        ansible = AnsibleInventorySource(
+            name="src",
+            inventory="Production",
+            organization="E2E Org",
+            source="scm",
+            source_project="Inventory Project",
+        )
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, context)
+
+        self.assertEqual(api.inventory, 42)
+        self.assertEqual(api.source_project, 15)
+        mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "E2E Org", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call(
+            "inventories",
+            "name",
+            "Production",
+            service="controller",
+            extra_query_params={"organization": 7},
+            require_unique=True,
+        )
+        mock_manager.lookup_resource_id.assert_any_call(
+            "projects",
+            "name",
+            "Inventory Project",
+            service="controller",
+            extra_query_params={"organization": 7},
+            require_unique=True,
+        )
+        self.assertFalse(hasattr(api, "organization"))
 
     def test_fk_credential_resolved_via_manager(self):
         mock_manager = MagicMock()
@@ -114,7 +192,14 @@ class TestInventorySourceTransform(unittest.TestCase):
         context = {"operation": "create", "manager": mock_manager}
         ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="My Project")
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, context)
-        mock_manager.lookup_resource_id.assert_any_call("projects", "name", "My Project", service="controller")
+        mock_manager.lookup_resource_id.assert_any_call(
+            "projects",
+            "name",
+            "My Project",
+            service="controller",
+            extra_query_params=None,
+            require_unique=True,
+        )
         self.assertEqual(api.source_project, 15)
 
     def test_fk_id_skips_lookup(self):
@@ -137,6 +222,7 @@ class TestInventorySourceTransform(unittest.TestCase):
         api_data = {
             "id": 99,
             "name": "ec2-src",
+            "summary_fields": {"organization": {"id": 1, "name": "Default"}},
             "description": "EC2 source",
             "inventory": 5,
             "source": "ec2",
@@ -151,6 +237,7 @@ class TestInventorySourceTransform(unittest.TestCase):
         self.assertIsInstance(ansible, AnsibleInventorySource)
         self.assertEqual(ansible.id, 99)
         self.assertEqual(ansible.name, "ec2-src")
+        self.assertEqual(ansible.organization, "1")
         self.assertEqual(ansible.inventory, "5")
         self.assertEqual(ansible.credential, "10")
         self.assertEqual(ansible.execution_environment, "3")
@@ -198,6 +285,18 @@ class TestInventorySourceTransform(unittest.TestCase):
         api_data = APIInventorySource_v2(name="src")
         params = InventorySourceTransformMixin_v2.get_find_list_query_params(api_data)
         self.assertEqual(params, {})
+
+
+@pytest.mark.parametrize("field", ["source_project", "credential", "execution_environment"])
+@pytest.mark.parametrize("operation", ["find", "delete"])
+def test_unused_write_reference_does_not_block_find_or_delete(field, operation):
+    """Do not mistake an invalid unused reference for an absent resource."""
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = ValueError("unused reference must not be resolved")
+    model = AnsibleInventorySource(name="Resource", **{"inventory": "1", field: "Missing Reference"})
+    data = InventorySourceTransformMixin_v2.from_ansible_data(model, {"manager": manager, "operation": operation})
+    assert getattr(data, field) is None
+    manager.lookup_resource_id.assert_not_called()
 
 
 if __name__ == "__main__":

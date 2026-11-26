@@ -110,9 +110,8 @@ class ProcessManager:
     def manager_identity_hash(gateway_config: "GatewayConfig", task_env: Optional[dict] = None) -> str:
         """Return the short hash that identifies a persistent manager instance.
 
-        Credentials and TLS trust policy are baked into the manager subprocess
-        at spawn time and never re-evaluated, so both must participate in the
-        socket-path identity. The CA bundle hashed here is the effective
+        Credentials, TLS trust and retries are configured at spawn time and
+        participate in the socket-path identity. The CA bundle hashed here is the effective
         ``REQUESTS_CA_BUNDLE`` after ``merge_manager_environment`` precedence
         (shell env, task ``environment:``, inventory ``aap_ca_bundle``, then the
         ``SSL_CERT_FILE`` shim), not inventory ``ca_bundle`` alone.
@@ -126,7 +125,9 @@ class ProcessManager:
             f"{gateway_config.password or ''}:"
             f"{gateway_config.oauth_token or ''}:"
             f"{effective_ca_bundle}:"
-            f"{1 if gateway_config.verify_ssl else 0}"
+            f"{1 if gateway_config.verify_ssl else 0}:"
+            f"{gateway_config.max_retries!r}:"
+            f"{gateway_config.retry_backoff_factor!r}"
         )
         return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
 
@@ -309,6 +310,8 @@ class ProcessManager:
             str(gateway_config.verify_ssl),
             str(gateway_config.request_timeout),
             str(gateway_config.idle_timeout),
+            "" if gateway_config.max_retries is None else str(gateway_config.max_retries),
+            "" if gateway_config.retry_backoff_factor is None else str(gateway_config.retry_backoff_factor),
         ]
 
         logger.debug("Command: %s %s [args: socket_path, socket_dir, identifier, gateway_url, ...]", sys.executable, script_path)

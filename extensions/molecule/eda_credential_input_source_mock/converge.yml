@@ -1,0 +1,128 @@
+---
+- name: Ensure mock Gateway is reachable
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: Wait for mock Gateway health endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8000/health"
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+
+    - name: Ensure manager state directory exists
+      ansible.builtin.file:
+        path: /tmp/ap
+        state: directory
+        mode: "0755"
+
+    - name: Keep the manager process alive between Molecule phases
+      ansible.builtin.file:
+        path: /tmp/ap/.survive
+        state: touch
+        mode: "0600"
+
+- name: Exercise EDA credential input source CRUD and idempotency
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: local
+  module_defaults:
+    group/ansible.platform.eda:
+      gateway_hostname: "http://127.0.0.1:8000"
+      gateway_username: mock
+      gateway_password: testpass
+      gateway_validate_certs: false
+  tasks:
+    - name: Create with check mode
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "1"
+        source_credential: "2"
+        organization_name: Default
+        description: Molecule input source
+        metadata:
+          secret_path: secret/molecule
+          secret_key: password
+      check_mode: true
+      register: check_result
+
+    - name: Assert check mode predicts creation
+      ansible.builtin.assert:
+        that: check_result is changed
+
+    - name: Create the input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "1"
+        source_credential: "2"
+        organization_name: Default
+        description: Molecule input source
+        metadata:
+          secret_path: secret/molecule
+          secret_key: password
+      register: create_result
+
+    - name: Assert creation response
+      ansible.builtin.assert:
+        that:
+          - create_result is changed
+          - create_result.eda_credential_input_source.id is defined
+          - create_result.eda_credential_input_source.target_credential == 1
+          - create_result.eda_credential_input_source.source_credential == 2
+
+    - name: Reapply identical input
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "1"
+        source_credential: "2"
+        organization_name: Default
+        description: Molecule input source
+        metadata:
+          secret_path: secret/molecule
+          secret_key: password
+      register: idempotent_result
+
+    - name: Assert idempotency with organization specified
+      ansible.builtin.assert:
+        that: idempotent_result is not changed
+
+    - name: Update description and metadata
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "1"
+        source_credential: "2"
+        organization_name: Default
+        description: Updated Molecule input source
+        metadata:
+          secret_path: secret/updated
+          secret_key: new_password
+      register: update_result
+
+    - name: Assert update response
+      ansible.builtin.assert:
+        that:
+          - update_result is changed
+          - update_result.eda_credential_input_source.description == "Updated Molecule input source"
+          - update_result.eda_credential_input_source.metadata.secret_path == "secret/updated"
+          - update_result.eda_credential_input_source.metadata.secret_key == "new_password"
+
+    - name: Delete the input source
+      ansible.platform.eda_credential_input_source:
+        input_field_name: password
+        target_credential: "1"
+        source_credential: "2"
+        organization_name: Default
+        state: absent
+      register: delete_result
+
+    - name: Assert deletion
+      ansible.builtin.assert:
+        that: delete_result is changed
+...

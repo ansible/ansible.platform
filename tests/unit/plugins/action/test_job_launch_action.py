@@ -3,10 +3,14 @@
 
 """Unit tests for the job_launch action plugin (Shape 2)."""
 
+import json
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call, patch
 
+import pytest
+from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.job_launch import ActionModule
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.direct_client import DirectHTTPClient
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
 
 
@@ -41,19 +45,125 @@ class TestJobLaunchAction(unittest.TestCase):
         self._patch_prepare(action)
 
         action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {"summary_fields": {"job_template": {"name": "Demo"}, "created_by": {"username": "launch-user"}}},
+        ]
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
             "url": "/api/controller/v2/jobs/42/",
         }
 
-        result = action.run(task_vars={})
+        result = action.run(
+            task_vars={
+                "tower_job_id": 7,
+                "tower_job_template_name": "Parent template",
+                "tower_user_name": "parent-user",
+            }
+        )
 
         self.assertTrue(result["changed"])
         self.assertFalse(result.get("failed", False))
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "pending")
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
+        self.assertNotIn("finished_at", result)
+        self.assertEqual(
+            action._client.launch_resource.call_args.args,
+            ("/api/controller/v2/job_templates/1/launch/", {}),
+        )
+        self.assertEqual(action._client.launch_resource.call_args.kwargs, {"service": "controller", "retry": False})
+        self.assertEqual(
+            action._client.search_api.call_args_list,
+            [
+                call("/api/controller/v2/job_templates/1/"),
+                call("/api/controller/v2/jobs/42/", service="controller"),
+            ],
+        )
         action._client.wait_for_completion.assert_not_called()
+
+    def test_launch_without_wait_skips_metadata_fetch_when_launch_response_is_complete(self):
+        action = self._make_action({"name": "Demo", "wait": False})
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.return_value = {"organization": None}
+        action._client.launch_resource.return_value = {
+            "id": 42,
+            "status": "pending",
+            "summary_fields": {
+                "job_template": {"name": "Demo"},
+                "created_by": {"username": "launch-user"},
+            },
+        }
+
+        result = action.run(task_vars={})
+
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
+        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/1/")
+
+    def test_launch_without_wait_fills_only_missing_metadata_from_detail(self):
+        action = self._make_action({"name": "Demo", "wait": False})
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {
+                "summary_fields": {
+                    "job_template": {"name": "Demo"},
+                    "created_by": {"username": "detail-user"},
+                }
+            },
+        ]
+        action._client.launch_resource.return_value = {
+            "id": 42,
+            "status": "pending",
+            "summary_fields": {"created_by": {"username": "launch-user"}},
+        }
+
+        result = action.run(task_vars={})
+
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
+        self.assertEqual(action._client.search_api.call_count, 2)
+
+    def test_launch_without_wait_omits_qualified_name_when_detail_fetch_fails(self):
+        action = self._make_action({"name": "Deploy++Engineering", "wait": False})
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.side_effect = [{"organization": None}, RuntimeError("detail unavailable")]
+        action._client.launch_resource.return_value = {"id": 42, "status": "pending"}
+
+        result = action.run(task_vars={})
+
+        self.assertNotIn("job_template_name", result)
+        self.assertNotIn("user_name", result)
+
+    def test_conflicting_legacy_alias_warns_and_uses_alias_value(self):
+        action = self._make_action({"name": "Canonical", "job_template": "Alias", "wait": False})
+        manager = action._client
+        manager.lookup_resource_id.return_value = 1
+        manager.search_api.return_value = {"results": [{"id": 1, "name": "Alias"}]}
+        manager.launch_resource.return_value = {"id": 42, "status": "pending", "ignored_fields": {"limit": "web"}}
+
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertEqual(result["id"], 42)
+        self.assertEqual(
+            result["warnings"],
+            [
+                "Both option name and its alias job_template are set.",
+                "Launch ignored fields: {'limit': 'web'}",
+            ],
+        )
+        manager.lookup_resource_id.assert_called_once_with("job_templates", "name", "Alias", service="controller", require_unique=True)
 
     def test_launch_with_wait_successful(self):
         action = self._make_action({"name": "Demo", "wait": True, "interval": 1.0})
@@ -68,6 +178,10 @@ class TestJobLaunchAction(unittest.TestCase):
         action._client.wait_for_completion.return_value = {
             "id": 42,
             "status": "successful",
+            "elapsed": 3.0,
+            "started": "2026-11-11T10:00:00Z",
+            "finished": "2026-11-11T10:00:03Z",
+            "summary_fields": {"job_template": {"name": "Demo"}, "created_by": {"username": "launch-user"}},
         }
 
         result = action.run(task_vars={})
@@ -75,6 +189,88 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertFalse(result["failed"])
         self.assertEqual(result["status"], "successful")
+        self.assertEqual(result["elapsed"], 3.0)
+        self.assertEqual(result["started"], "2026-11-11T10:00:00Z")
+        self.assertIs(result["finished"], True)
+        self.assertEqual(result["finished_at"], "2026-11-11T10:00:03Z")
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
+
+        action._client.wait_for_completion.assert_called_once_with(
+            "/api/controller/v2/jobs/42/",
+            timeout=-1.0,
+            interval=1.0,
+            service="controller",
+        )
+
+    def test_launch_with_zero_timeout_waits_indefinitely(self):
+        action = self._make_action({"name": "Demo", "wait": True, "timeout": 0, "interval": 1.0})
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 1
+        action._client.launch_resource.return_value = {"id": 42, "status": "pending"}
+        action._client.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+
+        action.run(task_vars={})
+
+        assert action._client.wait_for_completion.call_args.kwargs["timeout"] == -1.0
+
+    def test_disallowed_prompt_override_fails_before_launch(self):
+        action = self._make_action({"name": "Demo", "limit": "web", "wait": False})
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 42
+        action._client.search_api.side_effect = [
+            {"organization": {"id": 9}},
+            {"ask_limit_on_launch": False},
+        ]
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(
+            result["msg"],
+            "Parameters specified which can not be passed into job template, see errors for details",
+        )
+        self.assertEqual(
+            result["errors"],
+            ["The field limit was specified but the job template does not allow for it to be overridden"],
+        )
+        action._client.launch_resource.assert_not_called()
+
+    def test_supplied_prompt_overrides_are_rejected_in_check_and_live_mode(self):
+        cases = (
+            ("diff_mode", False, "ask_diff_mode_on_launch"),
+            ("verbosity", 0, "ask_verbosity_on_launch"),
+            ("tags", [], "ask_tags_on_launch"),
+            ("extra_vars", {}, "ask_variables_on_launch"),
+            ("execution_environment", "Default", "ask_execution_environment_on_launch"),
+            ("forks", 0, "ask_forks_on_launch"),
+            ("instance_groups", [], "ask_instance_groups_on_launch"),
+            ("labels", [], "ask_labels_on_launch"),
+            ("job_slice_count", 0, "ask_job_slice_count_on_launch"),
+            ("job_timeout", 0, "ask_timeout_on_launch"),
+        )
+
+        for check_mode in (False, True):
+            for field, value, prompt in cases:
+                with self.subTest(check_mode=check_mode, field=field):
+                    action = self._make_action({"name": "Demo", field: value, "wait": False}, check_mode=check_mode)
+                    self._patch_prepare(action)
+                    action._client.lookup_resource_id.return_value = 42
+                    template = {prompt: False}
+                    if field == "extra_vars":
+                        template["survey_enabled"] = False
+                    action._client.search_api.side_effect = [{"organization": None}, template]
+
+                    result = action.run(task_vars={})
+
+                    self.assertTrue(result["failed"])
+                    self.assertFalse(result["changed"])
+                    self.assertEqual(
+                        result["errors"],
+                        [f"The field {field} was specified but the job template does not allow for it to be overridden"],
+                    )
+                    action._client.launch_resource.assert_not_called()
 
     def test_launch_with_wait_failed_job(self):
         action = self._make_action({"name": "Demo", "wait": True, "interval": 1.0})
@@ -96,6 +292,7 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertTrue(result["changed"])
         self.assertTrue(result["failed"])
         self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["job_data"], action._client.wait_for_completion.return_value)
 
     def test_launch_with_wait_timeout(self):
         action = self._make_action({"name": "Demo", "wait": True, "timeout": 10, "interval": 1.0})
@@ -116,6 +313,8 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "running")
         self.assertIn("Timed out", result["msg"])
+        self.assertIs(result["finished"], False)
+        self.assertIsNone(result["finished_at"])
 
     def test_check_mode_skips_launch(self):
         action = self._make_action({"name": "Demo"}, check_mode=True)
@@ -145,8 +344,40 @@ class TestJobLaunchAction(unittest.TestCase):
 
         action.run(task_vars={})
 
-        call_payload = action._client.launch_resource.call_args.args[1]
-        self.assertEqual(call_payload["extra_vars"], '{"key": "val"}')
+        action._client.launch_resource.assert_called_once_with(
+            "/api/controller/v2/job_templates/1/launch/",
+            {"extra_vars": '{"key": "val"}'},
+            service="controller",
+            retry=False,
+        )
+
+    def test_current_job_metadata_is_injected_before_serialization(self):
+        action = self._make_action(
+            {
+                "name": "1",
+                "extra_vars": {"job_id": "user-value", "custom": True},
+                "wait": False,
+            }
+        )
+        self._patch_prepare(action)
+        action._client.launch_resource.return_value = {"id": 1, "status": "pending"}
+
+        action.run(
+            task_vars={
+                "tower_job_id": 99,
+                "tower_job_template_name": "Parent",
+                "tower_user_name": "operator",
+                "awx_job_id": 88,
+                "awx_job_template_name": "Deprecated parent",
+                "awx_user_name": "deprecated-user",
+            }
+        )
+
+        payload = action._client.launch_resource.call_args.args[1]
+        self.assertEqual(
+            json.loads(payload["extra_vars"]),
+            {"job_id": "user-value", "custom": True, "controller_job_metadata": {"job_id": 99, "job_template_name": "Parent", "user_name": "operator"}},
+        )
 
     def test_tags_joined_as_comma_separated(self):
         action = self._make_action(
@@ -189,6 +420,14 @@ class TestJobLaunchAction(unittest.TestCase):
             ("credentials", "name", "AWS"): 20,
             ("execution_environments", "name", "My EE"): 30,
         }.get((ep, field, val), 999)
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {
+                "ask_inventory_on_launch": True,
+                "ask_credential_on_launch": True,
+                "ask_execution_environment_on_launch": True,
+            },
+        ]
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
@@ -201,6 +440,109 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(call_payload["inventory"], 10)
         self.assertEqual(call_payload["credentials"], [20])
         self.assertEqual(call_payload["execution_environment"], 30)
+
+    def test_execution_environment_lookup_prefers_organization_then_falls_back_to_global(self):
+        scenarios = (
+            (
+                [
+                    {"id": 20, "name": "Shared EE", "organization": None},
+                    {"id": 21, "name": "Shared EE", "organization": {"id": 9}},
+                ],
+                21,
+            ),
+            ([{"id": 20, "name": "Shared EE", "organization": None}], 20),
+        )
+
+        for environments, expected_id in scenarios:
+            with self.subTest(expected_id=expected_id):
+                action = self._make_action(
+                    {
+                        "name": "Demo",
+                        "execution_environment": "Shared EE",
+                        "wait": False,
+                    }
+                )
+                self._patch_prepare(action)
+                action._client.lookup_resource_id.return_value = 42
+                action._client.search_api.side_effect = [
+                    {"organization": 9},
+                    {"results": environments},
+                    {"ask_execution_environment_on_launch": True},
+                ]
+                action._client.launch_resource.return_value = {"id": 77, "status": "pending"}
+
+                result = action.run(task_vars={})
+
+                self.assertFalse(result.get("failed", False))
+                self.assertEqual(action._client.launch_resource.call_args.args[1]["execution_environment"], expected_id)
+                self.assertEqual(
+                    action._client.search_api.call_args_list[1].kwargs,
+                    {
+                        "query_params": {"name": "Shared EE"},
+                        "return_all": True,
+                        "service": "controller",
+                    },
+                )
+                self.assertEqual(action._client.search_api.call_args_list[1].args, ("execution_environments",))
+                action._client.lookup_resource_id.assert_called_once_with("job_templates", "name", "Demo", service="controller", require_unique=True)
+
+    def test_ambiguous_scoped_execution_environments_fail_before_launch(self):
+        action = self._make_action(
+            {
+                "name": "Demo",
+                "execution_environment": "Shared EE",
+                "wait": False,
+            }
+        )
+        self._patch_prepare(action)
+        action._client.lookup_resource_id.return_value = 42
+        action._client.search_api.side_effect = [
+            {"organization": 9},
+            {
+                "results": [
+                    {"id": 21, "name": "Shared EE", "organization": 9},
+                    {"id": 22, "name": "Shared EE", "organization": 9},
+                    {"id": 20, "name": "Shared EE", "organization": None},
+                ]
+            },
+        ]
+
+        result = action.run(task_vars={})
+
+        self.assertTrue(result["failed"])
+        self.assertIn("matched multiple resources in organization 9", result["msg"])
+        action._client.launch_resource.assert_not_called()
+
+    def test_numeric_job_template_id_keeps_organization_scope_for_named_fks(self):
+        action = self._make_action(
+            {
+                "name": "42",
+                "organization": "Default",
+                "inventory": "Prod",
+                "credentials": ["Deploy"],
+                "wait": False,
+            }
+        )
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.side_effect = lambda endpoint, field, value, **kwargs: {
+            ("organizations", "name", "Default"): 9,
+            ("inventories", "name", "Prod"): 10,
+            ("credentials", "name", "Deploy"): 20,
+        }[(endpoint, field, value)]
+        action._client.launch_resource.return_value = {"id": 100, "status": "pending"}
+
+        result = action.run(task_vars={})
+
+        self.assertFalse(result.get("failed", False))
+        self.assertEqual(
+            action._client.lookup_resource_id.call_args_list[1].kwargs,
+            {"service": "controller", "extra_query_params": {"organization": 9}, "require_unique": True},
+        )
+        self.assertEqual(
+            action._client.lookup_resource_id.call_args_list[2].kwargs,
+            {"service": "controller", "extra_query_params": {"organization": 9}, "require_unique": True},
+        )
 
     def test_ambiguous_credential_name_raises(self):
         """Duplicate credential names should raise instead of silently picking the first."""
@@ -258,6 +600,68 @@ class TestJobLaunchAction(unittest.TestCase):
         source = inspect.getsource(ActionModule)
         for forbidden in ("session.", "import requests", "_make_request", "_build_url"):
             self.assertNotIn(forbidden, source, f"Found '{forbidden}' in action plugin source")
+
+
+@pytest.fixture
+def action_module():
+    """Create a job launch action with real argument validation."""
+    action = ActionModule.__new__(ActionModule)
+    action._task = MagicMock(args={"name": "Resource"}, check_mode=False)
+    action._display = MagicMock()
+    action._display.verbosity = 0
+    action._client = MagicMock()
+    return action
+
+
+@pytest.mark.parametrize("timeout,expected", [(None, -1.0), (0, -1.0), (-1, 0.0), (-5, 0.0), (30, 30.0)])
+def test_launch_wait_timeout_normalization(action_module, timeout, expected):
+    """Use unlimited zero/omitted waits and immediate negative-timeout waits."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": timeout}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {"id": 42, "status": "successful"}
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    assert not result.get("failed")
+    assert manager.wait_for_completion.call_args.kwargs["timeout"] == expected
+
+
+@pytest.mark.parametrize("status", ["running", "successful"])
+def test_negative_launch_timeout_polls_once_using_real_waiter(action_module, status):
+    """Stop after the first unfinished response while accepting a terminal job."""
+    action = action_module
+    action._task.args = {"name": "Resource", "wait": True, "timeout": -5}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    client = DirectHTTPClient.__new__(DirectHTTPClient)
+    client.base_url = "https://gateway.example"
+    client.api_versions = {"controller": "2"}
+    client._get_json = MagicMock(side_effect=[{"id": 42, "status": status}, AssertionError("Waiter polled more than once")])
+    manager.wait_for_completion = client.wait_for_completion
+    with (
+        patch("ansible.plugins.action.ActionBase.run", return_value={}),
+        patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)),
+        patch("ansible_collections.ansible.platform.plugins.plugin_utils.platform.base_client.time.sleep") as sleep,
+    ):
+        result = action.run(task_vars={})
+    assert {
+        "changed": result["changed"],
+        "failed": result.get("failed", False),
+        "id": result["id"],
+        "status": result["status"],
+    } == {"changed": True, "failed": status == "running", "id": 42, "status": status}, result.get("msg")
+    client._get_json.assert_called_once()
+    manager.launch_resource.assert_called_once()
+    sleep.assert_not_called()
 
 
 if __name__ == "__main__":

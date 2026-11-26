@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - controller_project - preserve Controller project synchronization metadata and refresh it before waiting for SCM updates (https://issues.redhat.com/browse/AAP-92634).
+...

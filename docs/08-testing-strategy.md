@@ -200,7 +200,7 @@ access, and cannot run in standard CI without a provisioned AAP environment. Moc
 ### Mock Server Architecture
 
 The mock Gateway server (`tools/mock_gateway_server.py`) is a Flask application that:
-- Implements `GET`, `POST`, `PATCH`, `DELETE` for all 22 resource types
+- Implements resource-specific HTTP routes for the Gateway, Controller, and EDA mock scenarios
 - Stores state in an in-memory dict (`STORE`)
 - Implements realistic responses: 201 Created, 200 OK, 404 Not Found, 400 Bad Request
 - Seeds known resources (e.g. a default organization, test user) so tests have a baseline
@@ -432,7 +432,9 @@ make molecule-mock
 
 ### Coverage
 
-All 22 modules have a corresponding mock scenario:
+The following table lists Gateway mock scenarios. Additional Controller and EDA
+scenarios live in [`extensions/molecule/`](../extensions/molecule/); this table is
+not the full collection inventory.
 
 | Scenario | Module |
 |----------|--------|
@@ -993,7 +995,7 @@ jobs:
           application_mock,
           organization_mock,
           users_mock,
-          # ... all 22 scenarios
+          # ... additional scenarios
         ]
     
     steps:

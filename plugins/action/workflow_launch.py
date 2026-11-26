@@ -15,16 +15,17 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.workflow_launch import AnsibleWorkflowLaunch
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.workflow_launch import (
-    WJT_LIST_ENDPOINT,
     WorkflowLaunchTransformMixin_v2,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 
 class ActionModule(BaseResourceActionPlugin):
@@ -43,9 +44,9 @@ class ActionModule(BaseResourceActionPlugin):
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
             manager = prepared["manager"]
-            resource_data = prepared["resource_data"] or prepared["validated_params"]
+            resource_data = dict(prepared["resource_data"] or prepared["validated_params"])
+            user_extra_vars = resource_data.get("extra_vars")
             launch = AnsibleWorkflowLaunch(**resource_data)
-
             if not launch.name:
                 raise AnsibleError("name is required")
 
@@ -56,16 +57,13 @@ class ActionModule(BaseResourceActionPlugin):
                 raise AnsibleError("Polling interval must be positive, got %s" % interval)
 
             launch_request = WorkflowLaunchTransformMixin_v2.from_ansible_data(launch, {"manager": manager})
+            operations = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()
             organization = launch_request.organization
 
             # Look up the workflow job template
-            query_params = {"name": launch.name}
-            if organization is not None:
-                query_params["organization"] = organization
-
             wjt_response = manager.search_api(
-                WJT_LIST_ENDPOINT,
-                query_params=query_params,
+                operations["list"].path,
+                query_params=WorkflowLaunchTransformMixin_v2.get_find_list_query_params(launch_request),
                 return_all=True,
             )
             wjt_results = wjt_response.get("results", [])
@@ -78,7 +76,10 @@ class ActionModule(BaseResourceActionPlugin):
             wjt_id = wjt["id"]
 
             # Build the launch payload from the transformed API request.
-            post_data = WorkflowLaunchTransformMixin_v2.to_launch_payload(launch_request)
+            launch_operation = operations["launch"]
+            if launch_operation.method != "POST":
+                raise AnsibleError("Workflow launch endpoint operation must use POST")
+            launch_path, post_data = build_endpoint_request(launch_operation, launch_request, path_values={"id": wjt_id})
 
             # Validate prompt-on-launch settings
             prompt_checks = {
@@ -92,10 +93,16 @@ class ActionModule(BaseResourceActionPlugin):
             for field_name, prompt_flag in prompt_checks.items():
                 if field_name in post_data and not wjt.get(prompt_flag):
                     param_errors.append(f"The field {field_name} was specified but the workflow job template does not allow it to be overridden")
-            if launch.extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
+            if user_extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
                 param_errors.append("The field extra_vars was specified but the workflow job template does not allow it to be overridden")
             if param_errors:
+                result["errors"] = param_errors
                 raise AnsibleError("Parameters specified which cannot be passed into workflow job template launch: " + "; ".join(param_errors))
+
+            if wjt.get("ask_variables_on_launch") and user_extra_vars:
+                launch.extra_vars = self._inject_current_job_metadata(user_extra_vars, task_vars)
+                launch_request = WorkflowLaunchTransformMixin_v2.from_ansible_data(launch, {"manager": manager})
+                launch_path, post_data = build_endpoint_request(launch_operation, launch_request, path_values={"id": wjt_id})
 
             if self._task.check_mode:
                 result.update(
@@ -108,7 +115,7 @@ class ActionModule(BaseResourceActionPlugin):
 
             # Launch the workflow
             launch_result = manager.launch_resource(
-                f"workflow_job_templates/{wjt_id}/launch",
+                launch_path,
                 post_data,
                 service="controller",
                 retry=False,
@@ -133,16 +140,24 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(launch_result))
+
             if not wait:
                 return result
 
             # Wait for the workflow job to complete
             try:
-                # The legacy module waited indefinitely when timeout was omitted.
-                # The SDK uses negative timeout values for an unbounded wait.
-                wait_timeout = -1.0 if not timeout else float(timeout)
+                # Omitted/zero means unlimited; negative means a single poll.
+                # Translate these values to the shared waiter's timeout conventions.
+                if timeout is None or timeout == 0:
+                    wait_timeout = -1.0
+                elif timeout < 0:
+                    wait_timeout = 0.0  # Stop after the first unfinished response.
+                else:
+                    wait_timeout = float(timeout)
+                wait_operation = WorkflowLaunchTransformMixin_v2.get_endpoint_operations()["workflow_job"]
                 job_result = manager.wait_for_completion(
-                    f"workflow_jobs/{workflow_job_id}",
+                    wait_operation.path.format(id=workflow_job_id),
                     timeout=wait_timeout,
                     interval=interval,
                     service="controller",
@@ -150,9 +165,13 @@ class ActionModule(BaseResourceActionPlugin):
                 final_status = job_result.get("status", "")
                 result["status"] = final_status
                 result[self.MODULE_NAME]["status"] = final_status
+                self._set_job_timing(result, job_result)
+
+                result.update(self._extract_launch_metadata(job_result))
 
                 if final_status in ("failed", "error", "canceled"):
                     result["failed"] = True
+                    result["job_data"] = job_result
                     result["msg"] = f"Workflow job {workflow_job_id} finished with status '{final_status}'"
 
             except WaitTimeoutError as exc:
@@ -161,10 +180,9 @@ class ActionModule(BaseResourceActionPlugin):
                 result["msg"] = str(exc)
                 result["status"] = last.get("status", "unknown")
                 result[self.MODULE_NAME]["status"] = last.get("status", "unknown")
+                self._set_job_timing(result, last)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

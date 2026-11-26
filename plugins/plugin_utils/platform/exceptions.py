@@ -5,10 +5,30 @@ This module defines a hierarchy of exceptions for platform operations,
 enabling proper error classification and retry logic.
 """
 
+import json
 import logging
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def format_error_response_body(exception: Exception) -> str:
+    """Return a readable API response body attached to an exception, if any."""
+    response = getattr(exception, "response", None)
+    body = getattr(response, "text", None) if response is not None else None
+    if not body:
+        details = getattr(exception, "details", None) or {}
+        body = details.get("response_body") or getattr(exception, "response_body", None)
+    if not body:
+        return ""
+
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+
+    try:
+        return str(json.loads(body))
+    except (TypeError, ValueError):
+        return str(body)
 
 
 class PlatformError(Exception):
@@ -147,6 +167,24 @@ class ValidationError(PlatformError):
             return f"Check the following fields are valid: {fields_str}"
         else:
             return "Review input parameters and ensure all required fields are provided with valid values."
+
+
+class ResourceNotFoundError(ValidationError, ValueError):
+    """A lookup found no resource, with identity metadata independent of its message.
+
+    Retain both existing validation-error and value-error catch behavior.
+    Optional metadata also allows exception reconstruction by RPC pickling.
+    """
+
+    def __init__(
+        self, message: str, *, endpoint: Optional[str] = None, lookup_field: Optional[str] = None, lookup_value: Any = None, service: Optional[str] = None
+    ):
+        super().__init__(message)
+        self.endpoint = endpoint
+        self.lookup_field = lookup_field
+        self.lookup_value = lookup_value
+        self.service = service
+        self.details.update(endpoint=endpoint, lookup_field=lookup_field, lookup_value=lookup_value, service=service)
 
 
 class APIError(PlatformError):
@@ -307,13 +345,18 @@ def classify_exception(exception: Exception, operation: Optional[str] = None, re
     elif isinstance(exception, requests.exceptions.HTTPError):
         status_code = None
         response = getattr(exception, "response", None)
+        response_body = None
         if response is not None:
             status_code = getattr(response, "status_code", None)
+            response_body = getattr(response, "text", None)
+        details = {"status_code": status_code, "original_exception": str(exception)}
+        if response_body:
+            details["response_body"] = response_body[:500]
         return APIError(
             message=f"{status_code} {str(exception)}" if status_code else str(exception),
             operation=operation,
             resource=resource,
-            details={"status_code": status_code, "original_exception": str(exception)},
+            details=details,
             status_code=status_code,
         )
 

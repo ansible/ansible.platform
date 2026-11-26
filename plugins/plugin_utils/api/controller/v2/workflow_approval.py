@@ -7,7 +7,7 @@ for workflow approval operations (approve/deny).
 This is a non-CRUD module: it does not manage a persistent resource via
 standard create/update/delete operations. Instead, it polls for an approval
 node in a workflow job and POSTs to approve or deny it. The transform mixin
-exists primarily for registry discovery.
+declares the read and action endpoints used by the action plugin.
 """
 
 import logging
@@ -19,8 +19,10 @@ from ....platform.types import EndpointOperation, TransformContext
 
 logger = logging.getLogger(__name__)
 
-WORKFLOW_JOBS_PATH = "/api/controller/v2/workflow_jobs"
-WORKFLOW_APPROVALS_PATH = "/api/controller/v2/workflow_approvals"
+WORKFLOW_APPROVALS_ENDPOINT = "/api/controller/v2/workflow_approvals/"
+WORKFLOW_JOB_NODES_ENDPOINT = "/api/controller/v2/workflow_jobs/{workflow_job_id}/workflow_nodes/"
+WORKFLOW_APPROVAL_APPROVE_ENDPOINT = "/api/controller/v2/workflow_approvals/{id}/approve/"
+WORKFLOW_APPROVAL_DENY_ENDPOINT = "/api/controller/v2/workflow_approvals/{id}/deny/"
 
 
 @dataclass
@@ -43,9 +45,8 @@ class WorkflowApprovalTransformMixin_v2(BaseTransformMixin):
     """
     Transform mixin for Workflow Approval API v2.
 
-    This is a non-CRUD module. The transform mixin provides minimal
-    endpoint definitions for registry discovery. The actual workflow
-    approval logic is implemented in the custom action plugin.
+    Endpoint definitions and query construction are shared with the custom
+    action plugin, which owns polling and approval orchestration.
     """
 
     @classmethod
@@ -70,21 +71,50 @@ class WorkflowApprovalTransformMixin_v2(BaseTransformMixin):
         """
         return {
             "list": EndpointOperation(
-                path="/api/controller/v2/workflow_approvals/",
+                path=WORKFLOW_APPROVALS_ENDPOINT,
                 method="GET",
                 fields=[],
                 required_for="find",
                 order=1,
             ),
             "get": EndpointOperation(
-                path="/api/controller/v2/workflow_approvals/{id}/",
+                path=WORKFLOW_APPROVALS_ENDPOINT + "{id}/",
                 method="GET",
                 fields=[],
                 path_params=["id"],
                 required_for="find",
                 order=1,
             ),
+            "workflow_nodes": EndpointOperation(
+                path=WORKFLOW_JOB_NODES_ENDPOINT,
+                method="GET",
+                fields=[],
+                path_params=["workflow_job_id"],
+                required_for="wait",
+                order=1,
+            ),
+            "approve": EndpointOperation(
+                path=WORKFLOW_APPROVAL_APPROVE_ENDPOINT,
+                method="POST",
+                fields=[],
+                path_params=["id"],
+                required_for="approve",
+                order=1,
+            ),
+            "deny": EndpointOperation(
+                path=WORKFLOW_APPROVAL_DENY_ENDPOINT,
+                method="POST",
+                fields=[],
+                path_params=["id"],
+                required_for="deny",
+                order=1,
+            ),
         }
+
+    @classmethod
+    def get_workflow_node_query_params(cls, name: str) -> Dict[str, Any]:
+        """Build the workflow-node filter used to find a named approval job."""
+        return {"job__name": name}
 
     @classmethod
     def get_lookup_field(cls) -> str:

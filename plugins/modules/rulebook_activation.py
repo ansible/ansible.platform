@@ -39,21 +39,23 @@ options:
       - The description of the rulebook activation.
     type: str
 
-  project_name:
+  project:
     description:
-      - The name of the project associated with the rulebook activation.
+      - The name or ID of the project associated with the rulebook activation.
       - Required when creating an activation.
+      - When both spellings are supplied, O(project) takes precedence.
     type: str
     aliases:
-      - project
+      - project_name
 
-  rulebook_name:
+  rulebook:
     description:
-      - The name of the rulebook associated with the rulebook activation.
+      - The name or ID of the rulebook associated with the rulebook activation.
+      - Name lookups are scoped to the selected project.
       - Required when creating an activation.
     type: str
     aliases:
-      - rulebook
+      - rulebook_name
 
   extra_vars:
     description:
@@ -74,33 +76,33 @@ options:
     choices: ["on-failure", "always", "never"]
     type: str
 
-  decision_environment_name:
+  decision_environment:
     description:
-      - The name of the decision environment associated with the rulebook activation.
+      - The name or ID of the decision environment associated with the rulebook activation.
       - Required when creating an activation.
     type: str
     aliases:
-      - decision_environment
+      - decision_environment_name
 
-  awx_token_name:
+  awx_token:
     description:
-      - The name of the AWX token.
+      - The name or ID of the AWX token.
     type: str
     aliases:
-      - awx_token
+      - awx_token_name
       - token
 
-  organization_name:
+  organization:
     description:
-      - The name of the organization.
+      - The name or ID of the organization.
       - Required when creating an activation.
     type: str
     aliases:
-      - organization
+      - organization_name
 
   eda_credentials:
     description:
-      - A list of EDA credential names used by the rulebook activation.
+      - A list of EDA credential names or IDs used by the rulebook activation.
     type: list
     elements: str
     aliases:
@@ -156,6 +158,11 @@ options:
     type: bool
     default: false
 
+  enabled:
+    description:
+      - Legacy compatibility option. Maps true to C(state=enabled) and false to C(state=disabled).
+    type: bool
+
   state:
     description:
       - Desired state of the resource.
@@ -179,10 +186,10 @@ EXAMPLES = """
   ansible.platform.rulebook_activation:
     name: "Example Rulebook Activation"
     description: "Example Rulebook Activation description"
-    project_name: "Example Project"
-    rulebook_name: "hello_controller.yml"
-    decision_environment_name: "Example Decision Environment"
-    organization_name: "Default"
+    project: "Example Project"
+    rulebook: "hello_controller.yml"
+    decision_environment: "Example Decision Environment"
+    organization: "Default"
     state: present
     restart_on_project_update: false
 
@@ -190,10 +197,10 @@ EXAMPLES = """
   ansible.platform.rulebook_activation:
     name: "Example Rulebook Activation"
     description: "Example Rulebook Activation description"
-    project_name: "Example Project"
-    rulebook_name: "hello_controller.yml"
-    decision_environment_name: "Example Decision Environment"
-    organization_name: "Default"
+    project: "Example Project"
+    rulebook: "hello_controller.yml"
+    decision_environment: "Example Decision Environment"
+    organization: "Default"
     state: disabled
     restart_on_project_update: false
 
@@ -201,10 +208,10 @@ EXAMPLES = """
   ansible.platform.rulebook_activation:
     name: "Example Rulebook Activation"
     description: "Example Activation description"
-    project_name: "Example Project"
-    rulebook_name: "hello_controller.yml"
-    decision_environment_name: "Example Decision Environment"
-    organization_name: "Default"
+    project: "Example Project"
+    rulebook: "hello_controller.yml"
+    decision_environment: "Example Decision Environment"
+    organization: "Default"
     state: disabled
     event_streams:
       - event_stream: "Example Event Stream"

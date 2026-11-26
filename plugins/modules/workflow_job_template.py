@@ -155,7 +155,7 @@ options:
 
   labels:
     description:
-      - List of label names to associate with this workflow job template.
+      - List of label names or IDs to associate with this workflow job template.
       - The association is synced — labels not in the list will be disassociated.
     type: list
     elements: str
@@ -183,6 +183,117 @@ options:
       - List of notification template names to trigger on workflow approval steps.
     type: list
     elements: str
+
+  workflow_nodes:
+    description:
+      - A list of workflow nodes and their properties defining the workflow graph.
+      - Each node is a dictionary with an C(identifier), a C(unified_job_template), and optional prompt fields and C(related) associations.
+      - Provides a declarative, single-task interface for defining the entire workflow graph.
+      - Use instead of separate C(workflow_job_template_node) tasks when declaring the full graph inline.
+    type: list
+    elements: dict
+    aliases:
+      - schema
+    suboptions:
+      identifier:
+        description:
+          - An identifier for this node that is unique within its workflow.
+          - It is copied to workflow job nodes corresponding to this node.
+        required: true
+        type: str
+      unified_job_template:
+        description:
+          - Dictionary describing the unified job template to run.
+          - Keys include C(name) (required), C(type) (job_template, project, inventory_source,
+            system_job_template, workflow_approval, workflow_job_template),
+            and C(organization) (dict with C(name) key for scoping).
+          - For inventory sources, provide C(inventory) with C(organization) instead of a top-level C(organization).
+          - For approval nodes, set C(type=workflow_approval) with C(name), optional C(description), and C(timeout).
+        type: dict
+      extra_data:
+        description:
+          - Variables to apply at launch time.
+          - Will only be accepted if the job template prompts for vars or has a survey asking for those vars.
+        type: dict
+        default: {}
+      inventory:
+        description:
+          - Inventory applied as a prompt, if the job template prompts for inventory.
+          - May be a string name or a dict with C(name) and optional C(organization) (dict with C(name) key).
+        type: raw
+      scm_branch:
+        description:
+          - SCM branch applied as a prompt, if the job template prompts for SCM branch.
+        type: str
+      job_type:
+        description:
+          - Job type applied as a prompt, if the job template prompts for job type.
+        type: str
+        choices: ['run', 'check']
+      job_tags:
+        description:
+          - Job tags applied as a prompt, if the job template prompts for job tags.
+        type: str
+      skip_tags:
+        description:
+          - Tags to skip, applied as a prompt, if the job template prompts for job tags.
+        type: str
+      limit:
+        description:
+          - Limit to act on, applied as a prompt, if the job template prompts for limit.
+        type: str
+      forks:
+        description:
+          - Number of parallel or simultaneous processes to use while executing the playbook.
+        type: int
+      job_slice_count:
+        description:
+          - Number of jobs to slice into at runtime.
+        type: int
+      timeout:
+        description:
+          - Maximum time in seconds to wait for a job to finish (server-side).
+        type: int
+      execution_environment:
+        description:
+          - Execution environment for this node.
+          - May be a string name or a dict with C(name) key.
+        type: raw
+      diff_mode:
+        description:
+          - Run diff mode, applied as a prompt.
+        type: bool
+      verbosity:
+        description:
+          - Verbosity applied as a prompt.
+        type: int
+        choices: [0, 1, 2, 3, 4, 5]
+      all_parents_must_converge:
+        description:
+          - If enabled, the node will only run if all parent nodes have met the criteria to reach this node.
+        type: bool
+      state:
+        description:
+          - Desired state of this workflow node within the graph.
+        type: str
+        choices: ['present', 'absent']
+        default: present
+      related:
+        description:
+          - Dictionary of related node and resource associations.
+          - Supported keys are C(success_nodes), C(failure_nodes), C(always_nodes) (lists of dicts with C(identifier) key),
+            and C(credentials), C(labels), C(instance_groups) (lists of dicts with C(name) and optionally C(organization) keys).
+        type: dict
+
+  destroy_current_nodes:
+    description:
+      - Set in order to destroy current workflow_nodes on the workflow.
+      - This option is used for full workflow update; if not used, nodes not described in C(workflow_nodes)
+        will persist and keep their current associations and links.
+    type: bool
+    default: false
+    aliases:
+      - destroy_current_schema
 
 seealso:
   - module: ansible.controller.workflow_job_template
@@ -242,6 +353,40 @@ EXAMPLES = """
     copy_from: "My Workflow"
     state: present
 
+- name: Create workflow with inline nodes
+  ansible.platform.workflow_job_template:
+    name: "example-workflow"
+    organization: "Default"
+    workflow_nodes:
+      - identifier: node101
+        unified_job_template:
+          name: example-project
+          type: project
+          organization:
+            name: Default
+        related:
+          success_nodes:
+            - identifier: node201
+      - identifier: node201
+        unified_job_template:
+          name: example-job-template
+          type: job_template
+          organization:
+            name: Default
+
+- name: Replace workflow graph entirely
+  ansible.platform.workflow_job_template:
+    name: "example-workflow"
+    organization: "Default"
+    destroy_current_nodes: true
+    workflow_nodes:
+      - identifier: node101
+        unified_job_template:
+          name: new-job-template
+          type: job_template
+          organization:
+            name: Default
+
 - name: Delete a workflow job template
   ansible.platform.workflow_job_template:
     name: "Production Workflow"
@@ -251,6 +396,11 @@ EXAMPLES = """
 """
 
 RETURN = """
+copied:
+  description: Whether this invocation copied a source template into a new destination.
+  returned: when copy_from is supplied
+  type: bool
+
 changed:
   description: Whether the workflow job template was created, updated, or deleted.
   returned: always

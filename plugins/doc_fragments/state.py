@@ -15,7 +15,8 @@ options:
     state:
       description:
         - Desired state of the resource.
-        - Enforced state C(enforced) will default values of any option not provided.
+        - On update, C(present) preserves omitted options.
+        - C(enforced) also applies the defaults and reset rules supported by the resource.
       choices: ["present", "absent", "exists", "enforced"]
       default: "present"
       type: str

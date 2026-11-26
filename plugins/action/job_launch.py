@@ -12,12 +12,10 @@ from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_launch import AnsibleJobLaunch
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_launch import (
-    CONTROLLER_JOB_ENDPOINT,
-    CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT,
     JobLaunchTransformMixin_v2,
 )
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import WaitTimeoutError
-from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import TransformContext
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
 _ACTION_ONLY_FIELDS = frozenset({"wait", "interval", "timeout"})
 
@@ -32,55 +30,52 @@ class ActionModule(BaseResourceActionPlugin):
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
-        result = super(BaseResourceActionPlugin, self).run(tmp, task_vars)
-        del tmp
-        self._task_vars = task_vars
-
-        doc = self._get_documentation()
-        argspec = self._build_argspec_from_docs(doc) if doc else None
-        if not argspec:
-            raise AnsibleError("Could not load DOCUMENTATION for job_launch module")
-
-        validated_input = self._validate_data(self._task.args.copy(), argspec, "input")
-        manager, facts_to_set = self._get_or_spawn_manager(task_vars)
-        self._client = manager
-        if facts_to_set:
-            result["ansible_facts"] = facts_to_set
-            result["_ansible_facts_cacheable"] = True
-
-        params = validated_input.validated_parameters
+        prepared = self._prepare_action(tmp, task_vars)
+        result = prepared["result"]
+        params = dict(prepared["validated_params"])
+        manager = prepared["manager"]
 
         wait = params.pop("wait", False)
         interval = params.pop("interval", 2.0)
         raw_timeout = params.pop("timeout", None)
-        # timeout=0 means "wait indefinitely" (legacy AWX behavior);
-        # the shared waiter treats negative values as no-timeout.
-        if raw_timeout is not None:
-            timeout = -1.0 if float(raw_timeout) == 0 else float(raw_timeout)
+        # Omitted/zero means unlimited; negative means a single poll.
+        # Translate these values to the shared waiter's timeout conventions.
+        if raw_timeout is None or raw_timeout == 0:
+            timeout = -1.0
+        elif raw_timeout < 0:
+            timeout = 0.0  # Stop after the first unfinished response.
         else:
-            timeout = None
-
-        if self._task.check_mode:
-            result.update({"changed": True, "failed": False, "msg": "Job launch skipped (check mode)"})
-            return result
+            timeout = float(raw_timeout)
 
         try:
             model_fields = {f.name for f in dataclass_fields(AnsibleJobLaunch)}
-            ansible_obj = AnsibleJobLaunch(**{k: v for k, v in params.items() if v is not None and k not in self._AUTH_PARAMS and k in model_fields})
-            context = TransformContext(
-                manager=manager,
-                session=getattr(manager, "session", None),
-                cache={},
-                api_version="2",
-                service="controller",
-                operation="launch",
-            )
+            launch_params = dict(params)
+            launch_params["extra_vars"] = self._inject_current_job_metadata(params.get("extra_vars"), task_vars)
+            ansible_obj = AnsibleJobLaunch(**{k: v for k, v in launch_params.items() if v is not None and k not in self._AUTH_PARAMS and k in model_fields})
+            context = {"manager": manager, "operation": "launch"}
             api_data = JobLaunchTransformMixin_v2.from_ansible_data(ansible_obj, context)
-            payload = JobLaunchTransformMixin_v2.to_launch_payload(api_data)
-            jt_id = api_data.job_template_id
+            prompt_errors = self._validate_launch_prompts(manager, api_data.job_template_id, params)
+            if prompt_errors:
+                result.update(
+                    {
+                        "changed": False,
+                        "failed": True,
+                        "msg": "Parameters specified which can not be passed into job template, see errors for details",
+                        "errors": prompt_errors,
+                    }
+                )
+                return result
+            if self._task.check_mode:
+                result.update({"changed": True, "failed": False, "msg": "Job launch skipped (check mode)"})
+                return result
+
+            launch_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["launch"]
+            if launch_operation.method != "POST":
+                raise AnsibleError("Job launch endpoint operation must use POST")
+            launch_path, payload = build_endpoint_request(launch_operation, api_data, path_values={"id": api_data.job_template_id})
 
             launch_result = manager.launch_resource(
-                CONTROLLER_JOB_TEMPLATE_LAUNCH_ENDPOINT.format(id=jt_id),
+                launch_path,
                 payload,
                 service="controller",
                 retry=False,
@@ -94,14 +89,18 @@ class ActionModule(BaseResourceActionPlugin):
             result.update({"changed": True, "failed": True, "msg": "Launch response did not include a job ID"})
             return result
         job_status = launch_result.get("status", "unknown")
-        job_url = launch_result.get("url", CONTROLLER_JOB_ENDPOINT.format(id=job_id))
+        job_detail_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["get"]
+        job_url = launch_result.get("url", job_detail_operation.path.format(id=job_id))
+        self._update_launch_metadata(result, launch_result)
 
         ignored_fields = launch_result.get("ignored_fields", {})
         if ignored_fields:
-            result["warnings"] = [f"Launch ignored fields: {ignored_fields}"]
+            result.setdefault("warnings", []).append(f"Launch ignored fields: {ignored_fields}")
 
         if not wait:
+            self._fetch_launch_metadata(manager, result, job_url)
             result.update({"changed": True, "failed": False, "id": job_id, "status": job_status})
+            result.update(self._extract_launch_metadata(launch_result))
             return result
 
         try:
@@ -112,6 +111,8 @@ class ActionModule(BaseResourceActionPlugin):
                 service="controller",
             )
             final_status = wait_result.get("status", "unknown")
+            self._update_launch_metadata(result, wait_result)
+            self._set_job_timing(result, wait_result)
             failed = final_status in ("failed", "error", "canceled")
             result.update(
                 {
@@ -121,10 +122,14 @@ class ActionModule(BaseResourceActionPlugin):
                     "status": final_status,
                 }
             )
+            result.update(self._extract_launch_metadata(wait_result))
             if failed:
+                result["job_data"] = wait_result
                 result["msg"] = f"Job {job_id} finished with status: {final_status}"
         except WaitTimeoutError as exc:
             lr = exc.last_result or {}
+            self._update_launch_metadata(result, lr)
+            self._set_job_timing(result, lr)
             result.update(
                 {
                     "changed": True,
@@ -134,6 +139,7 @@ class ActionModule(BaseResourceActionPlugin):
                     "status": lr.get("status", "unknown"),
                 }
             )
+            result.update(self._extract_launch_metadata(lr))
         except Exception as exc:
             result.update(
                 {
@@ -146,3 +152,69 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
         return result
+
+    @staticmethod
+    def _update_launch_metadata(result, job_data):
+        """Copy launch metadata exposed by Controller into the module result."""
+        if not isinstance(job_data, dict):
+            return
+
+        summary_fields = job_data.get("summary_fields") or {}
+        job_template = summary_fields.get("job_template") or summary_fields.get("unified_job_template")
+        created_by = summary_fields.get("created_by") or job_data.get("created_by")
+
+        if isinstance(job_template, dict) and job_template.get("name") and "job_template_name" not in result:
+            result["job_template_name"] = job_template["name"]
+        if isinstance(created_by, dict) and created_by.get("username") and "user_name" not in result:
+            result["user_name"] = created_by["username"]
+
+    @classmethod
+    def _fetch_launch_metadata(cls, manager, result, job_url):
+        """Fetch only metadata omitted from the asynchronous launch response."""
+        if "job_template_name" in result and "user_name" in result:
+            return
+
+        try:
+            job_data = manager.search_api(job_url, service="controller")
+        except Exception:
+            job_data = {}
+
+        cls._update_launch_metadata(result, job_data)
+
+    @staticmethod
+    def _validate_launch_prompts(manager, job_template_id, params):
+        """Reject launch overrides that the selected job template does not prompt for."""
+        checks = {
+            "scm_branch": "ask_scm_branch_on_launch",
+            "diff_mode": "ask_diff_mode_on_launch",
+            "limit": "ask_limit_on_launch",
+            "tags": "ask_tags_on_launch",
+            "skip_tags": "ask_skip_tags_on_launch",
+            "job_type": "ask_job_type_on_launch",
+            "verbosity": "ask_verbosity_on_launch",
+            "inventory": "ask_inventory_on_launch",
+            "credentials": "ask_credential_on_launch",
+            "execution_environment": "ask_execution_environment_on_launch",
+            "forks": "ask_forks_on_launch",
+            "instance_groups": "ask_instance_groups_on_launch",
+            "labels": "ask_labels_on_launch",
+            "job_slice_count": "ask_job_slice_count_on_launch",
+            "job_timeout": "ask_timeout_on_launch",
+        }
+        param_errors = []
+        requested_fields = [field for field in checks if params.get(field) is not None]
+        check_extra_vars = params.get("extra_vars") is not None
+        if not requested_fields and not check_extra_vars:
+            return param_errors
+
+        detail_operation = JobLaunchTransformMixin_v2.get_endpoint_operations()["get_job_template"]
+        template_path = detail_operation.path.format(id=job_template_id)
+        template = manager.search_api(template_path, service="controller")
+        for field in requested_fields:
+            if not template.get(checks[field]):
+                param_errors.append("The field %s was specified but the job template does not allow for it to be overridden" % field)
+
+        if check_extra_vars and not (template.get("ask_variables_on_launch") or template.get("survey_enabled")):
+            param_errors.append("The field extra_vars was specified but the job template does not allow for it to be overridden")
+
+        return param_errors

@@ -97,6 +97,7 @@ def _make_platform_service():
     mgr.request_timeout = 30
     mgr.base_url = "https://gw.example.com"
     mgr._activity_lock = threading.Lock()
+    mgr._active_waits = 0
     mgr._last_activity_monotonic = time.monotonic()
     mgr._lock = threading.Lock()
     mgr._http_request_count = 0
@@ -298,7 +299,7 @@ class TestRPCClientWrappers(unittest.TestCase):
 
         result = client.wait_for_completion("/jobs/1/", timeout=30, interval=5, service="controller")
 
-        self.assertEqual(result["status"], "successful")
+        self.assertEqual(result, {"id": 1, "status": "successful"})
         client.service_proxy.wait_for_completion.assert_called_once_with("/jobs/1/", 30, 5, "controller")
 
 

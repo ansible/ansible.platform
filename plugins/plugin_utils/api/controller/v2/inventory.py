@@ -61,14 +61,17 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
             elif name is not None and not str(name).strip().isdigit():
                 api_data["name"] = name
 
-        # FK resolution: organization name → ID (Gateway-owned, use default service)
+        # Resolve organization IDs from Controller because this FK is Controller-owned.
         organization = getattr(ansible_instance, "organization", None)
         if organization is not None:
             manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
-            if manager is not None and not str(organization).strip().isdigit():
-                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization)
+            organization_value = str(organization).strip()
+            if organization_value.isascii() and organization_value.isdecimal():
+                api_data["organization"] = int(organization_value)
             else:
-                api_data["organization"] = int(organization) if organization is not None else None
+                if manager is None:
+                    raise ValueError("Cannot resolve organization name without a manager")
+                api_data["organization"] = manager.lookup_resource_id("organizations", "name", organization, service="controller", numeric_is_id=False)
 
         for field in ("description", "kind", "host_filter", "prevent_instance_group_fallback"):
             val = getattr(ansible_instance, field, None)
@@ -147,6 +150,20 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
                 pass
         return {}
 
+    @staticmethod
+    def get_idempotency_value_from_current_data(field: str, current_data: Dict[str, Any], context: TransformContext):
+        """Resolve the returned organization name back to its API ID for comparison."""
+        value = current_data.get(field)
+        if field != "organization" or value is None:
+            return value
+        if str(value).strip().isdecimal():
+            return int(value)
+        try:
+            manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
+            return manager.lookup_resource_id("organizations", "name", value, service="controller", numeric_is_id=False)
+        except Exception:
+            return value
+
     @classmethod
     def from_api(
         cls,
@@ -162,7 +179,7 @@ class InventoryTransformMixin_v2(BaseTransformMixin):
         manager = getattr(context, "manager", None) if isinstance(context, TransformContext) else context.get("manager")
         if manager and organization_id is not None:
             try:
-                names = manager.lookup_organization_names([organization_id])
+                names = manager.lookup_organization_names([organization_id], service="controller")
                 if names:
                     organization = names[0]
             except Exception:

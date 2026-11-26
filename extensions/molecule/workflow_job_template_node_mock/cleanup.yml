@@ -21,13 +21,6 @@
       vars:
         ansible_connection: local
 
-    - name: Remove manager survive flag
-      ansible.builtin.file:
-        path: /tmp/ap/.survive
-        state: absent
-      vars:
-        ansible_connection: local
-
 - name: Cleanup — delete node (mock, http direct)
   hosts: localhost
   connection: ansible.platform.http
@@ -45,13 +38,6 @@
         workflow_job_template: "1"
         state: absent
 
-    - name: Remove manager survive flag
-      ansible.builtin.file:
-        path: /tmp/ap/.survive
-        state: absent
-      vars:
-        ansible_connection: local
-
 - name: Cleanup — delete node (mock, http persistent)
   hosts: localhost
   connection: ansible.platform.http
@@ -63,11 +49,16 @@
     gateway_validate_certs: false
     ansible_platform_use_persistent_connection: true
   tasks:
+    # Deletion is idempotent, so retry transient persistent-RPC failures safely.
     - name: Delete node (http persistent)
       ansible.platform.workflow_job_template_node:
         identifier: "molecule-test-node-persistent"
         workflow_job_template: "1"
         state: absent
+      register: persistent_delete_result
+      retries: 3
+      delay: 1
+      until: persistent_delete_result is not failed
 
     - name: Remove manager survive flag
       ansible.builtin.file:

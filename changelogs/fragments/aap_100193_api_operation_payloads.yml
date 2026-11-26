@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - Launch actions now derive request bodies and endpoint paths from transform operation declarations, including bulk host creation (https://issues.redhat.com/browse/AAP-100193).
+...

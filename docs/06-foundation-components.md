@@ -484,32 +484,25 @@ def lookup_resource_id(self, resource_type: str, name_or_id: Union[str, int], **
 
 ### `search_api` Method
 
-Used by the `gateway_api` lookup plugin to perform API searches without forking HTTP connections:
+The `platform_api` lookup uses the RPC client to delegate API requests to an
+ephemeral manager subprocess.
 
 ```python
-def search_api(self, endpoint: str, query_params: Optional[dict] = None, return_all: bool = False, max_objects: int = 1000) -> dict:
-    """
-    Execute a raw GET request via the manager subprocess.
-
-    Delegates to PlatformService so all HTTP/SSL work happens in
-    the manager subprocess rather than in a forked Ansible worker process,
-    avoiding the macOS + Python 3.12 fork-safety SIGABRT.
-
-    Args:
-        endpoint: API endpoint fragment (e.g. 'applications', 'settings/ui')
-        query_params: Optional filter parameters
-        return_all: Follow pagination links and collect all results
-        max_objects: Safety cap on total returned objects (when return_all=True)
-
-    Returns:
-        Raw API response dict from the platform.
-    """
-    url = self._build_url(endpoint, query_params)
-    response = self._make_request("get", url)
-    if response.status_code != 200:
-        raise RuntimeError(f"API request failed: {response.status_code}")
-    return response.json()
+def search_api(
+    self,
+    endpoint: str,
+    query_params: Optional[dict] = None,
+    return_all: bool = False,
+    max_objects: int = 1000,
+    service: str = "gateway",
+) -> dict:
+    return self.service_proxy.search_api(endpoint, query_params or {}, return_all, max_objects, service)
 ```
+
+The manager uses `service` when building a URL for a relative endpoint. A full API
+path already identifies its service and version. The call returns the raw API
+response and follows pagination links when `return_all=True`, subject to
+`max_objects`.
 
 ### Idle-Tracking Methods
 

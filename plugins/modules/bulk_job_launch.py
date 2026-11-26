@@ -123,7 +123,7 @@ options:
     inventory:
         description:
             - Inventory name, ID, or named URL to use for all jobs, if prompt for inventory is enabled.
-            - Named URLs use the Controller format, such as C(Default++Demo Inventory).
+            - Named URLs use the Controller format, such as C(Demo Inventory++Default).
         type: str
     limit:
         description:
@@ -136,6 +136,7 @@ options:
     extra_vars:
         description:
             - Extra variables to apply to all jobs. Extends extra_data at the individual job level.
+            - When extra variables are provided from a Controller job, current job metadata is added under C(controller_job_metadata).
         type: dict
     job_tags:
         description:
@@ -157,7 +158,10 @@ options:
         type: float
     timeout:
         description:
-            - Maximum time in seconds to wait for the bulk job to finish. If omitted, wait indefinitely.
+            - Maximum time in seconds to wait for the bulk job to finish.
+            - If omitted or set to C(0), wait indefinitely.
+            - Only used when O(wait=true).
+            - A client-side timeout stops waiting without canceling the remote job.
             - Must be 0 or greater.
         type: int
 seealso:
@@ -209,5 +213,15 @@ job_info:
     description: Full response from the bulk job launch API.
     returned: success
     type: dict
+user_name:
+    description: Username of the Controller user who launched the bulk job.
+    returned: when Controller provides the metadata
+    type: str
+    sample: admin
+job_template_name:
+    description: Name of the job template used for the launch.
+    returned: when Controller provides the metadata
+    type: str
+    sample: My Job Template
 ...
 """

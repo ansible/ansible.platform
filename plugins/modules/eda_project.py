@@ -53,16 +53,16 @@ options:
 
   credential:
     description:
-      - The name of the EDA credential to associate with the project.
+      - The name or ID of the EDA credential to associate with the project.
     type: str
 
-  organization_name:
+  organization:
     description:
-      - The name of the organization.
+      - The name or ID of the organization.
       - Required when creating a project on EDA API versions that support organizations.
     type: str
     aliases:
-      - organization
+      - organization_name
 
   scm_branch:
     description:
@@ -119,7 +119,7 @@ EXAMPLES = """
     name: "Example Project"
     description: "Example project description"
     url: "https://example.com/project1"
-    organization_name: Default
+    organization: Default
     state: present
 
 - name: Update the name of the project
@@ -129,7 +129,7 @@ EXAMPLES = """
     description: "Example project description"
     url: "https://example.com/project1"
     scm_branch: "devel"
-    organization_name: Default
+    organization: Default
     state: present
     update_revision_on_launch: true
     scm_update_cache_timeout: 3600
@@ -143,7 +143,7 @@ EXAMPLES = """
   ansible.platform.eda_project:
     name: "Example Project"
     url: "https://example.com/project1"
-    organization_name: Default
+    organization: Default
     wait: true
     state: present
 
@@ -151,7 +151,7 @@ EXAMPLES = """
   ansible.platform.eda_project:
     name: "Example Project"
     url: "https://example.com/project1"
-    organization_name: Default
+    organization: Default
     wait: false
     state: present
 
@@ -167,7 +167,7 @@ EXAMPLES = """
     url: "https://private.example.com/project1"
     credential: "my-git-credential"
     proxy: "https://proxy.example.com"
-    organization_name: Default
+    organization: Default
     state: present
 ...
 """

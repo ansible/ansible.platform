@@ -1,50 +1,84 @@
 ---
-- name: Sync the Demo Project and wait for completion
-  ansible.platform.project_update:
-    name: "Demo Project"
-    wait: true
-    timeout: 120
-    interval: 2
-  register: sync_result
+- name: Generate a unique test identifier
+  ansible.builtin.set_fact:
+    test_id: "{{ lookup('password', '/dev/null chars=ascii_letters length=16') }}"
+  when: test_id is not defined
 
-- name: Assert the sync completed successfully
-  ansible.builtin.assert:
-    that:
-      - sync_result is not failed
-      - sync_result.id is defined
-      - sync_result.status == "successful"
+- name: Set test project name
+  ansible.builtin.set_fact:
+    test_project_name: "AAP-Collection-Test-ProjectUpdate-{{ test_id }}"
 
-- name: Trigger a project sync without waiting
-  ansible.platform.project_update:
-    name: "Demo Project"
-    wait: false
-  register: nowait_result
+- name: Run project update tests against a test-owned project
+  module_defaults:
+    group/ansible.platform.controller:
+      gateway_hostname: "{{ gateway_hostname }}"
+      gateway_username: "{{ gateway_username }}"
+      gateway_password: "{{ gateway_password }}"
+      gateway_validate_certs: "{{ gateway_validate_certs | bool }}"
+  block:
+    - name: Copy Demo Project for this test run
+      ansible.platform.controller_project:
+        name: "{{ test_project_name }}"
+        copy_from: "Demo Project"
+        organization: Default
+        state: present
+      register: test_project
 
-- name: Assert the no-wait launch returned an ID
-  ansible.builtin.assert:
-    that:
-      - nowait_result is not failed
-      - nowait_result.id is defined
-      - nowait_result.changed
+    - name: Sync the test-owned project and wait for completion
+      ansible.platform.project_update:
+        name: "{{ test_project_name }}"
+        wait: true
+        timeout: 120
+        interval: 2
+      register: sync_result
 
-- name: Wait for the background sync to finish before proceeding
-  ansible.builtin.uri:
-    url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/project_updates/{{ nowait_result.id }}/"
-    method: GET
-    user: "{{ gateway_username }}"
-    password: "{{ gateway_password }}"
-    force_basic_auth: true
-    validate_certs: "{{ gateway_validate_certs | bool }}"
-    status_code: [200]
-  register: bg_sync
-  delegate_to: localhost
-  until: bg_sync.json is defined and bg_sync.json.status | default('') in ['successful', 'failed', 'error', 'canceled']
-  retries: 60
-  delay: 2
+    - name: Assert the sync completed successfully
+      ansible.builtin.assert:
+        that:
+          - sync_result is not failed
+          - sync_result.id is defined
+          - sync_result.status == "successful"
 
-- name: Assert background sync succeeded
-  ansible.builtin.assert:
-    that:
-      - bg_sync.json.status == 'successful'
-    fail_msg: "Background project sync finished with status '{{ bg_sync.json.status }}'"
+    - name: Trigger a test-owned project sync without waiting
+      ansible.platform.project_update:
+        name: "{{ test_project_name }}"
+        wait: false
+      register: nowait_result
+
+    - name: Assert the no-wait launch returned an ID
+      ansible.builtin.assert:
+        that:
+          - nowait_result is not failed
+          - nowait_result.id is defined
+          - nowait_result.changed
+
+    - name: Wait for the background sync to finish before proceeding
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/project_updates/{{ nowait_result.id }}/"
+        method: GET
+        user: "{{ gateway_username }}"
+        password: "{{ gateway_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | bool }}"
+        status_code: [200]
+      register: bg_sync
+      delegate_to: localhost
+      until: bg_sync.json is defined and bg_sync.json.status | default('') in ['successful', 'failed', 'error', 'canceled']
+      retries: 60
+      delay: 2
+
+    - name: Assert background sync succeeded
+      ansible.builtin.assert:
+        that:
+          - bg_sync.json.status == 'successful'
+        fail_msg: "Background project sync finished with status '{{ bg_sync.json.status }}'"
+
+  always:
+    - name: Delete test-owned project
+      ansible.platform.controller_project:
+        name: "{{ test_project_name }}"
+        organization: Default
+        state: absent
+      when: test_project_name is defined
+      failed_when: false
 ...

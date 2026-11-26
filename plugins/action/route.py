@@ -12,6 +12,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.ro
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "route"
     MODEL_CLASS = AnsibleRoute
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"is_service_https", "enable_gateway_auth", "enable_mtls"})
 
     # Gateway API schema defaults for proxy timeout floors.
     # These are used when the settings endpoint does not return the value

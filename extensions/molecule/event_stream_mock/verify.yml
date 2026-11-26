@@ -1,0 +1,28 @@
+---
+- name: Verify — event_stream cleanup complete
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gateway_hostname: "http://127.0.0.1:8000"
+    gateway_username: "mock"
+    gateway_password: "testpass"
+    gateway_validate_certs: false
+  tasks:
+    - name: Ensure renamed event stream is absent after converge cleanup
+      ansible.platform.event_stream:
+        name: "molecule-mock-event-stream-renamed"
+        state: absent
+        gateway_hostname: "{{ gateway_hostname }}"
+        gateway_username: "{{ gateway_username }}"
+        gateway_password: "{{ gateway_password }}"
+        gateway_validate_certs: "{{ gateway_validate_certs }}"
+      register: verify_absent
+      vars:
+        ansible_connection: local
+
+    - name: Assert renamed event stream is already absent
+      ansible.builtin.assert:
+        that: verify_absent is not changed
+        fail_msg: "Verify: event stream should already be absent after converge cleanup."
+...

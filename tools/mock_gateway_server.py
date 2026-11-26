@@ -19,6 +19,8 @@ Controller settings are also served at /api/controller/vX/settings/all/.
 
 Controller endpoints include job_templates CRUD, associations, survey_spec,
 copy, and the related resources needed by the job_template Molecule scenario.
+Controller organizations are served independently from Gateway organizations,
+matching the service-scoped organization lookups used by Controller resources.
 The workflow_node_wait scenario uses a pending-to-successful job fixture.
 
 EDA endpoints (under /api/eda/v{1,2}/) include awx-tokens, organizations,
@@ -351,6 +353,7 @@ class Store:
         self._resources[("gateway", "role_definitions")].sort_list_fields = ["permissions"]
 
         controller_resources = (
+            ("organizations", ["name"], 1000),
             ("job_templates", ["name"], 5000),
             ("inventories", ["name"], 5100),
             ("projects", ["name"], 5200),
@@ -399,11 +402,10 @@ class Store:
             ("credential-types", ["name"], 1100),
             ("eda-credentials", ["name", "credential_type_id", "organization_id"], 1200),
             ("awx-tokens", ["name", "token"], 6000),
-            ("organizations", ["name"], 7100),
+            ("credential-input-sources", ["input_field_name", "target_credential", "source_credential"], 6200),
             ("projects", ["name"], 7200),
             ("rulebooks", ["name", "project_id"], 7300),
             ("decision-environments", ["name"], 7400),
-            ("eda-credentials", ["name"], 7500),
             ("event-streams", ["name"], 7600),
             ("activations", ["name"], 7700),
         ]
@@ -412,6 +414,7 @@ class Store:
                 resource_name=endpoint,
                 required_fields=required,
                 start_id=start_id,
+                patch_fields=["description", "metadata"] if endpoint == "credential-input-sources" else None,
                 service="eda",
             )
 
@@ -430,7 +433,11 @@ class Store:
                     self.orgs_by_id[org["id"]] = org
                     self.orgs_by_name[org["name"]] = org["id"]
 
-        # EDA uses its own organization and credential-type endpoints.
+        # Controller and EDA use service-local organization endpoints and IDs.
+        controller_orgs = self._resources.get(("controller", "organizations"))
+        if controller_orgs and not controller_orgs._items:
+            controller_orgs.seed("1", [{"id": 1, "name": "Default"}, {"id": 2, "name": "Engineering"}])
+
         eda_orgs = self._resources.get(("eda", "organizations"))
         if eda_orgs and not eda_orgs._items:
             eda_orgs.seed("1", [{"id": 1, "name": "Default"}, {"id": 2, "name": "Engineering"}])
@@ -531,9 +538,9 @@ class Store:
             ff_store.seed("1", flags)
 
         controller_fixtures = {
-            "inventories": [{"id": 5101, "name": "Mock Inventory"}],
+            "inventories": [{"id": 5101, "name": "Mock Inventory", "organization": 1}],
             "projects": [{"id": 5201, "name": "Mock Project", "organization": 1}],
-            "execution_environments": [{"id": 5301, "name": "Mock EE"}],
+            "execution_environments": [{"id": 5301, "name": "Mock EE", "organization": 1}],
             "credentials": [{"id": 5401, "name": "Mock Credential"}, {"id": 5402, "name": "Mock Vault Credential"}],
             "labels": [{"id": 5501, "name": "Mock Label 1"}, {"id": 5502, "name": "Mock Label 2"}, {"id": 5503, "name": "Mock Label 3"}],
             "instance_groups": [{"id": 5601, "name": "Mock Instance Group"}],
@@ -544,12 +551,11 @@ class Store:
             if resource and not resource._items:
                 resource.seed("2", items)
 
-        # Seed EDA fixtures for the rulebook_activation Molecule mock scenario.
-        # The rulebook's "sources" list is served directly by MockGatewayHandler,
-        # so it doesn't need its own store.
+        # Seed EDA fixtures used by event stream, decision environment, and
+        # rulebook activation mock scenarios. The rulebook's "sources" list is
+        # served directly by MockGatewayHandler, so it doesn't need its own store.
         eda_fixtures = {
-            "organizations": [{"id": 9001, "name": "Default"}],
-            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 9001}],
+            "projects": [{"id": 9101, "name": "Molecule Mock EDA Project", "organization_id": 1}],
             "rulebooks": [
                 {
                     "id": 9201,
@@ -558,8 +564,12 @@ class Store:
                     "sources": [{"name": "range", "rulebook_hash": "mock-rulebook-hash-range"}],
                 }
             ],
-            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 9001}],
-            "eda-credentials": [{"id": 9401, "name": "Molecule Mock EDA Credential"}],
+            "decision-environments": [{"id": 9301, "name": "Molecule Mock Decision Environment", "organization_id": 1}],
+            "eda-credentials": [
+                {"id": 9101, "name": "Molecule Mock Event Stream Credential", "organization_id": 1},
+                {"id": 9102, "name": "Molecule Mock Decision Environment Credential", "organization_id": 1},
+                {"id": 9401, "name": "Molecule Mock EDA Credential", "credential_type_id": 1, "organization_id": 1},
+            ],
             "event-streams": [{"id": 9501, "name": "Molecule Mock Event Stream"}],
         }
         for endpoint, items in eda_fixtures.items():
@@ -1274,6 +1284,38 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
         # ---- Controller config (license) ----
         if service == "controller" and resource == "config":
+            if path == "/api/controller/v2/config/subscriptions/" and self.command == "POST":
+                try:
+                    payload = self._parse_json_body()
+                except ValueError as e:
+                    self._send_json(400, {"detail": str(e)})
+                    return
+                if not isinstance(payload, dict):
+                    self._send_json(400, {"detail": "Expected a JSON object"})
+                    return
+                username_credentials = (
+                    payload.get("subscriptions_username") == "mock-subscription-user"
+                    and isinstance(payload.get("subscriptions_password"), str)
+                    and bool(payload["subscriptions_password"])
+                    and set(payload) == {"subscriptions_username", "subscriptions_password"}
+                )
+                is_client_credentials = (
+                    payload.get("subscriptions_client_id") == "mock-subscription-client"
+                    and isinstance(payload.get("subscriptions_client_secret"), str)
+                    and bool(payload["subscriptions_client_secret"])
+                    and set(payload) == {"subscriptions_client_id", "subscriptions_client_secret"}
+                )
+                if not username_credentials and not is_client_credentials:
+                    self._send_json(400, {"detail": "Unexpected mock subscription credentials"})
+                    return
+                self._send_json(
+                    200,
+                    [
+                        {"id": 8001, "product_name": "Ansible Automation Platform", "support_level": "Premium"},
+                        {"id": 8002, "product_name": "Other Product", "support_level": "Self-Support"},
+                    ],
+                )
+                return
             if self.command == "GET":
                 self._send_json(200, self.server._license_config)
                 return
@@ -1324,6 +1366,19 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             remapped_parts = ["api", service, version_part, "awx-tokens"] + parts[6:]
             if self._handle_generic_resource("eda", "awx-tokens", remapped_parts, version, qs):
                 return
+
+        # ---- EDA: /api/eda/vX/credential-types/{id}/test/ ----
+        if service == "eda" and resource == "credential-types" and len(parts) == 6 and parts[5] == "test" and self.command == "POST":
+            self.store.seed_defaults()
+            credential_type_store = self.store.resource("eda", "credential-types")
+            try:
+                credential_type_store.get(int(parts[4]))
+            except (ValueError, KeyError):
+                self._send_json(404, {"detail": "Not Found"})
+                return
+            self._parse_json_body()
+            self._send_json(200, {"success": True, "message": "Credential type test accepted"})
+            return
 
         # ---- EDA: /api/eda/vX/rulebooks/{id}/sources/ (read-only, seeded on the rulebook fixture) ----
         if service == "eda" and resource == "rulebooks" and len(parts) == 6 and parts[5] == "sources" and self.command == "GET":
