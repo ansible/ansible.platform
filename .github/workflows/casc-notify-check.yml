@@ -88,7 +88,7 @@ jobs:
 
       - name: Post CasC reminder comment
         if: steps.detect-triggers.outputs.triggered == 'true'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         env:
           TRIGGER_LIST: ${{ steps.detect-triggers.outputs.trigger_list }}
         with:
