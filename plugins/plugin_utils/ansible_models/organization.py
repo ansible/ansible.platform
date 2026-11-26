@@ -29,6 +29,7 @@ class AnsibleOrganization:
     description: Optional[str] = None
     default_environment: Optional[str] = None
     max_hosts: Optional[int] = None
+    opa_query_path: Optional[str] = None
     instance_groups: Optional[List[str]] = None
     notification_templates_started: Optional[List[str]] = None
     notification_templates_success: Optional[List[str]] = None

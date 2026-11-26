@@ -35,7 +35,8 @@ options:
     description:
       - The assets to import.
       - Top-level keys are resource type names (e.g. C(organizations),
-        C(credentials), C(job_templates)). Values are lists of dicts whose
+        C(controller_organizations), C(credentials), C(job_templates),
+        C(role_user_assignments)). Values are lists of dicts whose
         keys match the corresponding C(ansible.platform) module parameters.
       - Can be the output of C(awx export) or the legacy C(awx.awx.export)
         module when C(auto_convert_legacy=true).

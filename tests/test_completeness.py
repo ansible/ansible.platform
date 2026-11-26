@@ -65,7 +65,7 @@ no_endpoint_for_module = [
 # Common across controller modules: "organization" is a lookup helper, "survey_spec"
 # is set via a separate endpoint. Pre-populated so migrators don't need to investigate.
 controller_no_api_parameter_ok = {
-    "job_template": ["organization", "survey_spec"],
+    "job_template": ["organization", "inventory_organization", "survey_spec"],
     "workflow_job_template": ["organization", "survey_spec"],
     "host": [],
     # Gateway team IDs are resolved to Controller team IDs before the request.
@@ -118,11 +118,13 @@ no_api_parameter_ok = {
         "notification_templates_error",
         "notification_templates_approvals",
         "galaxy_credentials",
+        "opa_query_path",
     ],
     # These control polling behavior rather than the Controller launch payload.
     "bulk_job_launch": ["wait", "interval", "timeout"],
     # organization scopes receiving-team name lookup only (AAP-92255); not an API field
     "role_team_assignment": ["organization"],
+    "role_user_assignment": ["object_name", "object_type", "object_credential_type", "organization", "user_id"],
 }
 
 # Modules that need to be developed. If the module is found on the file system it will auto-detect

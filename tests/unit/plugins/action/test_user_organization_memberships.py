@@ -33,7 +33,7 @@ def test_existing_membership_is_idempotent():
     manager.execute.assert_called_once_with(
         operation="find",
         module_name="role_user_assignment",
-        ansible_data={"role_definition": "31", "object_id": 42, "user": "7"},
+        ansible_data={"role_definition": "31", "object_id": 42, "user_id": 7},
     )
 
 
@@ -50,7 +50,7 @@ def test_missing_membership_is_reported_changed_in_check_mode_without_create():
     manager.execute.assert_called_once_with(
         operation="find",
         module_name="role_user_assignment",
-        ansible_data={"role_definition": "31", "object_id": 42, "user": "7"},
+        ansible_data={"role_definition": "31", "object_id": 42, "user_id": 7},
     )
 
 
@@ -81,7 +81,7 @@ def test_assignment_lookup_errors_fail_without_attempting_create():
     manager.execute.assert_called_once_with(
         operation="find",
         module_name="role_user_assignment",
-        ansible_data={"role_definition": "31", "object_id": 42, "user": "7"},
+        ansible_data={"role_definition": "31", "object_id": 42, "user_id": 7},
     )
 
 
