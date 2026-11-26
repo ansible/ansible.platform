@@ -31,18 +31,31 @@ def test_source_options_require_constructed_kind(inventory_action, kind):
     assert (result["failed"], result["msg"], manager.mock_calls) == (True, "source_vars and limit require kind: constructed", [])
 
 
-def test_source_options_reject_existing_regular_inventory(inventory_action):
+@pytest.mark.parametrize("name", ["Regular", "42"])
+def test_source_options_reject_existing_regular_inventory(inventory_action, name):
     action, manager = inventory_action
+    action._task.args["name"] = name
     manager.lookup_organization_names.return_value = []
-    manager.execute.return_value = {"id": 42, "kind": ""}
+    regular = {"id": 42, "kind": ""}
+    manager.execute.side_effect = [regular] if name == "42" else [ValueError("Resource with name=Regular not found"), regular]
 
     result = action.run()
 
-    assert (result["failed"], result["msg"], manager.execute.call_count) == (
+    assert (result["failed"], result["msg"], [call.kwargs["ansible_data"].get("limit") for call in manager.execute.call_args_list]) == (
         True,
         "source_vars and limit cannot be applied to an existing inventory that is not constructed",
-        1,
+        [None] if name == "42" else ["", None],
     )
+
+
+def test_constructed_lookup_failure_does_not_fall_back(inventory_action):
+    action, manager = inventory_action
+    manager.lookup_organization_names.return_value = []
+    manager.execute.side_effect = ValueError("Constructed inventory query failed")
+
+    result = action.run()
+
+    assert (result["failed"], result["msg"], manager.execute.call_count) == (True, "Constructed inventory query failed", 1)
 
 
 def test_source_options_reject_copy_from_regular_inventory(inventory_action):
@@ -67,7 +80,7 @@ def test_constructed_inventory_check_mode_reads_source_without_writing(inventory
     action._task.args["input_inventories"] = ["Input"]
     manager.lookup_organization_names.return_value = []
     current = {"id": 42, "name": "Constructed", "organization": "1", "kind": "constructed"}
-    manager.execute.side_effect = [current, {**current, "limit": stored_limit}]
+    manager.execute.return_value = {**current, "limit": stored_limit}
     manager.manage_associations.return_value = False
 
     result = action.run()
@@ -75,7 +88,7 @@ def test_constructed_inventory_check_mode_reads_source_without_writing(inventory
     assert (result["failed"], result["changed"], [call.kwargs["operation"] for call in manager.execute.call_args_list]) == (
         False,
         would_change,
-        ["find", "find"],
+        ["find"],
     )
     manager.manage_associations.assert_called_once_with(
         "/api/controller/v2/inventories", 42, "input_inventories", ["Input"], "inventories", "name", service="controller", check_mode=True

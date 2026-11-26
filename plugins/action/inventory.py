@@ -42,13 +42,24 @@ class ActionModule(BaseResourceActionPlugin):
         return validated
 
     def _find_existing_resource(self, manager, resource_data):
-        """Find the inventory by name and organization before reading its source settings."""
-        source_fields = {field: resource_data[field] for field in CONSTRUCTED_SOURCE_FIELDS if resource_data.get(field) is not None}
+        """Prefer the constructed list for named lookups that need source settings."""
+        source_fields = {field for field in CONSTRUCTED_SOURCE_FIELDS if resource_data.get(field) is not None}
         if not source_fields:
             return super()._find_existing_resource(manager, resource_data)
 
-        # Discover the inventory on the generic endpoint so a conflicting
-        # regular inventory is found before accessing the constructed endpoint.
+        # The constructed list is kind-filtered, but its detail view is not.
+        if not str(resource_data.get("name", "")).strip().isdigit():
+            try:
+                found = super()._find_existing_resource(manager, resource_data)
+            except ValueError as exc:
+                if not self._is_resource_not_found(exc):
+                    raise
+            else:
+                if found and found.get("id"):
+                    return found
+
+        # A list miss can hide a regular or smart inventory with the same name.
+        # For ID lookups, check the stored kind before reading constructed detail.
         lookup_data = {field: value for field, value in resource_data.items() if field not in source_fields}
         found = super()._find_existing_resource(manager, lookup_data)
         if not found or not found.get("id"):
