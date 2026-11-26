@@ -260,6 +260,26 @@ class TestInventorySourceTransform(unittest.TestCase):
             require_unique=True,
         )
 
+    def test_fk_source_project_rejects_invalid_qualified_names(self):
+        mock_manager = MagicMock()
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="invalid")
+
+        for source_project in ("++Project", "Org++", "++"):
+            with self.subTest(source_project=source_project):
+                ansible.source_project = source_project
+                with self.assertRaisesRegex(ValueError, "Organization\\+\\+Project"):
+                    InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+    def test_fk_source_project_propagates_ambiguous_name_error(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.side_effect = ValueError(
+            "Resource 'projects' with name=Shared Project matched multiple resources; provide additional filters"
+        )
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="Shared Project")
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources"):
+            InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
     def test_fk_id_skips_lookup(self):
         ansible = AnsibleInventorySource(name="src", inventory="42", source="ec2", credential="10")
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create"})
