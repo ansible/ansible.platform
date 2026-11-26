@@ -694,3 +694,32 @@ def test_role_team_assignment_resolves_gateway_object_name_from_role_content_typ
             "assignment_objects": [{"name": "Engineering", "type": "teams"}],
         }
     ]
+
+
+def test_role_assignment_export_partitions_unresolved_references():
+    principal = {"user": "alice", "role_definition": "Team Admin"}
+    summary = {"role_definition": {"name": "Team Admin", "content_type": "shared.team"}, "user": {"username": "alice"}}
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {
+            "results": [
+                {"summary_fields": summary, "object_id": 10},
+                {"summary_fields": summary, "object_id": 20},
+                {"summary_fields": summary, "object_id": 30, "object_ansible_id": "team-uuid"},
+            ]
+        },
+        {"results": []},
+        {"results": [{"id": 10, "name": "Engineering", "organization": 99}]},
+    ]
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    exported = action._export_role_assignments(manager, "role_user_assignments", "api/gateway/v1/role_user_assignments/", None, {}, 100)
+
+    assert (exported, action._non_restorable_role_assignments) == (
+        [dict(principal, object_ansible_id="team-uuid")],
+        [
+            dict(principal, object_id=10, non_restorable_reason="object organization could not be resolved to a portable name"),
+            dict(principal, object_id=20, non_restorable_reason="object reference could not be converted to a portable name"),
+        ],
+    )
