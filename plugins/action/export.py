@@ -497,8 +497,9 @@ class ActionModule(BaseResourceActionPlugin):
             team_org_id = team.get("organization")
             if isinstance(team_org_id, int):
                 team_org = name_cache.get(GATEWAY_ORGANIZATION_ENDPOINT, {}).get(team_org_id)
-                if team_org:
-                    item["team_organization"] = team_org
+                if not team_org:
+                    return dict(item, non_restorable_reason="team organization could not be resolved to a portable name")
+                item["team_organization"] = team_org
 
         object_id = assignment.get("object_id") or content.get("pk") or content.get("id")
         object_ansible_id = assignment.get("object_ansible_id")

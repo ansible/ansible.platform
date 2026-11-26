@@ -498,6 +498,24 @@ class TestMigratedRequestErrors(unittest.TestCase):
 class TestMigratedUpdateIdempotency(unittest.TestCase):
     """Unchanged resources skip PATCH; actual changes send it in both modes."""
 
+    def test_job_template_update_compares_inventory_ids_in_both_clients(self):
+        args = {"id": 42, "name": "Contract Resource", "inventory": "Hosts", "inventory_organization": "9"}
+        for client_mode in ("direct", "persistent"):
+            for current_id, expected_patches in ((70, [90]), (90, [])):
+                with self.subTest(client=client_mode, current_id=current_id):
+                    client = _client(client_mode)
+                    client.lookup_resource_id = MagicMock(return_value=90)
+                    client.search_api = MagicMock(return_value={"name": "Hosts"})
+                    current = {"id": 42, "name": "Contract Resource", "inventory": current_id}
+                    client._make_request.side_effect = _update_responder(client_mode, current, {**current, "inventory": 90})
+
+                    result = client.execute("update", "job_template", args)
+
+                    patched_inventories = [
+                        request.kwargs["json"]["inventory"] for request in client._make_request.call_args_list if request.args[0].upper() == "PATCH"
+                    ]
+                    self.assertEqual((result["changed"], patched_inventories), (bool(expected_patches), expected_patches))
+
     def test_empty_workflow_node_scm_branch_and_limit_are_idempotent_in_both_clients(self):
         current = {
             "id": 42,

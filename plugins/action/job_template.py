@@ -9,7 +9,7 @@ __metaclass__ = type
 
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.job_template import AnsibleJobTemplate
-from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import BASE_PATH
+from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_template import BASE_PATH, resolve_inventory_id
 
 # sub-endpoint name -> (lookup_endpoint, lookup_field) used to resolve association items to IDs.
 _ASSOC_MAP = {
@@ -54,9 +54,17 @@ class ActionModule(BaseResourceActionPlugin):
     def _should_update(self, desired_data, current_data):
         """Compare user-facing FK names or IDs without treating organization as a JT field."""
         desired = dict(desired_data)
-        desired.pop("organization", None)
+        organization = desired.pop("organization", None)
+        inventory_organization = desired.pop("inventory_organization", None) or organization
+        inventory = desired.get("inventory")
+        current_inventory_id = current_data.get("inventory_id")
+        if inventory is not None and (current_inventory_id is not None or inventory_organization is not None or str(inventory).isdigit()):
+            desired_inventory_id = resolve_inventory_id(self._client, inventory, inventory_organization)
+            if str(desired_inventory_id) != str(current_inventory_id):
+                return True
+            desired.pop("inventory")
+
         for field, endpoint in (
-            ("inventory", "inventories"),
             ("project", "projects"),
             ("execution_environment", "execution_environments"),
             ("webhook_credential", "credentials"),

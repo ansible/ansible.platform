@@ -657,7 +657,8 @@ def test_role_user_assignment_resolves_gateway_object_name_from_role_content_typ
     ]
 
 
-def test_role_team_assignment_resolves_gateway_object_name_from_role_content_type():
+@pytest.mark.parametrize("team_organization", ["Platform Org", None])
+def test_role_team_assignment_requires_portable_team_organization(team_organization):
     manager = Mock()
     manager.search_api.side_effect = [
         {
@@ -665,7 +666,7 @@ def test_role_team_assignment_resolves_gateway_object_name_from_role_content_typ
                 {
                     "summary_fields": {
                         "role_definition": {"id": 3, "name": "Team Admin"},
-                        "team": {"name": "Platform"},
+                        "team": {"name": "Platform", "organization": 99},
                         "content_object": {"id": 20, "name": "Engineering"},
                     },
                     "object_ansible_id": "source-team-uuid",
@@ -677,23 +678,25 @@ def test_role_team_assignment_resolves_gateway_object_name_from_role_content_typ
     ]
     action = ActionModule.__new__(ActionModule)
     action._display = Mock()
+    name_cache = {"api/gateway/v1/organizations/": {99: team_organization}} if team_organization else {}
 
     result = action._export_role_assignments(
         manager,
         "role_team_assignments",
         "api/gateway/v1/role_team_assignments/",
         None,
-        {},
+        name_cache,
         100,
     )
 
-    assert result == [
-        {
-            "role_definition": "Team Admin",
-            "team": "Platform",
-            "assignment_objects": [{"name": "Engineering", "type": "teams"}],
-        }
-    ]
+    principal = {"role_definition": "Team Admin", "team": "Platform"}
+    if team_organization:
+        assert result == [dict(principal, team_organization=team_organization, assignment_objects=[{"name": "Engineering", "type": "teams"}])]
+    else:
+        assert (result, getattr(action, "_non_restorable_role_assignments", [])) == (
+            [],
+            [dict(principal, non_restorable_reason="team organization could not be resolved to a portable name")],
+        )
 
 
 def test_role_assignment_export_partitions_unresolved_references():
