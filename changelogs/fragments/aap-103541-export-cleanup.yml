@@ -1,0 +1,4 @@
+---
+trivial:
+  - Simplify export field filtering and role assignment conversion while preserving exported assets.
+...
