@@ -206,7 +206,7 @@ def test_user_import_reconciles_exported_organization_memberships(action):
     assert manager.execute.call_args_list[3].kwargs == {
         "operation": "create",
         "module_name": "role_user_assignment",
-        "ansible_data": {"role_definition": "31", "object_id": 42, "user": "7"},
+        "ansible_data": {"role_definition": "31", "object_id": 42, "user_id": 7},
     }
 
 
