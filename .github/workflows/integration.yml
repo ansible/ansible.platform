@@ -39,7 +39,7 @@ jobs:
 
     steps:
       # Required for fork PRs under pull_request_target; gated by "safe to test" label.
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
@@ -109,7 +109,7 @@ jobs:
     if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
       # Required for fork PRs under pull_request_target; gated by "safe to test" label.
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}
@@ -158,7 +158,7 @@ jobs:
     if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'safe to test') }}
     steps:
       # Required for fork PRs under pull_request_target; gated by "safe to test" label.
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: ansible-platform
           ref: ${{ github.event.pull_request.head.sha }}

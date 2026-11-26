@@ -30,7 +30,7 @@ jobs:
       - name: Install make
         run: sudo apt install make
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
       - name: Install python 3.11
         uses: actions/setup-python@v4
@@ -58,7 +58,7 @@ jobs:
           - stable-2.18
           - stable-2.19
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Perform sanity testing
         uses: ansible-community/ansible-test-gh-action@release/v1
@@ -102,7 +102,7 @@ jobs:
       - name: Install requirements
         run: pip3.11 install --upgrade ansible
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Run ansible-doc
         run: make collection-docs
@@ -131,7 +131,7 @@ jobs:
       - name: Install requirements
         run: pip3.11 install --upgrade ansible-lint
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Run ansible-lint
         run: make collection-lint
