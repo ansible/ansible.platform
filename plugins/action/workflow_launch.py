@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
@@ -43,7 +44,8 @@ class ActionModule(BaseResourceActionPlugin):
             prepared = self._prepare_action(tmp, task_vars)
             result = prepared["result"]
             manager = prepared["manager"]
-            resource_data = prepared["resource_data"] or prepared["validated_params"]
+            resource_data = dict(prepared["resource_data"] or prepared["validated_params"])
+            user_extra_vars = resource_data.get("extra_vars")
             launch = AnsibleWorkflowLaunch(**resource_data)
             if not launch.name:
                 raise AnsibleError("name is required")
@@ -91,11 +93,16 @@ class ActionModule(BaseResourceActionPlugin):
             for field_name, prompt_flag in prompt_checks.items():
                 if field_name in post_data and not wjt.get(prompt_flag):
                     param_errors.append(f"The field {field_name} was specified but the workflow job template does not allow it to be overridden")
-            if launch.extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
+            if user_extra_vars and not (wjt.get("ask_variables_on_launch") or wjt.get("survey_enabled")):
                 param_errors.append("The field extra_vars was specified but the workflow job template does not allow it to be overridden")
             if param_errors:
                 result["errors"] = param_errors
                 raise AnsibleError("Parameters specified which cannot be passed into workflow job template launch: " + "; ".join(param_errors))
+
+            if wjt.get("ask_variables_on_launch") and user_extra_vars:
+                launch.extra_vars = self._inject_current_job_metadata(user_extra_vars, task_vars)
+                launch_request = WorkflowLaunchTransformMixin_v2.from_ansible_data(launch, {"manager": manager})
+                launch_path, post_data = build_endpoint_request(launch_operation, launch_request, path_values={"id": wjt_id})
 
             if self._task.check_mode:
                 result.update(
@@ -133,6 +140,8 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(launch_result))
+
             if not wait:
                 return result
 
@@ -158,6 +167,8 @@ class ActionModule(BaseResourceActionPlugin):
                 result[self.MODULE_NAME]["status"] = final_status
                 self._set_job_timing(result, job_result)
 
+                result.update(self._extract_launch_metadata(job_result))
+
                 if final_status in ("failed", "error", "canceled"):
                     result["failed"] = True
                     result["job_data"] = job_result
@@ -172,8 +183,6 @@ class ActionModule(BaseResourceActionPlugin):
                 self._set_job_timing(result, last)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

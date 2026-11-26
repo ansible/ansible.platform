@@ -243,3 +243,27 @@ def test_inventory_update_retains_timestamp_using_documented_platform_key(action
         result = action.run(task_vars={})
     expected = {"finished": not timed_out, "finished_at": data["finished"], "elapsed": 2.0}
     assert {key: result[key] for key in expected} == expected
+
+
+def test_wait_result_includes_user_name_from_summary_fields(action_module):
+    """Audit metadata is extracted from the wait response."""
+    action = action_module
+    action._task.args = {"name": "Resource", "inventory": "1", "wait": True}
+    action._task.check_mode = False
+    action._client = MagicMock()
+    manager = action._client
+    manager.lookup_resource_id.return_value = 1
+    manager.search_api.return_value = {"results": [{"id": 1}]}
+    manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+    manager.wait_for_completion.return_value = {
+        "id": 42,
+        "status": "successful",
+        "elapsed": 2.0,
+        "started": "2026-01-01T00:00:00Z",
+        "finished": "2026-01-01T00:00:02Z",
+        "summary_fields": {"created_by": {"id": 1, "username": "sync-user"}},
+    }
+    with patch("ansible.plugins.action.ActionBase.run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
+        result = action.run(task_vars={})
+    assert result["user_name"] == "sync-user"
+    assert "job_template_name" not in result

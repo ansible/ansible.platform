@@ -8,6 +8,12 @@ plugin_routing:
         removal_version: "3.0.0"
         warning_text: Use ansible.platform.platform_api instead.
 action_groups:
+  aap:
+    - metadata:
+        extend_group:
+          - gateway
+          - controller
+          - eda
   gateway:
     - application
     - authenticator

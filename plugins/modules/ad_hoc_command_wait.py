@@ -95,5 +95,10 @@ status:
     returned: success
     type: str
     sample: successful
+user_name:
+    description: Username of the Controller user who launched the command.
+    returned: when Controller provides the metadata
+    type: str
+    sample: admin
 ...
 """

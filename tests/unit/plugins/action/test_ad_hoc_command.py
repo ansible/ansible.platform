@@ -329,6 +329,57 @@ class TestLaunchWithWait(unittest.TestCase):
         )
 
 
+class TestLaunchMetadata(unittest.TestCase):
+    """Test audit metadata extraction from Controller responses."""
+
+    @patch.object(ActionModule, "_get_or_spawn_manager")
+    def test_no_wait_returns_metadata_from_launch_response(self, mock_manager):
+        module = _make_module(args={"inventory": "Demo", "credential": "Demo", "module_name": "ping"})
+        manager = _make_manager()
+        manager.lookup_resource_id.side_effect = [1, 2]
+        manager.launch_resource.return_value = {
+            "id": 42,
+            "status": "pending",
+            "summary_fields": {"created_by": {"id": 1, "username": "operator"}},
+        }
+        mock_manager.return_value = (manager, {})
+
+        result = module.run(task_vars={})
+
+        self.assertEqual(result["user_name"], "operator")
+        self.assertNotIn("job_template_name", result)
+
+    @patch.object(ActionModule, "_get_or_spawn_manager")
+    def test_wait_returns_metadata_from_wait_response(self, mock_manager):
+        module = _make_module(args={"inventory": "Demo", "credential": "Demo", "module_name": "ping", "wait": True})
+        manager = _make_manager()
+        manager.lookup_resource_id.side_effect = [1, 2]
+        manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+        manager.wait_for_completion.return_value = {
+            "id": 42,
+            "status": "successful",
+            "summary_fields": {"created_by": {"id": 1, "username": "admin"}},
+        }
+        mock_manager.return_value = (manager, {})
+
+        result = module.run(task_vars={})
+
+        self.assertEqual(result["user_name"], "admin")
+
+    @patch.object(ActionModule, "_get_or_spawn_manager")
+    def test_missing_summary_fields_does_not_fail(self, mock_manager):
+        module = _make_module(args={"inventory": "Demo", "credential": "Demo", "module_name": "ping"})
+        manager = _make_manager()
+        manager.lookup_resource_id.side_effect = [1, 2]
+        manager.launch_resource.return_value = {"id": 42, "status": "pending"}
+        mock_manager.return_value = (manager, {})
+
+        result = module.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertNotIn("user_name", result)
+
+
 class TestFKResolution(unittest.TestCase):
     """Test FK name-to-ID resolution."""
 

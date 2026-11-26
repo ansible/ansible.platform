@@ -15,6 +15,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
+
 import yaml
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 
@@ -225,8 +227,6 @@ class ActionModule(BaseResourceActionPlugin):
             result["assets"] = assets
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

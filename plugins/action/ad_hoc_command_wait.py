@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from typing import Optional
 
 from ansible.errors import AnsibleError
@@ -76,6 +77,8 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(wait_result))
+
             if status in FAILED_STATUSES:
                 result["failed"] = True
                 result["msg"] = f"Ad hoc command {command_id} finished with status: {status}"
@@ -92,8 +95,6 @@ class ActionModule(BaseResourceActionPlugin):
             result["finished_at"] = finished_at
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

@@ -10,6 +10,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
+
 from ansible.errors import AnsibleError
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_wait import JOB_TYPE_RESOURCE_MAP
@@ -112,6 +114,7 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             self._set_job_result(result, job_data)
+            result.update(self._extract_launch_metadata(job_data))
             status = job_data.get("status", "")
             result["changed"] = False
 
@@ -125,8 +128,6 @@ class ActionModule(BaseResourceActionPlugin):
                 result["msg"] = "Job %s finished with status '%s'." % (job_id, status)
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in job_wait action plugin: %s" % exc)
             result["failed"] = True
             result["msg"] = str(exc)

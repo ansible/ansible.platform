@@ -15,6 +15,8 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
+
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2.job_list import (
     CONTROLLER_JOBS_ENDPOINT,
@@ -63,8 +65,6 @@ class ActionModule(BaseResourceActionPlugin):
             result["results"] = response.get("results", [])
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

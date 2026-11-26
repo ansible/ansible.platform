@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >-
+    Validate documented nested options in action plugins, including bulk hosts,
+    bulk jobs, rulebook activation event streams, and role assignment objects.
+    Bulk requests preserve fields omitted from individual list entries.
+...

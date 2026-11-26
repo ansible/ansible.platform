@@ -129,5 +129,11 @@ status:
   returned: success
   type: str
   sample: pending
+
+user_name:
+  description: Username of the Controller user who triggered the update.
+  returned: when Controller provides the metadata
+  type: str
+  sample: admin
 ...
 """

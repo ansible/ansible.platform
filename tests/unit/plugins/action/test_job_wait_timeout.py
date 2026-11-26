@@ -202,6 +202,30 @@ class TestJobWaitAction(unittest.TestCase):
         )
         self.assertFalse(result["failed"])
 
+    def test_wait_result_includes_metadata_from_summary_fields(self):
+        params = {"job_id": 42, "job_type": "jobs", "interval": 2, "timeout": 10}
+        manager = MagicMock()
+        manager.execute.return_value = {"id": 42, "status": "running", "finished": None}
+        manager.wait_for_completion.return_value = {
+            "id": 42,
+            "status": "successful",
+            "finished": "2026-10-14T12:00:00Z",
+            "elapsed": 5.0,
+            "started": "2026-10-14T11:59:55Z",
+            "summary_fields": {
+                "created_by": {"id": 1, "username": "admin"},
+                "job_template": {"id": 10, "name": "Deploy App"},
+            },
+        }
+        action = self._make_action(params, manager)
+
+        with patch.object(ActionBase, "run", return_value={}):
+            result = action.run(task_vars={})
+
+        self.assertFalse(result["failed"])
+        self.assertEqual(result["user_name"], "admin")
+        self.assertEqual(result["job_template_name"], "Deploy App")
+
 
 if __name__ == "__main__":
     unittest.main()
