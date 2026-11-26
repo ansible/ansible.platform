@@ -633,7 +633,7 @@ class PlatformService(BaseAPIClient):
         # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
 
-        operations = mixin_class.get_endpoint_operations()
+        operations = self._create_update_endpoint_operations(mixin_class, ansible_data)
         api_result = self._execute_operations(operations, api_data, context, required_for="create")
 
         # REVERSE TRANSFORM: API -> Ansible
@@ -672,7 +672,7 @@ class PlatformService(BaseAPIClient):
 
         # FORWARD TRANSFORM: Ansible -> API
         api_data = mixin_class.from_ansible_data(ansible_data, context)
-        operations = mixin_class.get_endpoint_operations()
+        operations = self._create_update_endpoint_operations(mixin_class, ansible_data)
 
         # Snapshot which fields are None after the forward transform — these are
         # fields the user did NOT explicitly provide.  We need this before the

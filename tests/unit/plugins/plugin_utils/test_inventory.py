@@ -234,6 +234,24 @@ class TestInventoryTransform(unittest.TestCase):
         api_model = InventoryTransformMixin_v2.from_api({"name": "inv", "organization": 1, "variables": api_vars}, {})
         self.assertEqual(task_model.variables, api_model.variables)
 
+    def test_constructed_source_vars_match_yaml_from_api(self):
+        task = AnsibleInventory(name="inv", organization="1", kind="constructed", source_vars={"z": 1, "a": 2}, limit="power:&aap")
+        desired = InventoryTransformMixin_v2.from_ansible_data(task, {"operation": "update"})
+        current = InventoryTransformMixin_v2.from_api(
+            {"name": "inv", "organization": 1, "kind": "constructed", "source_vars": "a: 2\nz: 1\n", "limit": "power:&aap"}, {}
+        )
+
+        self.assertEqual((desired.source_vars, desired.limit), (current.source_vars, current.limit))
+
+    def test_constructed_source_fields_distinguish_omitted_and_empty(self):
+        task = AnsibleInventory(name="inv", organization="1", kind="constructed")
+        omitted = InventoryTransformMixin_v2.from_ansible_data(task, {"operation": "update"})
+        task.source_vars = {}
+        task.limit = ""
+        empty = InventoryTransformMixin_v2.from_ansible_data(task, {"operation": "update"})
+
+        self.assertEqual((omitted.source_vars, omitted.limit, empty.source_vars, empty.limit), (None, None, "{}", ""))
+
     def test_from_api_normalizes_variables_key_order(self):
         """from_api should return variables with sorted keys for canonical comparison."""
         api_data = {"name": "inv", "organization": 1, "variables": '{"z": 1, "a": 2}'}

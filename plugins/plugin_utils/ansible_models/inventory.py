@@ -24,6 +24,8 @@ class AnsibleInventory:
     kind: Optional[str] = None
     host_filter: Optional[str] = None
     variables: Optional[Any] = None
+    source_vars: Optional[dict[str, Any] | str] = None
+    limit: Optional[str] = None
     prevent_instance_group_fallback: Optional[bool] = None
     state: str = "present"
 

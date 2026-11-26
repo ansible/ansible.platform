@@ -72,6 +72,8 @@ controller_no_api_parameter_ok = {
     "controller_credential": ["gateway_team_id"],
     "controller_credential_type": [],
     "controller_project": ["wait", "update_project", "interval"],
+    # Constructed source settings use the separate constructed_inventories endpoint.
+    "inventory": ["source_vars", "limit"],
     "inventory_source": ["organization"],
     "schedule": ["organization"],
     "workflow_job_template_node": ["organization", "lookup_organization", "approval_node"],
