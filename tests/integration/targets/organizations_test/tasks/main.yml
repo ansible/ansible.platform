@@ -100,6 +100,38 @@
         that:
           - org_delete is changed
 
+    # <Controller Organization Overlays> ---
+    - name: Apply Controller organization settings
+      ansible.platform.organization:
+        name: Default
+        max_hosts: 100
+        default_environment: Default execution environment
+        galaxy_credentials:
+          - Ansible Galaxy
+        instance_groups:
+          - default
+        state: present
+      register: controller_org_settings
+
+    - name: Reapply Controller organization settings idempotently
+      ansible.platform.organization:
+        name: Default
+        max_hosts: 100
+        default_environment: Default execution environment
+        galaxy_credentials:
+          - Ansible Galaxy
+        instance_groups:
+          - default
+        state: present
+      register: controller_org_settings_repeat
+
+    - name: Verify Controller organization settings idempotency
+      ansible.builtin.assert:
+        that:
+          - not controller_org_settings_repeat.changed
+
+    # </Controller Organization Overlays> ---
+
     # </Organizations> ------------------
 
   # <Cleanup>

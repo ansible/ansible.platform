@@ -76,6 +76,42 @@ def test_import_strips_api_only_fields_from_legacy_resource_data(action):
     action._import_single_resource.assert_called_once_with(manager, "controller_project", {"name": "Demo"}, {})
 
 
+def test_import_preserves_authenticator_type(action):
+    manager = Mock()
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {
+                "assets": {
+                    "authenticators": [
+                        {
+                            "id": 7,
+                            "name": "OIDC",
+                            "type": "ansible_base.authentication.authenticator_plugins.oidc",
+                            "url": "/api/gateway/v1/authenticators/7/",
+                        }
+                    ]
+                }
+            },
+            "manager": manager,
+        }
+    )
+    action._import_single_resource = Mock(return_value=False)
+    action._import_inventory_children = Mock(return_value=({"changed": 0, "ok": 0, "failed": 0}, {"changed": 0, "ok": 0, "failed": 0}))
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is False
+    action._import_single_resource.assert_called_once_with(
+        manager,
+        "authenticator",
+        {"name": "OIDC", "type": "ansible_base.authentication.authenticator_plugins.oidc"},
+        {},
+    )
+
+
 def test_job_template_import_runs_real_action_and_reconciles_exported_fields(action):
     manager = Mock()
     manager.execute.side_effect = [
@@ -170,7 +206,7 @@ def test_user_import_reconciles_exported_organization_memberships(action):
     assert manager.execute.call_args_list[3].kwargs == {
         "operation": "create",
         "module_name": "role_user_assignment",
-        "ansible_data": {"role_definition": "31", "object_id": 42, "user": "7"},
+        "ansible_data": {"role_definition": "31", "object_id": 42, "user_id": 7},
     }
 
 
@@ -366,3 +402,284 @@ def test_malformed_resource_item_is_reported(action):
     assert result["failed"] is True
     assert result["results"]["organizations"]["failed"] == 1
     assert result["failed_resources"][0]["name"] == "[0]"
+
+
+def test_import_skips_write_only_tokens(action):
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {"assets": {"tokens": [{"description": "one", "scope": "write"}]}},
+            "manager": Mock(),
+        }
+    )
+    action._import_inventory_children = Mock(return_value=({"changed": 0, "ok": 0, "failed": 0}, {"changed": 0, "ok": 0, "failed": 0}))
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is False
+    assert result["changed"] is False
+    assert result["results"]["tokens"]["skipped"] == 1
+
+
+def test_build_role_assignment_cache_fetches_target_resources():
+    manager = Mock()
+
+    def search_api(**kwargs):
+        endpoint = kwargs.get("endpoint")
+        query = kwargs.get("query_params", {})
+        if endpoint == "api/gateway/v1/role_definitions/":
+            return {"results": [{"name": "Team Member", "id": 1}, {"name": "Org Admin", "id": 2}]}
+        if endpoint == "api/gateway/v1/users/":
+            username = query["username"]
+            return {"results": [{"username": username, "id": {"alice": 10, "bob": 11}[username]}]}
+        if endpoint == "api/gateway/v1/organizations/":
+            return {"results": [{"name": "Default", "id": 100}]}
+        if endpoint == "api/controller/v2/organizations/":
+            return {"results": [{"name": "Default", "id": 200}]}
+        if endpoint == "api/gateway/v1/teams/":
+            return {"results": [{"name": "DevTeam", "id": 50, "organization": 100}]}
+        if endpoint == "/api/controller/v2/projects/":
+            return {"results": [{"name": "Demo Project", "id": 300, "organization": 200}]}
+        raise AssertionError("unexpected endpoint: %s" % endpoint)
+
+    manager.search_api.side_effect = search_api
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    assets = {
+        "role_user_assignments": [
+            {"role_definition": "Team Member", "user": "alice", "object_name": "DevTeam", "object_type": "teams", "organization": "Default"},
+            {"role_definition": "Org Admin", "user": "bob", "object_name": "Demo Project", "object_type": "awx.project", "organization": "Default"},
+        ],
+    }
+    cache = action._build_role_assignment_cache(manager, assets)
+
+    assert cache["role_definitions"] == {"Team Member": 1, "Org Admin": 2}
+    assert cache["users"] == {"alice": 10, "bob": 11}
+    assert cache["gateway_orgs"] == {"Default": 100}
+    assert cache["controller_orgs"] == {"Default": 200}
+    assert cache["teams"] == {("DevTeam", 100): 50}
+    assert cache["awx.project"] == {("Demo Project", 200): 300}
+
+
+def test_build_role_assignment_cache_resolves_numeric_usernames(action):
+    manager = Mock()
+
+    def search_api(**kwargs):
+        endpoint = kwargs.get("endpoint")
+        query = kwargs.get("query_params", {})
+        if endpoint == "api/gateway/v1/role_definitions/":
+            return {"results": []}
+        if endpoint == "api/gateway/v1/users/":
+            assert query == {"username": "123"}
+            return {"results": [{"username": "123", "id": 77}]}
+        if endpoint in ("api/gateway/v1/organizations/", "api/controller/v2/organizations/", "api/gateway/v1/teams/"):
+            return {"results": []}
+        raise AssertionError("unexpected endpoint: %s" % endpoint)
+
+    manager.search_api.side_effect = search_api
+    action._display = Mock()
+
+    cache = action._build_role_assignment_cache(
+        manager,
+        {"role_user_assignments": [{"user": "123"}], "role_team_assignments": None},
+    )
+
+    assert cache["users"] == {"123": 77}
+    resolved = action._pre_resolve_role_assignment({"user": "123"}, cache, "role_user_assignments")
+    assert resolved["user_id"] == 77
+    assert "user" not in resolved
+
+
+def test_build_role_assignment_cache_uses_credential_type_names(action):
+    manager = Mock()
+
+    def search_api(**kwargs):
+        endpoint = kwargs.get("endpoint")
+        if endpoint == "api/gateway/v1/role_definitions/":
+            return {"results": []}
+        if endpoint == "api/gateway/v1/organizations/":
+            return {"results": []}
+        if endpoint == "api/controller/v2/organizations/":
+            return {"results": [{"name": "Default", "id": 200}]}
+        if endpoint == "api/gateway/v1/teams/":
+            return {"results": []}
+        if endpoint == "api/controller/v2/credential_types/":
+            return {"results": [{"id": 3, "name": "Cloud"}]}
+        if endpoint == "/api/controller/v2/credentials/":
+            return {"results": [{"name": "Shared", "id": 9, "organization": 200, "credential_type": 3}]}
+        raise AssertionError("unexpected endpoint: %s" % endpoint)
+
+    manager.search_api.side_effect = search_api
+    action._display = Mock()
+
+    assets = {
+        "role_user_assignments": [
+            {
+                "object_name": "Shared",
+                "object_type": "awx.credential",
+                "organization": "Default",
+                "object_credential_type": "Cloud",
+            }
+        ]
+    }
+    cache = action._build_role_assignment_cache(manager, assets)
+
+    assert cache["awx.credential"] == {("Shared", 200, "Cloud"): 9}
+    resolved = action._pre_resolve_role_assignment(assets["role_user_assignments"][0], cache, "role_user_assignments")
+    assert resolved["object_id"] == 9
+    assert "object_name" not in resolved
+
+
+def test_build_role_assignment_cache_skips_eda_objects(action):
+    manager = Mock()
+    manager.search_api.side_effect = [
+        {"results": []},
+        {"results": []},
+        {"results": []},
+        {"results": []},
+        {"results": []},
+    ]
+    action._display = Mock()
+
+    action._build_role_assignment_cache(
+        manager,
+        {"role_user_assignments": [{"object_name": "Activation", "object_type": "eda.activation"}]},
+    )
+
+    called_endpoints = [call.kwargs.get("endpoint") for call in manager.search_api.call_args_list]
+    assert all(not (endpoint or "").startswith("/api/eda/") for endpoint in called_endpoints)
+
+
+def test_import_skips_null_role_assignment_collections(action):
+    manager = Mock()
+    action._prepare_action = Mock(
+        return_value={
+            "result": {},
+            "validated_params": {
+                "assets": {
+                    "role_user_assignments": [{"user": "123"}],
+                    "role_team_assignments": None,
+                }
+            },
+            "manager": manager,
+        }
+    )
+    action._build_role_assignment_cache = Mock(return_value={"users": {"123": 77}})
+    action._import_single_resource = Mock(return_value=False)
+    action._import_inventory_children = Mock(return_value=({"changed": 0, "ok": 0, "failed": 0}, {"changed": 0, "ok": 0, "failed": 0}))
+    action._display = Mock()
+    action._play_context = Mock(check_mode=False)
+
+    result = action.run()
+
+    assert result["failed"] is False
+    assert result["results"]["role_user_assignments"]["ok"] == 1
+    assert "role_team_assignments" not in result["results"]
+    action._import_single_resource.assert_called_once_with(manager, "role_user_assignment", {"user_id": 77}, {})
+
+
+def test_pre_resolve_role_user_assignment_replaces_names_with_ids():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Team Member": 1},
+        "users": {"alice": 10},
+        "gateway_orgs": {"Eng": 100},
+        "teams": {("DevTeam", 100): 50},
+        "teams_unscoped": {"DevTeam": 50},
+    }
+    clean_data = {
+        "role_definition": "Team Member",
+        "user": "alice",
+        "object_name": "DevTeam",
+        "object_type": "teams",
+        "organization": "Eng",
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
+
+    assert resolved["role_definition"] == 1
+    assert resolved["user_id"] == 10
+    assert "user" not in resolved
+    assert resolved["object_id"] == 50
+    assert "object_name" not in resolved
+    assert "object_type" not in resolved
+    assert "organization" not in resolved
+
+
+def test_pre_resolve_falls_back_on_cache_miss():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Team Member": 1},
+        "users": {},
+        "gateway_orgs": {},
+        "teams": {},
+        "teams_unscoped": {},
+    }
+    clean_data = {
+        "role_definition": "Team Member",
+        "user": "unknown_user",
+        "object_name": "MissingTeam",
+        "object_type": "teams",
+        "organization": "MissingOrg",
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
+
+    assert resolved["role_definition"] == 1
+    assert resolved["user"] == "unknown_user"
+    assert resolved["object_name"] == "MissingTeam"
+    assert resolved["object_type"] == "teams"
+    assert "object_id" not in resolved
+
+
+def test_pre_resolve_role_team_assignment_resolves_assignment_objects():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Team Admin": 2},
+        "gateway_orgs": {"Eng": 100},
+        "controller_orgs": {},
+        "teams": {("Platform", 100): 60},
+        "teams_unscoped": {"Platform": 60},
+    }
+    clean_data = {
+        "role_definition": "Team Admin",
+        "team": "Platform",
+        "assignment_objects": [{"name": "Eng", "type": "organizations"}],
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_team_assignments")
+
+    assert resolved["role_definition"] == 2
+    assert resolved["team"] == 60
+    assert resolved["assignment_objects"] == [{"object_id": 100}]
+
+
+def test_pre_resolve_controller_object_with_org_scope():
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock()
+
+    cache = {
+        "role_definitions": {"Inventory Admin": 5},
+        "users": {"carol": 30},
+        "gateway_orgs": {},
+        "controller_orgs": {"Production": 200},
+        "awx.inventory": {("Prod Hosts", 200): 400},
+        "awx.inventory:unscoped": {"Prod Hosts": 400},
+    }
+    clean_data = {
+        "role_definition": "Inventory Admin",
+        "user": "carol",
+        "object_name": "Prod Hosts",
+        "object_type": "awx.inventory",
+        "organization": "Production",
+    }
+    resolved = action._pre_resolve_role_assignment(clean_data, cache, "role_user_assignments")
+
+    assert resolved["object_id"] == 400
+    assert "object_name" not in resolved

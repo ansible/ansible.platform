@@ -335,8 +335,9 @@
         name: "{{ item }}"
         state: absent
       loop:
-        - "{{ org2.name }}"
-        - "{{ org1.name }}"
+        - "{{ org2.name | default('') }}"
+        - "{{ org1.name | default('') }}"
+      when: item | length > 0
       register: delete_results
       ignore_errors: true
 
@@ -346,7 +347,7 @@
         state: absent
       loop:
         - "{{ username }}"
-        - "{{ doe.username }}"
+        - "{{ doe.username | default('') }}"
         - "timmy-{{ username }}"
         - "{{ username }}-noorg"
         - "{{ username }}-multiorg"
@@ -354,6 +355,7 @@
         - "{{ username }}-deprecation-test2"
         - "{{ username }}-deprecation-test3"
         - "{{ username }}-no-deprecation"
+      when: item | length > 0
       register: delete_results
       ignore_errors: true
 

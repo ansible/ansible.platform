@@ -461,6 +461,10 @@ modules on the `feature/import-export-module` branch:
 | `organizations` | `organization` | gateway | — | — |
 | `users` | `user` | gateway | — | — |
 | `teams` | `team` | gateway | organization | — |
+| `role_definitions` | `role_definition` | gateway | — | — |
+| `authenticators` | `authenticator` | gateway | — | — |
+| `authenticator_maps` | `authenticator_map` | gateway | authenticator | — |
+| `tokens` | — | gateway | user | non-restorable metadata only |
 | `credential_types` | `controller_credential_type` | controller | — | — |
 | `credentials` | `controller_credential` | controller | credential_type, organization, user, team | — |
 | `execution_environments` | `execution_environment` | controller | organization, credential | — |
@@ -472,6 +476,8 @@ modules on the `feature/import-export-module` branch:
 | `job_templates` | `job_template` | controller | inventory, project, organization, execution_environment, webhook_credential | credentials, labels, instance_groups, notification_templates_*, survey_spec |
 | `workflow_job_templates` | `workflow_job_template` | controller | organization, inventory, webhook_credential | labels, notification_templates_*, survey_spec |
 | `schedules` | `schedule` | controller | unified_job_template, inventory, execution_environment, organization | credentials, labels, instance_groups |
+| `role_user_assignments` | `role_user_assignment` | gateway | role_definition, user, object | portable names; unresolved numeric targets are non-restorable |
+| `role_team_assignments` | `role_team_assignment` | gateway | role_definition, team, object | portable names with organization scope |
 
 **Supporting resources** (not top-level in awxkit, but needed):
 
@@ -495,11 +501,9 @@ modules on the `feature/import-export-module` branch:
    module that handles the DAG structure (predecessors, success/failure/always
    nodes). This is complex enough to warrant its own design.
 
-3. **RBAC / role assignments** — the legacy export includes `related.roles`
-   with content-object-based role assignments. The platform uses a different
-   RBAC model (`role_user_assignment` / `role_team_assignment` /
-   `role_definition`). A mechanical port of the legacy role format is actively
-   wrong. Needs separate design aligned with the platform RBAC model.
+3. **RBAC / role assignments** — exported assignments use the platform
+   `role_user_assignment` / `role_team_assignment` model with portable role,
+   principal, and assignment-object names.
 
 4. **Credential inputs (secrets)** — exports contain API-masked input values
    (`$encrypted$`), never cleartext secrets. New imports must supply real
@@ -513,7 +517,11 @@ modules on the `feature/import-export-module` branch:
    validation. Mitigation: run the import role twice, or add a
    `project_update` + `job_wait` task between projects and job_templates.
 
-6. **Constructed inventory `input_inventories`** — requires the input
+6. **Gateway security resources** — authenticators, authenticator maps, and
+   masked token metadata are exported; token values are write-only and are not
+   recreated automatically.
+
+7. **Constructed inventory `input_inventories`** — requires the input
    inventories to already exist. The dependency ordering handles this for
    inventories within the same import, but external references will fail.
 
@@ -555,8 +563,7 @@ used to create a new credential.
 
 The `from_awxkit_export` filter is covered by unit tests for natural-key
 conversion, inline inventory children, associations, and edge cases. There is
-no dedicated Molecule scenario or live role-based legacy round-trip in this
-PR.
+no dedicated Molecule scenario or live legacy-format round-trip in this PR.
 
 ### Integration tests
 
@@ -571,8 +578,9 @@ The current live target covers:
 - Cleanup and a second import asserting `changed: false`.
 
 The test intentionally does not attempt to create new credentials from exported
-`$encrypted$` values, and does not claim live legacy-format or role-based
-round-trip coverage.
+`$encrypted$` values or claim live legacy-format round-trip coverage. Role
+definitions and native role assignments are covered by the dependency-ordered
+import path; custom role definitions must be included in the export.
 
 ## SECTION 7: Export Module Design
 
@@ -689,24 +697,20 @@ Native format — identical to `ansible.platform.import` input. Round-trip:
    creating credentials from an export.
 4. **Workflow job template nodes** — not exported. The WF node DAG structure
    requires separate design (see Future Work below).
+5. **Runtime infrastructure** — Controller instances and activity/job history
+   are intentionally not portable configuration resources. Instance groups and
+   their instance associations are exported, but instances themselves must exist
+   in the destination environment.
 
 ---
 
 ## SECTION 8: Future Work
 
-### RBAC export/import
-
-Design a format for role assignments compatible with the platform's unified
-RBAC model. This is a separate design effort — the legacy format's
-content-object-based roles don't map 1:1 to `role_definition` +
-`role_user_assignment` + `role_team_assignment`.
-
 ### Workflow job template nodes
 
-Design import support for the WF node DAG structure. Needs:
-- A `workflow_job_template_node` module (or support in the WF module)
-- DAG ordering logic (topological sort of node dependencies)
-- Support for approval nodes, which have a different creation endpoint
+Workflow job template node DAG export/import remains future work. It needs a
+`workflow_job_template_node` module (or support in the workflow module),
+topological ordering, and approval-node handling.
 
 ---
 

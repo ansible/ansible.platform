@@ -71,6 +71,20 @@ class TestFromAnsibleDataCreate(unittest.TestCase):
         for lookup_call in manager.lookup_resource_id.call_args_list:
             self.assertEqual(lookup_call.kwargs.get("service"), "controller")
 
+    def test_inventory_organization_scopes_cross_organization_inventory_lookup(self):
+        manager = MagicMock()
+        manager.lookup_resource_id.side_effect = lambda endpoint, field, value, service=None, **kwargs: {
+            ("organizations", "Inventory Org"): 9,
+            ("inventories", "Hosts"): 42,
+        }[(endpoint, value)]
+        instance = AnsibleJobTemplate(name="Ping", inventory="Hosts", inventory_organization="Inventory Org")
+
+        api_data = JobTemplateTransformMixin_v2.from_ansible_data(instance, _context("create", manager))
+
+        self.assertEqual(api_data.inventory, 42)
+        manager.lookup_resource_id.assert_any_call("organizations", "name", "Inventory Org", service="controller")
+        manager.lookup_resource_id.assert_any_call("inventories", "name", "Hosts", service="controller", extra_query_params={"organization": 9})
+
     def test_execution_environment_lookup_prefers_organization_match_over_global(self):
         manager = MagicMock()
         manager.search_api.return_value = {
