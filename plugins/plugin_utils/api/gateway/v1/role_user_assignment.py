@@ -11,15 +11,15 @@ from ....platform.base_transform import BaseTransformMixin
 from ....platform.types import EndpointOperation, TransformContext
 
 
-def _resolve_fk(manager, endpoint: str, lookup_field: str, value) -> Optional[int]:
+def _resolve_fk(manager, endpoint: str, lookup_field: str, value, numeric_is_id: bool = True) -> Optional[int]:
     """Resolve a name or id to an integer ID, failing if a supplied name is missing."""
     if value is None:
         return None
-    if str(value).isdigit():
+    if numeric_is_id and str(value).isdigit():
         return int(value)
     if manager is None:
         raise ValueError("Cannot resolve %s %r to an ID without an API client" % (lookup_field, value))
-    result = manager.lookup_resource_id(endpoint, lookup_field, str(value))
+    result = manager.lookup_resource_id(endpoint, lookup_field, str(value), numeric_is_id=numeric_is_id)
     if result is None:
         raise ValueError("Resource '%s' %s=%s not found" % (endpoint, lookup_field, value))
     return result
@@ -67,16 +67,35 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
             if resolved is not None:
                 api_data["role_definition"] = resolved
 
-        # Resolve user name -> id
-        user = getattr(ansible_instance, "user", None)
-        if user is not None:
-            resolved = _resolve_fk(manager, "users", "username", user)
-            if resolved is not None:
-                api_data["user"] = resolved
+        # Pass an already-resolved user ID directly; otherwise resolve the username.
+        user_id = getattr(ansible_instance, "user_id", None)
+        if user_id is not None:
+            api_data["user"] = user_id
+        else:
+            user = getattr(ansible_instance, "user", None)
+            if user is not None:
+                resolved = _resolve_fk(manager, "users", "username", user, numeric_is_id=not isinstance(user, str))
+                if resolved is not None:
+                    api_data["user"] = resolved
 
         user_ansible_id = getattr(ansible_instance, "user_ansible_id", None)
         if user_ansible_id is not None:
             api_data["user_ansible_id"] = user_ansible_id
+
+        object_name = getattr(ansible_instance, "object_name", None)
+        object_type = getattr(ansible_instance, "object_type", None)
+        if object_name and object_type:
+            from .role_team_assignment import _resolve_named_object_id
+
+            api_data["object_id"] = _resolve_named_object_id(
+                manager,
+                {
+                    "name": object_name,
+                    "type": object_type,
+                    "organization": getattr(ansible_instance, "organization", None),
+                    "credential_type": getattr(ansible_instance, "object_credential_type", None),
+                },
+            )
 
         object_id = getattr(ansible_instance, "object_id", None)
         if object_id is not None:
@@ -177,9 +196,13 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
         role_def = getattr(ansible_data, "role_definition", None)
         if role_def is not None:
             params["role_definition"] = role_def
-        user = getattr(ansible_data, "user", None)
-        if user is not None:
-            params["user"] = user
+        user_id = getattr(ansible_data, "user_id", None)
+        if user_id is not None:
+            params["user"] = user_id
+        else:
+            user = getattr(ansible_data, "user", None)
+            if user is not None:
+                params["user"] = user
         user_ansible_id = getattr(ansible_data, "user_ansible_id", None)
         if user_ansible_id is not None:
             params["user_ansible_id"] = user_ansible_id
@@ -201,7 +224,7 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
 
         return AnsibleRoleUserAssignment(
             role_definition=str(api_data.get("role_definition", "")),
-            user=str(api_data.get("user")) if api_data.get("user") is not None else None,
+            user_id=api_data.get("user"),
             user_ansible_id=api_data.get("user_ansible_id"),
             object_id=api_data.get("object_id"),
             object_ansible_id=api_data.get("object_ansible_id"),

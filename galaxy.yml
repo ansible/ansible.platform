@@ -20,6 +20,11 @@ homepage: http://ansible.com/
 issues: https://access.redhat.com/support/
 
 build_ignore:
+  - tests/output
+  - .ruff_cache
+  - .venv
+  - .ansible
+  - .omc
   - galaxy.yml.j2
   - release.yml
   - .github

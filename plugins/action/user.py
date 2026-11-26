@@ -174,7 +174,7 @@ class ActionModule(BaseResourceActionPlugin):
                     module_name="role_user_assignment",
                     ansible_data={
                         "role_definition": str(role_def_id),
-                        "user": str(user_id),
+                        "user_id": user_id,
                     },
                 )
                 has_assignment = bool(find_result and find_result.get("id"))
@@ -190,7 +190,7 @@ class ActionModule(BaseResourceActionPlugin):
                     module_name="role_user_assignment",
                     ansible_data={
                         "role_definition": str(role_def_id),
-                        "user": str(user_id),
+                        "user_id": user_id,
                         "state": "present",
                     },
                 )
@@ -204,7 +204,7 @@ class ActionModule(BaseResourceActionPlugin):
                     ansible_data={
                         "id": assignment_id,
                         "role_definition": str(role_def_id),
-                        "user": str(user_id),
+                        "user_id": user_id,
                         "state": "absent",
                     },
                 )
@@ -258,7 +258,7 @@ class ActionModule(BaseResourceActionPlugin):
                 assignment_data = {
                     "role_definition": str(role_definition_id),
                     "object_id": organization_id,
-                    "user": str(user_id),
+                    "user_id": user_id,
                 }
                 try:
                     assignment = manager.execute(

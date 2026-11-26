@@ -14,8 +14,10 @@ class APIControllerOrganization_v2(BaseTransformMixin):
     """API v2 fields used to update an existing Controller organization."""
 
     name: Optional[str] = None
+    description: Optional[str] = None
     default_environment: Optional[Any] = None
     max_hosts: Optional[int] = None
+    opa_query_path: Optional[str] = None
     id: Optional[int] = None
 
 
@@ -49,6 +51,10 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
         if name is not None:
             api_data["name"] = name
 
+        description = getattr(ansible_instance, "description", None)
+        if description is not None:
+            api_data["description"] = description
+
         default_environment = getattr(ansible_instance, "default_environment", None)
         if default_environment is not None:
             value = str(default_environment).strip()
@@ -71,6 +77,10 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
         if max_hosts is not None:
             api_data["max_hosts"] = max_hosts
 
+        opa_query_path = getattr(ansible_instance, "opa_query_path", None)
+        if opa_query_path is not None:
+            api_data["opa_query_path"] = opa_query_path
+
         resource_id = getattr(ansible_instance, "id", None)
         if resource_id is not None:
             api_data["id"] = resource_id
@@ -84,7 +94,7 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
             "update": EndpointOperation(
                 path=BASE_PATH + "/{id}/",
                 method="PATCH",
-                fields=["default_environment", "max_hosts"],
+                fields=["description", "default_environment", "max_hosts", "opa_query_path"],
                 path_params=["id"],
                 required_for="update",
                 order=1,
@@ -117,7 +127,9 @@ class ControllerOrganizationTransformMixin_v2(BaseTransformMixin):
             default_environment = default_environment.get("id")
         return AnsibleControllerOrganization(
             name=api_data.get("name"),
+            description=api_data.get("description"),
             default_environment=str(default_environment) if default_environment is not None else None,
             max_hosts=api_data.get("max_hosts"),
+            opa_query_path=api_data.get("opa_query_path"),
             id=api_data.get("id"),
         )
