@@ -224,7 +224,7 @@ class RoleUserAssignmentTransformMixin_v1(BaseTransformMixin):
 
         return AnsibleRoleUserAssignment(
             role_definition=str(api_data.get("role_definition", "")),
-            user=str(api_data.get("user")) if api_data.get("user") is not None else None,
+            user_id=api_data.get("user"),
             user_ansible_id=api_data.get("user_ansible_id"),
             object_id=api_data.get("object_id"),
             object_ansible_id=api_data.get("object_ansible_id"),
