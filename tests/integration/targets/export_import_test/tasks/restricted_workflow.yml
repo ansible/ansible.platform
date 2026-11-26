@@ -1,0 +1,93 @@
+---
+- name: Verify cross-organization workflow export
+  vars:
+    restricted_workflow_name: "{{ name_prefix }}-CrossOrgWorkflow"
+    restricted_workflow_user: "{{ name_prefix }}-WorkflowOwner"
+  block:
+    - name: Generate a password for the workflow owner
+      ansible.builtin.set_fact:
+        restricted_workflow_password: "{{ lookup('password', '/dev/null length=32') }}"
+      no_log: true
+
+    - name: Create a restricted workflow owner
+      ansible.platform.user:
+        username: "{{ restricted_workflow_user }}"
+        password: "{{ restricted_workflow_password }}"
+        is_superuser: false
+
+    - name: Grant access to the workflow organization and the referenced job template
+      ansible.platform.role_user_assignment:
+        role_definition: "{{ item.role }}"
+        object_ids:
+          - "{{ item.id }}"
+        user: "{{ restricted_workflow_user }}"
+      loop:
+        - role: Organization Admin
+          id: "{{ test_org.id }}"
+        - role: JobTemplate Execute
+          id: "{{ test_job_template.job_template.id }}"
+
+    - name: Create a workflow that references a job template in Default
+      ansible.platform.workflow_job_template:
+        name: "{{ restricted_workflow_name }}"
+        organization: "{{ name_prefix }}-Org"
+        workflow_nodes:
+          - identifier: cross-org
+            unified_job_template:
+              name: "{{ job_template_name }}"
+              type: job_template
+              organization:
+                name: "{{ controller_organization }}"
+
+    - name: Verify the workflow owner cannot read the target organization
+      ansible.builtin.uri:
+        url: "{{ gateway_hostname }}/api/controller/v2/organizations/{{ controller_fixtures.default_organization_id }}/"
+        url_username: "{{ restricted_workflow_user }}"
+        url_password: "{{ restricted_workflow_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ gateway_validate_certs | default(false) | bool }}"
+        status_code: 403
+      vars:
+        ansible_connection: local
+
+    - name: Export the cross-organization workflow as admin
+      ansible.platform.export:
+        workflow_job_templates:
+          - "{{ restricted_workflow_name }}"
+      register: privileged_workflow_export
+
+    - name: Export the cross-organization workflow as its restricted owner
+      ansible.platform.export:
+        gateway_username: "{{ restricted_workflow_user }}"
+        gateway_password: "{{ restricted_workflow_password }}"
+        workflow_job_templates:
+          - "{{ restricted_workflow_name }}"
+      register: restricted_workflow_export
+
+    - name: Verify both exports preserve the cross-organization node
+      ansible.builtin.assert:
+        that:
+          - restricted_workflow_export.assets.workflow_job_templates[0].workflow_nodes ==
+            privileged_workflow_export.assets.workflow_job_templates[0].workflow_nodes
+          - nodes | length == 1
+          - nodes[0].identifier == 'cross-org'
+          - nodes[0].unified_job_template == expected_target
+      vars:
+        nodes: "{{ privileged_workflow_export.assets.workflow_job_templates[0].workflow_nodes }}"
+        expected_target:
+          name: "{{ job_template_name }}"
+          type: job_template
+          organization:
+            name: "{{ controller_organization }}"
+  always:
+    - name: Delete the cross-organization test workflow
+      ansible.platform.workflow_job_template:
+        name: "{{ restricted_workflow_name }}"
+        organization: "{{ name_prefix }}-Org"
+        state: absent
+
+    - name: Delete the restricted workflow owner
+      ansible.platform.user:
+        username: "{{ restricted_workflow_user }}"
+        state: absent
+...

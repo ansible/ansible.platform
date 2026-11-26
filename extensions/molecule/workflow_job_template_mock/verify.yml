@@ -35,4 +35,7 @@
         that: exists_result_local.workflow_job_template.description == "Updated by Molecule workflow_job_template_mock (connection local)"
       vars:
         ansible_connection: local
+
+    - name: Verify export and import with an incomplete workflow
+      ansible.builtin.import_tasks: verify_partial_export.yml
 ...

@@ -69,8 +69,8 @@ dependency order. This approach:
   FK-ID-to-name reverse resolution and related-object traversal, which is
   significant additional complexity.
 - **Workflow job template nodes** — the legacy export includes WF nodes as
-  related objects. Importing these requires the `workflow_job_template_node`
-  module (not yet confirmed on this branch). Tracked as a gap.
+  related objects. Phase 1 deferred their export. The current workflow format
+  embeds nodes as described under [Workflow export and permissions](#workflow-export-and-permissions).
 
 ---
 
@@ -496,10 +496,9 @@ modules on the `feature/import-export-module` branch:
 1. **No export role** — export is provided by the `ansible.platform.export`
    module; there is no separate export role.
 
-2. **Workflow job template nodes** — the legacy export includes WF nodes as
-   related objects of workflow_job_templates. Importing these requires a node
-   module that handles the DAG structure (predecessors, success/failure/always
-   nodes). This is complex enough to warrant its own design.
+2. **Workflow job template nodes** — Phase 1 deferred graph export.
+   See [Workflow export and permissions](#workflow-export-and-permissions)
+   for current behavior.
 
 3. **RBAC / role assignments** — exported assignments use the platform
    `role_user_assignment` / `role_team_assignment` model with portable role,
@@ -632,7 +631,7 @@ For resource types with sub-endpoints, the export module queries each:
 | Resource type | Sub-endpoints fetched | Mode |
 |---|---|---|
 | `job_templates` | credentials, labels, instance_groups, survey_spec | names / dict |
-| `workflow_job_templates` | labels, survey_spec | names / dict |
+| `workflow_job_templates` | labels, survey_spec, workflow_nodes | names / dict / inline nodes |
 | `projects` | notification_templates_started/success/error | names |
 | `inventory_sources` | notification_templates_started/success/error | names |
 | `inventory` | hosts, groups (+ group→host membership) | objects |
@@ -695,8 +694,9 @@ Native format — identical to `ansible.platform.import` input. Round-trip:
 3. **Encrypted fields** — credential inputs export as `$encrypted$` sentinel
    values. Cleartext is not exposed; callers must provide real secrets when
    creating credentials from an export.
-4. **Workflow job template nodes** — not exported. The WF node DAG structure
-   requires separate design (see Future Work below).
+4. **Workflow job template nodes** — see
+   [Workflow export and permissions](#workflow-export-and-permissions) for
+   supported references and permission limits.
 5. **Runtime infrastructure** — Controller instances and activity/job history
    are intentionally not portable configuration resources. Instance groups and
    their instance associations are exported, but instances themselves must exist
@@ -704,13 +704,50 @@ Native format — identical to `ansible.platform.import` input. Round-trip:
 
 ---
 
-## SECTION 8: Future Work
+## Workflow export and permissions
 
-### Workflow job template nodes
+When migrating from `ansible.controller.export`, select only
+`workflow_job_templates` for a workflow export using the caller's existing
+access. A user who can read the workflow and its job template in another
+organization can export that node using the organization name exposed on the
+template. The caller can do this even when a direct read of that organization
+returns HTTP 403. Mixed-resource and `all: true` exports still run the shared
+reference lookups and may require broader access.
 
-Workflow job template node DAG export/import remains future work. It needs a
-`workflow_job_template_node` module (or support in the workflow module),
-topological ordering, and approval-node handling.
+```yaml
+- name: Export the Release workflow
+  ansible.platform.export:
+    workflow_job_templates:
+      - Release
+  register: workflow_export
+
+- name: Import restorable assets into the destination
+  ansible.platform.import:
+    assets: "{{ workflow_export.assets }}"
+  delegate_to: other_gateway
+  when: workflow_export.assets | length > 0
+```
+
+The native format stores the graph in `workflow_nodes`. Success, failure, and
+always edges use node identifiers. Job templates and projects use their name
+and organization, inventory sources also include the parent inventory, and
+system jobs use their built-in template name. Approval nodes carry their name,
+description, and timeout. The destination must have any separately managed
+dependencies referenced by the graph.
+
+For optional workflow-level associations, HTTP 403 or 404 results in omission
+and a warning. When a required reference is missing, unreadable, or unsupported,
+export warns and puts the workflow under `non_restorable.workflow_job_templates`.
+That entry includes visible nodes and a `non_restorable_reason` for review.
+Authentication failures, server errors, and malformed graph data still fail
+the export.
+
+Nested workflow targets and populated node credentials, labels, and instance
+groups currently keep a workflow out of `assets`. Controller can return an
+empty association list when a restricted caller cannot see an attached
+credential or instance group. If the node permits those prompts and the caller
+cannot verify the association list, export reports the workflow under
+`non_restorable` so import cannot silently lose an execution dependency.
 
 ---
 
