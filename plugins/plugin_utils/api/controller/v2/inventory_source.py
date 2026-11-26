@@ -30,14 +30,20 @@ def _lookup_source_project_id(manager, source_project):
             organization_id = int(organization_ref)
         else:
             organization_id = manager.lookup_resource_id("organizations", "name", organization_ref, service="controller", require_unique=True)
-        return manager.lookup_resource_id(
-            "projects",
-            "name",
-            project_name,
-            service="controller",
-            extra_query_params={"organization": organization_id},
-            require_unique=True,
+
+        response = manager.search_api(
+            "/api/controller/v2/projects/",
+            query_params={"name": project_name, "organization": organization_id},
         )
+        results = response.get("results", [])
+        if not results:
+            raise ValueError("Resource 'projects' with name=%s and organization=%s not found" % (project_name, organization_id))
+        if len(results) > 1 or response.get("count", len(results)) > 1 or response.get("next"):
+            raise ValueError("Resource 'projects' with name=%s and organization=%s matched multiple resources" % (project_name, organization_id))
+        project_id = results[0].get("id")
+        if project_id is None:
+            raise ValueError("Resource 'projects' with name=%s and organization=%s has no ID" % (project_name, organization_id))
+        return project_id
 
     return manager.lookup_resource_id("projects", "name", source_project, service="controller", require_unique=True)
 

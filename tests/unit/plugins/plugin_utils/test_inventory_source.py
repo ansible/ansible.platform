@@ -239,6 +239,7 @@ class TestInventorySourceTransform(unittest.TestCase):
     def test_fk_source_project_accepts_qualified_name_without_inventory_scope(self):
         mock_manager = MagicMock()
         mock_manager.lookup_resource_id.return_value = 15
+        mock_manager.search_api.return_value = {"count": 1, "results": [{"id": 42, "name": "Shared Project", "organization": 15}]}
         ansible = AnsibleInventorySource(
             name="src",
             inventory="1",
@@ -249,15 +250,25 @@ class TestInventorySourceTransform(unittest.TestCase):
 
         api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
 
-        self.assertEqual(api.source_project, 15)
+        self.assertEqual(api.source_project, 42)
         mock_manager.lookup_resource_id.assert_any_call("organizations", "name", "Other Org", service="controller", require_unique=True)
-        mock_manager.lookup_resource_id.assert_any_call(
-            "projects",
-            "name",
-            "Shared Project",
-            service="controller",
-            extra_query_params={"organization": 15},
-            require_unique=True,
+        mock_manager.search_api.assert_called_once_with(
+            "/api/controller/v2/projects/",
+            query_params={"name": "Shared Project", "organization": 15},
+        )
+
+    def test_fk_qualified_numeric_source_project_is_looked_up_by_name(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 15
+        mock_manager.search_api.return_value = {"count": 1, "results": [{"id": 42, "name": "123", "organization": 15}]}
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="Other Org++123")
+
+        api = InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+        self.assertEqual(api.source_project, 42)
+        mock_manager.search_api.assert_called_once_with(
+            "/api/controller/v2/projects/",
+            query_params={"name": "123", "organization": 15},
         )
 
     def test_fk_source_project_rejects_invalid_qualified_names(self):
@@ -276,6 +287,21 @@ class TestInventorySourceTransform(unittest.TestCase):
             "Resource 'projects' with name=Shared Project matched multiple resources; provide additional filters"
         )
         ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="Shared Project")
+
+        with self.assertRaisesRegex(ValueError, "matched multiple resources"):
+            InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
+
+    def test_fk_qualified_source_project_propagates_ambiguous_name_error(self):
+        mock_manager = MagicMock()
+        mock_manager.lookup_resource_id.return_value = 15
+        mock_manager.search_api.return_value = {
+            "count": 2,
+            "results": [
+                {"id": 42, "name": "Shared Project", "organization": 15},
+                {"id": 43, "name": "Shared Project", "organization": 15},
+            ],
+        }
+        ansible = AnsibleInventorySource(name="src", inventory="1", source="scm", source_project="Other Org++Shared Project")
 
         with self.assertRaisesRegex(ValueError, "matched multiple resources"):
             InventorySourceTransformMixin_v2.from_ansible_data(ansible, {"operation": "create", "manager": mock_manager})
