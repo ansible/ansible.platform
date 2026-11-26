@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - >-
+    Add the group/ansible.platform.aap action group for connection defaults
+    shared by Gateway, Controller, and EDA modules.
+...

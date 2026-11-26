@@ -22,8 +22,8 @@ class APIHttpPort_v1(BaseTransformMixin):
 
     name: Optional[str] = None
     number: Optional[int] = None
-    use_https: bool = False
-    is_api_port: bool = False
+    use_https: Optional[bool] = None
+    is_api_port: Optional[bool] = None
 
     # Read-only fields from API
     id: Optional[int] = None
@@ -44,8 +44,8 @@ class HttpPortTransformMixin_v1(BaseTransformMixin):
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)
         number = getattr(ansible_instance, "number", None)
-        use_https = getattr(ansible_instance, "use_https", False)
-        is_api_port = getattr(ansible_instance, "is_api_port", False)
+        use_https = getattr(ansible_instance, "use_https", None)
+        is_api_port = getattr(ansible_instance, "is_api_port", None)
         op = getattr(context, "operation", None) if isinstance(context, TransformContext) else context.get("operation")
         include_nulls = (
             getattr(context, "include_nulls_for_update", False) if isinstance(context, TransformContext) else context.get("include_nulls_for_update", False)
@@ -67,7 +67,10 @@ class HttpPortTransformMixin_v1(BaseTransformMixin):
         elif op == "update" and include_nulls:
             api_data["number"] = None
 
-        if op in ("create", "update"):
+        if op == "create":
+            api_data["use_https"] = False if use_https is None else use_https
+            api_data["is_api_port"] = False if is_api_port is None else is_api_port
+        elif op == "update":
             api_data["use_https"] = use_https
             api_data["is_api_port"] = is_api_port
 

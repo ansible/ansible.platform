@@ -83,5 +83,15 @@ job_data:
     description: Full response from the workflow node's job API.
     returned: success
     type: dict
+user_name:
+    description: Username of the Controller user who launched the job.
+    returned: when Controller provides the metadata
+    type: str
+    sample: admin
+job_template_name:
+    description: Name of the job template used for the launch.
+    returned: when Controller provides the metadata
+    type: str
+    sample: My Job Template
 ...
 """

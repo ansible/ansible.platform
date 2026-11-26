@@ -376,6 +376,31 @@ class TestEventStreamActionCRUD(unittest.TestCase):
         self.assertFalse(result["changed"])
         self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
 
+    def test_credential_update_keeps_legacy_precedence_and_result_key(self):
+        action = self._make_action()
+        action._task.args = {"name": "s", "credential": "c", "credential_name": "9", "organization_name": "D"}
+        manager = self._make_manager(find_result={"id": 100, "name": "s", "credential_name": "9", "organization_name": "D"})
+
+        result = self._run_with_documentation(action, manager)
+
+        self.assertFalse(result["failed"], result.get("msg"))
+        update = manager.execute.call_args.kwargs
+        self.assertEqual((update["operation"], update["ansible_data"]["credential_name"]), ("update", "c"))
+        self.assertEqual(result["warnings"], ["Both option credential_name and its alias credential are set."])
+        self.assertEqual((result["changed"], result["credential_name"], result["event_stream"]["credential_name"]), (True, "c", "c"))
+
+    def test_credential_name_alias_reconciles_id_against_existing_name(self):
+        action = self._make_action()
+        action._task.args = {"name": "s", "credential_name": "10", "organization_name": "D"}
+        manager = self._make_manager(find_result={"id": 100, "name": "s", "credential_name": "c", "organization_name": "D"})
+
+        result = self._run_with_documentation(action, manager)
+
+        self.assertFalse(result["failed"], result.get("msg"))
+        self.assertEqual([call.kwargs["operation"] for call in manager.execute.call_args_list], ["find"])
+        self.assertEqual((result["changed"], result["event_stream"]["credential_name"]), (False, "c"))
+        manager.lookup_resource_id.assert_any_call("eda-credentials", "name", "c", service="eda", require_unique=True, extra_query_params={"organization": 1})
+
     def test_explicit_false_forward_events_is_sent_on_update(self):
         action = self._make_action()
         action._task.args = {

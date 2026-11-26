@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - The API lookup is now available as ``ansible.platform.platform_api``.
+  - The API lookup accepts a ``service`` override for relative endpoints and automatically routes registered resources such as ``instances`` to their service. Full API paths take precedence.
+deprecated_features:
+  - The ``ansible.platform.gateway_api`` lookup redirects to ``ansible.platform.platform_api`` and is scheduled for removal in collection version 3.0.0.

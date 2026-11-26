@@ -20,6 +20,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback
 from dataclasses import asdict
 from dataclasses import fields as dataclass_fields
 from typing import Any, Dict, Optional
@@ -46,6 +47,14 @@ class ActionModule(BaseResourceActionPlugin):
 
     MODULE_NAME = "rulebook_activation"
     MODEL_CLASS = AnsibleRulebookActivation
+
+    _LEGACY_REFERENCE_FIELDS = {
+        "project": "project_name",
+        "rulebook": "rulebook_name",
+        "decision_environment": "decision_environment_name",
+        "awx_token": "awx_token_name",
+        "organization": "organization_name",
+    }
 
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Normalize the legacy enabled parameter to the platform state model."""
@@ -111,8 +120,6 @@ class ActionModule(BaseResourceActionPlugin):
             return self._handle_create_or_update(manager, params, state, name, new_name, existing, result)
 
         except Exception as e:
-            import traceback
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
             result["msg"] = str(e)

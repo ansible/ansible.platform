@@ -70,6 +70,19 @@ options:
     - If value not set, will try environment variable C(GATEWAY_REQUEST_TIMEOUT), E(AAP_REQUEST_TIMEOUT)
     type: float
     aliases: [ request_timeout, gateway_request_timeout ]
+  aap_max_retries:
+    description:
+    - Number of retries after the initial request for eligible transient failures.
+    - Must be zero or greater. Use C(0) for one attempt.
+    - Set as a task option, an inventory variable, or E(AAP_MAX_RETRIES), in that order.
+    type: int
+    aliases: [ max_retries ]
+  aap_retry_backoff_factor:
+    description:
+    - Exponential base for the delay between retries. Must be at least one.
+    - Set as a task option, an inventory variable, or E(AAP_RETRY_BACKOFF_FACTOR), in that order.
+    type: int
+    aliases: [ retry_backoff_factor ]
   persistent_manager_idle_timeout:
     description:
     - Seconds with no RPC or API activity before the persistent manager process on the Ansible control node exits and removes its Unix socket.

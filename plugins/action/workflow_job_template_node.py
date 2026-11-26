@@ -33,25 +33,12 @@ class WorkflowNodeNotFoundError(ValueError):
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "workflow_job_template_node"
     MODEL_CLASS = AnsibleWorkflowJobTemplateNode
+    _ENFORCED_NULL_FIELDS = frozenset({"inventory", "execution_environment"})
     LOOKUP_FIELD = "identifier"
 
     _WRITE_ONLY_FIELDS = frozenset(set(_ASSOC_MAP) | {"approval_node"})
     _MUTUALLY_EXCLUSIVE = [["unified_job_template", "approval_node"]]
     _NULLABLE_FK_FIELDS = frozenset({"execution_environment"})
-
-    def _build_argspec_from_docs(self, documentation: str) -> dict:
-        """Validate approval suboptions before any resource lookup or mutation.
-
-        Args:
-            documentation: Module DOCUMENTATION YAML.
-
-        Returns:
-            dict: Argument specification with approval dictionary validation enabled.
-        """
-        argspec = super()._build_argspec_from_docs(documentation)
-        approval = argspec["argument_spec"]["approval_node"]
-        approval["options"] = approval.pop("suboptions")
-        return argspec
 
     @staticmethod
     def _resolve_node_ids_in_workflow(manager, workflow_id, identifiers):

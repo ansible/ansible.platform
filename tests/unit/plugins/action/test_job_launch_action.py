@@ -3,8 +3,9 @@
 
 """Unit tests for the job_launch action plugin (Shape 2)."""
 
+import json
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from ansible.plugins.action import ActionBase
@@ -44,27 +45,104 @@ class TestJobLaunchAction(unittest.TestCase):
         self._patch_prepare(action)
 
         action._client.lookup_resource_id.return_value = 1
-        action._client.search_api.return_value = {"results": [{"id": 1, "name": "Demo"}]}
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {"summary_fields": {"job_template": {"name": "Demo"}, "created_by": {"username": "launch-user"}}},
+        ]
         action._client.launch_resource.return_value = {
             "id": 42,
             "status": "pending",
             "url": "/api/controller/v2/jobs/42/",
         }
 
-        result = action.run(task_vars={})
+        result = action.run(
+            task_vars={
+                "tower_job_id": 7,
+                "tower_job_template_name": "Parent template",
+                "tower_user_name": "parent-user",
+            }
+        )
 
         self.assertTrue(result["changed"])
         self.assertFalse(result.get("failed", False))
         self.assertEqual(result["id"], 42)
         self.assertEqual(result["status"], "pending")
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
         self.assertNotIn("finished_at", result)
         self.assertEqual(
             action._client.launch_resource.call_args.args,
             ("/api/controller/v2/job_templates/1/launch/", {}),
         )
         self.assertEqual(action._client.launch_resource.call_args.kwargs, {"service": "controller", "retry": False})
-        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/1/")
+        self.assertEqual(
+            action._client.search_api.call_args_list,
+            [
+                call("/api/controller/v2/job_templates/1/"),
+                call("/api/controller/v2/jobs/42/", service="controller"),
+            ],
+        )
         action._client.wait_for_completion.assert_not_called()
+
+    def test_launch_without_wait_skips_metadata_fetch_when_launch_response_is_complete(self):
+        action = self._make_action({"name": "Demo", "wait": False})
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.return_value = {"organization": None}
+        action._client.launch_resource.return_value = {
+            "id": 42,
+            "status": "pending",
+            "summary_fields": {
+                "job_template": {"name": "Demo"},
+                "created_by": {"username": "launch-user"},
+            },
+        }
+
+        result = action.run(task_vars={})
+
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
+        action._client.search_api.assert_called_once_with("/api/controller/v2/job_templates/1/")
+
+    def test_launch_without_wait_fills_only_missing_metadata_from_detail(self):
+        action = self._make_action({"name": "Demo", "wait": False})
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.side_effect = [
+            {"organization": None},
+            {
+                "summary_fields": {
+                    "job_template": {"name": "Demo"},
+                    "created_by": {"username": "detail-user"},
+                }
+            },
+        ]
+        action._client.launch_resource.return_value = {
+            "id": 42,
+            "status": "pending",
+            "summary_fields": {"created_by": {"username": "launch-user"}},
+        }
+
+        result = action.run(task_vars={})
+
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
+        self.assertEqual(action._client.search_api.call_count, 2)
+
+    def test_launch_without_wait_omits_qualified_name_when_detail_fetch_fails(self):
+        action = self._make_action({"name": "Deploy++Engineering", "wait": False})
+        self._patch_prepare(action)
+
+        action._client.lookup_resource_id.return_value = 1
+        action._client.search_api.side_effect = [{"organization": None}, RuntimeError("detail unavailable")]
+        action._client.launch_resource.return_value = {"id": 42, "status": "pending"}
+
+        result = action.run(task_vars={})
+
+        self.assertNotIn("job_template_name", result)
+        self.assertNotIn("user_name", result)
 
     def test_conflicting_legacy_alias_warns_and_uses_alias_value(self):
         action = self._make_action({"name": "Canonical", "job_template": "Alias", "wait": False})
@@ -103,6 +181,7 @@ class TestJobLaunchAction(unittest.TestCase):
             "elapsed": 3.0,
             "started": "2026-11-11T10:00:00Z",
             "finished": "2026-11-11T10:00:03Z",
+            "summary_fields": {"job_template": {"name": "Demo"}, "created_by": {"username": "launch-user"}},
         }
 
         result = action.run(task_vars={})
@@ -114,6 +193,8 @@ class TestJobLaunchAction(unittest.TestCase):
         self.assertEqual(result["started"], "2026-11-11T10:00:00Z")
         self.assertIs(result["finished"], True)
         self.assertEqual(result["finished_at"], "2026-11-11T10:00:03Z")
+        self.assertEqual(result["job_template_name"], "Demo")
+        self.assertEqual(result["user_name"], "launch-user")
 
         action._client.wait_for_completion.assert_called_once_with(
             "/api/controller/v2/jobs/42/",
@@ -268,6 +349,34 @@ class TestJobLaunchAction(unittest.TestCase):
             {"extra_vars": '{"key": "val"}'},
             service="controller",
             retry=False,
+        )
+
+    def test_current_job_metadata_is_injected_before_serialization(self):
+        action = self._make_action(
+            {
+                "name": "1",
+                "extra_vars": {"job_id": "user-value", "custom": True},
+                "wait": False,
+            }
+        )
+        self._patch_prepare(action)
+        action._client.launch_resource.return_value = {"id": 1, "status": "pending"}
+
+        action.run(
+            task_vars={
+                "tower_job_id": 99,
+                "tower_job_template_name": "Parent",
+                "tower_user_name": "operator",
+                "awx_job_id": 88,
+                "awx_job_template_name": "Deprecated parent",
+                "awx_user_name": "deprecated-user",
+            }
+        )
+
+        payload = action._client.launch_resource.call_args.args[1]
+        self.assertEqual(
+            json.loads(payload["extra_vars"]),
+            {"job_id": "user-value", "custom": True, "controller_job_metadata": {"job_id": 99, "job_template_name": "Parent", "user_name": "operator"}},
         )
 
     def test_tags_joined_as_comma_separated(self):

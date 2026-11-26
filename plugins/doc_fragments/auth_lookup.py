@@ -75,6 +75,29 @@ options:
     - name: AAP_REQUEST_TIMEOUT
     - name: GATEWAY_REQUEST_TIMEOUT
     aliases: [ request_timeout ]
+  aap_max_retries:
+    description:
+    - Integer number of retries after the initial request for eligible transient failures.
+    - Must be zero or greater. Use C(0) for one attempt.
+    - Falls back to E(AAP_MAX_RETRIES).
+    type: raw
+    aliases: [ max_retries ]
+    env:
+    - name: AAP_MAX_RETRIES
+    vars:
+    - name: max_retries
+    - name: aap_max_retries
+  aap_retry_backoff_factor:
+    description:
+    - Integer exponential base for the delay between retries. Must be at least one.
+    - Falls back to E(AAP_RETRY_BACKOFF_FACTOR).
+    type: raw
+    aliases: [ retry_backoff_factor ]
+    env:
+    - name: AAP_RETRY_BACKOFF_FACTOR
+    vars:
+    - name: retry_backoff_factor
+    - name: aap_retry_backoff_factor
 
 notes:
 - If no I(config_file) is provided we will attempt to use the

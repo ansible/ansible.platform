@@ -69,11 +69,12 @@
         that:
           - check_create is changed
 
-    - name: Create rulebook activation
+    - name: Create rulebook activation with project taking precedence over its alias
       ansible.platform.rulebook_activation:
         name: "{{ activation_name }}"
         description: "Molecule mock activation"
-        project_name: "Molecule Mock EDA Project"
+        project: "Molecule Mock EDA Project"
+        project_name: "Conflicting project alias"
         rulebook_name: "hello_controller.yml"
         decision_environment_name: "Molecule Mock Decision Environment"
         organization_name: "Default"

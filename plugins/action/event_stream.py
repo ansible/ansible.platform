@@ -30,6 +30,8 @@ class ActionModule(BaseResourceActionPlugin):
     MODEL_CLASS = AnsibleEventStream
     LOOKUP_FIELD = "name"
 
+    _LEGACY_REFERENCE_FIELDS = {"credential": "credential_name", "organization": "organization_name"}
+
     _DEPRECATED_FIELDS = {
         "event_stream_type": (
             "The event_stream_type parameter is deprecated and will be removed in version 3.0.0.",

@@ -6,6 +6,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from ansible.plugins.action import ActionBase
 from ansible_collections.ansible.platform.plugins.action.bulk_host_create import ActionModule
 
 
@@ -13,6 +14,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
     def _make_action(self, check_mode=False):
         action = ActionModule.__new__(ActionModule)
         action._task = MagicMock()
+        action._task.args = {}
         action._task.check_mode = check_mode
         action._display = MagicMock()
         action._display.verbosity = 0
@@ -25,19 +27,12 @@ class TestBulkHostCreateAction(unittest.TestCase):
         manager.launch_resource.return_value = {"created": 2}
 
         hosts = [
-            {"name": "host1.example.com", "description": "First"},
+            {"name": "host1.example.com", "description": None, "enabled": False},
             {"name": "host2.example.com"},
         ]
-        prepared = {
-            "result": {},
-            "argspec": {"argument_spec": {"inventory": {}, "hosts": {}}},
-            "validated_params": {"inventory": "My Inventory", "hosts": hosts},
-            "resource_data": {"inventory": "My Inventory", "hosts": hosts},
-            "write_only_data": {},
-            "manager": manager,
-        }
+        action._task.args = {"inventory": "My Inventory", "hosts": hosts}
 
-        with patch.object(action, "_prepare_action", return_value=prepared):
+        with patch.object(ActionBase, "run", return_value={}), patch.object(action, "_get_or_spawn_manager", return_value=(manager, None)):
             result = action.run(task_vars={})
 
         self.assertTrue(result["changed"])
@@ -48,7 +43,7 @@ class TestBulkHostCreateAction(unittest.TestCase):
             {
                 "inventory": 42,
                 "hosts": [
-                    {"name": "host1.example.com", "description": "First"},
+                    {"name": "host1.example.com", "description": None, "enabled": False},
                     {"name": "host2.example.com"},
                 ],
             },

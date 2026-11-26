@@ -14,16 +14,23 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import base64
-import importlib
+import importlib.util
 import json
+import os
 import subprocess
+import sys
+import tempfile
 import time
+import traceback
+from collections import ChainMap
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any, Dict, NamedTuple, Optional, Tuple, Union
 
 import yaml
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+from ansible.module_utils.common.validation import check_type_dict, check_type_list
 from ansible.plugins.action import ActionBase
 from ansible.utils.display import Display
 from ansible_collections.ansible.platform.plugins.plugin_utils.manager.process_manager import ProcessManager
@@ -81,11 +88,6 @@ def _manager_process_entry(
     This is a module-level function so it can be pickled for multiprocessing.spawn.
     Uses the same pattern as python-multiproc repository.
     """
-    import base64
-    import sys
-    import traceback
-    from pathlib import Path
-
     # Redirect stderr to a file for debugging
     error_log_path = Path(socket_dir) / f"manager_error_{inventory_hostname}.log"
     stderr_log = Path(socket_dir) / f"manager_stderr_{inventory_hostname}.log"
@@ -259,6 +261,19 @@ class BaseResourceActionPlugin(ActionBase):
     # Subclasses should override this with module-specific write-only fields.
     _WRITE_ONLY_FIELDS: frozenset = frozenset()
 
+    # For these fields, keep the declared defaults for create and enforced.
+    # A present update uses only values supplied by the caller.
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE: frozenset[str] = frozenset()
+
+    # Fields whose API transforms already clear an omitted value to an empty string.
+    _ENFORCED_EMPTY_STRING_FIELDS: frozenset[str] = frozenset()
+
+    # Fields whose API update hook clears an omitted value to null.
+    _ENFORCED_NULL_FIELDS: frozenset[str] = frozenset()
+
+    # Some resources expose updates and lookups but have immutable lifecycles.
+    _UNSUPPORTED_OPERATIONS: frozenset[str] = frozenset()
+
     # API-generated fields returned flat only (not in nested dict, not round-trip safe as input).
     # Subclasses override with module-specific fields.
     _EXTRA_RETURN_FIELDS: frozenset = frozenset()
@@ -278,6 +293,10 @@ class BaseResourceActionPlugin(ActionBase):
     _REQUIRED_TOGETHER: list = []
     _REQUIRED_ONE_OF: list = []
     _REQUIRED_IF: list = []
+
+    # Public reference names mapped to the existing runtime field. Keep the
+    # runtime alias order, conflict precedence, and result keys for migrated inputs.
+    _LEGACY_REFERENCE_FIELDS: dict[str, str] = {}
 
     # Deprecated argspec fields: {field_name: (warning_message, version_removed)}.
     # Populated from validated_params, warned, and stripped before MODEL_CLASS is built.
@@ -325,6 +344,10 @@ class BaseResourceActionPlugin(ActionBase):
             "aap_token",
             "aap_validate_certs",
             "aap_request_timeout",
+            "aap_max_retries",
+            "aap_retry_backoff_factor",
+            "max_retries",
+            "retry_backoff_factor",
             "aap_ca_bundle",
             "gateway_ca_bundle",
             "ansible_platform_ca_bundle",
@@ -453,8 +476,6 @@ class BaseResourceActionPlugin(ActionBase):
                 data["id"] = resource.id
             return data
 
-        from dataclasses import asdict
-
         return asdict(resource)
 
     def _pre_execute_hook(self, ansible_data: dict, write_only_data: dict, validated_params: dict, operation: str) -> None:
@@ -480,6 +501,60 @@ class BaseResourceActionPlugin(ActionBase):
         The default preserves the existing CRUD action-plugin behavior.
         """
         return self.MODEL_CLASS(**resource_data)
+
+    @staticmethod
+    def _extract_launch_metadata(job_data: dict) -> dict:
+        """Extract audit metadata from a Controller job API response.
+
+        Args:
+            job_data: Controller job detail dict (must contain summary_fields).
+
+        Returns:
+            dict: Keys ``user_name`` and/or ``job_template_name`` when present.
+        """
+        if not isinstance(job_data, dict):
+            return {}
+        metadata: dict = {}
+        summary = job_data.get("summary_fields") or {}
+        created_by = summary.get("created_by") or {}
+        if isinstance(created_by, dict) and created_by.get("username"):
+            metadata["user_name"] = created_by["username"]
+        for key in ("job_template", "workflow_job_template"):
+            ref = summary.get(key) or {}
+            if isinstance(ref, dict) and ref.get("name"):
+                metadata["job_template_name"] = ref["name"]
+                break
+        return metadata
+
+    @staticmethod
+    def _current_job_metadata(task_vars: Optional[dict]) -> dict:
+        """Return current Controller job metadata exposed to the running playbook."""
+        if not isinstance(task_vars, dict):
+            return {}
+
+        metadata = {}
+        for field in ("job_id", "job_template_name", "user_name"):
+            for prefix in ("tower_", "awx_"):
+                value = task_vars.get(f"{prefix}{field}")
+                if value is not None:
+                    metadata[field] = value
+                    break
+        return metadata
+
+    @classmethod
+    def _inject_current_job_metadata(cls, extra_vars: Optional[dict], task_vars: Optional[dict]) -> Optional[dict]:
+        """Add current-job metadata under a dedicated key when launch variables exist."""
+        metadata = cls._current_job_metadata(task_vars)
+        if not metadata or not extra_vars:
+            return extra_vars
+
+        merged = dict(extra_vars)
+        existing = merged.get("controller_job_metadata")
+        if isinstance(existing, dict):
+            merged["controller_job_metadata"] = {**metadata, **existing}
+        elif "controller_job_metadata" not in merged:
+            merged["controller_job_metadata"] = metadata
+        return merged
 
     def _prepare_action(self, tmp: object = None, task_vars: Optional[dict] = None) -> dict:
         """Prepare the common inputs needed by an action plugin.
@@ -572,6 +647,15 @@ class BaseResourceActionPlugin(ActionBase):
             validated_params.update({key: None for key in explicit_fields if key in self._task.args and self._task.args[key] is None})
         return ValidatedActionInput(argspec=argspec, validated_params=validated_params, warnings=warnings)
 
+    def _explicit_list_items(self, field: str, validated_items: list[dict]) -> list[dict]:
+        """Use validated values for the keys the caller supplied in each list item."""
+        supplied_items = check_type_list(self._task.args.get(field, validated_items))
+        explicit_items = []
+        for supplied_item, validated_item in zip(supplied_items, validated_items, strict=True):
+            supplied_fields = check_type_dict(supplied_item)
+            explicit_items.append({key: validated_item[key] for key in supplied_fields})
+        return explicit_items
+
     def _get_or_spawn_manager(self, task_vars: dict) -> Tuple[Union["DirectHTTPClient", "ManagerRPCClient"], Optional[Dict[str, Any]]]:
         """
         Dispatcher: Get connection client from the connection plugin.
@@ -605,9 +689,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Import platform SDK modules
         from ansible_collections.ansible.platform.plugins.plugin_utils.platform.config import extract_gateway_config
 
-        # Extract gateway configuration
-        gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, required=True)
-
         # Collect task-level environment vars (e.g. SSL_CERT_FILE, REQUESTS_CA_BUNDLE, proxy
         # settings) and inventory aap_ca_bundle BEFORE dispatching so they reach the manager
         # subprocess regardless of which connection mode is in use (local, http-direct, http-persistent).
@@ -622,6 +703,8 @@ class BaseResourceActionPlugin(ActionBase):
                     self._display.vvvv(f"Could not resolve task environment block: {_env_err}")
         if task_env:
             self._display.vvvv(f"Forwarding {len(task_env)} task-level env var(s) to manager: {list(task_env.keys())}")
+
+        gateway_config = extract_gateway_config(task_args=self._task.args, host_vars=task_vars, environment=ChainMap(task_env, os.environ))
 
         # DISPATCHER: Delegate to connection plugin's get_client() when available;
         # otherwise support connection: local by spawning an ephemeral manager.
@@ -643,8 +726,6 @@ class BaseResourceActionPlugin(ActionBase):
                 client, facts_to_set = spawn_ephemeral_client(task_vars, gateway_config, task_env=task_env or None)
                 return client, facts_to_set
         except Exception as e:
-            import traceback
-
             tb = traceback.format_exc()
             self._display.error(f"Failed in _get_or_spawn_manager dispatcher: {type(e).__name__}: {e}")
             self._display.error(f"Traceback: {tb}")
@@ -678,8 +759,6 @@ class BaseResourceActionPlugin(ActionBase):
             facts_dict contains socket/authkey/gateway_url facts if a new manager
             was spawned, or None if reusing an existing manager.
         """
-        import sys
-
         self._display.vvvv("Using experimental connection mode (Persistent Manager)")
 
         inventory_hostname = task_vars.get("inventory_hostname", "localhost")
@@ -702,8 +781,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Determine the expected socket path for the current credentials and TLS policy.
         # The socket filename encodes an identity hash, so a credential or trust-policy
         # change automatically causes a new manager to be spawned.
-        import tempfile
-
         socket_dir = Path(tempfile.gettempdir()) / "ansible_platform"
         expected_conn_info = ProcessManager.generate_connection_info(
             identifier=inventory_hostname,
@@ -770,8 +847,6 @@ class BaseResourceActionPlugin(ActionBase):
         # Pass os.getppid() as owner_pid — action plugins run in forked workers,
         # so os.getppid() is the main ansible-playbook process PID.  The manager's
         # watchdog thread watches that PID and self-terminates when it exits.
-        import os as _os_spawn
-
         process = ProcessManager.spawn_manager_process(
             script_path=script_path,
             socket_path=socket_path,
@@ -780,7 +855,7 @@ class BaseResourceActionPlugin(ActionBase):
             gateway_config=gateway_config,
             authkey_b64=authkey_b64,
             sys_path=parent_sys_path,
-            owner_pid=_os_spawn.getppid(),
+            owner_pid=os.getppid(),
             task_env=_persistent_task_env or None,
         )
 
@@ -878,10 +953,18 @@ class BaseResourceActionPlugin(ActionBase):
                 options.update(fragment_options)
         options.update(doc_data.get("options", {}))
 
+        for public_name, runtime_name in self._LEGACY_REFERENCE_FIELDS.items():
+            spec = options.pop(public_name)
+            options[runtime_name] = {
+                **spec,
+                "aliases": [public_name if alias == runtime_name else alias for alias in spec["aliases"]],
+            }
+
         for field in self._NO_LOG_FIELDS:
             if field in options:
                 options[field]["no_log"] = True
 
+        self._normalize_nested_options(options)
         argspec = {
             "argument_spec": options,
             "mutually_exclusive": doc_data.get("mutually_exclusive", []) + list(self._MUTUALLY_EXCLUSIVE),
@@ -891,6 +974,16 @@ class BaseResourceActionPlugin(ActionBase):
         }
 
         return argspec
+
+    @staticmethod
+    def _normalize_nested_options(options: dict) -> None:
+        """Translate documented suboptions into Ansible's runtime option spec."""
+        for spec in options.values():
+            suboptions = spec.pop("suboptions", None)
+            if suboptions is not None:
+                spec.setdefault("options", suboptions)
+            if spec.get("options"):
+                BaseResourceActionPlugin._normalize_nested_options(spec["options"])
 
     def _load_documentation_fragment(self, fragment_name: str) -> dict:
         """
@@ -920,8 +1013,6 @@ class BaseResourceActionPlugin(ActionBase):
             fragment_path = Path(__file__).parent.parent / "doc_fragments" / f"{fragment}.py"
 
             if fragment_path.exists():
-                import importlib.util
-
                 spec = importlib.util.spec_from_file_location(f"doc_fragment_{fragment}", fragment_path)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
@@ -1061,8 +1152,6 @@ class BaseResourceActionPlugin(ActionBase):
                 self._display.vvvv(f"Loaded manager meta from {meta_path}: pid={meta.get('pid')}")
                 # Build a minimal process_info so the shutdown logic below can proceed.
                 # We don't have the Popen object, so we wrap the raw PID instead.
-                import os as _os
-
                 pid = meta.get("pid")
                 if pid:
 
@@ -1074,7 +1163,7 @@ class BaseResourceActionPlugin(ActionBase):
 
                         def poll(self):
                             try:
-                                _os.kill(self._pid, 0)
+                                os.kill(self._pid, 0)
                                 return None  # still running
                             except ProcessLookupError:
                                 return 0
@@ -1083,24 +1172,22 @@ class BaseResourceActionPlugin(ActionBase):
 
                         def terminate(self):
                             try:
-                                _os.kill(self._pid, 15)  # SIGTERM
+                                os.kill(self._pid, 15)  # SIGTERM
                             except ProcessLookupError:
                                 pass
 
                         def kill(self):
                             try:
-                                _os.kill(self._pid, 9)  # SIGKILL
+                                os.kill(self._pid, 9)  # SIGKILL
                             except ProcessLookupError:
                                 pass
 
                         def wait(self, timeout=None):
-                            import time as _t
-
-                            deadline = _t.monotonic() + (timeout or 30)
-                            while _t.monotonic() < deadline:
+                            deadline = time.monotonic() + (timeout or 30)
+                            while time.monotonic() < deadline:
                                 if self.poll() is not None:
                                     return 0
-                                _t.sleep(0.1)
+                                time.sleep(0.1)
                             raise subprocess.TimeoutExpired([], timeout)
 
                     process_info = {"process": _PidProxy(pid), "authkey_b64": meta.get("authkey_b64")}
@@ -1392,12 +1479,22 @@ class BaseResourceActionPlugin(ActionBase):
                 )
                 return result
 
+            omitted_defaults = set()
+            if state == "present":
+                option_specs = argspec.get("argument_spec", {})
+                for field in self._DEFAULT_FIELDS_TO_OMIT_ON_UPDATE:
+                    option_names = (field, *option_specs.get(field, {}).get("aliases", ()))
+                    explicitly_null = field in resource_data and resource_data[field] is None
+                    if not explicitly_null and all(self._task.args.get(name) is None for name in option_names):
+                        omitted_defaults.add(field)
+            text_reset_only = False
             # ---- present: idempotent create (find -> compare ->  update only if changed) -----
             if operation == "create" and state == "present":
                 try:
                     find_result = self._find_existing_resource(manager, resource_data)
                     if find_result and find_result.get("id"):
-                        if not self._should_update(resource_data, find_result):
+                        desired_update = {key: value for key, value in resource_data.items() if key not in omitted_defaults}
+                        if not self._should_update(desired_update, find_result):
                             flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
                             # Nothing changed — return current state without touching API
                             result.update(
@@ -1470,8 +1567,14 @@ class BaseResourceActionPlugin(ActionBase):
                         if ro in find_result:
                             merged[ro] = find_result[ro]
                     merged.setdefault(self.LOOKUP_FIELD, lookup_val)
-                    # Short-circuit if the merged desired state matches current
-                    if not self._should_update(merged, find_result):
+                    # The comparison must account for the same omitted fields that
+                    # the API transform clears during an enforced update.
+                    fields_to_clear = {
+                        field for field in self._ENFORCED_EMPTY_STRING_FIELDS if merged.get(field) is None and find_result.get(field) not in (None, "")
+                    }
+                    needs_null_reset = any(merged.get(field) is None and find_result.get(field) is not None for field in self._ENFORCED_NULL_FIELDS)
+                    supplied_fields_changed = self._should_update(merged, find_result)
+                    if not fields_to_clear and not needs_null_reset and not supplied_fields_changed:
                         flat_fields, extra_flat = self._format_resource_output(find_result, argspec)
                         result.update(
                             {
@@ -1483,17 +1586,29 @@ class BaseResourceActionPlugin(ActionBase):
                             }
                         )
                         return result
-                    resource = self._build_resource({k: v for k, v in merged.items() if hasattr(self.MODEL_CLASS, k)})
+                    text_reset_only = not supplied_fields_changed and not needs_null_reset
+                    if text_reset_only:
+                        # Send the verified clears explicitly without triggering other
+                        # legacy null resets on a path that previously did no write.
+                        merged.update(dict.fromkeys(fields_to_clear, ""))
+                    model_fields = {field.name for field in fields(resource) if field.init}
+                    resource = self._build_resource({key: value for key, value in merged.items() if key in model_fields})
                     operation = "update"
                 else:
                     operation = "create"
 
+            if operation in self._UNSUPPORTED_OPERATIONS:
+                raise AnsibleError(f"{self.MODULE_NAME} does not support the {operation} operation")
+
             # ---- check mode ------------------------------------------------
             ansible_data = self._build_ansible_data(resource, validated_params, operation)
+            if operation == "update":
+                for field in omitted_defaults:
+                    ansible_data.pop(field, None)
             preserve_nulls = getattr(self, "_preserve_explicit_nulls_for_update", False) and any(
                 value is None for key, value in ansible_data.items() if key != "id"
             )
-            if operation == "update" and (state == "enforced" or preserve_nulls):
+            if operation == "update" and ((state == "enforced" and not text_reset_only) or preserve_nulls):
                 ansible_data["_platform_enforced"] = True
 
             if self._task.check_mode and operation in ("create", "update", "delete"):
@@ -1578,13 +1693,11 @@ class BaseResourceActionPlugin(ActionBase):
                 result["exists"] = bool(validated_output.get("id"))
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)
             if self._display.verbosity >= 3:
-                result["exception"] = _tb.format_exc()
+                result["exception"] = traceback.format_exc()
 
         return result
 

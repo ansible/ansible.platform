@@ -15,17 +15,18 @@ from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
 
 from ansible.module_utils.six.moves.http_cookiejar import CookieJar
-from ansible.module_utils.six.moves.urllib.error import HTTPError
+from ansible.module_utils.six.moves.urllib.error import HTTPError, URLError
 
 # Use Ansible's HTTP client instead of requests library for better worker process compatibility
-from ansible.module_utils.urls import ConnectionError, Request, SSLValidationError
+from ansible.module_utils.urls import ConnectionError as AnsibleConnectionError
+from ansible.module_utils.urls import Request, SSLValidationError
 
 from .base_client import BaseAPIClient
 from .config import GatewayConfig
 from .credential_manager import get_credential_manager
 from .exceptions import APIError, AuthenticationError, format_error_response_body
 from .idempotency import canonical_json_object
-from .retry import RetryConfig
+from .retry import RetryConfig, retry_on_failure
 from .types import TransformContext, build_endpoint_request
 
 logger = logging.getLogger(__name__)
@@ -92,8 +93,7 @@ class DirectHTTPClient(BaseAPIClient):
         self._tls_handshake_count = 1  # 1 handshake when session is created (HTTPS)
         self._lock = threading.Lock()
 
-        # Retry configuration
-        self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
+        self.retry_config = RetryConfig.from_gateway_config(config) if config.has_retry_settings else None
 
         # Defer authentication and version detection until first request
         # This prevents HTTP requests during worker process initialization
@@ -257,11 +257,27 @@ class DirectHTTPClient(BaseAPIClient):
             else:
                 raise AuthenticationError(message="No authentication credentials provided", operation="authenticate", resource="auth", details={})
 
-    def _make_request(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs):
-        """
-        Make HTTP request with retry logic (using decorator pattern).
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        operation: str = "http_request",
+        resource: str = "unknown",
+        retry_config: Optional[RetryConfig] = None,
+        **kwargs,
+    ):
+        """Send a request, applying the configured policy to eligible methods."""
+        policy = retry_config if retry_config is not None else self.retry_config
+        send = self._request_with_auth_recovery
+        if policy is not None and policy.max_attempts > 1 and method.upper() != "POST":
+            # HTTP status errors are already classified by the transport.
+            network_errors = (AnsibleConnectionError, ConnectionError, TimeoutError, URLError)
+            send = retry_on_failure(config=policy, retryable_exceptions=network_errors)(send)
+        return send(method, url, operation=operation, resource=resource, **kwargs)
 
-        This method uses the retry decorator to handle retries automatically.
+    def _request_with_auth_recovery(self, method: str, url: str, operation: str = "http_request", resource: str = "unknown", **kwargs):
+        """
+        Send one HTTP request with authentication recovery for a 401.
 
         Args:
             method: HTTP method ('get', 'post', 'put', 'patch', 'delete')
@@ -340,7 +356,7 @@ class DirectHTTPClient(BaseAPIClient):
         except SSLValidationError as ssl_err:
             logger.error("DirectHTTPClient: SSL validation error: %s", ssl_err)
             raise
-        except ConnectionError as con_err:
+        except AnsibleConnectionError as con_err:
             logger.error("DirectHTTPClient: Connection error: %s", con_err)
             raise
         except HTTPError as he:
@@ -376,7 +392,7 @@ class DirectHTTPClient(BaseAPIClient):
                                 resource=resource,
                                 details={"status_code": he2.code, "url": url, "response_body": response_body},
                             )
-                        raise
+                        he = he2
                 else:
                     # Authentication recovery failed
                     try:
@@ -686,8 +702,7 @@ class DirectHTTPClient(BaseAPIClient):
         """POST JSON via _make_request and return parsed JSON.
 
         Empty successful responses are represented as an empty dictionary.
-        The direct client does not retry requests; ``retry`` is accepted to
-        keep the shared client interface.
+        POSTs use a single attempt on transient failures.
         """
         self._ensure_authenticated()
         response = self._make_request("POST", url, operation=operation, resource=resource, json=payload)
@@ -1317,16 +1332,13 @@ class DirectHTTPClient(BaseAPIClient):
         Make a raw authenticated HTTP request and return parsed JSON.
 
         Used by action plugins for non-standard endpoints (e.g. settings/all/).
-        ``retry_config`` is accepted for parity with PlatformService; this
-        direct transport makes one request per call, so non-idempotent actions
-        remain single-attempt without passing retry settings to Ansible's
-        ``Request.open``.
+        POSTs use a single attempt on transient failures.
 
         Args:
             method: HTTP method ('GET', 'PATCH', 'POST', 'PUT', 'DELETE')
             path: API path (e.g. '/api/gateway/v1/settings/all/')
             data: Optional dict to JSON-encode as request body
-            retry_config: Optional retry policy accepted for client API parity.
+            retry_config: Optional retry policy for this request.
 
         Returns:
             Parsed JSON response dict (empty dict on empty body)
@@ -1346,6 +1358,8 @@ class DirectHTTPClient(BaseAPIClient):
         kwargs = {}
         if data is not None:
             kwargs["data"] = json.dumps(data).encode("utf-8")
+        if retry_config is not None:
+            kwargs["retry_config"] = retry_config
 
         response = self._make_request(method.upper(), url, operation="direct_request", resource=path, **kwargs)
         try:

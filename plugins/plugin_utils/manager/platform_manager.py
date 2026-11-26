@@ -116,7 +116,7 @@ class PlatformService(BaseAPIClient):
         self._shutdown_requested = False
         self._shutdown_lock = threading.Lock()
 
-        self.retry_config = RetryConfig(max_attempts=3, initial_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
+        self.retry_config = RetryConfig.from_gateway_config(config)
 
     def record_activity(self) -> None:
         """Mark the service as recently active (RPC or HTTP traffic)."""
@@ -190,7 +190,12 @@ class PlatformService(BaseAPIClient):
             PlatformError: Classified platform error
         """
 
-        @retry_http_request(config=retry_config if retry_config is not None else self.retry_config)
+        if retry_config is None:
+            # Never extend transient retries to POSTs via the connection settings.
+            config = getattr(self, "config", None)
+            retry_config = RetryConfig(max_attempts=1) if method.upper() == "POST" and config is not None and config.has_retry_settings else self.retry_config
+
+        @retry_http_request(config=retry_config)
         def _execute_with_retry():
             response = self._request_with_auth_recovery(method, url, operation, resource, **kwargs)
 
@@ -766,11 +771,12 @@ class PlatformService(BaseAPIClient):
             current_dict = current_data if isinstance(current_data, dict) else {}
             read_only_fields = {"id", "created", "modified", "url", "changed"}
 
-            # Merge current + PATCH response; don't let None from sparse response
-            # overwrite existing values (e.g. associated_authenticators: {} -> None).
+            # Keep stored values for fields missing from a sparse response.
+            # A confirmed null for a requested clear is a real state change.
             merged = dict(current_dict)
             for k, v in new_dict.items():
-                if v is not None or k not in merged:
+                cleared = k in fields_to_null and k in api_result and api_result[k] is None
+                if v is not None or k not in merged or cleared:
                     merged[k] = v
             new_dict = merged
 
@@ -1430,7 +1436,7 @@ class PlatformService(BaseAPIClient):
         """
         Perform a raw GET against any API endpoint and return the JSON response.
 
-        This is the RPC entry-point used by the gateway_api lookup plugin so that
+        This is the RPC entry-point used by the platform_api lookup plugin so that
         all HTTP/SSL work stays in the manager subprocess (never in a forked Ansible
         worker process), avoiding the macOS + Python 3.12 fork-safety SIGABRT.
 

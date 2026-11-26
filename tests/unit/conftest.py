@@ -24,7 +24,7 @@ _collections_parent = _collections_dir.parent
 if _collections_parent not in sys.path:
     sys.path.insert(0, str(_collections_parent))
 
-# Gateway authentication environment variables honoured by extract_gateway_config.
+# Gateway connection environment variables honoured by extract_gateway_config.
 # Developers commonly export these to run playbooks against a live AAP instance;
 # left set, they would leak into unit tests and make results machine-dependent.
 _GATEWAY_ENV_VARS = (
@@ -40,6 +40,8 @@ _GATEWAY_ENV_VARS = (
     "AAP_VALIDATE_CERTS",
     "GATEWAY_REQUEST_TIMEOUT",
     "AAP_REQUEST_TIMEOUT",
+    "AAP_MAX_RETRIES",
+    "AAP_RETRY_BACKOFF_FACTOR",
 )
 
 
@@ -50,8 +52,8 @@ def _clear_gateway_env():
     Autouse so that tests which assert defaults, or assert that a missing
     hostname raises, behave identically on a developer laptop with these
     variables exported and in CI where they are unset.  Tests that want to
-    exercise environment resolution should pass an explicit ``env`` mapping to
-    ``extract_gateway_config`` rather than mutating ``os.environ``.
+    exercise environment resolution should pass an explicit ``environment``
+    mapping to ``extract_gateway_config`` rather than mutating ``os.environ``.
     """
     saved = {name: os.environ.pop(name) for name in _GATEWAY_ENV_VARS if name in os.environ}
     try:

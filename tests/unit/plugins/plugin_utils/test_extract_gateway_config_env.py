@@ -38,12 +38,12 @@ class TestHostnameFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://gw.example"},
+            environment={"GATEWAY_HOSTNAME": "https://gw.example"},
         )
         self.assertEqual(cfg.base_url, "https://gw.example")
 
     def test_aap_hostname_env_is_used(self):
-        cfg = extract_gateway_config(task_args={}, host_vars={}, env={"AAP_HOSTNAME": "https://gw.example"})
+        cfg = extract_gateway_config(task_args={}, host_vars={}, environment={"AAP_HOSTNAME": "https://gw.example"})
         self.assertEqual(cfg.base_url, "https://gw.example")
 
     def test_gateway_hostname_wins_over_aap_hostname(self):
@@ -51,23 +51,23 @@ class TestHostnameFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://gateway.example", "AAP_HOSTNAME": "https://aap.example"},
+            environment={"GATEWAY_HOSTNAME": "https://gateway.example", "AAP_HOSTNAME": "https://aap.example"},
         )
         self.assertEqual(cfg.base_url, "https://gateway.example")
 
     def test_env_hostname_is_normalized(self):
         """A bare host from the environment still gets the https:// prefix."""
-        cfg = extract_gateway_config(task_args={}, host_vars={}, env={"GATEWAY_HOSTNAME": "gw.example"})
+        cfg = extract_gateway_config(task_args={}, host_vars={}, environment={"GATEWAY_HOSTNAME": "gw.example"})
         self.assertEqual(cfg.base_url, "https://gw.example")
 
     def test_missing_hostname_still_raises(self):
         with self.assertRaises(ValueError):
-            extract_gateway_config(task_args={}, host_vars={}, env={}, required=True)
+            extract_gateway_config(task_args={}, host_vars={}, environment={}, required=True)
 
     def test_empty_env_value_is_ignored(self):
         """An exported-but-empty variable must not satisfy the requirement."""
         with self.assertRaises(ValueError):
-            extract_gateway_config(task_args={}, host_vars={}, env={"GATEWAY_HOSTNAME": ""}, required=True)
+            extract_gateway_config(task_args={}, host_vars={}, environment={"GATEWAY_HOSTNAME": ""}, required=True)
 
 
 class TestEnvPrecedence(unittest.TestCase):
@@ -77,7 +77,7 @@ class TestEnvPrecedence(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_hostname": "https://task.example"},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://env.example"},
+            environment={"GATEWAY_HOSTNAME": "https://env.example"},
         )
         self.assertEqual(cfg.base_url, "https://task.example")
 
@@ -85,7 +85,7 @@ class TestEnvPrecedence(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={"gateway_hostname": "https://inventory.example"},
-            env={"GATEWAY_HOSTNAME": "https://env.example"},
+            environment={"GATEWAY_HOSTNAME": "https://env.example"},
         )
         self.assertEqual(cfg.base_url, "https://inventory.example")
 
@@ -94,7 +94,7 @@ class TestEnvPrecedence(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_username": "task-user"},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://env.example", "GATEWAY_PASSWORD": "env-pass"},
+            environment={"GATEWAY_HOSTNAME": "https://env.example", "GATEWAY_PASSWORD": "env-pass"},
         )
         self.assertEqual(cfg.base_url, "https://env.example")
         self.assertEqual(cfg.username, "task-user")
@@ -108,7 +108,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_USERNAME": "admin", "GATEWAY_PASSWORD": "secret"},
+            environment={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_USERNAME": "admin", "GATEWAY_PASSWORD": "secret"},
         )
         self.assertEqual(cfg.username, "admin")
         self.assertEqual(cfg.password, "secret")
@@ -117,7 +117,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"AAP_HOSTNAME": "https://gw.example", "AAP_USERNAME": "admin", "AAP_PASSWORD": "secret"},
+            environment={"AAP_HOSTNAME": "https://gw.example", "AAP_USERNAME": "admin", "AAP_PASSWORD": "secret"},
         )
         self.assertEqual(cfg.username, "admin")
         self.assertEqual(cfg.password, "secret")
@@ -126,7 +126,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_API_TOKEN": "tok123"},
+            environment={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_API_TOKEN": "tok123"},
         )
         self.assertEqual(cfg.oauth_token, "tok123")
 
@@ -136,7 +136,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_hostname": "https://gw.example", "gateway_username": "admin", "gateway_password": "secret"},
             host_vars={},
-            env={"GATEWAY_API_TOKEN": "tok123"},
+            environment={"GATEWAY_API_TOKEN": "tok123"},
         )
         self.assertIsNone(cfg.oauth_token)
         self.assertEqual(cfg.username, "admin")
@@ -148,7 +148,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={"gateway_hostname": "https://gw.example", "aap_token": {"token": "host-tok", "id": 1}},
-            env={"GATEWAY_USERNAME": "admin"},
+            environment={"GATEWAY_USERNAME": "admin"},
         )
         self.assertEqual(cfg.oauth_token, "host-tok")
 
@@ -157,7 +157,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={"gateway_hostname": "https://gw.example", "aap_token": {"token": "host-tok", "id": 1}},
-            env={"GATEWAY_USERNAME": "admin", "GATEWAY_PASSWORD": "secret"},
+            environment={"GATEWAY_USERNAME": "admin", "GATEWAY_PASSWORD": "secret"},
         )
         self.assertEqual(cfg.oauth_token, "host-tok")
 
@@ -166,7 +166,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_username": "admin", "gateway_password": "secret"},
             host_vars={"gateway_hostname": "https://gw.example", "aap_token": {"token": "host-tok", "id": 1}},
-            env={},
+            environment={},
         )
         self.assertIsNone(cfg.oauth_token)
 
@@ -179,7 +179,7 @@ class TestCredentialsFromEnv(unittest.TestCase):
                 "gateway_password": "secret",
                 "aap_token": {"token": "host-tok", "id": 1},
             },
-            env={},
+            environment={},
         )
         self.assertIsNone(cfg.oauth_token)
 
@@ -193,7 +193,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
                 cfg = extract_gateway_config(
                     task_args={},
                     host_vars={},
-                    env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": raw},
+                    environment={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": raw},
                 )
                 self.assertFalse(cfg.verify_ssl, f"{raw!r} must disable SSL verification")
 
@@ -203,7 +203,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
                 cfg = extract_gateway_config(
                     task_args={},
                     host_vars={},
-                    env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": raw},
+                    environment={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": raw},
                 )
                 self.assertTrue(cfg.verify_ssl)
 
@@ -211,7 +211,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"AAP_HOSTNAME": "https://gw.example", "AAP_VALIDATE_CERTS": "false"},
+            environment={"AAP_HOSTNAME": "https://gw.example", "AAP_VALIDATE_CERTS": "false"},
         )
         self.assertFalse(cfg.verify_ssl)
 
@@ -220,7 +220,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_hostname": "https://gw.example", "validate_certs": False},
             host_vars={},
-            env={"GATEWAY_VERIFY_SSL": "true"},
+            environment={"GATEWAY_VERIFY_SSL": "true"},
         )
         self.assertFalse(cfg.verify_ssl)
 
@@ -228,12 +228,12 @@ class TestValidateCertsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_hostname": "https://gw.example"},
             host_vars={"validate_certs": False},
-            env={"GATEWAY_VERIFY_SSL": "true"},
+            environment={"GATEWAY_VERIFY_SSL": "true"},
         )
         self.assertFalse(cfg.verify_ssl)
 
     def test_default_is_true_when_unset(self):
-        cfg = extract_gateway_config(task_args={"gateway_hostname": "https://gw.example"}, host_vars={}, env={})
+        cfg = extract_gateway_config(task_args={"gateway_hostname": "https://gw.example"}, host_vars={}, environment={})
         self.assertTrue(cfg.verify_ssl)
 
     def test_invalid_boolean_raises(self):
@@ -241,7 +241,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
             extract_gateway_config(
                 task_args={},
                 host_vars={},
-                env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": "maybe"},
+                environment={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_VERIFY_SSL": "maybe"},
             )
 
     def test_invalid_env_boolean_is_not_parsed_when_task_overrides(self):
@@ -250,7 +250,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_hostname": "https://gw.example", "validate_certs": False},
             host_vars={},
-            env={"GATEWAY_VERIFY_SSL": "maybe"},
+            environment={"GATEWAY_VERIFY_SSL": "maybe"},
         )
         self.assertFalse(cfg.verify_ssl)
 
@@ -258,7 +258,7 @@ class TestValidateCertsFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={"gateway_hostname": "https://gw.example", "aap_validate_certs": True},
-            env={"GATEWAY_VERIFY_SSL": "maybe"},
+            environment={"GATEWAY_VERIFY_SSL": "maybe"},
         )
         self.assertTrue(cfg.verify_ssl)
 
@@ -270,7 +270,7 @@ class TestRequestTimeoutFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_REQUEST_TIMEOUT": "30"},
+            environment={"GATEWAY_HOSTNAME": "https://gw.example", "GATEWAY_REQUEST_TIMEOUT": "30"},
         )
         self.assertEqual(cfg.request_timeout, 30.0)
         self.assertIsInstance(cfg.request_timeout, float)
@@ -279,7 +279,7 @@ class TestRequestTimeoutFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={},
             host_vars={},
-            env={"AAP_HOSTNAME": "https://gw.example", "AAP_REQUEST_TIMEOUT": "45.5"},
+            environment={"AAP_HOSTNAME": "https://gw.example", "AAP_REQUEST_TIMEOUT": "45.5"},
         )
         self.assertEqual(cfg.request_timeout, 45.5)
 
@@ -287,12 +287,12 @@ class TestRequestTimeoutFromEnv(unittest.TestCase):
         cfg = extract_gateway_config(
             task_args={"gateway_hostname": "https://gw.example", "request_timeout": 5.0},
             host_vars={},
-            env={"GATEWAY_REQUEST_TIMEOUT": "30"},
+            environment={"GATEWAY_REQUEST_TIMEOUT": "30"},
         )
         self.assertEqual(cfg.request_timeout, 5.0)
 
     def test_default_timeout_when_unset(self):
-        cfg = extract_gateway_config(task_args={"gateway_hostname": "https://gw.example"}, host_vars={}, env={})
+        cfg = extract_gateway_config(task_args={"gateway_hostname": "https://gw.example"}, host_vars={}, environment={})
         self.assertEqual(cfg.request_timeout, 10.0)
 
 
@@ -311,7 +311,7 @@ class TestEnvDefaultsToOsEnviron(unittest.TestCase):
         os.environ["GATEWAY_HOSTNAME"] = "https://from-os-environ.example"
         try:
             with self.assertRaises(ValueError):
-                extract_gateway_config(task_args={}, host_vars={}, env={}, required=True)
+                extract_gateway_config(task_args={}, host_vars={}, environment={}, required=True)
         finally:
             del os.environ["GATEWAY_HOSTNAME"]
 

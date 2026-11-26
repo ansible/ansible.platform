@@ -222,6 +222,10 @@ class ManagerRPCClient:
         """Poll until terminal status via the manager process. See PlatformService.wait_for_completion()."""
         return self.service_proxy.wait_for_completion(resource_url, timeout, interval, service)
 
+    def is_workflow_approval_template(self, template_id: int) -> bool:
+        """Check whether a unified_job_template ID refers to a workflow approval template via the manager process."""
+        return self.service_proxy.is_workflow_approval_template(template_id)
+
     def manage_workflow_approval(self, node_id: int, data: dict, check_mode: bool = False) -> bool:
         """Reconcile a workflow approval template through the shared manager SDK."""
         return self.service_proxy.manage_workflow_approval(node_id, data, check_mode)

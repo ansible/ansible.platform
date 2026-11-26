@@ -15,6 +15,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback as _tb
 from dataclasses import fields
 from typing import Optional
 
@@ -43,6 +44,9 @@ class ActionModule(BaseResourceActionPlugin):
             timeout = validated_params.get("timeout")
             model_fields = {model_field.name for model_field in fields(self.MODEL_CLASS)}
             model_params = {key: value for key, value in validated_params.items() if key in model_fields}
+            injected_extra_vars = self._inject_current_job_metadata(model_params.get("extra_vars"), task_vars)
+            if injected_extra_vars is not None:
+                model_params["extra_vars"] = injected_extra_vars
 
             if not jobs:
                 raise AnsibleError("jobs is required and must be a non-empty list")
@@ -70,6 +74,7 @@ class ActionModule(BaseResourceActionPlugin):
                 return result
 
             # The create operation applies the API transform and posts the launch payload.
+            model_params["jobs"] = self._explicit_list_items("jobs", jobs)
             launch_result = manager.execute("create", self.MODULE_NAME, model_params)
 
             job_id = launch_result.get("id")
@@ -87,6 +92,8 @@ class ActionModule(BaseResourceActionPlugin):
                 }
             )
 
+            result.update(self._extract_launch_metadata(launch_result))
+
             if not wait or not job_id:
                 return result
 
@@ -102,6 +109,8 @@ class ActionModule(BaseResourceActionPlugin):
                 result["status"] = final_status
                 result["job_info"] = job_result
 
+                result.update(self._extract_launch_metadata(job_result))
+
                 if job_result.get("failed") or final_status in ("failed", "error", "canceled"):
                     result["failed"] = True
                     result["msg"] = f"Bulk job {job_id} finished with status '{final_status}'"
@@ -115,8 +124,6 @@ class ActionModule(BaseResourceActionPlugin):
                     result["job_info"] = last
 
         except Exception as exc:
-            import traceback as _tb
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, exc))
             result["failed"] = True
             result["msg"] = str(exc)

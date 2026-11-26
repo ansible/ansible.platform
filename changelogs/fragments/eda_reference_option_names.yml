@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - >-
+    EDA modules now document short names such as ``organization``, ``project``,
+    and ``credential`` as the primary options for related resources. Existing
+    ``_name`` aliases, conflict precedence, and result fields continue to work.

@@ -14,6 +14,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import traceback
 from typing import Any, Dict, Optional
 
 from ansible.errors import AnsibleError
@@ -97,8 +98,6 @@ class ActionModule(BaseResourceActionPlugin):
             )
 
         except Exception as e:
-            import traceback
-
             self._display.vvv("Error in %s action plugin: %s" % (self.MODULE_NAME, e))
             result["failed"] = True
             error_message = str(e)

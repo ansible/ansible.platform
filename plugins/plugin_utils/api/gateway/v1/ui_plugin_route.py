@@ -63,6 +63,8 @@ class UIPluginRouteTransformMixin_v1(BaseTransformMixin):
         api_data: Dict[str, Any] = {}
         manager = context.manager if isinstance(context, TransformContext) else context.get("manager")
         op = context.operation if isinstance(context, TransformContext) else context.get("operation")
+        if op == "create":
+            api_data.update({"is_service_https": False})
 
         name = getattr(ansible_instance, "name", None)
         new_name = getattr(ansible_instance, "new_name", None)

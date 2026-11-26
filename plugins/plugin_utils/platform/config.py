@@ -50,9 +50,13 @@ class GatewayConfig:
     request_timeout: float = 10.0
     connection_mode: str = "standard"  # "standard" or "experimental"
     idle_timeout: float = 3600.0
+    max_retries: Optional[int] = None
+    retry_backoff_factor: Optional[int] = None
 
     def __post_init__(self):
-        """Normalize URL after initialization."""
+        """Normalize the URL and validate optional retry settings."""
+        self.max_retries = _parse_retry_setting("aap_max_retries", self.max_retries, minimum=0)
+        self.retry_backoff_factor = _parse_retry_setting("aap_retry_backoff_factor", self.retry_backoff_factor, minimum=1)
         original_url = self.base_url
         self.base_url = self._normalize_url(self.base_url)
         if original_url != self.base_url:
@@ -69,6 +73,11 @@ class GatewayConfig:
             self.request_timeout,
             self.idle_timeout,
         )
+
+    @property
+    def has_retry_settings(self) -> bool:
+        """Whether either transient retry setting was supplied."""
+        return self.max_retries is not None or self.retry_backoff_factor is not None
 
     @property
     def requests_verify(self) -> Union[bool, str]:
@@ -214,11 +223,39 @@ def _resolve_ca_bundle(
     return None
 
 
+def _parse_retry_setting(name: str, value: Any, minimum: int) -> Optional[int]:
+    """Parse a configured integer without coercing booleans or fractions."""
+    if value is None:
+        return None
+
+    message = f"{name} must be an integer greater than or equal to {minimum}"
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(message)
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise ValueError(message) from error
+    if parsed < minimum:
+        raise ValueError(message)
+    return parsed
+
+
+def _resolve_retry_setting(name: str, task_args: Mapping[str, Any], host_vars: Mapping[str, Any], environment: Mapping[str, Any]) -> Any:
+    """Return the first supplied value in task, inventory, or environment scope."""
+    canonical_name = f"aap_{name}"
+    for scope in (task_args, host_vars):
+        for key in (canonical_name, name):
+            value = scope.get(key)
+            if value is not None:
+                return value
+    return environment.get(canonical_name.upper())
+
+
 def extract_gateway_config(
     task_args: Optional[Dict[str, Any]] = None,
     host_vars: Optional[Dict[str, Any]] = None,
     required: bool = True,
-    env: Optional[Mapping[str, str]] = None,
+    environment: Optional[Mapping[str, Any]] = None,
 ) -> GatewayConfig:
     """
     Extract gateway configuration from task arguments, host variables and the environment.
@@ -236,9 +273,10 @@ def extract_gateway_config(
         task_args: Task/command arguments (highest priority)
         host_vars: Host/inventory variables (middle priority)
         required: Whether gateway_url is required (default: True)
-        env: Environment mapping (lowest priority). Defaults to os.environ;
-            pass an explicit mapping (for example ``{}``) to make callers such
-            as unit tests independent of the ambient environment.
+        environment: Environment mapping (lowest priority), used for the
+            connection, TLS, timeout and retry settings. Defaults to
+            os.environ; pass an explicit mapping (for example ``{}``) to make
+            callers such as unit tests independent of the ambient environment.
 
     Returns:
         GatewayConfig object with normalized values
@@ -249,7 +287,7 @@ def extract_gateway_config(
     """
     task_args = task_args or {}
     host_vars = host_vars or {}
-    env = os.environ if env is None else env
+    environment = os.environ if environment is None else environment
 
     logger.debug(
         "Extracting gateway config from task_args (keys: %s) and host_vars (keys: %s)",
@@ -266,7 +304,7 @@ def extract_gateway_config(
         or host_vars.get("aap_hostname")
         or host_vars.get("gateway_hostname")
         or host_vars.get("gateway_url")
-        or _env_first(env, "hostname")
+        or _env_first(environment, "hostname")
     )
     logger.debug("Gateway URL extracted: %s", gateway_url)
 
@@ -277,14 +315,14 @@ def extract_gateway_config(
         or task_args.get("gateway_username")
         or host_vars.get("aap_username")
         or host_vars.get("gateway_username")
-        or _env_first(env, "username")
+        or _env_first(environment, "username")
     )
     gateway_password = (
         task_args.get("aap_password")
         or task_args.get("gateway_password")
         or host_vars.get("aap_password")
         or host_vars.get("gateway_password")
-        or _env_first(env, "password")
+        or _env_first(environment, "password")
     )
 
     # Only credentials given explicitly in the task or inventory suppress the
@@ -315,7 +353,7 @@ def extract_gateway_config(
         (host_vars.get("aap_token") if not has_explicit_credentials else None)
         # Same guard for the environment: an exported token must not override
         # username/password credentials supplied by the task or inventory.
-        or (_env_first(env, "token") if not has_explicit_credentials else None)
+        or (_env_first(environment, "token") if not has_explicit_credentials else None)
     )
     # The token module sets aap_token as a dict ({"token": "...", "id": ...}).
     # Extract the actual token string if we got a dict.
@@ -324,11 +362,11 @@ def extract_gateway_config(
     else:
         gateway_token = gateway_token_raw
 
-    gateway_validate_certs = _resolve_validate_certs(task_args, host_vars, env)
+    gateway_validate_certs = _resolve_validate_certs(task_args, host_vars, environment)
 
     # Resolve request_timeout aliases: aap_request_timeout (primary), gateway_request_timeout,
     # request_timeout (legacy).  Environment values are strings, so cast to float.
-    _request_timeout_env = _env_first(env, "request_timeout")
+    _request_timeout_env = _env_first(environment, "request_timeout")
     gateway_request_timeout = (
         task_args.get("aap_request_timeout")
         or task_args.get("gateway_request_timeout")
@@ -376,6 +414,8 @@ def extract_gateway_config(
         request_timeout=gateway_request_timeout,
         connection_mode=connection_mode,
         idle_timeout=(float(pm_idle_timeout) if pm_idle_timeout is not None else 3600.0),
+        max_retries=_resolve_retry_setting("max_retries", task_args, host_vars, environment),
+        retry_backoff_factor=_resolve_retry_setting("retry_backoff_factor", task_args, host_vars, environment),
     )
 
     logger.debug("GatewayConfig created successfully")

@@ -43,6 +43,10 @@ class TestManagerIdentityHash(unittest.TestCase):
         )
         return info.socket_path
 
+    def test_retry_settings_participate_in_identity(self):
+        configs = [self._config(), self._config(max_retries=0), self._config(max_retries=0, retry_backoff_factor=3)]
+        self.assertEqual(len({ProcessManager.manager_identity_hash(config) for config in configs}), len(configs))
+
     @patch.dict("os.environ", {}, clear=True)
     def test_same_identity_reuses_socket_path(self):
         with tempfile.TemporaryDirectory() as tmp:

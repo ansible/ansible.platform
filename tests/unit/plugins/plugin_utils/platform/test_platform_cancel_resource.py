@@ -77,6 +77,7 @@ class TestCancelResource(TestCase):
             "https://controller.example/api/eda/v1/activations/42/restart/",
             operation="direct_request",
             resource="/api/eda/v1/activations/42/restart/",
+            retry_config=retry_config,
         )
 
     def test_persistent_client_handles_empty_cancel_response(self):

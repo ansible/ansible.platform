@@ -136,6 +136,7 @@ options:
     extra_vars:
         description:
             - Extra variables to apply to all jobs. Extends extra_data at the individual job level.
+            - When extra variables are provided from a Controller job, current job metadata is added under C(controller_job_metadata).
         type: dict
     job_tags:
         description:
@@ -212,5 +213,15 @@ job_info:
     description: Full response from the bulk job launch API.
     returned: success
     type: dict
+user_name:
+    description: Username of the Controller user who launched the bulk job.
+    returned: when Controller provides the metadata
+    type: str
+    sample: admin
+job_template_name:
+    description: Name of the job template used for the launch.
+    returned: when Controller provides the metadata
+    type: str
+    sample: My Job Template
 ...
 """

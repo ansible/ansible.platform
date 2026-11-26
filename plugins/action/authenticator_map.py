@@ -12,3 +12,4 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.ansible_models.au
 class ActionModule(BaseResourceActionPlugin):
     MODULE_NAME = "authenticator_map"
     MODEL_CLASS = AnsibleAuthenticatorMap
+    _DEFAULT_FIELDS_TO_OMIT_ON_UPDATE = frozenset({"revoke"})
