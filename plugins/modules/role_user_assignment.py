@@ -42,9 +42,32 @@ options:
         elements: str
     user:
         description:
-            - The name or id of the user to assign to the object.
-            - This option is mutually exclusive with I(user_ansible_id).
+            - The username of the user to assign to the object.
+            - This option is mutually exclusive with I(user_id) and I(user_ansible_id).
         required: False
+        type: str
+    user_id:
+        description:
+            - The numeric ID of the user to assign to the object.
+            - This option is mutually exclusive with I(user) and I(user_ansible_id).
+        required: False
+        type: int
+    object_name:
+        description:
+            - Portable name of the target object. Requires C(object_type).
+        type: str
+    object_type:
+        description:
+            - Portable assignment object type, such as C(awx.credential) or C(teams).
+        type: str
+    object_credential_type:
+        description:
+            - Credential type used to disambiguate Controller credential targets
+              with the same name and organization.
+        type: str
+    organization:
+        description:
+            - Organization used to scope portable object-name lookup.
         type: str
     object_ansible_id:
         description:
@@ -136,8 +159,11 @@ role_user_assignment:
       description: Name or ID of the role definition assigned.
       type: str
     user:
-      description: Username or ID of the user receiving the role.
+      description: Username of the user receiving the role.
       type: str
+    user_id:
+      description: Numeric ID of the user receiving the role.
+      type: int
     object_id:
       description: Primary key of the object this assignment applies to (if scoped).
       type: int

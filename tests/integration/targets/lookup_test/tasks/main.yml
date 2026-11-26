@@ -54,13 +54,13 @@
     - name: Make user 2 admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
-        user: "{{ user2.id }}"
+        user_id: "{{ user2.id }}"
         object_id: "{{ org1.id }}"
 
     - name: Make admin user admin of org1
       ansible.platform.role_user_assignment:
         role_definition: Organization Admin
-        user: "{{ admin1.id }}"
+        user_id: "{{ admin1.id }}"
         object_id: "{{ org1.id }}"
 
     # Baseline: count manager processes already running (persistent managers from

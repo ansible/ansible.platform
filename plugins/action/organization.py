@@ -27,7 +27,7 @@ from ansible_collections.ansible.platform.plugins.plugin_utils.api.controller.v2
 from ansible_collections.ansible.platform.plugins.plugin_utils.api.gateway.v1.organization import OrganizationTransformMixin_v1
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.types import build_endpoint_request
 
-_CONTROLLER_SETTINGS = ("default_environment", "max_hosts")
+_CONTROLLER_SETTINGS = ("default_environment", "max_hosts", "opa_query_path")
 _CONTROLLER_ASSOCIATIONS = {
     "instance_groups": ("instance_groups", "name"),
     "notification_templates_started": ("notification_templates", "name"),

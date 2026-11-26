@@ -187,7 +187,16 @@ class JobTemplateTransformMixin_v2(BaseTransformMixin):
 
         inventory = getattr(ansible_instance, "inventory", None)
         if inventory is not None:
-            api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, **lookup_kwargs)
+            inventory_organization = getattr(ansible_instance, "inventory_organization", None) or organization
+            inventory_scope = lookup_kwargs
+            if inventory_organization is not None and inventory_organization != organization:
+                inventory_org_id = (
+                    int(inventory_organization)
+                    if str(inventory_organization).strip().isdigit()
+                    else manager.lookup_resource_id("organizations", "name", inventory_organization, service="controller")
+                )
+                inventory_scope = {"service": service, "extra_query_params": {"organization": inventory_org_id}}
+            api_data["inventory"] = manager.lookup_resource_id("inventories", "name", inventory, **inventory_scope)
 
         execution_environment = getattr(ansible_instance, "execution_environment", None)
         if execution_environment is not None:

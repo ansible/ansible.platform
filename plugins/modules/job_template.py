@@ -33,6 +33,11 @@ options:
     inventory:
       type: str
       description: Name or ID of the inventory to use for the job template.
+    inventory_organization:
+      type: str
+      description:
+        - Name or ID of the organization that owns the inventory.
+        - Lookup-only disambiguation for same-named inventories across organizations.
     organization:
       type: str
       description:

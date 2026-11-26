@@ -99,6 +99,11 @@ options:
                     resource types, and Gateway C(teams).
                 type: str
                 required: false
+            credential_type:
+                description:
+                  - Credential type name used to disambiguate Controller credential names.
+                type: str
+                required: false
             object_id:
                 description:
                   - Numeric primary key of the target object.
