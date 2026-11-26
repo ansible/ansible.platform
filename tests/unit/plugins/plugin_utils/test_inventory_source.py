@@ -163,7 +163,6 @@ class TestInventorySourceTransform(unittest.TestCase):
             "name",
             "Inventory Project",
             service="controller",
-            extra_query_params={"organization": 7},
             require_unique=True,
         )
         self.assertFalse(hasattr(api, "organization"))
@@ -197,7 +196,6 @@ class TestInventorySourceTransform(unittest.TestCase):
             "name",
             "My Project",
             service="controller",
-            extra_query_params=None,
             require_unique=True,
         )
         self.assertEqual(api.source_project, 15)
