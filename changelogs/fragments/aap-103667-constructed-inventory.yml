@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - inventory - Add source_vars and limit for configuring the Controller-generated source of a constructed inventory in the same task.
+...
