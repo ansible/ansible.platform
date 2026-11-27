@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - >-
+    eda_project - add ``scm_refspec``, ``verify_ssl``, and
+    ``signature_validation_credential`` options, and support the
+    ``scm_credential`` alias for ``credential``.
+...

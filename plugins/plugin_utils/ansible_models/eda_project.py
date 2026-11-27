@@ -17,8 +17,11 @@ class AnsibleEdaProject:
     url: Optional[str] = None
     proxy: Optional[str] = None
     credential: Optional[str] = None
+    signature_validation_credential: Optional[str] = None
     organization_name: Optional[str] = None
     scm_branch: Optional[str] = None
+    scm_refspec: Optional[str] = None
+    verify_ssl: Optional[bool] = None
     update_revision_on_launch: Optional[bool] = None
     scm_update_cache_timeout: Optional[int] = None
     state: str = "present"

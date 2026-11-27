@@ -34,6 +34,10 @@ class TestEdaProjectAction(unittest.TestCase):
                 return 1
             if endpoint == "projects" and find_result and find_result.get("name") == lookup_value:
                 return find_result["id"]
+            if endpoint == "eda-credentials":
+                credential_ids = {"SCM Credential": 42, "Signing Credential": 43}
+                value = str(lookup_value)
+                return int(value) if value.isdigit() else credential_ids[value]
             raise ValueError("Resource '%s' with %s=%s not found" % (endpoint, lookup_field, lookup_value))
 
         manager.lookup_resource_id.side_effect = lookup_resource_id
@@ -73,9 +77,12 @@ class TestEdaProjectAction(unittest.TestCase):
                 "description": {},
                 "url": {},
                 "proxy": {},
-                "credential": {},
+                "credential": {"aliases": ["scm_credential"]},
+                "signature_validation_credential": {},
                 "organization_name": {"aliases": ["organization"]},
                 "scm_branch": {},
+                "scm_refspec": {},
+                "verify_ssl": {"type": "bool"},
                 "state": {},
                 "sync": {"type": "bool"},
                 "wait": {"type": "bool"},
@@ -659,6 +666,7 @@ class TestEdaProjectAction(unittest.TestCase):
         manager = MagicMock()
         manager.lookup_resource_id.side_effect = lambda endpoint, lookup_field, value, **kwargs: {
             "SCM Credential": 42,
+            "Signing Credential": 43,
             "Default": 7,
         }[value]
         action._client = manager
@@ -666,14 +674,26 @@ class TestEdaProjectAction(unittest.TestCase):
 
         self.assertFalse(
             action._should_update(
-                {"credential": "SCM Credential", "organization_name": "Default"},
-                {"credential": "42", "organization_name": 7},
+                {
+                    "credential": "SCM Credential",
+                    "signature_validation_credential": "Signing Credential",
+                    "organization_name": "Default",
+                },
+                {"credential": "42", "signature_validation_credential": "43", "organization_name": 7},
             )
         )
         self.assertFalse(
             action._should_update(
-                {"credential": "42", "organization_name": "7"},
-                {"credential": "SCM Credential", "organization_name": "Default"},
+                {
+                    "credential": "42",
+                    "signature_validation_credential": "43",
+                    "organization_name": "7",
+                },
+                {
+                    "credential": "SCM Credential",
+                    "signature_validation_credential": "Signing Credential",
+                    "organization_name": "Default",
+                },
             )
         )
 

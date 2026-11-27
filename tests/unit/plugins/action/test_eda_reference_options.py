@@ -57,3 +57,19 @@ def test_rulebook_activation_token_alias_keeps_precedence():
     action._task = SimpleNamespace(args={"name": "example", "awx_token": "short", "awx_token_name": "long", "token": "existing alias"})
 
     assert action._validate_action_input().validated_params["awx_token_name"] == "existing alias"
+
+
+def test_eda_project_supports_scm_credential_alias():
+    action = eda_project.ActionModule.__new__(eda_project.ActionModule)
+    action._display = Display()
+    documented_options = yaml.safe_load(action._get_documentation())["options"]
+
+    assert "scm_credential" in documented_options["credential"]["aliases"]
+
+    for args, expected in (
+        ({"scm_credential": "Existing credential"}, "Existing credential"),
+        ({"credential": "New credential"}, "New credential"),
+    ):
+        action._task = SimpleNamespace(args={"name": "example", **args})
+        validated = action._validate_action_input()
+        assert validated.validated_params["credential"] == expected

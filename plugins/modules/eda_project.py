@@ -55,6 +55,14 @@ options:
     description:
       - The name or ID of the EDA credential to associate with the project.
     type: str
+    aliases:
+      - scm_credential
+
+  signature_validation_credential:
+    description:
+      - The name or ID of the EDA credential to use for signature validation.
+      - If provided, signature validation will be enabled for the project.
+    type: str
 
   organization:
     description:
@@ -68,6 +76,17 @@ options:
     description:
       - The SCM branch of the Git project.
     type: str
+
+  scm_refspec:
+    description:
+      - An additional Git refspec to fetch.
+    type: str
+
+  verify_ssl:
+    description:
+      - Whether to verify the SSL certificate when accessing the project source-control URL.
+      - This is separate from O(validate_certs), which controls the AAP Gateway connection.
+    type: bool
 
   state:
     description:
@@ -166,6 +185,9 @@ EXAMPLES = """
     name: "Private Project"
     url: "https://private.example.com/project1"
     credential: "my-git-credential"
+    signature_validation_credential: "my-signing-credential"
+    scm_refspec: "+refs/heads/main"
+    verify_ssl: true
     proxy: "https://proxy.example.com"
     organization: Default
     state: present
