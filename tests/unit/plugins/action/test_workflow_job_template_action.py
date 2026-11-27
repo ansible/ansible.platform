@@ -5,11 +5,71 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
+from unittest.mock import call as mock_call
 
 import pytest
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
 from ansible_collections.ansible.platform.plugins.action.workflow_job_template import ActionModule
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import ResourceNotFoundError
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "reference", "scope"),
+    [
+        ("inventories", {"name": "42", "organization": {"name": "Production"}}, {"organization": 8}),
+        ("execution_environments", {"name": "Runner", "organization": {"name": "Production"}}, {"organization": 8}),
+        ("execution_environments", {"name": "Global EE", "organization": None}, {"organization__isnull": True}),
+    ],
+)
+def test_resolve_portable_workflow_prompt_uses_source_scope(endpoint, reference, scope):
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = lambda resource, *args, **kwargs: 8 if resource == "organizations" else 90
+
+    assert ActionModule._resolve_prompt_id(manager, endpoint, reference) == 90
+    manager.lookup_resource_id.assert_called_with(endpoint, "name", reference["name"], service="controller", extra_query_params=scope, numeric_is_id=False)
+
+
+@pytest.mark.parametrize(
+    ("target_type", "scope"),
+    [
+        ("job_template", {"organization": {"name": "17"}}),
+        ("inventory_source", {"inventory": {"organization": {"name": "17"}}}),
+    ],
+)
+def test_resolve_workflow_target_looks_up_numeric_names(target_type, scope):
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = [8, 123]
+    target = {"type": target_type, "name": "42", **scope}
+
+    assert ActionModule._resolve_ujt_id(manager, target) == 123
+    assert manager.lookup_resource_id.call_args_list == [
+        mock_call("organizations", "name", "17", service="controller", numeric_is_id=False),
+        mock_call(
+            "unified_job_templates",
+            "name",
+            "42",
+            service="controller",
+            extra_query_params={"type": target_type, "organization": 8},
+            numeric_is_id=False,
+        ),
+    ]
+
+
+def test_resolve_inventory_source_uses_parent_inventory():
+    manager = MagicMock()
+    manager.lookup_resource_id.side_effect = [8, 90, 123]
+    target = {
+        "type": "inventory_source",
+        "name": "42",
+        "inventory": {"name": "Hosts", "organization": {"name": "17"}},
+    }
+
+    assert ActionModule._resolve_ujt_id(manager, target) == 123
+    assert manager.lookup_resource_id.call_args_list == [
+        mock_call("organizations", "name", "17", service="controller", numeric_is_id=False),
+        mock_call("inventories", "name", "Hosts", service="controller", extra_query_params={"organization": 8}, numeric_is_id=False),
+        mock_call("inventory_sources", "name", "42", service="controller", extra_query_params={"inventory": 90}, numeric_is_id=False),
+    ]
 
 
 class TestWorkflowJobTemplateAssociations(unittest.TestCase):

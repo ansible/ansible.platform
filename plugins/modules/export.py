@@ -20,11 +20,17 @@ description:
   - Export Controller and Gateway resources as a structured asset dict.
   - Output uses the native ansible.platform format where FK references are
     resolved to resource names and associations are flattened into the
-    resource dict. The output can be piped directly into the
-    C(ansible.platform.import) module or role.
+    resource dict. Pass the returned RV(assets) to the
+    M(ansible.platform.import) module or the import role.
   - This is a read-only module; it never makes changes. C(changed) is always C(false).
   - Resource selectors accept names and numeric IDs. Named URLs are resolved through the SDK when supported by the owning service.
   - Organizations, users, and teams are exported from Gateway; other resource types are exported from Controller.
+  - Select only O(workflow_job_templates) to export workflows as a user with limited access.
+    A readable job template can supply its organization name even when the caller cannot read that organization directly.
+  - Inaccessible optional workflow associations are omitted with a warning. Workflows with unresolved required references
+    or an unreadable enabled survey are returned in RV(non_restorable) with their visible data and a reason.
+  - Nested workflow targets and populated node credential, label, and instance-group associations currently prevent a workflow
+    from being included in RV(assets). Exports that select other resource types still require access to the shared reference lookups.
 version_added: "2.7.0"
 
 options:
@@ -204,6 +210,12 @@ EXAMPLES = """
     credentials: all
   register: selective_export
 
+- name: Export selected workflows with the current user's permissions
+  ansible.platform.export:
+    workflow_job_templates:
+      - Release
+  register: workflow_export
+
 - name: Export and immediately import to another instance
   ansible.platform.export:
     all: true
@@ -213,6 +225,7 @@ EXAMPLES = """
   ansible.platform.import:
     assets: "{{ export_output.assets }}"
   delegate_to: other_gateway
+  when: export_output.assets | length > 0
 ...
 """
 
@@ -238,7 +251,8 @@ non_restorable:
     description:
       - Resources excluded from assets because their secrets or token values are API-masked/write-only.
       - Supply replacement secret values before importing these resources.
-    returned: when masked or write-only resources are present
+      - Workflows with missing, unsupported, or unverifiable required references appear here with their visible nodes and a C(non_restorable_reason).
+    returned: when any resource was excluded from assets and retained for inspection
     type: dict
 
 changed:

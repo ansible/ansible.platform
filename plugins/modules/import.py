@@ -40,6 +40,8 @@ options:
         keys match the corresponding C(ansible.platform) module parameters.
       - Can be the output of C(awx export) or the legacy C(awx.awx.export)
         module when C(auto_convert_legacy=true).
+      - For native exports, pass the C(assets) field from the export result.
+        Review C(non_restorable) separately for incomplete workflows and other excluded resources.
     required: true
     type: dict
   auto_convert_legacy:
@@ -72,7 +74,7 @@ EXAMPLES = """
 
 - name: Import assets from a previous export task
   ansible.platform.import:
-    assets: "{{ export_output.assets | ansible.platform.from_awxkit_export }}"
+    assets: "{{ export_output.assets }}"
 
 - name: Import only organizations and teams (native format)
   ansible.platform.import:

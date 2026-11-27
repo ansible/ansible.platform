@@ -19,6 +19,13 @@ import traceback as _tb
 
 import yaml
 from ansible_collections.ansible.platform.plugins.action.base_action import BaseResourceActionPlugin
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+from ansible_collections.ansible.platform.plugins.plugin_utils.workflow_export import (
+    export_workflow_nodes,
+    is_api_integer,
+    read_named_workflow_dependency,
+    workflow_organization_name,
+)
 
 CONTROLLER_ORGANIZATION_ENDPOINT = "api/controller/v2/organizations/"
 GATEWAY_ORGANIZATION_ENDPOINT = "api/gateway/v1/organizations/"
@@ -294,7 +301,8 @@ class ActionModule(BaseResourceActionPlugin):
             max_objects = validated_params.get("max_objects", 10000)
             if max_objects < 1:
                 raise ValueError("max_objects must be greater than zero")
-            name_cache = self._build_name_cache(manager, max_objects)
+            selected = {name for name, _endpoint, _id_field in EXPORTABLE_RESOURCES if validated_params.get(name) is not None}
+            name_cache = {} if not all_requested and selected == {"workflow_job_templates"} else self._build_name_cache(manager, max_objects)
 
             assets = {}
             non_restorable = {"tokens": [], "authenticators": [], "authenticator_maps": [], "credentials": [], "notification_templates": []}
@@ -320,6 +328,11 @@ class ActionModule(BaseResourceActionPlugin):
                         self._non_restorable_role_assignments = []
                 else:
                     exported = self._export_resource_type(manager, res_type, endpoint, id_field, name_cache, names_filter, max_objects)
+                if res_type == "workflow_job_templates":
+                    incomplete = [item for item in exported if "non_restorable_reason" in item]
+                    if incomplete:
+                        non_restorable[res_type] = incomplete
+                        exported = [item for item in exported if "non_restorable_reason" not in item]
                 if res_type in ("authenticators", "credentials", "notification_templates"):
                     restorable = []
                     field = {"authenticators": "configuration", "credentials": "inputs", "notification_templates": "notification_configuration"}[res_type]
@@ -607,7 +620,31 @@ class ActionModule(BaseResourceActionPlugin):
                 continue
 
             cleaned = self._clean_resource(resource, name_cache, res_type)
-            self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
+            association_reasons = self._fetch_associations(manager, res_type, resource, cleaned, name_cache, endpoint, max_objects)
+            if res_type == "workflow_job_templates":
+                node_data, reasons = export_workflow_nodes(manager, resource["id"], max_objects)
+                reasons.extend(association_reasons)
+                cleaned["workflow_nodes"] = node_data
+                scope = workflow_organization_name(resource)
+                if scope:
+                    cleaned["organization"] = scope
+                for field, collection in (("inventory", "inventories"), ("webhook_credential", "credentials")):
+                    resource_id = cleaned.get(field)
+                    if not is_api_integer(resource_id):
+                        continue
+                    dependency = read_named_workflow_dependency(manager, collection, resource_id)
+                    # Import scopes these names to the workflow's organization and treats numeric strings as IDs.
+                    if dependency is not None and (resource.get("organization") is None or dependency.get("organization") == resource["organization"]):
+                        name = dependency["name"]
+                        if not name.strip().isdigit():
+                            cleaned[field] = name
+                for field in ("organization", "inventory", "webhook_credential"):
+                    if is_api_integer(cleaned.get(field)):
+                        del cleaned[field]
+                        reasons.append(f"workflow {field} could not be resolved")
+                if reasons:
+                    cleaned["non_restorable_reason"] = "; ".join(reasons)
+                    self._display.warning("Workflow %r is not restorable: %s" % (cleaned.get("name"), cleaned["non_restorable_reason"]))
             if res_type == "credentials":
                 # _clean_resource strips API response owners before association
                 # fetching; repeat after fetching because owner associations are
@@ -706,18 +743,18 @@ class ActionModule(BaseResourceActionPlugin):
         return parsed if isinstance(parsed, dict) else value
 
     def _fetch_associations(self, manager, res_type, raw_resource, cleaned, name_cache, base_endpoint, max_objects):
-        """Fetch and inline association sub-endpoints for a resource."""
+        """Inline associations and return reasons required data could not be exported."""
         resource_id = raw_resource.get("id")
         if not resource_id:
-            return
+            return []
 
         associations = list(RESOURCE_ASSOCIATIONS.get(res_type, []))
         if res_type == "inventory":
             associations.extend(RESOURCE_ASSOCIATIONS_INVENTORY)
 
         if not associations:
-            return
-
+            return []
+        reasons = []
         detail_endpoint = "%s%d/" % (base_endpoint, resource_id)
 
         for assoc_key, sub_suffix, mode in associations:
@@ -781,5 +818,12 @@ class ActionModule(BaseResourceActionPlugin):
                             cleaned[assoc_key] = objects
 
             except Exception as exc:
+                if res_type == "workflow_job_templates" and isinstance(exc, APIError) and exc.status_code in (403, 404):
+                    if assoc_key == "survey_spec" and raw_resource.get("survey_enabled"):
+                        reasons.append("workflow survey_spec could not be read for the enabled survey")
+                    else:
+                        self._display.warning("Omitting inaccessible %s for workflow %r" % (assoc_key, cleaned.get("name")))
+                    continue
                 self._display.vvvv("Failed to fetch %s for %s/%d: %s" % (assoc_key, res_type, resource_id, exc))
                 raise
+        return reasons
