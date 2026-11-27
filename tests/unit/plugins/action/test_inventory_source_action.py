@@ -259,6 +259,24 @@ class TestInventorySourceAssociations(unittest.TestCase):
             numeric_is_id=False,
         )
 
+    def test_enforced_comparison_uses_resolved_source_project_id(self):
+        for current_id, expected_changed in ((42, False), ("42", False), (15, True), ("15", True)):
+            with self.subTest(current_id=current_id):
+                action = ActionModule.__new__(ActionModule)
+                action._task = MagicMock()
+                action._task.args = {"state": "enforced"}
+                manager = MagicMock()
+                manager.execute.return_value = {"id": 30, "source_project": current_id}
+                manager.lookup_resource_id.return_value = 42
+                resource_data = {"name": "source", "inventory": "1", "source_project": "Shared Project++Other Org"}
+
+                action._find_existing_resource(manager, resource_data)
+
+                self.assertEqual(
+                    action._should_update({"source_project": "Shared Project++Other Org"}, {"source_project": current_id}),
+                    expected_changed,
+                )
+
 
 class TestInventorySourceIdempotency(unittest.TestCase):
     def test_organization_scope_is_idempotent_for_name_and_id(self):
