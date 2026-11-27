@@ -670,6 +670,14 @@ def test_workflow_export_target_without_organization(accessible, target_type, co
     )
 
 
+def test_workflow_export_rejects_boolean_node_id():
+    manager = Mock()
+    manager.search_api.return_value = {"results": [{"id": True, "identifier": "deploy"}]}
+
+    with pytest.raises(ValueError, match="Invalid workflow node ID"):
+        export_workflow_nodes(manager, 1, 10)
+
+
 def test_name_cache_loads_gateway_and_controller_organizations():
     manager = Mock()
     manager.search_api.return_value = {"results": [{"id": 10, "name": "Org"}]}

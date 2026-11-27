@@ -29,6 +29,11 @@ _PROMPT_FIELDS = (
 )
 
 
+def is_api_integer(value):
+    """Recognize integer API values while excluding JSON booleans."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def read_workflow_dependency(manager, endpoint, **kwargs):
     """Return a visible dependency or None when Controller denies or hides it."""
     try:
@@ -49,7 +54,7 @@ def workflow_organization_name(resource):
 
 def read_named_workflow_dependency(manager, collection, resource_id):
     """Read a Controller resource by ID and verify the returned identity."""
-    if type(resource_id) is not int:
+    if not is_api_integer(resource_id):
         raise ValueError(f"Invalid ID for workflow {collection} reference")
     resource = read_workflow_dependency(manager, f"{_CONTROLLER_PATH}{collection}/{resource_id}/")
     if resource is None:
@@ -73,7 +78,7 @@ def _read_node_target(manager, node):
     """Read a supported node target through the caller's existing access."""
     template_id = node.get("unified_job_template")
     target_path = node.get("related", {}).get("unified_job_template", "")
-    if type(template_id) is int:
+    if is_api_integer(template_id):
         for target_type, collection in _NODE_TARGET_COLLECTIONS.items():
             if target_path.endswith(f"/{collection}/{template_id}/"):
                 return target_type, read_named_workflow_dependency(manager, collection, template_id)
@@ -98,7 +103,7 @@ def _node_target_reference(manager, target_type, target):
     if target_type == "workflow_approval":
         timeout = target.get("timeout")
         description = target.get("description")
-        if type(timeout) is not int or timeout < 0 or not isinstance(description, str):
+        if not is_api_integer(timeout) or timeout < 0 or not isinstance(description, str):
             raise ValueError("Invalid approval template response while exporting workflow nodes")
         return {"type": target_type, "name": target["name"], "description": description, "timeout": timeout}
     reference = _scoped_reference(target)
@@ -132,7 +137,7 @@ def export_workflow_nodes(manager, workflow_id, max_objects):
         raise ValueError("Invalid workflow node list response")
     identifiers = {}
     for node in nodes:
-        if not isinstance(node, dict) or type(node.get("id")) is not int or not isinstance(node.get("identifier"), str) or not node["identifier"]:
+        if not isinstance(node, dict) or not is_api_integer(node.get("id")) or not isinstance(node.get("identifier"), str) or not node["identifier"]:
             raise ValueError("Invalid workflow node ID or identifier")
         identifiers[node["id"]] = node["identifier"]
     if len(identifiers) != len(nodes) or len(set(identifiers.values())) != len(nodes):
@@ -155,7 +160,7 @@ def export_workflow_nodes(manager, workflow_id, max_objects):
         related = {}
         for field in _EDGE_FIELDS:
             edges = node.get(field)
-            if not isinstance(edges, list) or any(type(target) is not int for target in edges):
+            if not isinstance(edges, list) or any(not is_api_integer(target) for target in edges):
                 raise ValueError(f"Invalid {field} list for workflow node {identifier!r}")
             if any(target not in identifiers for target in edges):
                 reasons.append(f"node {identifier!r} has unresolved {field}")

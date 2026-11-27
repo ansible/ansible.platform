@@ -22,6 +22,7 @@ from ansible_collections.ansible.platform.plugins.action.base_action import Base
 from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
 from ansible_collections.ansible.platform.plugins.plugin_utils.workflow_export import (
     export_workflow_nodes,
+    is_api_integer,
     read_named_workflow_dependency,
     workflow_organization_name,
 )
@@ -628,7 +629,7 @@ class ActionModule(BaseResourceActionPlugin):
                     cleaned["organization"] = scope
                 for field, collection in (("inventory", "inventories"), ("webhook_credential", "credentials")):
                     resource_id = cleaned.get(field)
-                    if type(resource_id) is not int:
+                    if not is_api_integer(resource_id):
                         continue
                     dependency = read_named_workflow_dependency(manager, collection, resource_id)
                     # Import scopes these names to the workflow's organization and treats numeric strings as IDs.
@@ -637,7 +638,7 @@ class ActionModule(BaseResourceActionPlugin):
                         if not name.strip().isdigit():
                             cleaned[field] = name
                 for field in ("organization", "inventory", "webhook_credential"):
-                    if type(cleaned.get(field)) is int:
+                    if is_api_integer(cleaned.get(field)):
                         del cleaned[field]
                         reasons.append(f"workflow {field} could not be resolved")
                 if reasons:
