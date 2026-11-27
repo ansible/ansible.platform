@@ -1,0 +1,8 @@
+---
+bugfixes:
+  - >-
+    export - preserve workflow nodes and accessible cross-organization job
+    template references in workflow-only exports, and report workflows with
+    unresolved required dependencies under non_restorable
+    (https://issues.redhat.com/browse/AAP-103665).
+...
