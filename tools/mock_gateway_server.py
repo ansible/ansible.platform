@@ -1069,6 +1069,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
 
             if len(parts) == 6:
                 subresource = parts[5]
+                if resource == "workflow_job_templates" and subresource == "workflow_nodes" and self.command == "GET":
+                    nodes = self.store.resource("controller", "workflow_job_template_nodes")
+                    self._send_json(200, nodes.list_items({"workflow_job_template": str(template_id)}))
+                    return
                 association_names = {
                     "credentials",
                     "labels",

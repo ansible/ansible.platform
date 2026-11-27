@@ -74,8 +74,8 @@ class ActionModule(BaseResourceActionPlugin):
                 manager.direct_request("DELETE", f"{node_path}{node['id']}/")
         return True
 
-    @staticmethod
-    def _resolve_ujt_id(manager, ujt_data):
+    @classmethod
+    def _resolve_ujt_id(cls, manager, ujt_data):
         """Resolve a unified_job_template dict to an API ID."""
         if not ujt_data or not ujt_data.get("name"):
             return None
@@ -92,12 +92,22 @@ class ActionModule(BaseResourceActionPlugin):
 
         if ujt_type == "inventory_source":
             inv = ujt_data.get("inventory", {})
+            if isinstance(inv, dict) and inv.get("name"):
+                inventory_id = cls._resolve_prompt_id(manager, "inventories", inv)
+                return manager.lookup_resource_id(
+                    "inventory_sources",
+                    "name",
+                    name,
+                    service=_SERVICE,
+                    extra_query_params={"inventory": inventory_id},
+                    numeric_is_id=False,
+                )
             org_data = inv.get("organization") if isinstance(inv, dict) else None
         else:
             org_data = ujt_data.get("organization")
 
         if isinstance(org_data, dict) and org_data.get("name"):
-            extra["organization"] = manager.lookup_resource_id("organizations", "name", org_data["name"], service=_SERVICE)
+            extra["organization"] = manager.lookup_resource_id("organizations", "name", org_data["name"], service=_SERVICE, numeric_is_id=False)
 
         return manager.lookup_resource_id(
             "unified_job_templates",
@@ -105,33 +115,27 @@ class ActionModule(BaseResourceActionPlugin):
             name,
             service=_SERVICE,
             extra_query_params=extra or None,
+            numeric_is_id=False,
         )
 
     @staticmethod
-    def _resolve_inventory_id(manager, inv_data):
-        """Resolve an inventory reference (string or dict) to an ID."""
-        if inv_data is None:
+    def _resolve_prompt_id(manager, endpoint, reference):
+        """Resolve a node prompt by ID or portable name and organization scope."""
+        if reference is None:
             return None
-        if isinstance(inv_data, dict):
-            name = inv_data.get("name")
-            if not name:
-                return None
-            extra = {}
-            org = inv_data.get("organization")
-            if isinstance(org, dict) and org.get("name"):
-                extra["organization"] = manager.lookup_resource_id("organizations", "name", org["name"], service=_SERVICE)
-            return manager.lookup_resource_id("inventories", "name", name, service=_SERVICE, extra_query_params=extra or None)
-        return manager.lookup_resource_id("inventories", "name", str(inv_data), service=_SERVICE)
-
-    @staticmethod
-    def _resolve_ee_id(manager, ee_data):
-        """Resolve an execution_environment reference (string or dict) to an ID."""
-        if ee_data is None:
-            return None
-        name = ee_data.get("name") if isinstance(ee_data, dict) else str(ee_data)
+        if not isinstance(reference, dict):
+            return manager.lookup_resource_id(endpoint, "name", str(reference), service=_SERVICE)
+        name = reference.get("name")
         if not name:
             return None
-        return manager.lookup_resource_id("execution_environments", "name", name, service=_SERVICE)
+        scope = {}
+        if "organization" in reference:
+            organization = reference["organization"]
+            if organization is None:
+                scope["organization__isnull"] = True
+            elif isinstance(organization, dict) and organization.get("name"):
+                scope["organization"] = manager.lookup_resource_id("organizations", "name", organization["name"], service=_SERVICE, numeric_is_id=False)
+        return manager.lookup_resource_id(endpoint, "name", name, service=_SERVICE, extra_query_params=scope or None, numeric_is_id=False)
 
     def _find_node_in_workflow(self, manager, identifier, workflow_id):
         """Look up a single node by identifier within a workflow."""
@@ -186,11 +190,11 @@ class ActionModule(BaseResourceActionPlugin):
                 if ujt_id is not None:
                     node_fields["unified_job_template"] = ujt_id
 
-            inv_id = self._resolve_inventory_id(manager, node_spec.get("inventory"))
+            inv_id = self._resolve_prompt_id(manager, "inventories", node_spec.get("inventory"))
             if inv_id is not None:
                 node_fields["inventory"] = inv_id
 
-            ee_id = self._resolve_ee_id(manager, node_spec.get("execution_environment"))
+            ee_id = self._resolve_prompt_id(manager, "execution_environments", node_spec.get("execution_environment"))
             if ee_id is not None:
                 node_fields["execution_environment"] = ee_id
 
@@ -256,9 +260,9 @@ class ActionModule(BaseResourceActionPlugin):
                     raise ValueError("Workflow node '%s' requires 'type' in 'unified_job_template'" % identifier)
                 self._resolve_ujt_id(manager, ujt_data)
             if node_spec.get("inventory") is not None:
-                self._resolve_inventory_id(manager, node_spec["inventory"])
+                self._resolve_prompt_id(manager, "inventories", node_spec["inventory"])
             if node_spec.get("execution_environment") is not None:
-                self._resolve_ee_id(manager, node_spec["execution_environment"])
+                self._resolve_prompt_id(manager, "execution_environments", node_spec["execution_environment"])
 
     def _manage_workflow_node_associations(self, manager, workflow_id, workflow_nodes, check_mode):
         """Wire up node-to-node and node-to-resource associations."""

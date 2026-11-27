@@ -207,7 +207,7 @@ options:
           - Keys include C(name) (required), C(type) (job_template, project, inventory_source,
             system_job_template, workflow_approval, workflow_job_template),
             and C(organization) (dict with C(name) key for scoping).
-          - For inventory sources, provide C(inventory) with C(organization) instead of a top-level C(organization).
+          - For inventory sources, provide C(inventory) with C(name) and C(organization) to scope the lookup to that inventory.
           - For approval nodes, set C(type=workflow_approval) with C(name), optional C(description), and C(timeout).
         type: dict
       extra_data:
@@ -220,6 +220,7 @@ options:
         description:
           - Inventory applied as a prompt, if the job template prompts for inventory.
           - May be a string name or a dict with C(name) and optional C(organization) (dict with C(name) key).
+          - An explicit null C(organization) in the dict selects an inventory without an organization.
         type: raw
       scm_branch:
         description:
@@ -257,7 +258,8 @@ options:
       execution_environment:
         description:
           - Execution environment for this node.
-          - May be a string name or a dict with C(name) key.
+          - May be a string name or a dict with C(name) and optional C(organization) (dict with C(name) key).
+          - An explicit null C(organization) in the dict selects an execution environment without an organization.
         type: raw
       diff_mode:
         description:

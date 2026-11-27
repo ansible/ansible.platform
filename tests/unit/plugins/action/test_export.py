@@ -20,6 +20,8 @@ from ansible_collections.ansible.platform.plugins.action.export import (
     HOST_EXPORT_FIELDS,
     ActionModule,
 )
+from ansible_collections.ansible.platform.plugins.plugin_utils.platform.exceptions import APIError
+from ansible_collections.ansible.platform.plugins.plugin_utils.workflow_export import export_workflow_nodes
 
 
 def clean_resource(resource, name_cache, resource_type=None):
@@ -443,6 +445,237 @@ def test_name_cache_failures_abort_export():
 
     with pytest.raises(RuntimeError, match="cache unavailable"):
         action._build_name_cache(manager, 10)
+
+
+@pytest.mark.parametrize(
+    ("target_type", "target_status", "inventory_status", "edge_target", "scope_id", "superuser", "bucket"),
+    [
+        ("job_template", 200, 200, 12, 2, None, "assets"),
+        ("job_template", 200, 200, 12, 2, True, "assets"),
+        ("job_template", 200, 200, 12, 2, False, "non_restorable"),
+        ("job_template", 403, 200, 12, 2, None, "non_restorable"),
+        ("job_template", 200, 403, 12, 2, None, "non_restorable"),
+        ("job_template", 200, 200, 99, 2, None, "non_restorable"),
+        ("job_template", 200, 200, 12, 3, None, "non_restorable"),
+        ("job_template", 401, 200, 12, 2, None, "failed"),
+        ("job_template", 500, 200, 12, 2, None, "failed"),
+        ("project", 200, 200, 12, 2, None, "assets"),
+    ],
+)
+def test_selected_workflow_uses_visible_graph_dependencies(target_type, target_status, inventory_status, edge_target, scope_id, superuser, bucket):
+    workflow_endpoint = "api/controller/v2/workflow_job_templates/"
+    target_endpoint = f"api/controller/v2/{target_type}s/5/"
+    workflow = {"id": 1, "name": "Release", "organization": 1, "summary_fields": {"organization": {"id": 1, "name": "Release Org"}}}
+    nodes = [
+        {
+            "id": node_id,
+            "identifier": identifier,
+            "unified_job_template": 5,
+            "related": {"unified_job_template": f"/{target_endpoint}"},
+            "success_nodes": edges,
+            "failure_nodes": [],
+            "always_nodes": [],
+        }
+        for node_id, identifier, edges in ((11, "prepare", [edge_target]), (12, "deploy", []))
+    ]
+    nodes[0].update(inventory=7, execution_environment=9)
+
+    def search_api(endpoint, **kwargs):
+        if endpoint == workflow_endpoint:
+            return {"results": [workflow]}
+        if endpoint == workflow_endpoint + "1/workflow_nodes/":
+            return {"results": nodes}
+        if endpoint == target_endpoint:
+            if target_status != 200:
+                raise APIError("Template lookup failed", status_code=target_status)
+            return {
+                "id": 5,
+                "name": "Deploy",
+                "organization": 2,
+                "summary_fields": {"organization": {"id": scope_id, "name": "Production"}},
+                "ask_credential_on_launch": superuser is not None,
+                "ask_instance_groups_on_launch": False,
+            }
+        if endpoint == "api/controller/v2/me/" and superuser is not None:
+            return {"results": [{"is_superuser": superuser}]}
+        if endpoint == "api/controller/v2/inventories/7/":
+            if inventory_status != 200:
+                raise APIError("Inventory lookup failed", status_code=inventory_status)
+            return {"id": 7, "name": "Hosts", "organization": 2, "summary_fields": {"organization": {"id": 2, "name": "Production"}}}
+        if endpoint == "api/controller/v2/execution_environments/9/":
+            return {"id": 9, "name": "Global EE", "organization": None}
+        if endpoint.startswith((workflow_endpoint + "1/", "api/controller/v2/workflow_job_template_nodes/")):
+            return {"results": []}
+        raise AssertionError(f"Unexpected dependency read: {endpoint}")
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock(verbosity=0)
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {"workflow_job_templates": ["Release"]}, "manager": manager})
+
+    result = action.run()
+
+    if bucket == "failed":
+        assert (result["failed"], result["msg"]) == (True, "Template lookup failed")
+        return
+    exported = result[bucket]["workflow_job_templates"][0]
+    assert (result["failed"], exported["organization"]) == (False, "Release Org")
+    if bucket == "assets":
+        assert exported["workflow_nodes"][0]["unified_job_template"] == {
+            "name": "Deploy",
+            "type": target_type,
+            "organization": {"name": "Production"},
+        }
+        assert exported["workflow_nodes"][0]["related"]["success_nodes"] == [{"identifier": "deploy"}]
+        assert exported["workflow_nodes"][0]["inventory"] == {"name": "Hosts", "organization": {"name": "Production"}}
+        assert exported["workflow_nodes"][0]["execution_environment"] == {"name": "Global EE", "organization": None}
+        assert ("credentials" in exported["workflow_nodes"][0]["related"]) == (superuser is True)
+    else:
+        assert result["assets"] == {}
+        assert len(exported["workflow_nodes"]) == 2 and exported["non_restorable_reason"]
+        if superuser is False:
+            assert "has a credentials prompt whose associations cannot be verified" in exported["non_restorable_reason"]
+
+
+@pytest.mark.parametrize(
+    ("credential_response", "expected_credential", "expected_reason"),
+    [
+        ({"id": 9, "name": "Webhook Token", "organization": 1}, "Webhook Token", None),
+        (APIError("Credential is forbidden", status_code=403), None, "workflow webhook_credential could not be resolved"),
+        ({"id": 9, "name": "Webhook Token", "organization": 2}, None, "workflow webhook_credential could not be resolved"),
+        ({"id": 9, "name": "123", "organization": 1}, None, "workflow webhook_credential could not be resolved"),
+    ],
+)
+def test_workflow_export_resolves_workflow_level_references(credential_response, expected_credential, expected_reason):
+    workflow_endpoint = "api/controller/v2/workflow_job_templates/"
+    workflow = {
+        "id": 1,
+        "name": "Release",
+        "organization": 1,
+        "summary_fields": {"organization": {"id": 1, "name": "Release Org"}},
+        "inventory": 7,
+        "webhook_credential": 9,
+    }
+
+    def search_api(endpoint, **kwargs):
+        if endpoint == workflow_endpoint:
+            return {"results": [workflow]}
+        if endpoint == "api/controller/v2/inventories/7/":
+            return {"id": 7, "name": "Hosts", "organization": 1}
+        if endpoint == "api/controller/v2/credentials/9/":
+            if isinstance(credential_response, APIError):
+                raise credential_response
+            return credential_response
+        if endpoint.startswith(f"{workflow_endpoint}1/"):
+            return {"results": []}
+        raise AssertionError(f"Unexpected dependency read: {endpoint}")
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock(verbosity=0)
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {"workflow_job_templates": ["Release"]}, "manager": manager})
+
+    result = action.run()
+
+    bucket = "assets" if expected_reason is None else "non_restorable"
+    exported = result[bucket]["workflow_job_templates"][0]
+    assert (exported["organization"], exported["inventory"], exported.get("webhook_credential"), exported.get("non_restorable_reason")) == (
+        "Release Org",
+        "Hosts",
+        expected_credential,
+        expected_reason,
+    )
+
+
+@pytest.mark.parametrize(
+    ("survey_enabled", "status", "bucket"),
+    [(True, 403, "non_restorable"), (True, 404, "non_restorable"), (False, 403, "assets"), (True, 200, "assets")],
+)
+def test_workflow_export_requires_a_readable_enabled_survey(monkeypatch, survey_enabled, status, bucket):
+    workflow_endpoint = "api/controller/v2/workflow_job_templates/"
+    workflow = {"id": 1, "name": "Release", "survey_enabled": survey_enabled}
+    survey = {"name": "Release inputs", "spec": [{"variable": "release_version", "required": True}]}
+    nodes = [{"identifier": "deploy"}]
+    monkeypatch.setattr(
+        "ansible_collections.ansible.platform.plugins.action.export.export_workflow_nodes",
+        lambda manager, workflow_id, max_objects: (nodes, []),
+    )
+
+    def search_api(endpoint, **kwargs):
+        if endpoint == workflow_endpoint:
+            return {"results": [workflow]}
+        if endpoint == f"{workflow_endpoint}1/survey_spec/":
+            if status != 200:
+                raise APIError("Survey lookup denied or missing", status_code=status)
+            return survey
+        return {"results": []}
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    action = ActionModule.__new__(ActionModule)
+    action._display = Mock(verbosity=0)
+    action._prepare_action = Mock(return_value={"result": {}, "validated_params": {"workflow_job_templates": ["Release"]}, "manager": manager})
+
+    result = action.run()
+
+    exported = result[bucket]["workflow_job_templates"][0]
+    assert (exported["workflow_nodes"], exported.get("survey_spec"), exported.get("non_restorable_reason")) == (
+        nodes,
+        survey if status == 200 else None,
+        "workflow survey_spec could not be read for the enabled survey" if bucket == "non_restorable" else None,
+    )
+    if bucket == "non_restorable":
+        assert result["assets"] == {}
+
+
+@pytest.mark.parametrize("accessible", [True, False])
+@pytest.mark.parametrize(
+    ("target_type", "collection", "target"),
+    [
+        ("workflow_approval", "workflow_approval_templates", {"name": "Approve deployment", "description": "", "timeout": 0}),
+        ("system_job_template", "system_job_templates", {"name": "Cleanup Job Details"}),
+    ],
+)
+def test_workflow_export_target_without_organization(accessible, target_type, collection, target):
+    target_endpoint = f"api/controller/v2/{collection}/21/"
+    node = {
+        "id": 11,
+        "identifier": "approve",
+        "unified_job_template": 21,
+        "related": {"unified_job_template": f"/{target_endpoint}"},
+        "success_nodes": [],
+        "failure_nodes": [],
+        "always_nodes": [],
+    }
+
+    def search_api(endpoint, **kwargs):
+        if endpoint == "api/controller/v2/workflow_job_templates/1/workflow_nodes/":
+            return {"results": [node]}
+        if endpoint == target_endpoint:
+            if not accessible:
+                raise APIError("Target lookup failed", status_code=403)
+            return {"id": 21, **target}
+        if endpoint.startswith("api/controller/v2/workflow_job_template_nodes/11/"):
+            return {"results": []}
+        raise AssertionError(f"Unexpected dependency read: {endpoint}")
+
+    manager = Mock()
+    manager.search_api.side_effect = search_api
+    nodes, reasons = export_workflow_nodes(manager, 1, 10)
+
+    assert (nodes[0].get("unified_job_template"), reasons) == (
+        ({"type": target_type, **target}, []) if accessible else (None, ["node 'approve' has an unresolved or unsupported template target"])
+    )
+
+
+def test_workflow_export_rejects_boolean_node_id():
+    manager = Mock()
+    manager.search_api.return_value = {"results": [{"id": True, "identifier": "deploy"}]}
+
+    with pytest.raises(ValueError, match="Invalid workflow node ID"):
+        export_workflow_nodes(manager, 1, 10)
 
 
 def test_name_cache_loads_gateway_and_controller_organizations():
