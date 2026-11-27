@@ -101,6 +101,28 @@
           - org_delete is changed
 
     # <Controller Organization Overlays> ---
+    - name: Read the Default Controller organization
+      ansible.builtin.set_fact:
+        default_controller_org: >-
+          {{ query('ansible.platform.platform_api', '/api/controller/v2/organizations/',
+                   query_params={'name': 'Default'}, expect_one=true, **connection_info) | first }}
+
+    - name: Save the Default Controller organization settings and associations
+      ansible.builtin.set_fact:
+        default_controller_org_original:
+          settings:
+            max_hosts: "{{ default_controller_org.max_hosts }}"
+            default_environment: "{{ default_controller_org.default_environment }}"
+          associations:
+            galaxy_credentials: >-
+              {{ query('ansible.platform.platform_api', default_controller_org_path ~ 'galaxy_credentials/',
+                       return_all=true, return_ids=true, **connection_info) }}
+            instance_groups: >-
+              {{ query('ansible.platform.platform_api', default_controller_org_path ~ 'instance_groups/',
+                       return_all=true, return_ids=true, **connection_info) }}
+      vars:
+        default_controller_org_path: "/api/controller/v2/organizations/{{ default_controller_org.id }}/"
+
     - name: Apply Controller organization settings
       ansible.platform.organization:
         name: Default
@@ -136,11 +158,50 @@
 
   # <Cleanup>
   always:
-    - name: Delete Organizations
-      ansible.platform.organization:
-        name: "{{ item }}"
-        state: absent
-      when: "item in vars and 'id' in vars[item]"
-      loop:
-        - "org"
+    - name: Restore Default and clean up test organizations
+      block:
+        - name: Restore the Default Controller organization
+          when: default_controller_org_original is defined
+          vars:
+            default_controller_org_url: "{{ gateway_hostname | regex_replace('/$', '') }}/api/controller/v2/organizations/{{ default_controller_org.id }}/"
+          module_defaults:
+            ansible.builtin.uri:
+              user: "{{ gateway_username }}"
+              password: "{{ gateway_password }}"
+              force_basic_auth: true
+              validate_certs: "{{ gateway_validate_certs | bool }}"
+              body_format: json
+          block:
+            - name: Restore original Controller organization settings
+              ansible.builtin.uri:
+                url: "{{ default_controller_org_url }}"
+                method: PATCH
+                body: "{{ default_controller_org_original.settings }}"
+              delegate_to: localhost
+
+            # These associations are ordered. Reattach in the original API order.
+            - name: Clear test associations before restoring their original order
+              ansible.platform.organization:
+                name: Default
+                galaxy_credentials: []
+                instance_groups: []
+
+            - name: Restore original Controller organization associations in order
+              ansible.builtin.uri:
+                url: "{{ default_controller_org_url }}{{ item.0.key }}/"
+                method: POST
+                body:
+                  id: "{{ item.1 | int }}"
+                  associate: true
+                status_code: 204
+              loop: "{{ default_controller_org_original.associations | default({}) | dict2items | subelements('value') }}"
+              delegate_to: localhost
+      always:
+        - name: Delete Organizations
+          ansible.platform.organization:
+            name: "{{ item }}"
+            state: absent
+          when: "item in vars and 'id' in vars[item]"
+          loop:
+            - "org"
 ...

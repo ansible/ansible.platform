@@ -163,6 +163,7 @@
               variable: environment
               type: text
               required: false
+      register: test_job_template
 
     - name: Create test workflow job template
       ansible.platform.workflow_job_template:
@@ -267,6 +268,9 @@
         workflow_job_templates:
           - "{{ workflow_job_template_name }}"
       register: workflow_export
+
+    - name: Test workflow export with restricted permissions
+      ansible.builtin.include_tasks: restricted_workflow.yml
 
     - name: Export test schedule
       ansible.platform.export:
